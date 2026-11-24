@@ -3246,14 +3246,17 @@ export function SpaceStoreProvider(props: ParentProps) {
       watch.first.catch(async (error: unknown) => {
         console.warn('SpaceStore: could not watch task states', error);
         if (stopped) return;
-        // The states already held stay if this read fails too; either way the list is answered.
-        await readStoredOnce(
+        // The states held are the previous space's (this effect runs per space), so a failed read
+        // empties the list; either way the list is answered.
+        const read = await readStoredOnce(
           'task states',
           () => !stopped,
           () => TaskState.findAll(dataset),
           applyTaskStates,
         );
-        if (!stopped) setTaskStatesLoaded(true);
+        if (stopped) return;
+        if (!read) setOwnTaskStates([]);
+        setTaskStatesLoaded(true);
       });
     })();
   });

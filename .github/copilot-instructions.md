@@ -6584,9 +6584,12 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
   sends one `error` snapshot, which is not a change.
   Read the first result from the handle rather than reading and watching separately.
 - After a websocket reconnect, the SDK re-opens the query and a changed result reaches every
-  subscriber, so a watch hears a refresh. It does not hear one when the rows come back unchanged:
-  the SDK notifies only when the result or `reopening` changed, so a reconnect that succeeds at
-  once with the same rows is silent. Never rely on a callback after every reconnect.
+  subscriber, so a watch hears a refresh. The SDK notifies only when the result, the status or
+  `reopening` changed, so a reconnect that succeeds at once with the same rows is silent. A re-open
+  that fails and retries does notify: once when `reopening` turns true and once when a retry
+  succeeds, both `ready` and not `initial`, possibly with the same rows. A watch that must act
+  only on changed rows compares `data` with the result it last handled. Never rely on a callback
+  after every reconnect.
 - A subscription belongs to the subscriber that opened it and to its socket: identical queries are
   independent, and each ends when it is disposed or its socket closes. Independent is not free — the
   executor evaluates every one of them on each change that matches — so still hold one subscription

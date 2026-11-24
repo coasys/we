@@ -3158,6 +3158,32 @@ describe('following a space from the rows its live queries push', () => {
     failing.mockRestore();
   }, 15000);
 
+  it("does not show the last space's task states when the next space cannot read its own", async () => {
+    const { stores, handle } = await openSpace('Task States Before');
+    await getEntity('TaskState').create(handle, { name: 'Parked', slug: 'parked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('parked'));
+    await stores.spaces.createSpace('Task States Unreadable', 'x', 'personal', 'hidden');
+    const next = (await lifecycle.list()).find((d) => d.name === 'Task States Unreadable')!;
+    const model = getEntity('TaskState') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(next.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Task States Unreadable'));
+    await vi.waitFor(() => expect(failingWatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(stores.spaces.taskStates().map((s) => s.slug)).not.toContain('parked');
+    failingWatch.mockRestore();
+    failingRead.mockRestore();
+  }, 15000);
+
   it('does not mark the roles loaded without the grants when their watch fails to open', async () => {
     const { stores, handle } = await openSpace('Grant Watch Fails');
     await getEntity('Role').create(handle, { slug: 'steward', name: 'Steward' } as never);
