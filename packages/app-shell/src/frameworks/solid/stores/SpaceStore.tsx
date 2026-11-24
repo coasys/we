@@ -4226,7 +4226,9 @@ export function SpaceStoreProvider(props: ParentProps) {
       applied = policyVersionsOf(rows).then(
         (versions) => {
           if (stopped || turn !== pushed) return false;
+          // Loaded with the rows: a push after an opening that gave none is how the policy recovers.
           setPolicyRows(versions);
+          setPolicyLoaded(true);
           return true;
         },
         (error: unknown) => {
@@ -4269,16 +4271,16 @@ export function SpaceStoreProvider(props: ParentProps) {
         While it cannot be read, the policy stays not loaded: the write check then reads it for each
         write, and refuses the write when that read fails too.
       */
-      if (
-        held ||
-        (await readStoredOnce(
+      if (!held)
+        await readStoredOnce(
           'the space’s policy',
           () => !stopped,
           () => readPolicyVersions(dataset),
-          setPolicyRows,
-        ))
-      )
-        setPolicyLoaded(true);
+          (versions) => {
+            setPolicyRows(versions);
+            setPolicyLoaded(true);
+          },
+        );
     })();
   });
 
