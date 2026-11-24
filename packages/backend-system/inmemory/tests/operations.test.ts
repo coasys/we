@@ -203,6 +203,11 @@ const OPS: Record<string, OperationDefinition> = {
     description: 'Writes a record no operation may.',
     steps: [{ create: { entity: 'Policy', fields: {} } }],
   },
+  writesChosen: {
+    description: 'Creates a record of the entity it is given, from a list that names a protected one.',
+    params: { entity: { type: 'string', required: true } },
+    steps: [{ create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } }],
+  },
   expecting: {
     description: 'A find that must not change before the end.',
     steps: [
@@ -444,6 +449,15 @@ describe('static errors at run time', () => {
     expect([policy.class, policy.code]).toEqual(['static', 'protectedEntity']);
   });
 
+  it('a protected entity reached through oneOf, which only the run can see', async () => {
+    // The validator refuses a oneOf naming one, but registering checks structure only, so the
+    // runner holds the line itself for whatever the expression chooses.
+    const chosen = await failure(run('writesChosen', { entity: 'Policy' }));
+    expect([chosen.class, chosen.code]).toEqual(['static', 'protectedEntity']);
+    expect(await getEntity('Policy').findAll(dataset, {})).toEqual([]);
+    await run('writesChosen', { entity: 'CollectionBlock' });
+  });
+
   it('a version other than the one registered', async () => {
     registerOperations('test', OPS, { version: '2' });
     const error = await failure(run('echo', {}, { version: '1' }));
@@ -466,6 +480,36 @@ describe('the write check', () => {
     ]);
     expect(await ofKind('board')).toEqual([]);
     expect(await ofKind('column')).toEqual([]);
+  });
+});
+
+describe('the write check, against what the operation has staged', () => {
+  /** Anyone may create; only a record's author may edit it — the narrowest policy that tells. */
+  const authorOnly = (told: unknown[]) =>
+    registerEntityWriteCheck(async (write) => {
+      if (write.kind !== 'edit') return;
+      const record = await write.record?.();
+      told.push(record);
+      if (record?.author !== AGENT)
+        throw Object.assign(new Error('Only its author may edit a record.'), { name: 'PolicyRefusal' });
+    });
+
+  it('judges an update to a record the operation created against that record, by its author', async () => {
+    const told: unknown[] = [];
+    authorOnly(told);
+    const id = (await run('writeTwice')) as string;
+    expect(told).toEqual([expect.objectContaining({ id, title: 'first', author: AGENT })]);
+    const [note] = await Collection().findAll(dataset, { where: { id } });
+    expect(note.title).toBe('second');
+  });
+
+  it('rolls the whole operation back when the policy refuses that update', async () => {
+    registerEntityWriteCheck((write) => {
+      if (write.kind === 'edit') throw Object.assign(new Error('Nobody may edit.'), { name: 'PolicyRefusal' });
+    });
+    const error = await failure(run('writeTwice'));
+    expect([error.class, error.code]).toEqual(['precondition', 'refused']);
+    expect(await ofKind('note')).toEqual([]);
   });
 });
 

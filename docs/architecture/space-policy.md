@@ -107,7 +107,9 @@ out from what it writes, is for.
 - **A second write to a record made earlier in the same operation** must be judged against the record
   as the operation has staged it, with its real author, on every backend. That is a rule each backend
   keeps in its write path, not something the runner passes in: a caller-supplied "record as it stands"
-  would be a way round the policy.
+  would be a way round the policy. It holds for any transaction, not only an operation's — see
+  `EntityWrite.record` in `@we/entities` — and the conformance suite's `stagedChecks` cases hold
+  every backend to it.
 
 ## Presets
 

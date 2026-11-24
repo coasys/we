@@ -10,6 +10,7 @@ import type { Ad4mModel } from '@coasys/ad4m';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { installRelationWrites } from './relationWrites';
+import { installStagedRecords } from './stagedRecords';
 
 /** What reached an accessor: the record it was called on, the value and the batch. */
 let written: { on: FakeModel; verb: string; value: unknown; batch?: string }[];
@@ -71,6 +72,7 @@ class FakeModel {
 const pending = new Map<string, FakeModel[]>();
 
 installRelationWrites(FakeModel as unknown as typeof Ad4mModel);
+installStagedRecords(FakeModel as unknown as typeof Ad4mModel, () => 'did:test:me');
 
 interface RelationStatics {
   transaction<R>(perspective: unknown, fn: (tx: { batchId: string }) => Promise<R>): Promise<R>;

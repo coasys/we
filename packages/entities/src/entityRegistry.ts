@@ -228,6 +228,15 @@ export function registerTransactionRunner(runner: EntityTransactionRunner): void
  * not answer one onto a record the group created by finding nothing and writing nothing. Within the
  * group such a record holds only what the group wrote to it, so a `setRelation` there replaces that.
  *
+ * ## The write check sees the group's own writes
+ *
+ * Reads see committed state; the write check does not. Each write in the group is judged against
+ * the records as the group's earlier writes leave them: a second write to a record the group
+ * created is judged against that record, with the writer as its author, and one to a record the
+ * group edited or deleted against the edit or the absence. What a check is told is
+ * {@link EntityWrite.record}, and it is the backend's to answer — never the caller's, since a
+ * caller that could say what the record holds could say whatever lets the write through.
+ *
  * A write inside `fn` that does not carry the token is not part of the group: it lands when it is
  * made, and is not undone if `fn` later throws.
  */
@@ -265,7 +274,16 @@ export interface EntityWrite {
   relation?: string;
   /** For a create, its fields; for an edit, the changed fields' new values. */
   data?: Record<string, unknown>;
-  /** The record as it stands, or `null` when there is none. */
+  /**
+   * The record as it stands before this write, or `null` when there is none — answered by the
+   * backend, never passed in by whoever asked for the write.
+   *
+   * Inside a transaction it is the record as the transaction has staged it: one created earlier in
+   * the same group, with `author` the writer; one edited earlier, with the edit laid over it; one
+   * deleted earlier, `null`. Outside one, or for a record the group has not touched, the committed
+   * record. So a policy judges a compound write by what it does, and a record that is made and then
+   * edited in one act is edited by its author (see `runEntityTransaction`).
+   */
   record?: () => Promise<WrittenRecord | null> | WrittenRecord | null;
 }
 

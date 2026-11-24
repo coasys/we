@@ -25,12 +25,20 @@
  *
  * ## What a check is told about the record
  *
- * Lazily, since most checks never ask. An instance that has been read already holds it — its
- * snapshot is the record as it stood, and `author` comes with every read. One that has not, the
- * instance the static `delete` builds from an id, reads it when asked.
+ * Lazily, since most checks never ask. Inside a batch, a record the batch has created, edited or
+ * deleted is the record as the batch has staged it — with the writer as the author of one it
+ * created — because no read can see it yet and the contract says a check judges the transaction's
+ * own writes (`stagedRecords.ts`). Otherwise an instance that has been read already holds it — its
+ * snapshot is the record as it stood, and `author` comes with every read — and one that has not,
+ * the instance the static `delete` builds from an id, reads it when asked.
+ *
+ * Installed after `installStagedRecords`, so it wraps outside it: the check runs before the batch's
+ * view takes in the write being judged.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
 import { checkEntityWrite, type WrittenRecord } from '@we/entities';
+
+import { fieldsOf, stagedRecord } from './stagedRecords';
 
 const PATCHED = Symbol.for('we.ad4m.writeChecks');
 /** Set on an instance while its own `save()` runs, so the relation writes inside it pass unchecked. */
@@ -53,37 +61,37 @@ type Method = (this: ModelInternals, ...args: unknown[]) => Promise<unknown>;
 
 const entityOf = (model: ModelInternals) => model.constructor.getModelMetadata?.().className ?? 'entity';
 
-/** The model's own fields: what is set on the instance, without the ORM's bookkeeping. */
-function fieldsOf(model: ModelInternals): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(model)) {
-    if (key.startsWith('_') || typeof value === 'function' || value === undefined) continue;
-    out[key] = value;
-  }
-  return out;
-}
-
-/** The record as it stands: the snapshot of an instance that was read, or a read for one that was not. */
-function recordOf(model: ModelInternals): () => Promise<WrittenRecord | null> {
+/**
+ * The record as it stands for a write in `batch`: as the batch has staged it when the batch made,
+ * edited or deleted it (`stagedRecords.ts`), otherwise the snapshot of an instance that was read,
+ * or a read for one that was not.
+ */
+function recordOf(model: ModelInternals, batch: unknown): () => Promise<WrittenRecord | null> {
   // Taken now, not when asked: a check that reads it after the write has begun must still see the
   // record as it stood.
+  const staged = stagedRecord(batch, model.id);
   const snapshot = model._snapshot ? { ...model._snapshot, id: model.id, author: model.author } : null;
   return async () => {
-    if (snapshot) return snapshot;
-    if (!model.id || !model.constructor.findOne) return null;
-    const found = await model.constructor.findOne(model._perspective, { where: { id: model.id } });
-    return found ? { ...fieldsOf(found), id: found.id, author: found.author } : null;
+    if (staged && 'record' in staged) return staged.record;
+    const committed = snapshot ?? (await readRecord(model));
+    return committed && staged ? { ...committed, ...staged.changes } : committed;
   };
 }
 
-function relationCheck(model: ModelInternals, kind: 'add' | 'remove', relation: string) {
+async function readRecord(model: ModelInternals): Promise<WrittenRecord | null> {
+  if (!model.id || !model.constructor.findOne) return null;
+  const found = await model.constructor.findOne(model._perspective, { where: { id: model.id } });
+  return found ? { ...fieldsOf(found), id: found.id, author: found.author } : null;
+}
+
+function relationCheck(model: ModelInternals, kind: 'add' | 'remove', relation: string, batch: unknown) {
   return checkEntityWrite({
     dataset: model._perspective,
     entity: entityOf(model),
     kind,
     id: model.id,
     relation,
-    record: recordOf(model),
+    record: recordOf(model, batch),
   });
 }
 
@@ -134,7 +142,7 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
             kind: 'edit',
             id: this.id,
             data,
-            record: recordOf(this),
+            record: recordOf(this, args[0]),
           });
         }
       }
@@ -147,27 +155,31 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     };
   }
 
-  wrap('delete', (self) =>
+  wrap('delete', (self, [batch]) =>
     checkEntityWrite({
       dataset: self._perspective,
       entity: entityOf(self),
       kind: 'delete',
       id: self.id,
-      record: recordOf(self),
+      record: recordOf(self, batch),
     }),
   );
 
-  wrap('addRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'add', String(key))));
-  wrap('removeRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'remove', String(key))));
+  wrap('addRelationValue', (self, [key, , batch]) =>
+    self[SAVING] ? undefined : relationCheck(self, 'add', String(key), batch),
+  );
+  wrap('removeRelationValue', (self, [key, , batch]) =>
+    self[SAVING] ? undefined : relationCheck(self, 'remove', String(key), batch),
+  );
   // Setting a list adds what is new and removes what is gone. Without a snapshot to diff against,
   // it may do either, so it is checked as both.
-  wrap('setRelationValues', async (self, [key, value]) => {
+  wrap('setRelationValues', async (self, [key, value, batch]) => {
     if (self[SAVING]) return;
     const relation = String(key);
     const next = idsOf(value);
     const current = self._snapshot && relation in self._snapshot ? idsOf(self._snapshot[relation]) : null;
-    if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation);
-    if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation);
+    if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation, batch);
+    if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation, batch);
   });
 
   prototype[PATCHED] = true;

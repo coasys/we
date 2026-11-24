@@ -65,6 +65,7 @@ import {
   ROOT_MODELS,
   SPACE_MODELS,
 } from './sdnaEntities';
+import { installStagedRecords } from './stagedRecords';
 import { runAd4mTransaction } from './transactions';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
@@ -196,6 +197,10 @@ export function createAd4mBackendPorts(
   // for their stored form around each save. Before the write check, so the check sees the values.
   // See `jsonValues.ts`.
   installJsonValues(Ad4mModel, CORE_MANIFEST);
+  // And what each open batch has written, as the batch would leave it — the records a relation write
+  // and the write check reach before any read can see them. After the json values, so it holds
+  // values; before the write check, so a check sees the batch as it stood. See `stagedRecords.ts`.
+  installStagedRecords(Ad4mModel, ctx.selfId);
   // And the host's write check, asked before every create, edit, delete and relation write any model
   // makes — the one place none of them can go around. See `writeChecks.ts`.
   installWriteChecks(Ad4mModel);

@@ -43,12 +43,14 @@
  * nothing at all for one. That is how every board came to be made with no columns. But a relation
  * write never needed what a read returns: the generated accessor writes links out of the record's
  * id under the relation's predicate, both of which the instance carries from its class. So the
- * instances a batch creates are remembered by id while the batch is open ({@link trackBatchCreates}),
- * and a write onto one of them goes through that instance with no read. It is the instance the
+ * instances a batch creates are remembered by id while the batch is open (`stagedRecords.ts`, which
+ * must be installed with this), and a write onto one of them goes through that instance with no read. It is the instance the
  * create itself wrote, so its snapshot is what the batch staged: a `setRelation` there replaces only
  * what the batch already wrote, since a record that has not committed holds nothing else.
  */
 import type { Ad4mModel } from '@coasys/ad4m';
+
+import { stagedInstance } from './stagedRecords';
 
 /** Marker so a second call is a no-op — the adapter can be initialised more than once per process. */
 const PATCHED = Symbol.for('we.ad4m.relationWrites');
@@ -57,63 +59,6 @@ type RelationAccessor = (arg: unknown, batchId?: string) => Promise<unknown>;
 
 interface ModelStatic {
   findOne(dataset: unknown, query: { where: { id: string } }): Promise<Record<string, unknown> | null>;
-}
-
-/**
- * The records each open batch has created, by batch id and then record id.
- *
- * Filled by `save`, which every create ends in, and emptied when the batch's transaction settles,
- * whether it committed or was discarded: after a commit the record can be read like any other.
- */
-const createdInBatch = new Map<string, Map<string, Record<string, unknown>>>();
-
-interface SavedModel {
-  id?: string;
-  _snapshot?: unknown;
-}
-
-type Save = (this: SavedModel, batchId?: string, ...rest: unknown[]) => Promise<unknown>;
-type Transaction = (perspective: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) => Promise<unknown>;
-
-/**
- * Remember the instances each batch creates, for as long as the batch is open.
- *
- * A save with no snapshot is a create (an instance that was read has one), and one with a batch id
- * is staged rather than committed. `Ad4mModel.transaction` is where every batch WE opens is opened
- * and settled — the contract's runner and the SDK's own `create` both go through it — so that is
- * where a batch's entry is dropped.
- */
-function trackBatchCreates(model: typeof Ad4mModel): void {
-  const prototype = model.prototype as unknown as Record<string, unknown>;
-  const save = prototype.save as Save | undefined;
-  if (typeof save === 'function') {
-    prototype.save = async function remembered(this: SavedModel, batchId?: string, ...rest: unknown[]) {
-      const creating = !this._snapshot;
-      const result = await save.call(this, batchId, ...rest);
-      if (creating && batchId && this.id) {
-        let created = createdInBatch.get(batchId);
-        if (!created) createdInBatch.set(batchId, (created = new Map<string, Record<string, unknown>>()));
-        created.set(this.id, this as unknown as Record<string, unknown>);
-      }
-      return result;
-    };
-  }
-
-  const statics = model as unknown as Record<string, unknown>;
-  const transaction = statics.transaction as Transaction | undefined;
-  if (typeof transaction === 'function') {
-    statics.transaction = function settled(this: unknown, perspective: unknown, fn: Parameters<Transaction>[1]) {
-      let batch: string | undefined;
-      return transaction
-        .call(this, perspective, (tx) => {
-          batch = tx.batchId;
-          return fn(tx);
-        })
-        .finally(() => {
-          if (batch) createdInBatch.delete(batch);
-        });
-    };
-  }
 }
 
 const accessorName = (verb: string, relation: string) =>
@@ -172,8 +117,7 @@ async function accessorFor(
   verb: 'set' | 'add' | 'remove',
   batch?: string,
 ): Promise<{ record: Record<string, unknown>; call: RelationAccessor } | null> {
-  const record =
-    (batch ? createdInBatch.get(batch)?.get(id) : undefined) ?? (await entity.findOne(dataset, { where: { id } }));
+  const record = stagedInstance(batch, id) ?? (await entity.findOne(dataset, { where: { id } }));
   if (!record) return null;
 
   const call = record[accessorName(verb, relation)] as RelationAccessor | undefined;
@@ -189,15 +133,14 @@ async function accessorFor(
 }
 
 /**
- * Install the relation writes on `Ad4mModel`, and the record of what each open batch has created
- * that lets them reach a record no read can see yet. Idempotent.
+ * Install the relation writes on `Ad4mModel`. Idempotent. They reach a record no read can see yet
+ * through the batch's staged view, which `installStagedRecords` installs.
  *
  * Called once when the adapter builds its ports.
  */
 export function installRelationWrites(model: typeof Ad4mModel): void {
   const statics = model as unknown as Record<string | symbol, unknown>;
   if (statics[PATCHED]) return;
-  trackBatchCreates(model);
 
   statics.setRelation = async function (
     this: ModelStatic,

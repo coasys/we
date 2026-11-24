@@ -48,6 +48,7 @@ import {
   readOperationVectors,
 } from './operations';
 import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
+import { describeStagedChecks, STAGED_CHECK_CASES, type StagedCheckCase } from './stagedChecks';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
 import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
@@ -64,6 +65,8 @@ export {
   readOperationVectors,
   SAME_BATCH_CASES,
   type SameBatchCase,
+  STAGED_CHECK_CASES,
+  type StagedCheckCase,
   TEMPLATE_QUERY_CASES,
   type TemplateQueryCase,
   WRITE_CASES,
@@ -195,11 +198,17 @@ export const CONFORMANCE_CASES = [
 
 /**
  * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
- * values, grouped and named writes, relation writes in the batch that created the record, and the
- * template queries.
+ * values, grouped and named writes, relation writes in the batch that created the record, write
+ * checks that see the transaction's own writes, and the template queries.
  */
 export type ConformanceCase =
-  (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | JsonValueCase | WriteCase | SameBatchCase | TemplateQueryCase;
+  | (typeof CONFORMANCE_CASES)[number]
+  | EmptyValueCase
+  | JsonValueCase
+  | WriteCase
+  | SameBatchCase
+  | StagedCheckCase
+  | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -1173,6 +1182,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
   describeJsonValues(name, harness, timeout);
   describeWriteCases(name, harness, timeout);
   describeSameBatch(name, harness, timeout);
+  describeStagedChecks(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
   describeOperations(name, harness, timeout);
 }
