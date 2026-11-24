@@ -175,3 +175,58 @@ function emitFor(prop: string, value: string): string | undefined {
   if (prop === 'shadow') return tokenVar('shadow', value);
   return undefined;
 }
+
+/**
+ * The renderer family covers the stable core: every block-level type and every handler kind the
+ * format defines has at least one case. A type or handler added to the core without a case fails here.
+ */
+describe('render.json covers the core', () => {
+  const BLOCK_TYPES = [
+    '$each',
+    '$if',
+    '$single',
+    '$animate',
+    '$routes',
+    '$surface',
+    '$slot',
+    '$part',
+    '$panels',
+    '$agent',
+    '$ref',
+  ];
+  const HANDLER_KINDS = [
+    '$invoke',
+    '$setLocal',
+    '$toggleLocal',
+    '$toggleLocalIn',
+    '$callLocal',
+    '$touch',
+    '$resetLocal',
+    '$if',
+    'onSuccess',
+    'onError',
+    'onFinally',
+  ];
+  const render = load('render.json') as { cases: { id: string; template: unknown }[] };
+  const types = new Set<string>();
+  const handlers = new Set<string>();
+  const walk = (value: unknown, inHandler: boolean): void => {
+    if (Array.isArray(value)) return value.forEach((v) => walk(v, inHandler));
+    if (!value || typeof value !== 'object') return;
+    const record = value as Record<string, unknown>;
+    if (typeof record.type === 'string') types.add(record.type);
+    for (const [key, inner] of Object.entries(record)) {
+      if (inHandler && (key.startsWith('$') || key.startsWith('on'))) handlers.add(key);
+      // A handler is a prop named on[A-Z]…; everything under it is handler position.
+      walk(inner, inHandler || /^on[A-Z]/.test(key));
+    }
+  };
+  for (const c of render.cases) walk(c.template, false);
+
+  it('every block-level type has a case', () => {
+    expect(BLOCK_TYPES.filter((t) => !types.has(t))).toEqual([]);
+  });
+  it('every handler kind has a case', () => {
+    expect(HANDLER_KINDS.filter((h) => !handlers.has(h))).toEqual([]);
+  });
+});

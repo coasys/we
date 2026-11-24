@@ -23,10 +23,11 @@ real token/theme stylesheets, applies each theme through `applyThemeVars`, and r
 `getComputedStyle`. It is **not** part of `pnpm test` — the vitest run has no browser. It must be
 run _before_ `pnpm record` for `style.json`'s computed values to resolve.
 
-Navigation vectors need a mounted RouteStore over real jsdom history, so `pnpm record` is two
-steps: `tsx src/record.ts` writes six files, then `vitest.config.record.ts` runs
-`tests/record-navigation.test.tsx` (excluded from the default projects on purpose) which writes
-`vectors/navigation.json`.
+Navigation and render vectors mount real Solid on jsdom (a RouteStore over real history; the
+renderer itself), so `pnpm record` is two steps: `tsx src/record.ts` writes six files, then
+`vitest.config.record.ts` runs `tests/record-navigation.test.tsx` and `tests/record-render.test.tsx`
+(excluded from the default projects on purpose), which write `vectors/navigation.json` and
+`vectors/render.json`.
 
 ## Files
 
@@ -35,6 +36,7 @@ vectors/expressions.json    expression source + env → result, plus the printer
 vectors/functions.json      built-in function name + args → result
 vectors/paths.json          resolvePath(to, current, base) + isRelativePath
 vectors/navigation.json     scripted route-store ops → href, page identity, history depth/index
+vectors/render.json         template + data + events → rendered tree and actions fired, per step
 vectors/query-compile.json  resolveQueryProp / pruneUnresolvedWhere / scopeIsAnchored
 vectors/host-functions.json host source name + options → result
 vectors/style.json          DS props + theme → emitted style + per-prop token & computed value
@@ -100,6 +102,24 @@ depth, 0-based position), `resolved` is only on `local_read` (the syncParam prec
 `sync_param` mirrors `$localState`'s write path: JSON-encode non-strings, and a value equal to the
 declared `initial` (JSON-compared) removes the param. `local_read` answers the mount-time
 precedence: URL param > `we-local:<persist>` > `initial`.
+
+### render.json
+
+`{ id, note, template, data?, actions?, gated?, params?, storage?, identities?, start?, steps?,
+expect }` — the inputs are described in `src/cases/render.ts`. The template renders through the real
+renderer after the host's part expansion; a template with `routes` renders under a router opened at
+`start`. `steps` are `click{target}`, `input{target, value}`, `emit{target, event, detail?}`,
+`navigate{to}` and `data{store, member, value}`; `target` is an element's `data-case`. `expect` has
+one entry for the mount and one per step: `{ tree, actions, params?, storage? }`.
+
+`tree` is renderer-neutral: `{ type, props?, slot?, children? }` per node (`type` as the template
+wrote it; `props` what the renderer handed over, handlers left out), `{ slot, children }` for a named
+slot a component received, a string for text, `{ missing: type }` for the missing-component marker,
+and `{ type: '$surface', children }` for a responsive boundary. The renderer's own box-less wrappers
+are not in it. Layout components (`Column`, `Row`, `Card`, `Grid`, `PartFrame`, `PanelLane`) are
+probes drawing only their props and children; what a component does with its props is its own
+contract. `actions` are the store methods called during the step, in order: `{ call, args }`.
+`gated` methods go through the host's gesture gate, so one called with nobody having asked is absent.
 
 ### query-compile.json
 

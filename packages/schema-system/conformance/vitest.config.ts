@@ -5,10 +5,10 @@ import { defineConfig } from 'vitest/config';
 
 // Tests that mount the real RouteStore over a real jsdom history — the same reason app-shell keeps
 // a second project: the node project resolves solid-js to its SSR build, where effects never run.
-const SOLID_TESTS = ['tests/navigation.test.tsx'];
+const SOLID_TESTS = ['tests/navigation.test.tsx', 'tests/render.test.tsx'];
 // The recorder is NOT a test: `pnpm record` runs it through vitest.config.record.ts, and it must
 // not execute here or `pnpm test` would rewrite the vectors it then compares.
-const RECORD_TESTS = ['tests/record-navigation.test.tsx'];
+const RECORD_TESTS = ['tests/record-navigation.test.tsx', 'tests/record-render.test.tsx'];
 
 // The vectors pin src, not a built dist. The recorder's mounted RouteStore imports
 // @we/schema-shared by package name, and schema-shared's own src imports @we/expressions by name;
@@ -17,6 +17,14 @@ const RECORD_TESTS = ['tests/record-navigation.test.tsx'];
 const SRC = {
   '@we/expressions': fileURLToPath(new URL('../expressions/src/index.ts', import.meta.url)),
   '@we/schema-shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)),
+};
+
+// The renderer vectors mount the real renderer and the host's glue around it (part expansion, the
+// router, the gesture gate), which import app-shell's own aliases and the renderer by package name.
+export const RENDER_ALIASES = {
+  '@we/schema-solid': fileURLToPath(new URL('../frameworks/solid/src/index.ts', import.meta.url)),
+  '@shared': fileURLToPath(new URL('../../app-shell/src/shared', import.meta.url)),
+  '@solid': fileURLToPath(new URL('../../app-shell/src/frameworks/solid', import.meta.url)),
 };
 
 export default defineConfig({
@@ -37,7 +45,7 @@ export default defineConfig({
       {
         plugins: [solidPlugin()],
         resolve: {
-          alias: SRC,
+          alias: { ...SRC, ...RENDER_ALIASES },
           dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'],
           conditions: ['development', 'browser'],
         },
