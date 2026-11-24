@@ -371,7 +371,20 @@ export const sidebar: SchemaNode = {
       props: {
         styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
       },
-      children: [rail],
+      // Acorn's screenshots use one light canvas. Only its open shell borrows that look;
+      // Home, overlays, other apps and other templates keep the agent's Coasis chrome.
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: {
+              $: "templateStore.currentTemplate.id == 'acorn' && routeStore.segments[0] == 'space' && !shellStore.activeShellView && !appStore.activeAppId",
+            },
+            then: { theme: { themeName: 'acorn' }, children: [rail] },
+            else: rail,
+          },
+        },
+      ],
     },
   },
 };
