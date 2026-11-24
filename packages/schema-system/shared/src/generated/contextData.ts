@@ -4343,9 +4343,9 @@ export const contextData: ContextData = {
         },
         { name: 'applyChange', kind: 'action', doc: 'Applies one suggested change to an agreed record.' },
         {
-          name: 'autoExtract',
+          name: 'autoInterpret',
           kind: 'state',
-          doc: 'Whether the call this agent is in is extracted as it happens — its own answer.',
+          doc: 'Whether the call this agent is in is interpreted as it happens — its own answer.',
         },
         {
           name: 'autoJoined',
@@ -4361,7 +4361,7 @@ export const contextData: ContextData = {
         {
           name: 'callId',
           kind: 'state',
-          doc: 'The record extraction decisions for this call are written against — the call’s own record from its first second.',
+          doc: 'The record interpretation decisions for this call are written against — the call’s own record from its first second.',
         },
         { name: 'callOnScreenLive', kind: 'state', doc: 'Somebody is in the call the address names right now.' },
         {
@@ -4384,7 +4384,7 @@ export const contextData: ContextData = {
         },
         { name: 'canEditProposals', kind: 'state', doc: 'Whether an edited suggestion can be written back on accept.' },
         { name: 'changedIds', kind: 'state', doc: 'Agreed records carrying a suggested change, by id.' },
-        { name: 'closeExtractionPanel', kind: 'action', doc: 'Closes the extraction panel.', ambient: true },
+        { name: 'closeInterpretationPanel', kind: 'action', doc: 'Closes the interpretation panel.', ambient: true },
         { name: 'closePanel', kind: 'action', doc: 'Closes the transcript panel.', ambient: true },
         {
           name: 'collectionId',
@@ -4427,29 +4427,6 @@ export const contextData: ContextData = {
         },
         { name: 'enabled', kind: 'state', doc: 'Whether this agent is recording their own microphone into the call.' },
         { name: 'error', kind: 'state', doc: 'Why the session stopped, when status is error; empty otherwise.' },
-        { name: 'extract', kind: 'action', doc: 'Runs one extraction pass over the call this agent is transcribing.' },
-        {
-          name: 'extractable',
-          kind: 'state',
-          doc: 'Whether this node can interpret at all — false when it has no language model.',
-        },
-        { name: 'extractCollection', kind: 'action', doc: 'Runs one extraction pass over any call’s record, by id.' },
-        { name: 'extractCount', kind: 'state', doc: 'How many records the last pass wrote.' },
-        { name: 'extractedId', kind: 'state', doc: 'The collection the last finished pass ran on, or empty.' },
-        { name: 'extractError', kind: 'state', doc: 'Why the last pass failed; empty otherwise.' },
-        { name: 'extractingId', kind: 'state', doc: 'The collection a pass is running on right now, or empty.' },
-        {
-          name: 'extractionFor',
-          kind: 'state',
-          doc: 'What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].',
-        },
-        { name: 'extractionOpen', kind: 'state', doc: 'Whether the extraction panel is open.' },
-        {
-          name: 'extractStatus',
-          kind: 'state',
-          doc: 'How the last one-shot extraction pass went — idle, running, done or error.',
-        },
-        { name: 'extractTurns', kind: 'state', doc: 'How many transcript turns the last pass read.' },
         {
           name: 'flushNow',
           kind: 'action',
@@ -4461,6 +4438,37 @@ export const contextData: ContextData = {
           doc: 'Something has been said that the record does not hold yet — buffered, being written or still with the model.',
         },
         { name: 'inCall', kind: 'state', doc: 'Whether this agent is in a call right now.' },
+        {
+          name: 'interpret',
+          kind: 'action',
+          doc: 'Runs one interpretation pass over the call this agent is transcribing.',
+        },
+        {
+          name: 'interpretable',
+          kind: 'state',
+          doc: 'Whether this node can interpret at all — false when it has no language model.',
+        },
+        {
+          name: 'interpretationFor',
+          kind: 'state',
+          doc: 'What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id].',
+        },
+        { name: 'interpretationOpen', kind: 'state', doc: 'Whether the interpretation panel is open.' },
+        {
+          name: 'interpretCollection',
+          kind: 'action',
+          doc: 'Runs one interpretation pass over any call’s record, by id.',
+        },
+        { name: 'interpretCount', kind: 'state', doc: 'How many records the last pass wrote.' },
+        { name: 'interpretedId', kind: 'state', doc: 'The collection the last finished pass ran on, or empty.' },
+        { name: 'interpretError', kind: 'state', doc: 'Why the last pass failed; empty otherwise.' },
+        { name: 'interpretingId', kind: 'state', doc: 'The collection a pass is running on right now, or empty.' },
+        {
+          name: 'interpretStatus',
+          kind: 'state',
+          doc: 'How the last one-shot interpretation pass went — idle, running, done or error.',
+        },
+        { name: 'interpretTurns', kind: 'state', doc: 'How many transcript turns the last pass read.' },
         {
           name: 'invited',
           kind: 'state',
@@ -4496,13 +4504,13 @@ export const contextData: ContextData = {
           doc: 'Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".',
         },
         { name: 'open', kind: 'state', doc: 'Whether the transcript panel is open.' },
-        { name: 'openExtractionPanel', kind: 'action', doc: 'Opens the extraction panel.', ambient: true },
+        { name: 'openInterpretationPanel', kind: 'action', doc: 'Opens the interpretation panel.', ambient: true },
         { name: 'openPanel', kind: 'action', doc: 'Opens the transcript panel.', ambient: true },
         { name: 'partialCoverage', kind: 'state', doc: 'Someone in this call is not being transcribed.' },
         {
           name: 'passRunning',
           kind: 'state',
-          doc: 'Whether any extraction pass is running right now, this node’s or a peer’s.',
+          doc: 'Whether any interpretation pass is running right now, this node’s or a peer’s.',
         },
         {
           name: 'pending',
@@ -4629,14 +4637,14 @@ export const contextData: ContextData = {
           doc: 'Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.',
         },
         {
-          name: 'toggleAutoExtract',
+          name: 'toggleAutoInterpret',
           kind: 'action',
-          doc: 'Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.',
+          doc: 'Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call.',
         },
         {
-          name: 'toggleExtractionTarget',
+          name: 'toggleInterpretationTarget',
           kind: 'action',
-          doc: 'Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.',
+          doc: 'Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call.',
         },
         {
           name: 'transcribers',
@@ -4658,7 +4666,7 @@ export const contextData: ContextData = {
         {
           name: 'watchProblem',
           kind: 'state',
-          doc: 'Why the standing extraction watch is not running here; empty when it is.',
+          doc: 'Why the standing interpretation watch is not running here; empty when it is.',
         },
       ],
       parts: [
@@ -4671,12 +4679,12 @@ export const contextData: ContextData = {
         { name: 'captureMeter' },
         { name: 'captureStatus' },
         { name: 'coverage' },
-        { name: 'extractionTargets' },
+        { name: 'interpretationTargets' },
         { name: 'pendingUtterance' },
       ],
       panels: [
         { name: 'transcript', title: 'Transcript', icon: 'waveform', hostOwned: false },
-        { name: 'extraction', title: 'Extraction', icon: 'sparkle', hostOwned: false },
+        { name: 'interpretation', title: 'Interpretation', icon: 'sparkle', hostOwned: false },
       ],
       launchers: [],
       settings: [

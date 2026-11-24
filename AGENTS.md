@@ -4020,11 +4020,11 @@ Needs: kernels records, presence, ephemeral, media, peerConnection, call; permis
 Turns what is said in a call into text blocks in the space.
 Needs: kernels records, presence, media, transcription, interpretation; permissions microphone.
 - State (read in an expression as `modules.transcribe.<name>`):
-  - autoExtract — Whether the call this agent is in is extracted as it happens — its own answer.
+  - autoInterpret — Whether the call this agent is in is interpreted as it happens — its own answer.
   - autoJoined — Recording was started by the call rather than by this agent pressing record.
   - available — There is audio to listen to — a microphone the host is capturing.
   - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
-  - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
+  - callId — The record interpretation decisions for this call are written against — the call’s own record from its first second.
   - callOnScreenLive — Somebody is in the call the address names right now.
   - canConnectServer — Whether a speech server was found on the node’s machine that this connection may connect in one step.
   - canEditProposals — Whether an edited suggestion can be written back on accept.
@@ -4036,17 +4036,17 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - editingProposal — The suggestion open for editing, or empty when none is.
   - enabled — Whether this agent is recording their own microphone into the call.
   - error — Why the session stopped, when status is error; empty otherwise.
-  - extractable — Whether this node can interpret at all — false when it has no language model.
-  - extractCount — How many records the last pass wrote.
-  - extractedId — The collection the last finished pass ran on, or empty.
-  - extractError — Why the last pass failed; empty otherwise.
-  - extractingId — The collection a pass is running on right now, or empty.
-  - extractionFor — What one collection can extract, by record id — { targets, canChoose, canExtract, auto }, read as extractionFor[id].
-  - extractionOpen — Whether the extraction panel is open.
-  - extractStatus — How the last one-shot extraction pass went — idle, running, done or error.
-  - extractTurns — How many transcript turns the last pass read.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
+  - interpretable — Whether this node can interpret at all — false when it has no language model.
+  - interpretationFor — What one collection can interpret, by record id — { targets, canChoose, canInterpret, auto }, read as interpretationFor[id].
+  - interpretationOpen — Whether the interpretation panel is open.
+  - interpretCount — How many records the last pass wrote.
+  - interpretedId — The collection the last finished pass ran on, or empty.
+  - interpretError — Why the last pass failed; empty otherwise.
+  - interpretingId — The collection a pass is running on right now, or empty.
+  - interpretStatus — How the last one-shot interpretation pass went — idle, running, done or error.
+  - interpretTurns — How many transcript turns the last pass read.
   - invited — Somebody else in this call is recording and this agent is not, having not opted out.
   - invitedBy — The agent id of the first peer recording this call, or empty when none is.
   - level — Microphone loudness as the voice detector measures it, 0–1.
@@ -4059,7 +4059,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - modelUnreadyText — Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".
   - open — Whether the transcript panel is open.
   - partialCoverage — Someone in this call is not being transcribed.
-  - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
+  - passRunning — Whether any interpretation pass is running right now, this node’s or a peer’s.
   - pending — Words heard that are not yet a row in the transcript — buffered or being written, newest last.
   - pendingIds — Every record still awaiting a decision, by id, across every call asked about.
   - pendingProposals — The same suggestions as rows — { id, kind, entity, fields, summary }.
@@ -4082,7 +4082,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - transcriptFromStart — Whether the transcript is being read from its beginning rather than following the live end.
   - transcriptShown — How many transcript lines are loaded right now.
   - unconfirmedIds — Records a pass made that nobody has kept yet, by id.
-  - watchProblem — Why the standing extraction watch is not running here; empty when it is.
+  - watchProblem — Why the standing interpretation watch is not running here; empty when it is.
 - Actions (`{ "$invoke": "modules.transcribe.<name>" }`):
   - acceptProposal — Keeps a suggestion, as proposed or as edited.
   - addMessage — Writes something a person typed into a transcript, as a typed line — with its marks, when the composer gave any.
@@ -4090,17 +4090,17 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - cancelProposalEdit — Closes the open draft, discarding what was typed.
   - cancelReply — Puts a reply down without sending it.
   - cancelTiedDecision — Puts the decision waiting in tiedDecision down without making it.
-  - closeExtractionPanel — Closes the extraction panel.
+  - closeInterpretationPanel — Closes the interpretation panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
   - connectServer — Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
-  - extract — Runs one extraction pass over the call this agent is transcribing.
-  - extractCollection — Runs one extraction pass over any call’s record, by id.
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
-  - openExtractionPanel — Opens the extraction panel.
+  - interpret — Runs one interpretation pass over the call this agent is transcribing.
+  - interpretCollection — Runs one interpretation pass over any call’s record, by id.
+  - openInterpretationPanel — Opens the interpretation panel.
   - openPanel — Opens the transcript panel.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
   - readTranscriptLive — Goes back to following the end of the transcript.
@@ -4111,10 +4111,10 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - showMoreTranscript — Loads one more page of the transcript, in whichever direction it is being read.
   - startReply — Starts a reply to one line of the transcript — pass { id, text, author } — which the transcript's composer then sends as a reply.
   - toggle — Starts or stops recording this agent’s microphone into the call, and opens the transcript when starting.
-  - toggleAutoExtract — Turns automatic extraction on or off for one collection, for everyone in it; defaults to the live call.
-  - toggleExtractionTarget — Includes or excludes one model from what a call extracts, for everyone in it; defaults to the live call.
-- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.extractionTargets`, `transcribe.pendingUtterance`
-- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `extraction` "Extraction" (module-owned openness)
+  - toggleAutoInterpret — Turns automatic interpretation on or off for one collection, for everyone in it; defaults to the live call.
+  - toggleInterpretationTarget — Includes or excludes one model from what a call interprets, for everyone in it; defaults to the live call.
+- Parts: `transcribe.transcriptFeed` (subject: routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId), `transcribe.transcriptLines` (subject: modules.transcribe.collectionId), `transcribe.transcriptComposer`, `transcribe.captureMeter`, `transcribe.captureStatus`, `transcribe.coverage`, `transcribe.interpretationTargets`, `transcribe.pendingUtterance`
+- Panels (`meta.panels[].dock`): `transcript` "Transcript" (module-owned openness), `interpretation` "Interpretation" (module-owned openness)
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
