@@ -364,7 +364,7 @@ export function BundleStoreProvider(props: ParentProps) {
         is set up. Judging it against the space on screen refused a reinstall over its own earlier
         record types, which every space's model list carries once adopted.
       */
-      knownEntities: Object.keys(CORE_MANIFEST.entities),
+      vocabulary: CORE_MANIFEST.entities,
     });
     if (judged.refusals.length) {
       console.warn(`The app “${bundle.name}” cannot be installed:`, judged.refusals);

@@ -3,6 +3,7 @@
  */
 import { judgeBundle, modulesNamedBy } from '@shared/bundles/judgeBundle';
 import { describeCapabilities } from '@shared/templateAcceptance';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { Bundle } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
@@ -71,7 +72,11 @@ const deps = {
   hasModule: (id: string) => id === 'call' || id === 'polls',
   moduleInstalled: (id: string) => id === 'call',
   moduleName: (id: string) => ({ call: 'Calls', polls: 'Polls' })[id] ?? id,
-  knownEntities: ['WeNode', 'Space', 'LocationBlock'],
+  vocabulary: {
+    WeNode: CORE_MANIFEST.entities.WeNode,
+    Space: CORE_MANIFEST.entities.Space,
+    LocationBlock: CORE_MANIFEST.entities.LocationBlock,
+  },
 };
 
 describe('judging a bundle', () => {
@@ -86,7 +91,46 @@ describe('judging a bundle', () => {
       pages: [],
       themes: ['Moss'],
       recordTypes: ['Species'],
+      operations: [],
       workflows: [],
+    });
+  });
+
+  describe('its operations', () => {
+    const name = (text: unknown) => ({ create: { entity: 'Species', fields: { name: text } } });
+    const withOps = (operations: Record<string, unknown>) =>
+      ({ ...bundle(), formatVersion: 2, operations }) as unknown as Bundle;
+
+    it('are listed under the bundle’s id, and their writes count towards what it can do', () => {
+      const result = judgeBundle(
+        withOps({
+          spot: { description: 'Name a species.', params: { text: { type: 'string' } }, steps: [name({ $: 'text' })] },
+          twice: {
+            description: 'Name two.',
+            steps: [{ call: { operation: 'field-guide.spot', args: { text: 'a' } } }, name('b')],
+          },
+          rename: {
+            description: 'Rename this space.',
+            steps: [{ update: { entity: 'Space', id: 's', fields: { name: 'x' } } }],
+          },
+        }),
+        deps,
+      );
+      expect(result.refusals).toEqual([]);
+      expect(result.adds.operations).toEqual(['field-guide.spot', 'field-guide.twice', 'field-guide.rename']);
+      expect(result.groups).toContain('content');
+      expect(result.groups).toContain('space-settings');
+    });
+
+    it('refuse the bundle when they do not validate', () => {
+      const result = judgeBundle(
+        withOps({ spot: { description: 'Bad.', steps: [name({ $: 'me.did' }), { call: { operation: 'other.x' } }] } }),
+        deps,
+      );
+      expect(result.refusals).toEqual([
+        'Its operations are not valid — operations.spot.steps.0.create.fields.name: "me" is not bound here — an operation reads its params, invoker, invokedAt and what earlier steps named',
+        'Its operations are not valid — operations.spot.steps.1.call.operation: no operation "other.x" is known',
+      ]);
     });
   });
 
