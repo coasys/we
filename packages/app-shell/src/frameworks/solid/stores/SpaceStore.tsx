@@ -2302,6 +2302,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const boards = createBoardActions({
     dataset: datasetFor,
+    invoker: () => session.me()?.did,
     // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
     // board reports when the data has overtaken it. See that module for why nothing releases on
     // success.

@@ -3,70 +3,34 @@
  *
  * The rule is small and easy to get backwards — a move that is waiting must write *nothing*, or the
  * card is filed in Done by the very drop that asked whether it may be — so it is held here against a
- * store that records every write.
+ * the in-memory backend, compared before and after.
  */
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-interface Row {
-  id: string;
-  slug?: string;
-  status?: string;
-  arranges?: string[];
-}
+import { createBoardActions } from '../src/shared/boards';
 
-const rows = new Map<string, Row>();
-const writes: string[] = [];
+type Row = Record<string, unknown> & { id: string };
+const model = (name: string) =>
+  getEntity(name) as unknown as {
+    create(p: unknown, data: Record<string, unknown>, options?: Record<string, unknown>): Promise<Row>;
+    findOne(p: unknown, query: Record<string, unknown>): Promise<Row | null>;
+    findAll(p: unknown, query?: Record<string, unknown>): Promise<Row[]>;
+  };
 
-vi.mock('@we/entities', () => {
-  const record = (row: Row) => ({
-    ...row,
-    arranges: [...(row.arranges ?? [])],
-    async save() {
-      const stored = rows.get(row.id)!;
-      if (this.status !== stored.status) writes.push(`status ${row.id} ${this.status}`);
-      stored.status = this.status;
-    },
-  });
-  const CollectionBlock = {
-    findOne: async (_p: unknown, query: { where: { id: string } }) => {
-      const row = rows.get(query.where.id);
-      return row ? record(row) : null;
-    },
-    setRelation: async (_p: unknown, id: string, relation: string, targets: string[]) => {
-      writes.push(`${relation} ${id} ${targets.join(',')}`);
-      rows.get(id)!.arranges = [...targets];
-    },
-    addRelation: async (_p: unknown, id: string, relation: string, target: string) => {
-      writes.push(`${relation} ${id} +${target}`);
-      rows.get(id)!.arranges = [...(rows.get(id)!.arranges ?? []), target];
-    },
-    removeRelation: async (_p: unknown, id: string, relation: string, target: string) => {
-      writes.push(`${relation} ${id} -${target}`);
-      rows.get(id)!.arranges = (rows.get(id)!.arranges ?? []).filter((t) => t !== target);
-    },
-  };
-  const TaskBlock = {
-    findOne: async (_p: unknown, query: { where: { id: string } }) => {
-      const row = rows.get(query.where.id);
-      return row ? record(row) : null;
-    },
-    create: async (_p: unknown, data: Row) => {
-      const row = { ...data, id: `task-${rows.size}` };
-      rows.set(row.id, row);
-      writes.push(`create ${row.id} ${row.status}`);
-      return row;
-    },
-  };
-  return {
-    CollectionBlock,
-    Space: {},
-    getEntityForDataset: (name: string) => (name === 'TaskBlock' ? TaskBlock : undefined),
-    runEntityTransaction: async (_p: unknown, run: (tx: { batchId: string }) => Promise<unknown>) =>
-      run({ batchId: 'b' }),
-  };
+let dataset: unknown;
+const row = async (entity: string, id: string) => (await model(entity).findOne(dataset, { where: { id } }))!;
+const arranges = async (id: string) => ((await row('CollectionBlock', id)).arranges as string[] | undefined) ?? [];
+const status = async (id: string) => (await row('TaskBlock', id)).status;
+/** Everything a drop could write, so "writes nothing" is a comparison rather than a promise. */
+const state = async () => ({
+  todo: await arranges('col-todo'),
+  done: await arranges('col-done'),
+  t1: await status('t1'),
+  tasks: (await model('TaskBlock').findAll(dataset)).length,
 });
-
-const { createBoardActions } = await import('../src/shared/boards');
+const made = async () => (await model('TaskBlock').findAll(dataset)).find((task) => task.id !== 't1')!;
 
 const holds: string[] = [];
 const releases: string[] = [];
@@ -78,7 +42,8 @@ function actions(
   const move = vi.fn(async () => outcome);
   const notify = vi.fn();
   const board = createBoardActions({
-    dataset: () => ({}) as never,
+    dataset: () => dataset,
+    invoker: () => 'did:test:me',
     offeredStates: () => [
       { name: 'To do', slug: 'todo' },
       { name: 'Done', slug: 'done' },
@@ -99,14 +64,21 @@ function actions(
   return { board, move, notify };
 }
 
-beforeEach(() => {
-  rows.clear();
-  writes.length = 0;
+beforeEach(async () => {
+  const ports = createInMemoryBackendPorts(
+    { selfId: () => 'did:test:me' },
+    { agent: { id: 'did:test:me', unlocked: true }, datasets: [{ id: 'ds-flow', name: 'Flow' }] },
+  );
+  dataset = (await ports.lifecycle.get('ds-flow'))!.handle;
   holds.length = 0;
   releases.length = 0;
-  rows.set('col-todo', { id: 'col-todo', slug: 'todo', arranges: ['t1'] });
-  rows.set('col-done', { id: 'col-done', slug: 'done', arranges: [] });
-  rows.set('t1', { id: 't1', status: 'todo' });
+  await model('TaskBlock').create(dataset, { title: 'One', status: 'todo' }, { id: 't1' });
+  await model('CollectionBlock').create(
+    dataset,
+    { kind: 'column', slug: 'todo', arranges: ['t1'] },
+    { id: 'col-todo' },
+  );
+  await model('CollectionBlock').create(dataset, { kind: 'column', slug: 'done' }, { id: 'col-done' });
 });
 
 describe('a drop into a state that asks for agreement', () => {
@@ -114,8 +86,7 @@ describe('a drop into a state that asks for agreement', () => {
     const { board, move } = actions('waiting');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
     expect(move).toHaveBeenCalledWith('t1', 'todo', 'done');
-    expect(writes).toEqual([]);
-    expect(rows.get('t1')!.status).toBe('todo');
+    expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
   });
 
   it('draws nothing ahead of it either, so the card never jumps to Done and back', async () => {
@@ -127,16 +98,16 @@ describe('a drop into a state that asks for agreement', () => {
   it('writes the arrangement and the state once the move has happened', async () => {
     const { board } = actions('moved');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
-    expect(rows.get('t1')!.status).toBe('done');
-    expect(writes).toContain('status t1 done');
-    expect(rows.get('col-done')!.arranges).toEqual(['t1']);
+    expect(await status('t1')).toBe('done');
+    expect(await arranges('col-done')).toEqual(['t1']);
+    expect(await arranges('col-todo')).toEqual([]);
   });
 
   it('says so when the card is stuck', async () => {
     const { board, notify } = actions('stalled');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('stuck'));
-    expect(writes).toEqual([]);
+    expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
   });
 });
 
@@ -144,14 +115,14 @@ describe('a drop the backend could not answer plainly', () => {
   it('writes the state when the run was already there, and says the column may lag', async () => {
     const { board, notify } = actions('already-there');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
-    expect(rows.get('t1')!.status).toBe('done');
+    expect(await status('t1')).toBe('done');
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('already there'));
   });
 
   it('writes nothing on a timeout, and says the vote is still being counted', async () => {
     const { board, notify } = actions('slow');
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
-    expect(writes).toEqual([]);
+    expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('still counting'));
   });
 });
@@ -161,7 +132,7 @@ describe('a drop in a space that asks for nothing', () => {
     const { board, move } = actions(null);
     await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
     expect(move).not.toHaveBeenCalled();
-    expect(rows.get('t1')!.status).toBe('done');
+    expect(await status('t1')).toBe('done');
     expect(holds).toContain('status t1 done');
   });
 });
@@ -170,17 +141,18 @@ describe('a task made straight into a column', () => {
   it('is born in the first state that asks for nothing, and asks for the column it was made in', async () => {
     const { board, move } = actions('waiting');
     await board.addTaskToColumn('col-done', 'Ship it');
-    const made = [...rows.values()].find((r) => r.id.startsWith('task-'))!;
-    expect(made.status).toBe('todo');
-    expect(rows.get('col-done')!.arranges).toEqual([]);
-    expect(move).toHaveBeenCalledWith(made.id, 'todo', 'done');
+    const task = await made();
+    expect(task.status).toBe('todo');
+    expect(await arranges('col-done')).toEqual([]);
+    expect(move).toHaveBeenCalledWith(task.id, 'todo', 'done');
   });
 
   it('is made in its column as before where that state asks for nothing', async () => {
     const { board, move } = actions('waiting');
     await board.addTaskToColumn('col-todo', 'Plan it');
-    const made = [...rows.values()].find((r) => r.id.startsWith('task-'))!;
-    expect(made.status).toBe('todo');
+    const task = await made();
+    expect(task.status).toBe('todo');
+    expect(await arranges('col-todo')).toEqual(['t1', task.id]);
     expect(move).not.toHaveBeenCalled();
   });
 });

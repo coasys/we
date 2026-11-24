@@ -1,156 +1,174 @@
 /**
- * A board comes into being with its columns.
+ * A board comes into being with its columns — and the other board writes land as one each.
  *
- * The data layer here is a stand-in with one rule taken from the executor, because that rule is the
- * whole bug: **a record created in a batch cannot be read until the batch commits.** A relation write
- * by id begins with that read, so writing a new board's columns onto it inside the transaction that
- * created it found no board and did nothing — every board was made pointed at by its call and
- * holding no columns. The in-memory backend applies writes immediately, which is why nothing caught
- * it; a stand-in that did the same would pass against the broken code too.
+ * Against the in-memory backend, the reference: the writes are declared operations now, run by the
+ * real runner in one transaction, so a stand-in data layer would test the stand-in. The rule that
+ * once broke this — a record created in a transaction cannot be read until it commits, so writing a
+ * new board's columns onto it found no board and did nothing — is the runner's and the backend's to
+ * keep, and their conformance suites hold it on every backend.
  */
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-interface Row {
-  id: string;
-  kind?: string;
-  slug?: string;
-  title?: string;
-  children?: string[];
-  gathers?: string[];
-  board?: string;
-}
+import { type BoardDeps, createBoardActions } from '../src/shared/boards';
 
-const committed = new Map<string, Row>();
-const landmarks: { id: string; name: string; node: string[] }[] = [];
-const batches = new Map<string, { staged: Row[]; ops: Array<() => void> }>();
-let nextId = 0;
-
-const hydrate = (row: Row, include?: { board?: boolean }) => ({
-  ...row,
-  children: [...(row.children ?? [])],
-  ...(include?.board && row.board ? { board: { ...committed.get(row.board) } } : {}),
-  setBoard: async (board: { id: string }) => {
-    committed.get(row.id)!.board = board.id;
-  },
-});
-
-vi.mock('@we/entities', () => {
-  const CollectionBlock = {
-    create: async (_p: unknown, data: Row, options?: { batchId?: string }) => {
-      const row: Row = { ...data, id: `block-${nextId++}` };
-      const batch = options?.batchId ? batches.get(options.batchId) : undefined;
-      if (batch) batch.staged.push(row);
-      else committed.set(row.id, row);
-      return row;
-    },
-    // Committed rows only — the executor's rule.
-    findOne: async (_p: unknown, query: { where: { id: string }; include?: { board?: boolean } }) => {
-      const row = committed.get(query.where.id);
-      return row ? hydrate(row, query.include) : null;
-    },
-    findAll: async (_p: unknown, query: { where: Partial<Row> }) =>
-      [...committed.values()].filter((row) => Object.entries(query.where).every(([k, v]) => row[k as keyof Row] === v)),
-    setRelation: async (_p: unknown, id: string, relation: 'children', targets: string[], batchId?: string) => {
-      // Reads first, like the AD4M adapter: a record nobody can see is a write that does nothing.
-      if (!committed.has(id)) return;
-      const apply = () => (committed.get(id)![relation] = [...targets]);
-      if (batchId) batches.get(batchId)!.ops.push(apply);
-      else apply();
-    },
-    addRelation: async (_p: unknown, id: string, relation: 'children', target: string, batchId?: string) => {
-      if (!committed.has(id)) return;
-      const apply = () => {
-        const row = committed.get(id)!;
-        row[relation] = [...(row[relation] ?? []), target];
-      };
-      if (batchId) batches.get(batchId)!.ops.push(apply);
-      else apply();
-    },
-  };
-  return {
-    CollectionBlock,
-    Space: {
-      findOne: async () => ({ id: 'space', root: { id: 'root' } }),
-      addRelation: async () => {},
-    },
-    SpaceLandmark: {
-      findAll: async () => landmarks,
-      create: async (_p: unknown, data: { name: string; node: string[] }) => {
-        const landmark = { ...data, id: `landmark-${nextId++}` };
-        landmarks.push(landmark);
-        return landmark;
-      },
-    },
-    getEntityForDataset: () => ({ findAll: async () => [{ id: 'task' }] }),
-    runEntityTransaction: async (_p: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) => {
-      const batchId = `batch-${nextId++}`;
-      batches.set(batchId, { staged: [], ops: [] });
-      const result = await fn({ batchId });
-      const batch = batches.get(batchId)!;
-      for (const row of batch.staged) committed.set(row.id, row);
-      for (const op of batch.ops) op();
-      batches.delete(batchId);
-      return result;
-    },
-  };
-});
-
-const { createBoardActions } = await import('../src/shared/boards');
-
+const ME = 'did:test:me';
 const STATES = [
   { name: 'To do', slug: 'todo' },
   { name: 'Doing', slug: 'doing' },
   { name: 'Done', slug: 'done' },
 ];
 
-const actions = () =>
-  createBoardActions({ dataset: () => ({}) as never, offeredStates: () => STATES, notify: () => {} });
+type Row = Record<string, unknown> & { id: string };
+let dataset: unknown;
 
-const columnSlugs = (boardId: string) => (committed.get(boardId)?.children ?? []).map((id) => committed.get(id)?.slug);
+const model = (name: string) =>
+  getEntity(name) as unknown as {
+    create(p: unknown, data: Record<string, unknown>, options?: Record<string, unknown>): Promise<Row>;
+    findOne(p: unknown, query: Record<string, unknown>): Promise<Row | null>;
+    findAll(p: unknown, query?: Record<string, unknown>): Promise<Row[]>;
+  };
 
-beforeEach(() => {
-  committed.clear();
-  batches.clear();
-  nextId = 0;
-  committed.set('call', { id: 'call', kind: 'call', title: 'Standup', children: ['task'] });
-  committed.set('root', { id: 'root', kind: 'space', children: [] });
-  landmarks.length = 0;
+const read = (id: string) => model('CollectionBlock').findOne(dataset, { where: { id } });
+const ids = (value: unknown) => (Array.isArray(value) ? (value as unknown[]).map(String) : []);
+const columnSlugs = async (boardId: string) =>
+  Promise.all(ids((await read(boardId))?.children).map(async (id) => (await read(id))?.slug));
+
+const actions = (extra: Partial<BoardDeps> = {}) =>
+  createBoardActions({
+    dataset: () => dataset,
+    invoker: () => ME,
+    offeredStates: () => STATES,
+    // A failure is said in a toast and swallowed; here it fails the test instead.
+    notify: (message) => {
+      throw new Error(message);
+    },
+    ...extra,
+  });
+
+beforeEach(async () => {
+  const ports = createInMemoryBackendPorts(
+    { selfId: () => ME },
+    { agent: { id: ME, unlocked: true }, datasets: [{ id: 'ds-boards', name: 'Boards' }] },
+  );
+  dataset = (await ports.lifecycle.get('ds-boards'))!.handle;
+  await model('CollectionBlock').create(dataset, { kind: 'call', title: 'Standup' }, { id: 'call' });
+  await model('TaskBlock').create(
+    dataset,
+    { title: 'Ship it', status: 'todo' },
+    {
+      id: 'task',
+      parent: { id: 'call', relation: 'children', entity: 'CollectionBlock' },
+    },
+  );
 });
 
 describe('making a board', () => {
   it('gives it a column per state, in the community’s order', async () => {
     const boardId = await actions().createBoard('Standup', 'call', { gathers: 'call' });
 
-    expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
-    expect(committed.get('call')?.children).toContain(boardId);
+    expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+    expect(ids((await read('call'))?.children)).toContain(boardId);
+    expect((await read(boardId))?.gathers).toBe('call');
+  });
+
+  it('leaves a board loose rather than failing when its container has gone', async () => {
+    const boardId = await actions().createBoard('Loose', 'nowhere');
+    expect(boardId).toBeTruthy();
+    expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
   });
 
   it('gives a call’s board its columns when interpretation makes it', async () => {
     const boardId = await actions().ensureBoardFor('call');
 
-    expect(committed.get('call')?.board).toBe(boardId);
-    expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+    expect((await read('call'))?.board).toBe(boardId);
+    expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+    // Asked again, it is the same board.
+    expect(await actions().ensureBoardFor('call')).toBe(boardId);
+  });
+
+  it('gives a call no board while it holds no task', async () => {
+    await model('CollectionBlock').create(dataset, { kind: 'call', title: 'Quiet' }, { id: 'quiet' });
+    expect(await actions().ensureBoardFor('quiet')).toBe('');
+    expect((await read('quiet'))?.board).toBeFalsy();
   });
 
   it('makes the space’s own board once, gathering from the space collection, and names it by landmark', async () => {
+    await model('CollectionBlock').create(dataset, { kind: 'space' }, { id: 'root' });
+    await model('Space').create(dataset, { name: 'Space', root: ['root'] }, { id: 'space' });
     const landmarksChanged = vi.fn();
-    const space = createBoardActions({
-      dataset: () => ({}) as never,
-      offeredStates: () => STATES,
-      notify: () => {},
-      landmarksChanged,
-    });
+    const space = actions({ landmarksChanged });
 
     const boardId = await space.openBoardFor();
 
-    expect(committed.get(boardId)?.gathers).toEqual(['root']);
-    expect(committed.get('root')?.children).toContain(boardId);
-    expect(columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
-    expect(landmarks).toEqual([expect.objectContaining({ name: 'board', node: [boardId] })]);
+    expect((await read(boardId))?.gathers).toBe('root');
+    expect(ids((await read('root'))?.children)).toContain(boardId);
+    expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
+    const landmarks = await model('SpaceLandmark').findAll(dataset);
+    expect(landmarks).toEqual([expect.objectContaining({ name: 'board', node: boardId })]);
     expect(landmarksChanged).toHaveBeenCalledTimes(1);
 
     // Pressed again, it is the same board — the landmark names it — and nothing more is written.
     expect(await space.openBoardFor()).toBe(boardId);
-    expect(landmarks).toHaveLength(1);
+    expect(await model('SpaceLandmark').findAll(dataset)).toHaveLength(1);
+  });
+});
+
+describe('a board’s columns', () => {
+  let boardId = '';
+  beforeEach(async () => {
+    boardId = await actions().createBoard('Work');
+  });
+
+  it('stores no title for a bound column named as its state, and stores a lane’s', async () => {
+    await actions().addBoardColumn(boardId, 'Doing', 'doing');
+    await actions().addBoardColumn(boardId, 'Thursday');
+    const columns = await Promise.all(ids((await read(boardId))?.children).map(read));
+    expect(columns.slice(3).map((c) => [c?.slug ?? '', c?.title ?? ''])).toEqual([
+      ['doing', ''],
+      ['', 'Thursday'],
+    ]);
+  });
+
+  it('adds a column for a new state to the space’s board only when it lacks one', async () => {
+    await model('SpaceLandmark').create(dataset, { name: 'board', node: [boardId] });
+    await actions().addStateToSpaceBoard('todo', 'To do');
+    await actions().addStateToSpaceBoard('review', 'Review');
+    expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done', 'review']);
+  });
+
+  it('renames a column, and a rename back to its state’s name stores nothing', async () => {
+    const [todo] = ids((await read(boardId))?.children);
+    await actions().renameBoardColumn(todo, 'Backlog');
+    expect((await read(todo))?.title).toBe('Backlog');
+    await actions().renameBoardColumn(todo, 'To do');
+    expect((await read(todo))?.title).toBeFalsy();
+  });
+
+  it('reorders only the columns the board holds, the rest after', async () => {
+    const [todo, doing, done] = ids((await read(boardId))?.children);
+    await actions().reorderBoardColumns(boardId, [done, 'stranger', todo]);
+    expect(ids((await read(boardId))?.children)).toEqual([done, todo, doing]);
+  });
+
+  it('hands a removed column’s cards to the board, and deletes only the column', async () => {
+    const [todo] = ids((await read(boardId))?.children);
+    await actions().arrangeColumn(todo, ['task']);
+    await actions().removeBoardColumn(boardId, todo);
+
+    const board = await read(boardId);
+    expect(ids(board?.children)).not.toContain(todo);
+    expect(ids(board?.arranges)).toEqual(['task']);
+    expect(await read(todo)).toBeNull();
+    expect(await model('TaskBlock').findOne(dataset, { where: { id: 'task' } })).not.toBeNull();
+  });
+
+  it('stores a column’s order as the ids given, then what it still holds', async () => {
+    const [todo] = ids((await read(boardId))?.children);
+    await model('TaskBlock').create(dataset, { title: 'Two', status: 'todo' }, { id: 'two' });
+    await actions().arrangeColumn(todo, ['task', 'two']);
+    await actions().arrangeColumn(todo, ['two']);
+    expect(ids((await read(todo))?.arranges)).toEqual(['two', 'task']);
   });
 });
