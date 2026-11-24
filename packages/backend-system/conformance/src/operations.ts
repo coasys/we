@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 
 import type { DatasetHandle, OperationDefinition } from '@we/backend-shared';
 import { getEntity, isOperationError, registerOperations, runOperation, unregisterOperations } from '@we/entities';
+import { CORE_OPERATIONS } from '@we/entities/manifest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { ConformanceHarness, ConformanceSubject } from './index';
@@ -248,6 +249,68 @@ const CASES: OperationCase[] = [
     invocationId: '00000000-0000-4000-8000-000000000006',
     invokedAt: AT,
     observe: [COLLECTIONS],
+  },
+  /*
+    WE's own operations, run under this namespace: what a second implementation must produce for a
+    reaction, an answer and a reply, the shapes a community's data is mostly made of.
+  */
+  {
+    id: 'core-upsert-signal',
+    note: 'core.upsertSignal with no reaction yet makes one under the record, and answers with its id',
+    operations: CORE_OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:post', fields: { kind: 'post' } }],
+    operation: 'upsertSignal',
+    args: { node: 'urn:example:post', signalType: 'urn:example:like', value: 0 },
+    invocationId: '00000000-0000-4000-8000-000000000007',
+    invokedAt: AT,
+    observe: [
+      { entity: 'CollectionBlock', fields: ['kind'], relations: ['signals'] },
+      { entity: 'Signal', fields: ['signalTypeId', 'value'], relations: [] },
+    ],
+  },
+  {
+    id: 'core-respond-replaces',
+    note: 'core.respond removes the answer the invoker gave before, on this record only, and makes the new one',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'InvolvementType', id: 'urn:example:going', fields: { name: 'Going', slug: 'going', reflexive: true } },
+      { entity: 'InvolvementType', id: 'urn:example:maybe', fields: { name: 'Maybe', slug: 'maybe', reflexive: true } },
+      {
+        entity: 'Involvement',
+        id: 'urn:example:said-maybe',
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:event'] },
+      },
+      {
+        entity: 'Involvement',
+        id: 'urn:example:other-event',
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:elsewhere'] },
+      },
+    ],
+    operation: 'respond',
+    args: { node: 'urn:example:event', kind: 'going' },
+    invocationId: '00000000-0000-4000-8000-000000000008',
+    invokedAt: AT,
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: [] }],
+  },
+  {
+    id: 'core-create-post-reply',
+    note: 'core.createPost as a reply: in its subject’s responses and thread, a child of nothing, its block under it',
+    operations: CORE_OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:post', fields: { kind: 'post' } }],
+    operation: 'createPost',
+    args: {
+      root: { kind: 'reply', mode: 'document', textContent: 'agreed' },
+      blocks: [{ key: '0', entity: 'TextBlock', fields: { text: 'agreed' } }],
+      respondsTo: 'urn:example:post',
+      thread: 'urn:example:post',
+      threadEntity: 'CollectionBlock',
+    },
+    invocationId: '00000000-0000-4000-8000-000000000009',
+    invokedAt: AT,
+    observe: [
+      { entity: 'CollectionBlock', fields: ['kind', 'textContent'], relations: ['children', 'responses', 'thread'] },
+      { entity: 'TextBlock', fields: ['text'], relations: [] },
+    ],
   },
 ];
 
