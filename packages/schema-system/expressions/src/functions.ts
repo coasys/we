@@ -135,7 +135,13 @@ const indexIn = (list: unknown[], value: unknown): number => list.findIndex((ent
  * listing an object's keys reads no more of it than naming them would. Sorted rather than in the
  * order the object holds them because JavaScript moves integer-like keys to the front and other
  * languages do not: a declared operation that walks an object has to see the same order on every
- * host. Absent values and functions are left out; neither is a field's value.
+ * host.
+ *
+ * A key holding `null` is a key: it is what JSON writes for "nothing here", and a declared
+ * operation's field set says "clear this field" with it, so dropping it would turn a clear into no
+ * change. A key holding `undefined` is left out, as JSON leaves it out — it is how an expression says
+ * a value is missing (an optional param nobody passed, a read that found nothing). Functions are left
+ * out; a function is not a field's value.
  */
 function fieldsOf(object: unknown): [string, unknown][] {
   if (!isRecord(object)) return [];
@@ -148,7 +154,7 @@ function fieldsOf(object: unknown): [string, unknown][] {
   const out: [string, unknown][] = [];
   for (const name of names.sort(compareCodePoints)) {
     const value = readField(object, name);
-    if (!isAbsent(value) && typeof value !== 'function') out.push([name, value]);
+    if (value !== undefined && typeof value !== 'function') out.push([name, value]);
   }
   return out;
 }
@@ -618,13 +624,13 @@ defineFunction({
   name: 'put',
   category: 'object',
   params: ['object', 'key', 'value'],
-  doc: 'A new object: `object` with `key` set to `value`, or with `key` removed when `value` is absent. The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.',
+  doc: 'A new object: `object` with `key` set to `value` — null included, which is how a field set says "clear this field" — or with `key` removed when `value` is missing (an unset param, a read that found nothing). The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.',
   example: 'put(space.moduleSettings, moduleId, settings)',
   impl: ([object, key, value]) => {
     const out: Record<string, unknown> = Object.fromEntries(fieldsOf(object));
     const name = asKey(key);
     if (name === undefined) return out;
-    if (isAbsent(value)) delete out[name];
+    if (value === undefined) delete out[name];
     else out[name] = value;
     return out;
   },
@@ -634,7 +640,7 @@ defineFunction({
   name: 'merge',
   category: 'object',
   params: ['...objects'],
-  doc: 'One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key whose value is absent does not override; anything that is not an object contributes nothing.',
+  doc: 'One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key holding null overrides — null is a clear, and survives into the result — while a missing value does not; anything that is not an object contributes nothing.',
   example: 'merge(space.moduleSettings[moduleId], { open: true })',
   impl: (objects) => {
     const out: Record<string, unknown> = {};
@@ -647,7 +653,7 @@ defineFunction({
   name: 'keys',
   category: 'object',
   params: ['object'],
-  doc: "The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].",
+  doc: "The names of an object's keys, sorted by Unicode code point so the order is the same on every host. A key holding null or '' is listed (it is a clear); a missing value is not. Anything that is not an object gives [].",
   example: 'keys(space.moduleSettings)',
   impl: ([object]) => fieldsOf(object).map(([name]) => name),
 });
@@ -656,7 +662,7 @@ defineFunction({
   name: 'values',
   category: 'object',
   params: ['object'],
-  doc: "The values of an object's keys, in the order `keys` lists them; absent values are left out. Anything that is not an object gives [].",
+  doc: "The values of an object's keys, in the order `keys` lists them, null included; missing values are left out. Anything that is not an object gives [].",
   example: 'values(space.moduleSettings).filter(s, s.open)',
   impl: ([object]) => fieldsOf(object).map(([, value]) => value),
 });

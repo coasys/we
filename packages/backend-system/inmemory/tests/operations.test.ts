@@ -82,6 +82,23 @@ const OPS: Record<string, OperationDefinition> = {
     ],
     returns: { $: 'it.id' },
   },
+  restate: {
+    description:
+      'Edit the one record of a kind with a field set, stamping who edited it — a clear in the set included.',
+    params: { kind: { type: 'string', required: true }, fields: { type: 'object', required: true } },
+    steps: [
+      { find: { as: 'it', entity: 'CollectionBlock', where: { kind: { $: 'kind' } }, one: true } },
+      {
+        update: {
+          entity: 'CollectionBlock',
+          id: { $: 'it' },
+          fields: { $: 'merge(fields, { title: trim(it.title) })' },
+        },
+        when: { $: 'count(keys(fields)) > 0' },
+      },
+    ],
+    returns: { $: 'keys(fields)' },
+  },
   link: {
     description: 'Put a record under another.',
     params: {
@@ -308,6 +325,19 @@ describe('running an operation', () => {
     const [row] = await ofKind('solo');
     expect(row.title).toBe('new');
     expect(row.description ?? '').toBe('');
+  });
+
+  it('keeps a clear written as null through merge and keys', async () => {
+    // A field set says "clear this" with null as well as ''. merge and keys keep both, so a clear
+    // built into a larger write still reaches the record, and the operation still sees the set as
+    // having something in it.
+    await Collection().create(dataset, { kind: 'stated', title: ' kept ', description: 'gone soon', icon: 'leaf' });
+    const keys = await run('restate', { kind: 'stated', fields: { description: null, icon: '' } });
+    expect(keys).toEqual(['description', 'icon']);
+    const [row] = await ofKind('stated');
+    expect(row.title).toBe('kept');
+    expect(row.description ?? '').toBe('');
+    expect(row.icon ?? '').toBe('');
   });
 
   it('deletes', async () => {

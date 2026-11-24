@@ -291,4 +291,11 @@ export const FUNCTION_CASES: FunctionCase[] = numbered([
   F('min', 0, { $number: '-0' }),
   F('max', [{ $number: '-0' }]),
   F('round', -0.004, 2),
+  // a key holding null is a clear, and survives every object function; a missing value does not
+  F('put', { a: 1 }, 'a', null),
+  F('put', { a: 1 }, 'b', U),
+  F('merge', { color: 'red', x: 1 }, { color: null }),
+  F('merge', { color: 'red' }, { color: U }),
+  F('keys', { b: null, a: '' }),
+  F('values', { b: '', a: null }),
 ]);

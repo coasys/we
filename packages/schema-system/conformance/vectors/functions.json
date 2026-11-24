@@ -2354,7 +2354,7 @@
         "notanobject"
       ],
       "result": {
-        "a": 1
+        "a": null
       }
     },
     {
@@ -2397,7 +2397,7 @@
           "empty": ""
         }
       ],
-      "result": ["a", "empty"]
+      "result": ["a", "empty", "gone"]
     },
     {
       "id": "keys.190",
@@ -2439,7 +2439,7 @@
           "gone": null
         }
       ],
-      "result": [1]
+      "result": [1, null]
     },
     {
       "id": "values.194",
@@ -2539,6 +2539,98 @@
       "fn": "round",
       "args": [-0.004, 2],
       "result": 0
+    },
+    {
+      "id": "put.206",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        "a",
+        null
+      ],
+      "result": {
+        "a": null
+      }
+    },
+    {
+      "id": "put.207",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        "b",
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "merge.208",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "color": "red",
+          "x": 1
+        },
+        {
+          "color": null
+        }
+      ],
+      "result": {
+        "color": null,
+        "x": 1
+      }
+    },
+    {
+      "id": "merge.209",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "color": "red"
+        },
+        {
+          "color": {
+            "$undefined": true
+          }
+        }
+      ],
+      "result": {
+        "color": "red"
+      }
+    },
+    {
+      "id": "keys.210",
+      "note": "the keys built-in",
+      "fn": "keys",
+      "args": [
+        {
+          "b": null,
+          "a": ""
+        }
+      ],
+      "result": ["a", "b"]
+    },
+    {
+      "id": "values.211",
+      "note": "the values built-in",
+      "fn": "values",
+      "args": [
+        {
+          "b": "",
+          "a": null
+        }
+      ],
+      "result": [null, ""]
     }
   ]
 }
