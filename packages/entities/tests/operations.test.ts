@@ -182,7 +182,7 @@ describe('static checks', () => {
       'operations.t.steps.0.link.relation: Note has no relation "columns"',
     ]);
     expect(issues(linkAny([{ category: 'pinnable' }]), { external: blocks })).toEqual([
-      `operations.t.steps.0.link.oneOf.0: "pinnable" is not a category — an entry is an entity's name or one of { "category": "blockable" }`,
+      `operations.t.steps.0.link.oneOf.0: "pinnable" is not a category — an entry is an entity's name or one of { "category": "blockable" }, { "category": "any" }`,
     ]);
     const createAny = (fields: unknown) =>
       op([{ create: { entity: { $: 'kind' }, oneOf: [{ category: 'blockable' }], fields } }], {
@@ -191,6 +191,37 @@ describe('static checks', () => {
     expect(issues(createAny({ $: 'given' }), { external: blocks })).toEqual([]);
     expect(issues(createAny({}), { external: blocks })).toEqual([
       'operations.t.steps.0.create.fields: a create whose entity may be any of a category takes its fields as one expression — what is in the category is not all known here',
+    ]);
+  });
+
+  it('take an entity chosen by expression on every write, any record type left to the run', () => {
+    const steps = (oneOf: unknown[], fields: unknown = { $: 'fields' }) => [
+      { update: { entity: { $: 'kind' }, oneOf, id: { $: 'record' }, fields } },
+      { delete: { entity: { $: 'kind' }, oneOf, id: { $: 'record' } } },
+      { setRelation: { entity: { $: 'kind' }, oneOf, id: { $: 'record' }, relation: 'columns', targets: [] } },
+      { link: { entity: { $: 'kind' }, oneOf, id: { $: 'record' }, relation: { $: 'relation' }, target: 'c' } },
+    ];
+    const params = {
+      kind: { type: 'string' },
+      record: { type: 'string' },
+      fields: { type: 'object' },
+      relation: { type: 'string' },
+    };
+    expect(issues(op(steps(['Board']), { params }))).toEqual([]);
+    // Column has no `columns`; the expression relation is the backend's to judge.
+    expect(issues(op(steps(['Board', 'Column']), { params }))).toEqual([
+      'operations.t.steps.2.setRelation.relation: Column has no relation "columns"',
+    ]);
+    // `any` is every record type the dataset holds, so nothing in view stands for it.
+    expect(issues(op(steps([{ category: 'any' }]), { params }))).toEqual([]);
+    expect(issues(op(steps([{ category: 'any' }], { title: 'x' }), { params }))).toEqual([
+      'operations.t.steps.0.update.fields: an update whose entity may be any of a category takes its fields as one expression, and clears a field by giving it no value — what is in the category is not all known here',
+    ]);
+    expect(issues(op([{ delete: { entity: 'Board', oneOf: ['Board'], id: 'x' } }]))).toEqual([
+      'operations.t.steps.0.delete.oneOf: "oneOf" constrains an entity chosen by expression; this one is named',
+    ]);
+    expect(issues(op([{ link: { entity: 'Board', id: 'b', relation: { $: 'nowhere' }, target: 'c' } }]))).toEqual([
+      'operations.t.steps.0.link.relation: "nowhere" is not bound here — an operation reads its params, invoker, invokedAt and what earlier steps named',
     ]);
   });
 
@@ -315,6 +346,35 @@ describe('the effect summary', () => {
     });
     expect(describeEffects(summary)).toBe(
       'adds to Board.thread; adds to thread on any block type; creates any block type',
+    );
+  });
+});
+
+describe('the effect summary of a write on any record type', () => {
+  it('names the category and a chosen relation as what they are', () => {
+    const summary = effectSummary(
+      op([
+        { update: { entity: { $: 'kind' }, oneOf: [{ category: 'any' }], id: 'r', fields: { $: 'fields' } } },
+        { delete: { entity: { $: 'kind' }, oneOf: [{ category: 'any' }], id: 'r' } },
+        {
+          setRelation: {
+            entity: { $: 'kind' },
+            oneOf: [{ category: 'any' }],
+            id: 'r',
+            relation: { $: 'relation' },
+            targets: [],
+          },
+        },
+      ]) as OperationDefinition,
+    );
+    expect(summary).toEqual({
+      entities: {},
+      categories: { any: ['add:*', 'delete', 'edit', 'remove:*'] },
+      bulk: false,
+      destructive: true,
+    });
+    expect(describeEffects(summary)).toBe(
+      'adds to any relation of any record type; deletes any record type; edits any record type; removes from any relation of any record type (destructive)',
     );
   });
 });

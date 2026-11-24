@@ -40,9 +40,16 @@ export const ENTITY_GROUPS: Readonly<Record<string, CapabilityGroup>> = {
 /**
  * The categories an operation's `oneOf` may name. A block is what somebody composes into a post, so
  * writing any block type is content, whichever module brought it.
+ *
+ * `any` record type is the widest group a space's template holds. It may reach the space's
+ * vocabulary and settings — a generic form edits whatever record is in front of it — so it is
+ * classed as though it does; never the chrome tier's groups, which hold the agent's own records and
+ * library rather than anything in the space. The entities that decide who may write what are
+ * outside it altogether: the runner refuses them whatever an operation names.
  */
 export const CATEGORY_GROUPS: Readonly<Record<OperationCategory, CapabilityGroup>> = {
   blockable: 'content',
+  any: 'space-settings',
 };
 
 /**

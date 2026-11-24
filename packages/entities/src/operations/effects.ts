@@ -17,11 +17,14 @@ import { stepParts } from './values';
 export type OperationEffectVerb = 'create' | 'edit' | 'delete' | `add:${string}` | `remove:${string}`;
 
 export interface OperationEffects {
-  /** Verbs per entity, each list sorted. `*` stands for a parent whose entity the step does not name. */
+  /**
+   * Verbs per entity, each list sorted. `*` stands for a parent whose entity the step does not name;
+   * `add:*` / `remove:*` for a relation an expression chooses when the step runs.
+   */
   entities: Record<string, OperationEffectVerb[]>;
   /**
    * Verbs per category a `oneOf` names, each list sorted: `create` on `blockable` is "may create any
-   * block type". Kept as the category rather than its members, which are whatever the host has
+   * block type", `delete` on `any` "may delete a record of any type". Kept as the category rather than its members, which are whatever the host has
    * registered when it runs, so the summary stays finite and does not change as modules come and go.
    */
   categories: Partial<Record<OperationCategory, OperationEffectVerb[]>>;
@@ -33,6 +36,10 @@ export interface EffectOptions {
   /** Resolves a called operation by qualified name. A call it cannot resolve contributes nothing. */
   operations?: (qualifiedName: string) => OperationDefinition | undefined;
 }
+
+/** A step's relation as the summary lists it: its name, or `*` for one an expression chooses. */
+const relationName = (body: Record<string, unknown>): string =>
+  typeof body.relation === 'string' ? body.relation : '*';
 
 export function effectSummary(op: OperationDefinition, opts: EffectOptions = {}): OperationEffects {
   const verbs = new Map<string, Set<OperationEffectVerb>>();
@@ -65,7 +72,6 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
   const visit = (steps: OperationStep[], inLoop: boolean) => {
     for (const step of steps) {
       const { verb, body } = stepParts(step);
-      const entity = body.entity as string;
       switch (verb) {
         case 'create': {
           addChosen(body, 'create', inLoop);
@@ -74,19 +80,19 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
           break;
         }
         case 'update':
-          add(entity, 'edit', inLoop);
+          addChosen(body, 'edit', inLoop);
           break;
         case 'delete':
-          add(entity, 'delete', inLoop);
+          addChosen(body, 'delete', inLoop);
           break;
         case 'link':
         case 'unlink': {
-          addChosen(body, `${verb === 'link' ? 'add' : 'remove'}:${body.relation as string}`, inLoop);
+          addChosen(body, `${verb === 'link' ? 'add' : 'remove'}:${relationName(body)}`, inLoop);
           break;
         }
         case 'setRelation':
-          add(entity, `add:${body.relation as string}`, inLoop);
-          add(entity, `remove:${body.relation as string}`, inLoop);
+          addChosen(body, `add:${relationName(body)}`, inLoop);
+          addChosen(body, `remove:${relationName(body)}`, inLoop);
           break;
         case 'forEach':
           visit(body.steps as OperationStep[], true);

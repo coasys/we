@@ -177,6 +177,7 @@ export const CONFORMANCE_CASES = [
   'relations.ordered-read',
   'relations.create-links-one',
   'relations.edit-points-one',
+  'relations.update-as-save',
   'relations.create-links-many',
   'relations.replace-whole',
   'relations.member-type',
@@ -849,6 +850,53 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           include: { location: true },
         });
         expect((row.location as Row | undefined)?.id).toBe(there.id);
+      });
+
+      /*
+        The contract has two ways to edit a record — the static `update` by id, and an instance's
+        `save()` — and they write the same thing, relations included: a to-one pointed, a to-many
+        replaced, each member's back-reference moving with it. One backend once dropped every
+        relation field from the static path, so an edit that typechecked and ran moved nothing.
+      */
+      test('relations.update-as-save', 'writes the relations an edit names whichever edit path it takes', async () => {
+        const Collection = model('CollectionBlock');
+        const [here, there] = [
+          await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' }),
+          await model('LocationBlock').create(subject.dataset, { name: 'Shapwick' }),
+        ];
+        const text = () => Collection.create(subject.dataset, { kind: 'text' });
+        const [a, b, c, d, e, f] = [await text(), await text(), await text(), await text(), await text(), await text()];
+        const viaUpdate = await model('EventBlock').create(subject.dataset, { title: 'By id', location: here.id });
+        const viaSave = await model('EventBlock').create(subject.dataset, { title: 'By save', location: here.id });
+        const postA = await Collection.create(subject.dataset, { kind: 'post', children: [a.id] });
+        const postB = await Collection.create(subject.dataset, { kind: 'post', children: [d.id] });
+
+        await model('EventBlock').update(subject.dataset, viaUpdate.id, { location: [there.id] });
+        await Collection.update(subject.dataset, postA.id, { children: [b.id, c.id] });
+        const [event] = (await model('EventBlock').findAll(subject.dataset, { where: { id: viaSave.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        event.location = [there.id];
+        await event.save();
+        const [post] = (await Collection.findAll(subject.dataset, { where: { id: postB.id } })) as (Row & {
+          save(batch?: string): Promise<void>;
+        })[];
+        post.children = [e.id, f.id];
+        await post.save();
+
+        const events = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: [viaUpdate.id, viaSave.id] },
+          include: { location: true },
+        });
+        expect(events.map((row) => (row.location as Row | undefined)?.id)).toEqual([there.id, there.id]);
+        const posts = await reader('CollectionBlock').findAll(subject.dataset, {
+          where: { id: [postA.id, postB.id] },
+          include: { children: true },
+        });
+        expect(posts.map((row) => (row.children as Row[]).map((r) => r.id))).toEqual([
+          [b.id, c.id],
+          [e.id, f.id],
+        ]);
       });
 
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {

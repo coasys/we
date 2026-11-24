@@ -25,8 +25,10 @@ import {
   isPolicyRefusal,
   isRecordExists,
   type OneOfEntry,
+  type OperationCategory,
   type OperationDefinition,
   type OperationParam,
+  type OperationScope,
   type OperationStep,
 } from '@we/backend-shared';
 import {
@@ -41,7 +43,7 @@ import {
 import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
 import { isOperationError, preconditionError, staticError } from './errors';
 import { callSegment, deriveRecordId, keySegment } from './ids';
-import { categoryMembers, getOperation, operationsVersion } from './registry';
+import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
 import {
   isExpressionToken,
@@ -269,7 +271,7 @@ async function runStep(
       return find(run, body, scope, step);
 
     case 'create': {
-      const entity = chosenEntity(body, scope, step);
+      const entity = chosenEntity(body, scope, run.dataset, step);
       const Model = statics(entity, run.dataset, step);
       const fields = fieldsOf(value('fields'), step);
       const id = await deriveRecordId(run.invocationId, segments);
@@ -303,7 +305,7 @@ async function runStep(
     }
 
     case 'update': {
-      const entity = writable(body.entity as string, step);
+      const entity = chosenEntity(body, scope, run.dataset, step);
       const instance = (await instanceOf(run, entity, idOf(value('id'), `${step}.id`), step))!;
       const fields = body.fields === undefined ? {} : fieldsOf(value('fields'), step);
       // Clearing a field is writing '' on every backend: the contract never stores it.
@@ -314,7 +316,7 @@ async function runStep(
     }
 
     case 'delete': {
-      const entity = writable(body.entity as string, step);
+      const entity = chosenEntity(body, scope, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
       // Deleting what is not there is the state asked for, as the contract's own delete has it.
       const instance = await instanceOf(run, entity, id, step, { optional: true });
@@ -325,10 +327,10 @@ async function runStep(
 
     case 'link':
     case 'unlink': {
-      const entity = chosenEntity(body, scope, step);
+      const entity = chosenEntity(body, scope, run.dataset, step);
       const Model = statics(entity, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
-      const relation = body.relation as string;
+      const relation = relationOf(body, scope, step);
       const target = idOf(value('target'), `${step}.target`);
       const members = await membershipOf(run, Model, id, relation, step);
       const present = members.includes(target);
@@ -354,13 +356,14 @@ async function runStep(
     }
 
     case 'setRelation': {
-      const entity = writable(body.entity as string, step);
+      const entity = chosenEntity(body, scope, run.dataset, step);
       const Model = statics(entity, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
+      const relation = relationOf(body, scope, step);
       const targets = idsOf(value('targets') ?? []);
       if (!targets) throw staticError('notAList', `${step}.targets is not a list of records or ids`, step);
-      await Model.setRelation(run.dataset, id, body.relation as string, targets, run.batchId);
-      setMembership(run, id, body.relation as string, targets);
+      await Model.setRelation(run.dataset, id, relation, targets, run.batchId);
+      setMembership(run, id, relation, targets);
       return undefined;
     }
 
@@ -454,11 +457,18 @@ function findQuery(body: Record<string, unknown>, scope: Map<string, unknown>, s
   }
   // `one` reads two at most: enough to tell exactly one from more than one.
   if (body.one) query.limit = Math.min((query.limit as number | undefined) ?? 2, 2);
-  const scoped = body.scope as { anchor: string; via: string; anchorId: unknown } | undefined;
+  const scoped = body.scope as OperationScope | undefined;
   if (scoped) {
     const anchor = resolve(scoped.anchorId, scope, `${step}.scope.anchorId`);
     if (anchor === undefined || anchor === null) return null;
-    query.parent = { id: idOf(anchor, `${step}.scope.anchorId`), relation: scoped.via, entity: scoped.anchor };
+    // A walk below the anchor is passed through as it is written; the backend walks it.
+    query.parent = {
+      id: idOf(anchor, `${step}.scope.anchorId`),
+      relation: scoped.via,
+      entity: scoped.anchor,
+      ...(scoped.levels ? { levels: scoped.levels } : {}),
+      ...(scoped.transitive ? { transitive: true } : {}),
+    };
   }
   return query;
 }
@@ -530,18 +540,43 @@ async function checkExpectations(run: Run): Promise<void> {
 
 // ── Writes ────────────────────────────────────────────────────────────────────
 
-function chosenEntity(body: Record<string, unknown>, scope: Map<string, unknown>, step: string): string {
+function chosenEntity(
+  body: Record<string, unknown>,
+  scope: Map<string, unknown>,
+  dataset: unknown,
+  step: string,
+): string {
   if (typeof body.entity === 'string') return writable(body.entity, step);
   const chosen = resolve(body.entity, scope, `${step}.entity`);
   const oneOf = (body.oneOf as OneOfEntry[] | undefined) ?? [];
-  // A category is read from the registry now, not when the operation was registered: a module's
-  // block type registered since is one of them.
   const allowed =
     typeof chosen === 'string' &&
-    oneOf.some((entry) => (typeof entry === 'string' ? entry === chosen : categoryMembers(entry.category).has(chosen)));
+    oneOf.some((entry) =>
+      typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, dataset),
+    );
   if (!allowed)
     throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
   return writable(chosen as string, step);
+}
+
+/**
+ * Whether an entity is in a category as things stand when the step runs, not when the operation was
+ * registered: a module's block type registered since is a block. `any` is every record type this
+ * dataset can write — a community's shape and a foreign app's model included, which no registered
+ * manifest declares — save an abstract one, which nothing is ever made as.
+ */
+function inCategoryNow(category: OperationCategory, entity: string, dataset: unknown): boolean {
+  if (category === 'any') return !isAbstract(entity) && getEntityForDataset(entity, dataset) !== undefined;
+  return categoryMembers(category).has(entity);
+}
+
+/** A step's relation: the name written, or what its expression gives. */
+function relationOf(body: Record<string, unknown>, scope: Map<string, unknown>, step: string): string {
+  const relation =
+    typeof body.relation === 'string' ? body.relation : resolve(body.relation, scope, `${step}.relation`);
+  if (typeof relation !== 'string' || !relation)
+    throw staticError('malformed', `${step}.relation is not a relation's name`, step);
+  return relation;
 }
 
 function writable(entity: string, step: string): string {

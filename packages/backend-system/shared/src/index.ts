@@ -236,6 +236,7 @@ export type {
   IncludeOf,
   NewRecord,
   ParentRef,
+  ParentScope,
   RecordDataKeys,
   RecordInstance,
   EntityStatic,

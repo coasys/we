@@ -30,6 +30,14 @@ describe('the capability group an operation needs', () => {
     );
   });
 
+  it('is the widest group a space template holds for any record type, and never a chrome group', () => {
+    expect(operationSurface(effects({}, true, { any: ['delete'] }))).toEqual({
+      group: 'space-settings',
+      destructive: true,
+    });
+    expect(operationSurface(effects({ Template: ['edit'] }, false, { any: ['edit'] })).group).toBe('library');
+  });
+
   it('is content for an operation that writes nothing', () => {
     expect(operationSurface(effects({})).group).toBe('content');
   });

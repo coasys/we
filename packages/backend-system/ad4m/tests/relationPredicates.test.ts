@@ -74,6 +74,7 @@ describe('a parent by relation, on the model layer', () => {
     const model = {
       create: (...args: unknown[]) => (seen.create = args),
       findAll: (...args: unknown[]) => (seen.findAll = args),
+      findOne: (...args: unknown[]) => (seen.findOne = args),
       paginate: (...args: unknown[]) => (seen.paginate = args),
       findAllOf: (...args: unknown[]) => (seen.findAllOf = args),
       queryOf: (...args: unknown[]) => (seen.queryOf = args),
@@ -106,6 +107,20 @@ describe('a parent by relation, on the model layer', () => {
 
     expect(seen.findAllOf[2]).toEqual({ parent: { id: 'c1', predicate: AD4M_CONTAINMENT_PREDICATE } });
     expect(seen.queryOf[2]).toEqual({ parent: { id: 'c1', predicate: AD4M_CONTAINMENT_PREDICATE }, limit: 10 });
+  });
+
+  it('reads a walk below the parent as the traverse form, which names its anchors as ids', () => {
+    const { model, seen } = fakeModel();
+    installParentByRelation(model as never);
+    model.findAll('dataset', {
+      parent: { id: 'c1', relation: 'children', entity: 'CollectionBlock', transitive: true },
+    });
+    model.findOne('dataset', { parent: { id: 'n1', relation: 'responses', levels: [10, 5] } });
+
+    expect(seen.findAll[1]).toEqual({
+      parent: { ids: ['c1'], predicate: AD4M_CONTAINMENT_PREDICATE, transitive: true },
+    });
+    expect(seen.findOne[1]).toEqual({ parent: { ids: ['n1'], predicate: 'we://response', levels: [10, 5] } });
   });
 
   it("passes a predicate-named parent through — this package's own drill-downs build those", () => {

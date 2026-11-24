@@ -196,10 +196,13 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
     };
 
     /*
-      The entities a create or a link may write, each with the path an issue about it points at. A
+      The entities a write may reach, each with the path an issue about it points at. A
       named entity is itself; one chosen by expression is what its `oneOf` lists, a category there
       standing for every entity in view that is in it. A module may bring more members later, which
-      the runner admits when it runs; what can be checked here is the ones already known.
+      the runner admits when it runs; what can be checked here is the ones already known. `any` is
+      left out of the expansion: it is every record type a dataset holds, a community's own among
+      them, so no entity in view stands for it, and its fields and relations are the backend's to
+      judge when the step runs.
     */
     const chosenEntities = (
       body: Record<string, unknown>,
@@ -232,6 +235,7 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
           return;
         }
         categories = true;
+        if (category === 'any') return;
         for (const name of entityNames()) {
           const schema = declared(name);
           if (schema && inCategory(schema, category as OperationCategory))
@@ -302,32 +306,44 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
             break;
           }
           case 'update': {
-            const entity = body.entity as string;
             checkValue(body.id, scope, `${bp}.id`);
             checkValue(body.fields, scope, `${bp}.fields`);
-            const target = knownEntity(entity, `${bp}.entity`, true);
-            if (target) {
+            const { entities, categories } = chosenEntities(body, scope, bp);
+            const unset = (body.unset as string[] | undefined) ?? [];
+            if (categories && ((isPlainObject(body.fields) && !isExpressionToken(body.fields)) || unset.length))
+              issue(
+                `${bp}.fields`,
+                'an update whose entity may be any of a category takes its fields as one expression, and clears a field by giving it no value — what is in the category is not all known here',
+              );
+            entities.forEach(({ entity, path: entityPath }) => {
+              const target = knownEntity(entity, entityPath, true);
+              if (!target) return;
               checkFieldNames(entity, target, body.fields, `${bp}.fields`);
-              for (const [i, field] of ((body.unset as string[] | undefined) ?? []).entries()) {
+              for (const [i, field] of unset.entries()) {
                 const spec = target.properties[field];
                 if (!spec) issue(`${bp}.unset.${i}`, `${entity} has no property "${field}"`);
                 else if (spec.required) issue(`${bp}.unset.${i}`, `"${field}" is required, so it cannot be cleared`);
               }
-            }
+            });
             break;
           }
           case 'delete':
             checkValue(body.id, scope, `${bp}.id`);
-            knownEntity(body.entity as string, `${bp}.entity`, true);
+            chosenEntities(body, scope, bp).entities.forEach(({ entity, path: entityPath }) =>
+              knownEntity(entity, entityPath, true),
+            );
             break;
           case 'link':
           case 'unlink':
           case 'setRelation': {
             for (const key of ['id', 'target', 'targets'])
               if (key in body) checkValue(body[key], scope, `${bp}.${key}`);
+            // A relation an expression chooses is judged by the backend when the step runs.
+            const named = typeof body.relation === 'string' ? body.relation : undefined;
+            if (named === undefined) checkValue(body.relation, scope, `${bp}.relation`);
             chosenEntities(body, scope, bp).entities.forEach(({ entity, path: entityPath }) => {
               const target = knownEntity(entity, entityPath, true);
-              if (target) checkRelation(entity, target, body.relation as string, `${bp}.relation`);
+              if (target && named !== undefined) checkRelation(entity, target, named, `${bp}.relation`);
             });
             break;
           }

@@ -93,6 +93,12 @@ export function categoryMembers(category: OperationCategory): Set<string> {
   return members;
 }
 
+/** Whether a registered manifest declares the entity abstract — a base nothing is ever made as. */
+export function isAbstract(entity: string): boolean {
+  for (const { entities } of registry.values()) if (entities?.[entity]?.abstract) return true;
+  return false;
+}
+
 /** Every registered operation's qualified name, sorted. */
 export function listOperations(): string[] {
   return [...registry.entries()]

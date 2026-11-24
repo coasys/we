@@ -249,6 +249,19 @@ export interface ParentRef {
   entity?: string;
 }
 
+/**
+ * A read's parent: the records held under one through a relation, as {@link ParentRef} names it — and,
+ * with `levels` or `transitive`, the records held under those too, the way `$query`'s scope walks.
+ *
+ * `levels: [10, 5]` keeps ten under the parent and five under each of those; `transitive` follows
+ * the relation to the bottom. Either answers flat: every record reached, at whatever depth, and
+ * nothing about where it sits. Only a read takes them — a create joins one parent.
+ */
+export interface ParentScope extends ParentRef {
+  levels?: number[];
+  transitive?: boolean;
+}
+
 /** What a write may say besides its fields: where it goes, the batch it belongs to, and its id. */
 export interface CreateOptions {
   parent?: ParentRef;
@@ -310,8 +323,8 @@ export interface TypedEntityQuery<T extends RecordInstance> {
   limit?: number;
   offset?: number;
   count?: boolean;
-  /** Only records held under this one, through this relation — see {@link ParentRef}. */
-  parent?: ParentRef;
+  /** Only records held under this one, through this relation — see {@link ParentScope}. */
+  parent?: ParentScope;
   deepQuery?: boolean;
 }
 

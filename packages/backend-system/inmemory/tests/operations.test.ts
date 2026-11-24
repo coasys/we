@@ -3,7 +3,7 @@
  * step verb, the guards, loops and calls, the errors an operation can fail with, and that a failed
  * operation leaves nothing behind.
  */
-import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
+import type { EntityManifest, OneOfEntry, OperationDefinition } from '@we/backend-shared';
 import {
   getEntity,
   isOperationError,
@@ -430,6 +430,152 @@ describe('a category in oneOf', () => {
   it('holds what is not in it out', async () => {
     const error = await failure(post('Space'));
     expect([error.class, error.code]).toEqual(['static', 'outsideOneOf']);
+  });
+});
+
+describe('any record type', () => {
+  const ANY: OneOfEntry[] = [{ category: 'any' }];
+  const GENERIC: Record<string, OperationDefinition> = {
+    edit: {
+      description: 'Edit a record of any type.',
+      params: { entity: { type: 'string', required: true }, id: { type: 'string' }, fields: { type: 'object' } },
+      steps: [{ update: { entity: { $: 'entity' }, oneOf: ANY, id: { $: 'id' }, fields: { $: 'fields' } } }],
+    },
+    remove: {
+      description: 'Delete records of any type.',
+      params: { records: { type: 'list', required: true } },
+      steps: [
+        {
+          forEach: {
+            in: { $: 'records' },
+            as: 'record',
+            steps: [{ delete: { entity: { $: 'record.entity' }, oneOf: ANY, id: { $: 'record.id' } } }],
+          },
+        },
+      ],
+    },
+    relink: {
+      description: 'Move a record from one holder to another through a relation the caller names.',
+      params: {
+        entity: { type: 'string', required: true },
+        relation: { type: 'string', required: true },
+        child: { type: 'string', required: true },
+        from: { type: 'string', required: true },
+        to: { type: 'string', required: true },
+      },
+      steps: [
+        {
+          unlink: {
+            entity: { $: 'entity' },
+            oneOf: ANY,
+            id: { $: 'from' },
+            relation: { $: 'relation' },
+            target: { $: 'child' },
+          },
+        },
+        {
+          link: {
+            entity: { $: 'entity' },
+            oneOf: ANY,
+            id: { $: 'to' },
+            relation: { $: 'relation' },
+            target: { $: 'child' },
+          },
+        },
+      ],
+    },
+  };
+  beforeEach(() => registerOperations('generic', GENERIC));
+  afterEach(() => unregisterOperations('generic'));
+  const generic = (name: string, args: Record<string, unknown>) =>
+    runOperation(`generic.${name}`, args, { dataset, invoker: AGENT });
+
+  it('edits and deletes a record of whatever type the caller names', async () => {
+    const note = await Collection().create(dataset, { kind: 'note', title: 'old' });
+    const topic = await getEntity('Topic').create(dataset, { name: 'Soil' } as never);
+    await generic('edit', { entity: 'CollectionBlock', id: note.id, fields: { title: 'new' } });
+    expect((await ofKind('note'))[0].title).toBe('new');
+    await generic('remove', {
+      records: [
+        { entity: 'CollectionBlock', id: note.id },
+        { entity: 'Topic', id: topic.id },
+      ],
+    });
+    expect(await ofKind('note')).toEqual([]);
+    expect(await getEntity('Topic').findAll(dataset, {})).toEqual([]);
+  });
+
+  it('moves a record between holders through a relation named when it runs', async () => {
+    const [a, b, card] = [
+      await Collection().create(dataset, { kind: 'column' }),
+      await Collection().create(dataset, { kind: 'column' }),
+      await Collection().create(dataset, { kind: 'card' }),
+    ];
+    await getEntity('CollectionBlock').addRelation(dataset, a.id, 'children', card.id);
+    await generic('relink', { entity: 'CollectionBlock', relation: 'children', child: card.id, from: a.id, to: b.id });
+    expect(await childrenOf(a.id)).toEqual([]);
+    expect(await childrenOf(b.id)).toEqual([card.id]);
+  });
+
+  it('still refuses the entities that decide who may write, and an abstract one', async () => {
+    const policy = await failure(generic('edit', { entity: 'Policy', id: 'x', fields: {} }));
+    expect([policy.class, policy.code]).toEqual(['static', 'protectedEntity']);
+    const abstract = await failure(generic('edit', { entity: 'WeNode', id: 'x', fields: {} }));
+    expect([abstract.class, abstract.code]).toEqual(['static', 'outsideOneOf']);
+    expect(abstract.message).toContain('any record type');
+    const unknown = await failure(generic('edit', { entity: 'NoSuchThing', id: 'x', fields: {} }));
+    expect([unknown.class, unknown.code]).toEqual(['static', 'outsideOneOf']);
+  });
+});
+
+describe('a find walking below its anchor', () => {
+  const WALKS: Record<string, OperationDefinition> = {
+    under: {
+      description: 'Everything under a collection, as deep as it goes or by levels.',
+      params: { root: { type: 'string', required: true }, levels: { type: 'list' } },
+      steps: [
+        {
+          find: {
+            as: 'all',
+            entity: 'CollectionBlock',
+            scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, transitive: true },
+          },
+        },
+        {
+          find: {
+            as: 'two',
+            entity: 'CollectionBlock',
+            scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, levels: [1, 1] },
+          },
+        },
+      ],
+      returns: { all: { $: 'all.map(r, r.title)' }, two: { $: 'two.map(r, r.title)' } },
+    },
+  };
+  beforeEach(() => registerOperations('walks', WALKS));
+  afterEach(() => unregisterOperations('walks'));
+
+  it('passes levels and transitive to the read, which walks them', async () => {
+    const make = (title: string) => Collection().create(dataset, { kind: 'folder', title });
+    const [root, a, b, a1, a1x] = [
+      await make('root'),
+      await make('a'),
+      await make('b'),
+      await make('a1'),
+      await make('a1x'),
+    ];
+    const add = (parent: Row, child: Row) =>
+      getEntity('CollectionBlock').addRelation(dataset, parent.id, 'children', child.id);
+    await add(root, a);
+    await add(root, b);
+    await add(a, a1);
+    await add(a1, a1x);
+    const found = (await runOperation('walks.under', { root: root.id }, { dataset, invoker: AGENT })) as {
+      all: string[];
+      two: string[];
+    };
+    expect([...found.all].sort()).toEqual(['a', 'a1', 'a1x', 'b']);
+    expect(found.two).toEqual(['a', 'a1']);
   });
 });
 

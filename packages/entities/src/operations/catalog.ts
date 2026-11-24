@@ -56,12 +56,14 @@ export function operationWrites(effects: OperationEffects): boolean {
 export function describeEffects(effects: OperationEffects): string {
   const parts: string[] = [];
   const say = (label: string, relation: (name: string) => string, verbs: readonly OperationEffectVerb[]) => {
+    // A relation an expression chooses when the step runs is named as that.
+    const relationOf = (name: string) => (name === '*' ? `any relation of ${label}` : relation(name));
     for (const verb of verbs) {
       if (verb === 'create') parts.push(`creates ${label}`);
       else if (verb === 'edit') parts.push(`edits ${label}`);
       else if (verb === 'delete') parts.push(`deletes ${label}`);
-      else if (verb.startsWith('add:')) parts.push(`adds to ${relation(verb.slice(4))}`);
-      else parts.push(`removes from ${relation(verb.slice(7))}`);
+      else if (verb.startsWith('add:')) parts.push(`adds to ${relationOf(verb.slice(4))}`);
+      else parts.push(`removes from ${relationOf(verb.slice(7))}`);
     }
   };
   for (const [entity, verbs] of Object.entries(effects.entities))

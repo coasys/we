@@ -42,6 +42,7 @@ export const MAX_FOREACH_DEPTH = 3;
 /** A category in words, for an error, the effect summary and the generated reference. */
 export const CATEGORY_LABELS: Readonly<Record<OperationCategory, string>> = {
   blockable: 'any block type',
+  any: 'any record type',
 };
 
 /** A `oneOf` entry in words: the name, or the category's label. */

@@ -19,6 +19,7 @@ import type {
   IncludeExtras,
   IncludeOf,
   ParentRef,
+  ParentScope,
   QuerySubscription,
   RecordInstance,
   TypedEntityQuery,
@@ -73,6 +74,18 @@ const manyForeignKey = (entity: string, relation: string) => `__${entity}_${rela
  * same rule: an empty value is not written, whether the caller gave it or it is the declared default,
  * so a record created with `''` and one cleared to `''` are the same record.
  */
+/** The ids in a relation value — a list of ids or records — or null when it is not one. '' clears. */
+function idsIn(value: unknown): string[] | null {
+  if (value === '' || value === null || value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const ids: string[] = [];
+  for (const entry of value as unknown[]) {
+    const id = typeof entry === 'string' ? entry : (entry as { id?: unknown } | null)?.id;
+    if (typeof id === 'string' && id) ids.push(id);
+  }
+  return ids;
+}
+
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
   if (value === '' || value === null) delete row[key];
   else row[key] = value;
@@ -491,6 +504,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     const relations = relationsByEntity[name];
     const relationNames = new Set(relations.map((r) => r.name));
     const toOne = new Set(relations.filter((r) => r.cardinality === 'one').map((r) => r.name));
+    const toMany = new Set(relations.filter((r) => r.cardinality === 'many').map((r) => r.name));
 
     /** Declared starting values — the manifest's `default`, and nothing invented on top. */
     const defaults = (): Record<string, unknown> => {
@@ -588,8 +602,22 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           const row = tableOf(dataset, name).find((r) => r.id === fields.id);
           if (!row) throw new Error(`${name}.save(): row ${String(fields.id)} no longer exists`);
           const changed: Record<string, unknown> = {};
+          const lists: Record<string, string[]> = {};
           for (const [key, value] of Object.entries(fields)) {
             if (typeof value === 'function' || key.startsWith('$')) continue;
+            /*
+              A to-many relation written in an edit is the whole list, written as `set<Relation>`
+              writes it — so each member's key and the reverse relation move with it, which a bare
+              copy of the list onto the row left behind.
+            */
+            if (toMany.has(key)) {
+              // Untouched since the read: the list as it was read is not a decision to write it back.
+              if (loaded.get(this)?.[key] === value) continue;
+              const ids = idsIn(value);
+              const now = idsIn(row[key]);
+              if (ids && (ids.length !== now?.length || ids.some((one, i) => one !== now[i]))) lists[key] = ids;
+              continue;
+            }
             if (jsonProps.has(key)) {
               if (!sameJson(row[key], value)) changed[key] = value;
               continue;
@@ -612,17 +640,26 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             if (row[key] === value || loaded.get(this)?.[key] === value) continue;
             changed[key] = value;
           }
-          if (!Object.keys(changed).length) return;
-          checkClearable(changed);
-          await checkEntityWrite({
-            dataset: dataset,
-            entity: name,
-            kind: 'edit',
-            id: row.id as string,
-            data: changed,
-            record: copied(row),
-          });
-          for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+          if (!Object.keys(changed).length && !Object.keys(lists).length) return;
+          if (Object.keys(changed).length) {
+            checkClearable(changed);
+            await checkEntityWrite({
+              dataset: dataset,
+              entity: name,
+              kind: 'edit',
+              id: row.id as string,
+              data: changed,
+              record: copied(row),
+            });
+            for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
+            row.updatedAt = new Date().toISOString();
+          }
+          for (const [key, ids] of Object.entries(lists)) {
+            // A fresh instance of the row, so the accessor diffs against what is stored.
+            const current = Entity.hydrate(dataset, row) as unknown as Record<string, unknown>;
+            const set = current[`set${key.charAt(0).toUpperCase()}${key.slice(1)}`] as (ids: string[]) => Promise<void>;
+            await set.call(current, ids);
+          }
           // What was just saved is the new baseline, so changing a field back is a change again.
           loaded.set(this, fields);
           notify(dataset);
@@ -692,9 +729,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         */
         let scope = query.scope;
         if (parent && typeof parent === 'object') {
-          const under = relationUnder(dataset, parent as ParentRef);
+          const named = parent as ParentScope;
+          const under = relationUnder(dataset, named);
           if (!under) return [];
-          scope = { anchor: under.entity, via: under.relation, anchorId: under.row.id };
+          // A walk below the parent, as `$query`'s scope takes one, rather than its own members only.
+          scope = {
+            anchor: under.entity,
+            via: under.relation,
+            anchorId: under.row.id,
+            ...(named.levels ? { levels: named.levels } : {}),
+            ...(named.transitive ? { transitive: true } : {}),
+          };
         }
         const { ir, unsupported } = compileQuery({
           entity: name,
@@ -821,16 +866,19 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         }
       }
 
+      /**
+       * Edit one record by id: the record read, the fields set on it and saved — the instance's own
+       * `save()`, as AD4M's static update is. One edit path, so a relation named in an edit is
+       * written whichever way the edit was made; this used to drop relation fields while `save()`
+       * wrote them, and a write that typechecked and ran moved nothing.
+       */
       static async update(handle: unknown, id: string, data: Record<string, unknown>): Promise<Entity | null> {
         const dataset = datasetOf(handle);
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
-        const changed = stored(Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key))));
-        checkClearable(changed);
-        await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
-        for (const [key, value] of Object.entries(changed)) writeField(row, key, value);
-        row.updatedAt = new Date().toISOString();
-        notify(dataset);
+        const instance = Entity.hydrate(dataset, row);
+        Object.assign(instance, data);
+        await instance.save();
         return Entity.hydrate(dataset, row);
       }
 

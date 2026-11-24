@@ -483,12 +483,17 @@ export interface OperationParam {
 }
 
 /**
- * A closed set of entity categories an operation may name in `oneOf`, each one an entity flag:
- * `blockable` is every entity whose schema says {@link EntitySchema.blockable}. A category is
- * resolved against the entities the host has registered when the step runs, so a block type a module
- * brings is one without the operation naming it.
+ * A closed set of entity categories an operation may name in `oneOf`. A category is resolved against
+ * the entities the host has registered when the step runs, so a block type a module brings is one
+ * without the operation naming it.
+ *
+ * - `blockable` is every entity whose schema says {@link EntitySchema.blockable}.
+ * - `any` is every record type the dataset the operation runs in can read and write — WE's own, a
+ *   module's, a community's shape, a foreign app's model. For the generic writes a form or an
+ *   inspector makes on whatever record is in front of it, which no list could name. The entities
+ *   that decide who may write what are never in it: an operation cannot write them at all.
  */
-export const OPERATION_CATEGORIES = ['blockable'] as const;
+export const OPERATION_CATEGORIES = ['blockable', 'any'] as const;
 export type OperationCategory = (typeof OPERATION_CATEGORIES)[number];
 
 /** One entry of a `oneOf`: an entity by name, or every entity in a category. */
@@ -500,14 +505,22 @@ export function inCategory(entity: EntitySchema, category: OperationCategory): b
   switch (category) {
     case 'blockable':
       return Boolean(entity.blockable);
+    case 'any':
+      return true;
   }
 }
 
-/** Records under one, by the parent's relation — the `$query` scope with a single anchor. */
+/**
+ * Records under one, by the parent's relation — the `$query` scope with a single anchor. `levels`
+ * walks the relation depth by depth, keeping that many per anchor at each; `transitive` walks it to
+ * the bottom. Either answers flat, every record under the anchor at any depth it reached.
+ */
 export interface OperationScope {
   anchor: string;
   via: string;
   anchorId: OperationValue;
+  levels?: number[];
+  transitive?: boolean;
 }
 
 export interface FindStep {
@@ -535,7 +548,9 @@ export interface CreateStep {
 }
 
 export interface UpdateStep {
-  entity: string;
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
   id: OperationValue;
   fields?: Record<string, OperationValue> | OperationExpression;
   /** Fields to clear. */
@@ -543,7 +558,9 @@ export interface UpdateStep {
 }
 
 export interface DeleteStep {
-  entity: string;
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
   id: OperationValue;
 }
 
@@ -555,16 +572,24 @@ export interface LinkStep {
   entity: string | OperationExpression;
   oneOf?: OneOfEntry[];
   id: OperationValue;
-  relation: string;
+  /**
+   * A literal name, or an expression giving one — for a record the definition cannot name, whose
+   * relations it cannot either. An expression's value is judged by the backend when the step runs,
+   * which refuses a relation the record does not declare, or one holding a single record.
+   */
+  relation: string | OperationExpression;
   target: OperationValue;
   /** Strict link fails with `alreadyLinked` when present; strict unlink with `notLinked` when absent. */
   strict?: boolean;
 }
 
 export interface SetRelationStep {
-  entity: string;
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: OneOfEntry[];
   id: OperationValue;
-  relation: string;
+  /** A literal name, or an expression giving one — see {@link LinkStep.relation}. */
+  relation: string | OperationExpression;
   /** The whole ordered list. */
   targets: OperationValue;
 }
@@ -707,7 +732,7 @@ const linkBody = z.strictObject({
   entity: z.union([z.string(), expressionToken]),
   oneOf,
   id: present,
-  relation: z.string(),
+  relation: z.union([z.string(), expressionToken]),
   target: present,
   strict: z.boolean().optional(),
 });
@@ -722,7 +747,16 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
         where: valueMap.optional(),
         order: z.record(z.string(), z.enum(['asc', 'desc'])).optional(),
         limit: value.optional(),
-        scope: z.strictObject({ anchor: z.string(), via: z.string(), anchorId: present }).optional(),
+        scope: z
+          .strictObject({
+            anchor: z.string(),
+            via: z.string(),
+            anchorId: present,
+            levels: z.array(z.number().int().positive()).min(1).optional(),
+            transitive: z.boolean().optional(),
+          })
+          .refine((scope) => !(scope.levels && scope.transitive), 'takes levels or transitive, not both')
+          .optional(),
         one: z.boolean().optional(),
         expect: z.boolean().optional(),
       }),
@@ -740,18 +774,28 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
     z.strictObject({
       ...guard,
       update: z.strictObject({
-        entity: z.string(),
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
         id: present,
         fields: z.union([expressionToken, valueMap]).optional(),
         unset: z.array(z.string()).optional(),
       }),
     }),
-    z.strictObject({ ...guard, delete: z.strictObject({ entity: z.string(), id: present }) }),
+    z.strictObject({
+      ...guard,
+      delete: z.strictObject({ entity: z.union([z.string(), expressionToken]), oneOf, id: present }),
+    }),
     z.strictObject({ ...guard, link: linkBody }),
     z.strictObject({ ...guard, unlink: linkBody }),
     z.strictObject({
       ...guard,
-      setRelation: z.strictObject({ entity: z.string(), id: present, relation: z.string(), targets: present }),
+      setRelation: z.strictObject({
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        id: present,
+        relation: z.union([z.string(), expressionToken]),
+        targets: present,
+      }),
     }),
     z.strictObject({
       ...guard,
