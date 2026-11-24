@@ -1,5 +1,8 @@
 import type { OperationDefinition, OperationParam } from '@we/backend-shared';
 
+import { callSegment } from '../../operations/ids';
+import { INLINE_PARAM } from './records';
+
 /*
   The writes behind a canvas: where a card sits and how it looks (a Placement under the canvas), how
   a connection is drawn there (an EdgeRoute under the canvas), the connections themselves, and how a
@@ -12,9 +15,52 @@ import type { OperationDefinition, OperationParam } from '@we/backend-shared';
 
 const canvasChild = (id: string) => ({ id: { $: id }, relation: 'children', entity: 'CollectionBlock' });
 
+/**
+ * Where `composeCard` calls `core.createPost` — its first step — as the path a block id derives
+ * under (see `postBlockId`). Keep the two together.
+ */
+export const COMPOSE_CARD_POST: readonly string[] = ['0', callSegment('core.createPost')];
+
 const CONNECTION: OperationParam = { type: 'string', required: true, description: 'The Relationship.' };
 
 export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
+  /*
+    A card composed on a canvas: a post (`core.createPost`, called) made wherever the canvas's
+    content lives, and where it sits on the canvas, in one write — so the canvas never sees a card
+    that exists and is nowhere. The host plans the post as for any other (`planPost`, with
+    `COMPOSE_CARD_POST` as where its blocks' ids derive).
+  */
+  composeCard: {
+    description:
+      'Compose a card onto a canvas: the post, kept wherever the canvas’s content lives, and its placement on the canvas where a point is given.',
+    params: {
+      root: { type: 'object', required: true, description: 'The post’s own fields, as core.createPost takes them.' },
+      blocks: { type: 'list', required: true, description: 'Its blocks, as core.createPost takes them.' },
+      mentions: { type: 'list', description: 'The DIDs it mentions.' },
+      home: { type: 'string', required: true, description: 'The collection the card is kept in.' },
+      canvas: { type: 'string', required: true, description: 'The canvas it is placed on.' },
+      at: { type: 'object', description: 'Where on the canvas, { x, y }. Without one it is unplaced, in the tray.' },
+    },
+    steps: [
+      {
+        call: {
+          as: 'card',
+          operation: 'core.createPost',
+          args: { root: { $: 'root' }, blocks: { $: 'blocks' }, mentions: { $: 'mentions' }, container: { $: 'home' } },
+        },
+      },
+      {
+        create: {
+          entity: 'Placement',
+          fields: { nodeType: 'CollectionBlock', x: { $: 'at.x' }, y: { $: 'at.y' }, node: [{ $: 'card' }] },
+          parent: canvasChild('canvas'),
+        },
+        when: { $: 'at' },
+      },
+    ],
+    returns: { $: 'card' },
+  },
+
   placeCard: {
     description:
       'Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.',
@@ -149,8 +195,11 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
       kind: { type: 'string', description: 'The RelationshipType it is one of.' },
       fields: { type: 'object', description: 'Anything else it says — a label, a description.' },
       home: { type: 'string', description: 'A collection to make it inside.' },
+      inline: INLINE_PARAM,
     },
     steps: [
+      // First, so `inlineRecordId` names what it makes, and they exist before the connection points at them.
+      { call: { operation: 'core.createRecords', args: { records: { $: 'inline ?? []' } } } },
       {
         create: {
           as: 'housed',

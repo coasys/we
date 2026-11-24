@@ -159,4 +159,6 @@ export * from './entityRegistry';
 export { defineEntity } from './entityProxy';
 
 export * from './operations';
+export { COMPOSE_CARD_POST } from './manifest/operations/canvas';
+export { inlineRecordId } from './manifest/operations/records';
 export { postBlockId, THREAD_SUBJECTS } from './manifest/operations/content';

@@ -28,9 +28,12 @@ const BLOCK_CREATE_STEP = 0;
  * operation's ids are derived from the invocation and the step: the host chooses the invocation id,
  * works out each block's id here, and passes the blob in with the blocks. A test runs the operation
  * and checks the records it made carry exactly these ids.
+ *
+ * `within` is the path of the call that runs `createPost` inside another operation — `composeCard`'s
+ * is `COMPOSE_CARD_POST` — since a called operation's ids derive from where it was called.
  */
-export function postBlockId(invocationId: string, key: string): Promise<string> {
-  return deriveRecordId(invocationId, [String(BLOCKS_STEP), keySegment(key), String(BLOCK_CREATE_STEP)]);
+export function postBlockId(invocationId: string, key: string, within: readonly string[] = []): Promise<string> {
+  return deriveRecordId(invocationId, [...within, String(BLOCKS_STEP), keySegment(key), String(BLOCK_CREATE_STEP)]);
 }
 
 export const CONTENT_OPERATIONS: Record<string, OperationDefinition> = {
@@ -115,16 +118,46 @@ export const CONTENT_OPERATIONS: Record<string, OperationDefinition> = {
         },
       },
       {
-        link: {
-          entity: { $: 'threadEntity' },
-          oneOf: THREAD_SUBJECTS,
-          id: { $: 'thread' },
-          relation: 'thread',
-          target: { $: 'post' },
+        call: {
+          operation: 'core.thread',
+          args: { record: { $: 'post.id' }, thread: { $: 'thread' }, threadEntity: { $: 'threadEntity' } },
         },
         when: { $: 'respondsTo && thread' },
       },
     ],
     returns: { $: 'post.id' },
+  },
+
+  /*
+    Thread a response that is being written: link it from its thread's subject, so the whole
+    discussion under a record is one read of that record's `thread`. The response's own link to what
+    it answers (`responses`) is the create's parent, made with the record. Which record the subject
+    is, and its entity, are the host's to read before the run (`threadSubject`): only a read can say
+    what entity an id is. A composed post and a Feed line both thread through here.
+  */
+  thread: {
+    description:
+      'Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.',
+    params: {
+      record: { type: 'string', required: true, description: 'The response.' },
+      thread: {
+        type: 'string',
+        required: true,
+        description:
+          'The subject of the thread it joins — what it answers, or the first record above that is not itself a response.',
+      },
+      threadEntity: { type: 'string', required: true, description: 'The subject’s entity.' },
+    },
+    steps: [
+      {
+        link: {
+          entity: { $: 'threadEntity' },
+          oneOf: THREAD_SUBJECTS,
+          id: { $: 'thread' },
+          relation: 'thread',
+          target: { $: 'record' },
+        },
+      },
+    ],
   },
 };

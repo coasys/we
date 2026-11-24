@@ -3,6 +3,7 @@ import type { OperationDefinition } from '@we/backend-shared';
 import { BOARDS_OPERATIONS } from './boards';
 import { CANVAS_OPERATIONS } from './canvas';
 import { CONTENT_OPERATIONS } from './content';
+import { RECORD_OPERATIONS } from './records';
 import { SIGNALS_OPERATIONS } from './signals';
 import { SPACE_OPERATIONS } from './space';
 
@@ -20,4 +21,5 @@ export const CORE_OPERATIONS: Record<string, OperationDefinition> = {
   ...CONTENT_OPERATIONS,
   ...SPACE_OPERATIONS,
   ...CANVAS_OPERATIONS,
+  ...RECORD_OPERATIONS,
 };

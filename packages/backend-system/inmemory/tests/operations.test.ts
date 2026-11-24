@@ -6,6 +6,7 @@
 import type { EntityManifest, OneOfEntry, OperationDefinition } from '@we/backend-shared';
 import {
   getEntity,
+  inlineRecordId,
   isOperationError,
   OperationError,
   registerEntityWriteCheck,
@@ -525,6 +526,24 @@ describe('any record type', () => {
     expect(abstract.message).toContain('any record type');
     const unknown = await failure(generic('edit', { entity: 'NoSuchThing', id: 'x', fields: {} }));
     expect([unknown.class, unknown.code]).toEqual(['static', 'outsideOneOf']);
+  });
+});
+
+describe('core.createRecord', () => {
+  it('makes the records filled in inline first, by the ids the host planned, and points the new one at them', async () => {
+    const invocationId = crypto.randomUUID();
+    const place = await inlineRecordId(invocationId, 'location.0');
+    const id = (await runOperation(
+      'core.createRecord',
+      {
+        entity: 'EventBlock',
+        fields: { title: 'Dawn walk', startDate: '2026-10-10', location: [place] },
+        inline: [{ key: 'location.0', entity: 'LocationBlock', fields: { name: 'Ham Wall' } }],
+      },
+      { dataset, invoker: AGENT, invocationId },
+    )) as string;
+    const [event] = await getEntity('EventBlock').findAll(dataset, { where: { id }, include: { location: true } });
+    expect((event as unknown as { location: Row }).location).toMatchObject({ id: place, name: 'Ham Wall' });
   });
 });
 
