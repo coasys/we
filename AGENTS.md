@@ -552,21 +552,29 @@ Functions — the library. f(a, b) and a.f(b) are the same call; a value's own m
 Nothing is ever added to the grammar above: a new capability is a function here, or one the host
 registers (listed last). Wrong-typed input answers with the empty value of its kind, never an error.
   Lists:
+    concat(...lists) — The entries of every list given, one after another, in order and duplicates kept — `distinct` is the one that drops repeats. Anything that is not a list contributes nothing.  e.g. concat(board.children, [column.id])
     count(items) — How many entries a list has. Anything that is not a list counts as 0.  e.g. count(spaceStore.members)
     distinct(...lists) — The entries of every list given, each once, in the order first seen. Records compare by `id`, other values by value. Anything that is not a list contributes nothing.  e.g. distinct(local.found.map(r, r.__subjectClass), local.placements.map(p, p.nodeType))
     filter(items, where, limit?) — The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.  e.g. filter(spaceStore.members, { role: 'admin' }, 5)
     find(items, where?) — The first entry matching a where-object, or undefined. Without `where`, the first entry. Read a field off the result directly: `find(…).id` is undefined when nothing matched.  e.g. find(local.signalTypes, { slug: 'like' }).id
     first(items) — The first entry of a list, or undefined when it is empty.  e.g. first(local.posts).title
+    indexOf(items, value) — The position of the first entry equal to `value`, counting from 0, or -1 when there is none. Records compare by `id`, as in `distinct`. Anything that is not a list gives -1.  e.g. indexOf(board.children, column.id)
+    insertAfter(items, anchor, value) — A new list with `value` put straight after the first entry equal to `anchor`, or at the end when `anchor` is not in it. Records compare by `id`. An absent `value` leaves the list as it was; anything that is not a list is read as [].  e.g. insertAfter(board.children, previous.id, column.id)
+    insertAt(items, index, value) — A new list with `value` put at position `index`, counting from 0. An index below 0 puts it first and one past the end puts it last; an absent `value` leaves the list as it was. Anything that is not a list is read as [].  e.g. insertAt(space.enabledViews, 0, view)
     join(items, separator?) — The entries of a list as one string, separated by `separator` (default ', ').  e.g. join(item.tags, ' · ')
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
     reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
+    slice(items, start, end?) — The entries from position `start` up to, not including, `end` (default: the end). A negative position counts back from the end, so slice(items, -3) is the last three. Anything that is not a list gives [].  e.g. slice(local.posts, 0, 5)
+    sortBy(items, key, direction?) — A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field go last either way, and equal entries keep their order. Anything that is not a list gives [].  e.g. sortBy(local.columns, 'position')
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
     sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.responses)))
+    without(items, ...values) — The list with every entry equal to any of `values` taken out. Records compare by `id`, as in `distinct`, so a record and its id both name it. Anything that is not a list gives [].  e.g. without(board.children, column.id)
   Text:
     contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
     endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
     lower(text) — The text in lower case.  e.g. lower(item.handle)
     plural(count, one, other) — `one` when count is exactly 1, otherwise `other`.  e.g. plural(count(spaceStore.members), 'Member', 'Members')
+    slug(text) — The text as a slug: lower case, every character but a–z, 0–9, whitespace and '-' dropped, the ends trimmed, and each run of whitespace one '-'. A character outside a–z is dropped, not converted, so 'Café au lait' is 'caf-au-lait'. A number is read as its digits; anything else gives ''.  e.g. slug(name)
     startsWith(text, prefix) — Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.  e.g. startsWith(item.startDate, '2026-08')
     trim(text) — The text without leading and trailing whitespace.  e.g. trim(local.search) != ''
     upper(text) — The text in upper case.  e.g. upper(item.code)
@@ -575,7 +583,11 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     min(...values) — The smallest of the numbers given. Non-numbers count as 0.  e.g. min(count(local.rows), 20)
     round(value, digits?) — The number rounded to `digits` decimal places (default 0). Non-numbers round to 0.  e.g. round(item.progress * 100)
   Objects:
+    keys(object) — The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].  e.g. keys(space.moduleSettings)
+    merge(...objects) — One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key whose value is absent does not override; anything that is not an object contributes nothing.  e.g. merge(space.moduleSettings[moduleId], { open: true })
     pick(object, keys) — A new object holding only the named keys of `object`. Anything that is not an object gives `{}`.  e.g. pick(profileStore.ownProfile, ['handle', 'avatar'])
+    put(object, key, value) — A new object: `object` with `key` set to `value`, or with `key` removed when `value` is absent. The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.  e.g. put(space.moduleSettings, moduleId, settings)
+    values(object) — The values of an object's keys, in the order `keys` lists them; absent values are left out. Anything that is not an object gives [].  e.g. values(space.moduleSettings).filter(s, s.open)
   Form state:
     error(field) — A field's first validation message, once it has been touched; empty otherwise. The field is named as a string.  e.g. error('email')
     formValid() — Whether every validated field in the enclosing $localState scope passes.  e.g. formValid()

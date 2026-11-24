@@ -32,6 +32,7 @@
  * everywhere — a declared operation, run by whichever backend holds the data — is checked with
  * `functions: 'core'` (see `check.ts`), which refuses every name outside `CORE_FUNCTIONS`.
  */
+import { DENIED_PROPERTIES } from './ast';
 import { readField } from './reach';
 import { asText, matchesWhere } from './where';
 
@@ -112,6 +113,98 @@ const asNumber = (value: unknown): number => {
 };
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
+const isAbsent = (value: unknown): boolean => value === undefined || value === null;
+
+/**
+ * What a list entry is compared by: a record by its `id`, because two reads of one record are
+ * different objects, and anything else by its value. `distinct`, `without`, `indexOf` and
+ * `insertAfter` all ask this, so "the same entry" means one thing across the library.
+ */
+const identity = (entry: unknown): unknown => (isRecord(entry) && entry.id !== undefined ? entry.id : entry);
+/** Equality of two identities as a `Set` judges it, so `NaN` matches itself here as it does in `distinct`. */
+const sameIdentity = (a: unknown, b: unknown): boolean => {
+  const x = identity(a);
+  const y = identity(b);
+  return x === y || (x !== x && y !== y);
+};
+const indexIn = (list: unknown[], value: unknown): number => list.findIndex((entry) => sameIdentity(entry, value));
+
+/**
+ * The fields of an object a template may read, sorted by name. Through `readField`, like `pick`, so
+ * listing an object's keys reads no more of it than naming them would. Sorted rather than in the
+ * order the object holds them because JavaScript moves integer-like keys to the front and other
+ * languages do not: a declared operation that walks an object has to see the same order on every
+ * host. Absent values and functions are left out; neither is a field's value.
+ */
+function fieldsOf(object: unknown): [string, unknown][] {
+  if (!isRecord(object)) return [];
+  let names: string[];
+  try {
+    names = Object.keys(object);
+  } catch {
+    return [];
+  }
+  const out: [string, unknown][] = [];
+  for (const name of names.sort(compareCodePoints)) {
+    const value = readField(object, name);
+    if (!isAbsent(value) && typeof value !== 'function') out.push([name, value]);
+  }
+  return out;
+}
+
+/** An object key as text, or `undefined` for anything that cannot name one safely. */
+const asKey = (key: unknown): string | undefined => {
+  const name =
+    typeof key === 'string' ? key : typeof key === 'number' && Number.isFinite(key) ? String(key) : undefined;
+  return name === undefined || DENIED_PROPERTIES.has(name) ? undefined : name;
+};
+
+/**
+ * Text compared by Unicode code point, not by UTF-16 unit and not by locale. The two differ only
+ * past U+FFFF, but a sort every implementation agrees on has to say which, and code points are what
+ * a language without JavaScript's string representation sees.
+ */
+function compareCodePoints(a: string, b: string): number {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i++) {
+    const diff = left[i].codePointAt(0)! - right[i].codePointAt(0)!;
+    if (diff !== 0) return diff;
+  }
+  return left.length - right.length;
+}
+
+/** A dot path read field by field, through `readField`. */
+function readPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const name of path.split('.')) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = readField(current, name);
+  }
+  return current;
+}
+
+/** Where a sort places a value of each kind: numbers, then text, then false and true; anything else last of the present. */
+function sortRank(value: unknown): number {
+  if (typeof value === 'number') return 0;
+  if (typeof value === 'string') return 1;
+  if (typeof value === 'boolean') return 2;
+  return 3;
+}
+
+function compareSortValues(a: unknown, b: unknown): number {
+  const rank = sortRank(a) - sortRank(b);
+  if (rank !== 0) return rank;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  if (typeof a === 'string' && typeof b === 'string') return compareCodePoints(a, b);
+  if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+  return 0;
+}
+
+/** A list position from an index argument: truncated, and held between 0 and the list's length. */
+const clampIndex = (index: unknown, length: number): number =>
+  Math.min(Math.max(Math.trunc(asNumber(index)), 0), length);
 
 // ── Lists ───────────────────────────────────────────────────────────────────
 
@@ -219,7 +312,7 @@ defineFunction({
     const out: unknown[] = [];
     for (const list of lists) {
       for (const entry of asList(list)) {
-        const key = isRecord(entry) && entry.id !== undefined ? entry.id : entry;
+        const key = identity(entry);
         if (seen.has(key)) continue;
         seen.add(key);
         out.push(entry);
@@ -252,6 +345,111 @@ defineFunction({
       .split(separator === undefined ? ',' : asText(separator))
       .map((piece) => piece.trim())
       .filter(Boolean),
+});
+
+/*
+  The list-building functions below exist for declared operations, which write a relation's whole
+  ordered list (`setRelation`) or a json field's whole value, and so have to compute the new list
+  from the old one: a column added after another, an id taken out, a section moved. Every one
+  answers with a new list and leaves the one given untouched, and every one treats a missing list
+  as an empty one, because "the record has no children yet" is the ordinary first case of each.
+*/
+
+defineFunction({
+  name: 'concat',
+  category: 'list',
+  params: ['...lists'],
+  doc: 'The entries of every list given, one after another, in order and duplicates kept — `distinct` is the one that drops repeats. Anything that is not a list contributes nothing.',
+  example: 'concat(board.children, [column.id])',
+  impl: (lists) => lists.flatMap((list) => asList(list)),
+});
+
+defineFunction({
+  name: 'without',
+  category: 'list',
+  params: ['items', '...values'],
+  doc: 'The list with every entry equal to any of `values` taken out. Records compare by `id`, as in `distinct`, so a record and its id both name it. Anything that is not a list gives [].',
+  example: 'without(board.children, column.id)',
+  impl: ([items, ...values]) => asList(items).filter((entry) => !values.some((value) => sameIdentity(entry, value))),
+});
+
+defineFunction({
+  name: 'indexOf',
+  category: 'list',
+  params: ['items', 'value'],
+  doc: 'The position of the first entry equal to `value`, counting from 0, or -1 when there is none. Records compare by `id`, as in `distinct`. Anything that is not a list gives -1.',
+  example: 'indexOf(board.children, column.id)',
+  impl: ([items, value]) => indexIn(asList(items), value),
+});
+
+defineFunction({
+  name: 'insertAt',
+  category: 'list',
+  params: ['items', 'index', 'value'],
+  doc: 'A new list with `value` put at position `index`, counting from 0. An index below 0 puts it first and one past the end puts it last; an absent `value` leaves the list as it was. Anything that is not a list is read as [].',
+  example: 'insertAt(space.enabledViews, 0, view)',
+  impl: ([items, index, value]) => {
+    const list = [...asList(items)];
+    if (isAbsent(value)) return list;
+    list.splice(clampIndex(index, list.length), 0, value);
+    return list;
+  },
+});
+
+defineFunction({
+  name: 'insertAfter',
+  category: 'list',
+  params: ['items', 'anchor', 'value'],
+  doc: 'A new list with `value` put straight after the first entry equal to `anchor`, or at the end when `anchor` is not in it. Records compare by `id`. An absent `value` leaves the list as it was; anything that is not a list is read as [].',
+  example: 'insertAfter(board.children, previous.id, column.id)',
+  impl: ([items, anchor, value]) => {
+    const list = [...asList(items)];
+    if (isAbsent(value)) return list;
+    const at = indexIn(list, anchor);
+    list.splice(at === -1 ? list.length : at + 1, 0, value);
+    return list;
+  },
+});
+
+defineFunction({
+  name: 'slice',
+  category: 'list',
+  params: ['items', 'start', 'end?'],
+  doc: 'The entries from position `start` up to, not including, `end` (default: the end). A negative position counts back from the end, so slice(items, -3) is the last three. Anything that is not a list gives [].',
+  example: 'slice(local.posts, 0, 5)',
+  impl: ([items, start, end]) => {
+    const list = asList(items);
+    return list.slice(Math.trunc(asNumber(start)), isAbsent(end) ? list.length : Math.trunc(asNumber(end)));
+  },
+});
+
+/*
+  A sort exists here, where the grammar has none, because an operation that orders a list it then
+  stores cannot ask the backend for the order: what it sorts is a value it computed. Text is compared
+  by code point rather than by the reader's locale for the same reason a declared operation is
+  restricted to core functions: the order it stores has to be the order every host computes.
+*/
+defineFunction({
+  name: 'sortBy',
+  category: 'list',
+  params: ['items', 'key', 'direction?'],
+  doc: "A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field go last either way, and equal entries keep their order. Anything that is not a list gives [].",
+  example: "sortBy(local.columns, 'position')",
+  impl: ([items, key, direction]) => {
+    const list = asList(items);
+    if (typeof key !== 'string' || key === '') return [...list];
+    const sign = direction === 'desc' ? -1 : 1;
+    const keyed = list.map((entry) => {
+      const value = readPath(entry, key);
+      return { entry, value, absent: isAbsent(value) || (typeof value === 'number' && Number.isNaN(value)) };
+    });
+    // Array.prototype.sort is stable, so entries the comparison calls equal keep their order.
+    keyed.sort((a, b) => {
+      if (a.absent || b.absent) return Number(a.absent) - Number(b.absent);
+      return sign * compareSortValues(a.value, b.value);
+    });
+    return keyed.map(({ entry }) => entry);
+  },
 });
 
 // ── Text ────────────────────────────────────────────────────────────────────
@@ -319,6 +517,30 @@ defineFunction({
   impl: ([text, suffix]) => asText(text).endsWith(asText(suffix)),
 });
 
+/*
+  The rule is the one WE's stores have always used to name a signal type, a task state, a role or a
+  kind of involvement from what somebody typed, kept to the character: those slugs are stored, and a
+  template finds the type by them, so a declared operation that names one has to arrive at the slug
+  the store would have. That is why it drops a character it does not keep rather than folding it
+  ('Café' is 'caf') and why a hyphen typed between spaces stays three hyphens.
+*/
+defineFunction({
+  name: 'slug',
+  category: 'text',
+  params: ['text'],
+  doc: "The text as a slug: lower case, every character but a–z, 0–9, whitespace and '-' dropped, the ends trimmed, and each run of whitespace one '-'. A character outside a–z is dropped, not converted, so 'Café au lait' is 'caf-au-lait'. A number is read as its digits; anything else gives ''.",
+  example: 'slug(name)',
+  impl: ([text]) => {
+    const source =
+      typeof text === 'string' ? text : typeof text === 'number' && Number.isFinite(text) ? String(text) : '';
+    return source
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
+  },
+});
+
 // ── Numbers ─────────────────────────────────────────────────────────────────
 
 defineFunction({
@@ -371,6 +593,58 @@ defineFunction({
     }
     return out;
   },
+});
+
+/*
+  `put`, `merge`, `keys` and `values` are for a field whose value is one json object — module
+  settings keyed by module id, say — which an operation can only write whole, and so has to build
+  from the stored one with one key changed.
+*/
+defineFunction({
+  name: 'put',
+  category: 'object',
+  params: ['object', 'key', 'value'],
+  doc: 'A new object: `object` with `key` set to `value`, or with `key` removed when `value` is absent. The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.',
+  example: 'put(space.moduleSettings, moduleId, settings)',
+  impl: ([object, key, value]) => {
+    const out: Record<string, unknown> = Object.fromEntries(fieldsOf(object));
+    const name = asKey(key);
+    if (name === undefined) return out;
+    if (isAbsent(value)) delete out[name];
+    else out[name] = value;
+    return out;
+  },
+});
+
+defineFunction({
+  name: 'merge',
+  category: 'object',
+  params: ['...objects'],
+  doc: 'One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key whose value is absent does not override; anything that is not an object contributes nothing.',
+  example: 'merge(space.moduleSettings[moduleId], { open: true })',
+  impl: (objects) => {
+    const out: Record<string, unknown> = {};
+    for (const object of objects) for (const [name, value] of fieldsOf(object)) out[name] = value;
+    return out;
+  },
+});
+
+defineFunction({
+  name: 'keys',
+  category: 'object',
+  params: ['object'],
+  doc: "The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].",
+  example: 'keys(space.moduleSettings)',
+  impl: ([object]) => fieldsOf(object).map(([name]) => name),
+});
+
+defineFunction({
+  name: 'values',
+  category: 'object',
+  params: ['object'],
+  doc: "The values of an object's keys, in the order `keys` lists them; absent values are left out. Anything that is not an object gives [].",
+  example: 'values(space.moduleSettings).filter(s, s.open)',
+  impl: ([object]) => fieldsOf(object).map(([, value]) => value),
 });
 
 // ── The core set ────────────────────────────────────────────────────────────
