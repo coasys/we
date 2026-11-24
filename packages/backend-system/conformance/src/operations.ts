@@ -4,28 +4,47 @@
  *
  * The cases are written here; what each one produces is recorded once, on the in-memory backend
  * (`pnpm --filter @we/backend-conformance record:operations`), into
- * `vectors/operations/operations.json`, and every backend's suite runs each case and compares with
+ * `vectors/operations/operations.json`, and every backend's suite runs each vector and compares with
  * what was recorded. So the JSON file is the contract, in a form another implementation can run
- * without reading TypeScript: a manifest's operations, the records the dataset starts with, an
- * invocation, and then either the result or the error's class and code, and the records the dataset
- * ends with.
+ * without reading TypeScript: the entity schemas the cases write, the policy their writes are judged
+ * by, and per case a manifest's operations, the records the dataset starts with, an invocation, and
+ * then either the result or the error's class and code, and the records the dataset ends with.
  *
- * Records are compared on the fields a case observes, not on who wrote them or when — those are each
- * backend's to stamp. Ids are compared exactly: a created record's id is derived from the invocation,
- * so every backend must arrive at the same one.
+ * The file's invoker is a part whoever runs it plays: every case runs as the backend's own agent,
+ * with that agent's id put wherever the file names the invoker and read back as the file's name for
+ * it. So a created record's author, which a backend stamps from the agent writing, is observed as the
+ * invoker on every backend, as the format says it is.
+ *
+ * Ids are compared exactly: a created record's id is derived from the invocation, so every backend
+ * must arrive at the same one. Records are listed by id in code-point order, and a relation's members
+ * are compared in order only where the schema says the relation is ordered.
  */
 import { readFileSync } from 'node:fs';
 
-import type { DatasetHandle, OperationDefinition } from '@we/backend-shared';
+import {
+  actionOf,
+  type ActionRequest,
+  type DatasetHandle,
+  type EntitySchema,
+  evaluate,
+  type OperationDefinition,
+  type Policy,
+  PolicyRefusal,
+  type PropertySchema,
+  type RelationSchema,
+} from '@we/backend-shared';
 import {
   callsOf,
+  type EntityWriteCheck,
   getEntity,
   isOperationError,
+  PROTECTED_ENTITIES,
+  registerEntityWriteCheck,
   registerOperations,
   runOperation,
   unregisterOperations,
 } from '@we/entities';
-import { CORE_OPERATIONS } from '@we/entities/manifest';
+import { CORE_MANIFEST, CORE_OPERATIONS } from '@we/entities/manifest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { ConformanceHarness, ConformanceSubject } from './index';
@@ -36,6 +55,24 @@ export const VECTOR_NAMESPACE = 'conformance';
 /** Who every case invokes as. A literal, so a result that names the invoker reads the same everywhere. */
 export const VECTOR_INVOKER = 'did:example:invoker';
 
+/**
+ * The policy every case runs under: the narrowest one that gives a refusal and an author something
+ * to decide. Anyone may write anything, a collection is deleted only by its author, and a tag only
+ * made by a curator, which the invoker is not. Frozen, since nothing here may change it.
+ */
+export const VECTOR_POLICY: VectorPolicy = {
+  rules: {
+    format: 1,
+    frozen: true,
+    permissions: [
+      { action: '*', by: ['anyone'] },
+      { action: 'CollectionBlock.delete', by: ['author'] },
+      { action: 'TagBlock.create', by: [{ role: 'curator' }] },
+    ],
+  },
+  invoker: { member: true, roles: [] },
+};
+
 /** A record the dataset starts with. */
 export interface SeedRecord {
   entity: string;
@@ -45,7 +82,10 @@ export interface SeedRecord {
   relations?: Record<string, string[]>;
 }
 
-/** What is read back after the operation: these fields and relations of every record of the entity. */
+/**
+ * What is read back after the operation: these fields and relations of every record of the entity.
+ * `fields` may name `author`, the record metadata a backend stamps from the agent writing.
+ */
 export interface Observation {
   entity: string;
   fields: string[];
@@ -62,16 +102,50 @@ export interface OperationCase {
   args: Record<string, unknown>;
   invocationId: string;
   invokedAt: string;
+  /**
+   * Records another writer commits while the operation runs: after its first `expect` find has read,
+   * and before the operation ends. What an `expect` exists to notice.
+   */
+  concurrent?: SeedRecord[];
   observe: Observation[];
+}
+
+/** A property as a vector states it: only what changes what an operation reads or writes. */
+export type VectorProperty = Pick<PropertySchema, 'type' | 'required' | 'default'>;
+
+/** A relation as a vector states it. `ordered` is what decides how its members are compared. */
+export type VectorRelation = Pick<RelationSchema, 'target' | 'cardinality' | 'ordered' | 'reverseOf'>;
+
+/** An entity schema as a vector states it, in the format's data model. */
+export interface VectorEntity {
+  properties: Record<string, VectorProperty>;
+  relations: Record<string, VectorRelation>;
+  abstract?: boolean;
+  blockable?: boolean;
+}
+
+/**
+ * The write check the vectors run under: the dataset's policy, and what is true of the invoker.
+ *
+ * In WE's policy format, the one the host evaluates: a write is allowed when a permission governing
+ * its action reaches the writer. A permission naming an action exactly is the only kind that governs
+ * it; otherwise the wildcards do (`*` is every action but the access-control entities'). `anyone` is
+ * every writer, `author` the author of the record acted on (for a create, the writer), `{ role }`
+ * whoever holds that role.
+ */
+export interface VectorPolicy {
+  rules: Policy;
+  invoker: { member: boolean; roles: string[] };
 }
 
 /** One recorded case: the case as data, and what running it produced. */
 export interface OperationVector {
   id: string;
   note: string;
-  manifest: { version: string; entities: Record<string, never>; operations: Record<string, OperationDefinition> };
+  /** The case's operation, and any operation of the suite's it calls. Its entities are the file's. */
+  manifest: { version: string; operations: Record<string, OperationDefinition> };
   /**
-   * WE's own operations the case's operation calls, at any depth, by qualified name (`core.thread`)
+   * WE's own operations the case's operations call, at any depth, by qualified name (`core.thread`)
    * — registered under their own namespaces by whoever runs the vector, as a call names them.
    */
   calls: Record<string, OperationDefinition>;
@@ -81,10 +155,28 @@ export interface OperationVector {
   invoker: string;
   invocationId: string;
   invokedAt: string;
+  concurrent?: SeedRecord[];
   observe: Observation[];
   outcome: { result: unknown } | { error: { class: string; code: string } };
   records: Record<string, ObservedRecord[]>;
 }
+
+/** A vector before it has been run. */
+export type VectorInput = Omit<OperationVector, 'outcome' | 'records'>;
+
+/** The whole file: what every case shares, and the cases. */
+export interface OperationVectorFile {
+  version: 2;
+  /** Every entity a case names, and every entity those relate to, by name. */
+  entities: Record<string, VectorEntity>;
+  /** The access-control entities: no operation may write one. */
+  protectedEntities: string[];
+  policy: VectorPolicy;
+  cases: OperationVector[];
+}
+
+/** What a vector runs against, from its file. */
+export type VectorContext = Pick<OperationVectorFile, 'entities' | 'policy'>;
 
 export type ObservedRecord = Record<string, unknown> & { id: string };
 
@@ -168,6 +260,117 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       },
     ],
   },
+  expecting: {
+    description: 'Reads the notes, expecting them to stay as read, and makes a tag.',
+    steps: [
+      { find: { as: 'notes', entity: 'CollectionBlock', where: { kind: 'note' }, expect: true } },
+      { create: { entity: 'CollectionBlock', fields: { kind: 'tag', slug: 'seen' } } },
+    ],
+    returns: { $: 'count(notes)' },
+  },
+  walkTwoDeep: {
+    description: 'The titles of what is under a record, two levels down.',
+    params: { root: { type: 'string', required: true } },
+    steps: [
+      {
+        find: {
+          as: 'found',
+          entity: 'CollectionBlock',
+          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, levels: [10, 10] },
+          order: { title: 'asc' },
+        },
+      },
+    ],
+    returns: { $: 'found.map(r, r.title)' },
+  },
+  walkAll: {
+    description: 'The titles of everything under a record, however deep.',
+    params: { root: { type: 'string', required: true } },
+    steps: [
+      {
+        find: {
+          as: 'found',
+          entity: 'CollectionBlock',
+          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, transitive: true },
+          order: { title: 'asc' },
+        },
+      },
+    ],
+    returns: { $: 'found.map(r, r.title)' },
+  },
+  otherTags: {
+    description: 'The tags whose slug is not garden, a tag with no slug among them.',
+    steps: [
+      {
+        find: {
+          as: 'found',
+          entity: 'CollectionBlock',
+          where: { kind: 'tag', NOT: { slug: 'garden' } },
+          order: { title: 'asc' },
+        },
+      },
+    ],
+    returns: { $: 'found.map(r, r.title)' },
+  },
+  noteThenTag: {
+    description: 'Makes a note and then a tag, which the policy lets only a curator make.',
+    steps: [
+      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'TagBlock', fields: { name: 'garden' } } },
+    ],
+  },
+  makeAndDrop: {
+    description: 'Makes a note and deletes it, which only its author may.',
+    steps: [
+      { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: 'brief' } } },
+      { delete: { entity: 'CollectionBlock', id: { $: 'note.id' } } },
+    ],
+  },
+  note: {
+    description: 'A note with this title.',
+    params: { title: { type: 'string', required: true } },
+    steps: [{ create: { as: 'made', entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'title' } } } }],
+    returns: { $: 'made.id' },
+  },
+  noteThroughCall: {
+    description: 'A note made by calling the operation that makes one.',
+    params: { title: { type: 'string', required: true } },
+    steps: [{ call: { as: 'made', operation: 'conformance.note', args: { title: { $: 'title' } } } }],
+    returns: { $: 'made' },
+  },
+  maybeNote: {
+    description: 'A note when asked for one, and whether it was made.',
+    params: { make: { type: 'boolean', required: true } },
+    steps: [
+      {
+        create: { as: 'made', entity: 'CollectionBlock', fields: { kind: 'note', title: 'maybe' } },
+        when: { $: 'make' },
+      },
+    ],
+    returns: { $: "made.id ?? 'absent'" },
+  },
+  writeChosen: {
+    description: 'Makes a note, then a record of the entity it is given, from a list naming a protected one.',
+    params: { entity: { type: 'string', required: true } },
+    steps: [
+      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } },
+    ],
+  },
+  linkTwo: {
+    description: 'Links two records under a holder, in the order given, through an ordered and an unordered relation.',
+    params: {
+      holder: { type: 'string', required: true },
+      first: { type: 'string', required: true },
+      second: { type: 'string', required: true },
+    },
+    steps: [
+      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: 'first' } } },
+      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: 'second' } } },
+      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: 'first' } } },
+      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: 'second' } } },
+    ],
+  },
 };
 
 const AT = '2026-11-24T00:00:00.000Z';
@@ -185,6 +388,32 @@ const board = (id: string, invocationId: string, columns: unknown[], note: strin
 const TODO = { key: 'todo', title: 'To do' };
 const DONE = { key: 'done', title: 'Done' };
 const TAG = { entity: 'CollectionBlock', id: 'urn:example:tag-garden', fields: { kind: 'tag', slug: 'garden' } };
+/** The ids create-and-link's invocation derives for its board (path `0`) and its done column (`1`, `k=done`, `0`). */
+const BOARD = 'urn:uuid:30198dab-4163-8c59-abb3-e132517aa975';
+const DONE_COLUMN = 'urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5';
+/** root holds a and b; a holds a1; a1 holds a1x — three levels under root. */
+const TREE: SeedRecord[] = [
+  { entity: 'CollectionBlock', id: 'urn:example:a1x', fields: { kind: 'folder', title: 'a1x' } },
+  {
+    entity: 'CollectionBlock',
+    id: 'urn:example:a1',
+    fields: { kind: 'folder', title: 'a1' },
+    relations: { children: ['urn:example:a1x'] },
+  },
+  {
+    entity: 'CollectionBlock',
+    id: 'urn:example:a',
+    fields: { kind: 'folder', title: 'a' },
+    relations: { children: ['urn:example:a1'] },
+  },
+  { entity: 'CollectionBlock', id: 'urn:example:b', fields: { kind: 'folder', title: 'b' } },
+  {
+    entity: 'CollectionBlock',
+    id: 'urn:example:root',
+    fields: { kind: 'folder', title: 'root' },
+    relations: { children: ['urn:example:a', 'urn:example:b'] },
+  },
+];
 
 const CASES: OperationCase[] = [
   board(
@@ -502,16 +731,207 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children'] }],
   },
+  /*
+    The runner's rules the cases above leave open: a read that must not move under the operation, a
+    walk down a relation, a NOT over a field a record lacks, the write check refusing, an id made
+    inside a call, a guarded create that does not run, a replay, and a write no operation may make.
+  */
+  {
+    id: 'expect-holds',
+    note: 'an expect find that reads the same at the end lets the operation land',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'expecting',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000030',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'expect-changed',
+    note: 'a note committed by another writer after the expect find read fails the operation as expectChanged, and its tag does not land',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'expecting',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000031',
+    invokedAt: AT,
+    concurrent: [
+      { entity: 'CollectionBlock', id: 'urn:example:their-note', fields: { kind: 'note', title: 'theirs' } },
+    ],
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'find-scope-levels',
+    note: 'a find walking two levels down a relation reaches the children and grandchildren, and stops there',
+    operations: OPERATIONS,
+    dataset: TREE,
+    operation: 'walkTwoDeep',
+    args: { root: 'urn:example:root' },
+    invocationId: '00000000-0000-4000-8000-000000000032',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'find-scope-transitive',
+    note: 'a transitive find reaches everything under the record, however deep',
+    operations: OPERATIONS,
+    dataset: TREE,
+    operation: 'walkAll',
+    args: { root: 'urn:example:root' },
+    invocationId: '00000000-0000-4000-8000-000000000033',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'not-absent',
+    note: 'NOT over a comparison matches a record with no value for the field, as well as one with another value',
+    operations: OPERATIONS,
+    dataset: [
+      { ...TAG, fields: { ...TAG.fields, title: 'Garden' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:tag-weeds',
+        fields: { kind: 'tag', slug: 'weeds', title: 'Weeds' },
+      },
+      { entity: 'CollectionBlock', id: 'urn:example:tag-bare', fields: { kind: 'tag', title: 'Bare' } },
+    ],
+    operation: 'otherTags',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000034',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'refused-write',
+    note: 'a write the policy refuses fails the operation as refused, and the note made before it does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'noteThenTag',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000035',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TagBlock', fields: ['name'], relations: [] }],
+  },
+  {
+    id: 'author-deletes-own',
+    note: 'a record the operation made is its invoker’s, so a policy letting only the author delete lets the operation delete it',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makeAndDrop',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000036',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'call-derived-id',
+    note: 'a record made inside a call takes its id from the call’s path, and its author is the invoker',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'noteThroughCall',
+    args: { title: 'called' },
+    invocationId: '00000000-0000-4000-8000-000000000037',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'when-false-create',
+    note: 'a create whose when is false writes nothing, and the name it would have bound reads as no value',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'maybeNote',
+    args: { make: false },
+    invocationId: '00000000-0000-4000-8000-000000000038',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'forEach-replay',
+    note: 'create-and-link replayed onto a dataset holding its done column: the replay names the same id for that key, is refused as recordExists, and adds nothing',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: DONE_COLUMN, fields: { kind: 'column', title: 'Done' } }],
+    operation: 'makeBoard',
+    args: { title: 'Plan', columns: [TODO, DONE] },
+    invocationId: '00000000-0000-4000-8000-000000000001',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'create-onto-held-id',
+    note: 'a create whose derived id a record of another entity already holds is refused as recordExists',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'TaskBlock', id: BOARD, fields: { title: 'Squatter', status: 'todo' } }],
+    operation: 'note',
+    args: { title: 'late' },
+    invocationId: '00000000-0000-4000-8000-000000000001',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskBlock', fields: ['title'], relations: [] }],
+  },
+  {
+    id: 'protected-entity',
+    note: 'a write to an access-control entity, chosen at run time, fails as static protectedEntity, and the note made before it does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'writeChosen',
+    args: { entity: 'Policy' },
+    invocationId: '00000000-0000-4000-8000-000000000039',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'Policy', fields: [], relations: [] }],
+  },
+  {
+    id: 'relation-order',
+    note: 'an ordered relation reads back in the order written, an unordered one compares as a set, and records list by id in code-point order',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:holder', fields: { kind: 'board' } },
+      { entity: 'CollectionBlock', id: 'urn:example:alpha', fields: { kind: 'card' } },
+      { entity: 'CollectionBlock', id: 'urn:example:Zed', fields: { kind: 'card' } },
+    ],
+    operation: 'linkTwo',
+    args: { holder: 'urn:example:holder', first: 'urn:example:alpha', second: 'urn:example:Zed' },
+    invocationId: '00000000-0000-4000-8000-000000000040',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children', 'mentions'] }],
+  },
 ];
 
-/** Each case carries only the operation it runs, so its vector reads on its own. */
-export const OPERATION_CASES: OperationCase[] = CASES.map((c) => ({
-  ...c,
-  operations: { [c.operation]: c.operations[c.operation] },
-}));
+/** The suite's own operations a definition calls, by bare name, and their callees in turn. */
+function suiteCallees(name: string, into: Record<string, OperationDefinition>): void {
+  if (name in into || !OPERATIONS[name]) return;
+  into[name] = OPERATIONS[name];
+  for (const called of callsOf(OPERATIONS[name]))
+    if (called.startsWith(`${VECTOR_NAMESPACE}.`)) suiteCallees(called.slice(VECTOR_NAMESPACE.length + 1), into);
+}
 
-/** The core operations a definition calls, at any depth, by qualified name, sorted. */
-function coreCalls(op: OperationDefinition): Record<string, OperationDefinition> {
+/**
+ * Each case carries only the operation it runs, and the suite's operations that one calls, so its
+ * vector reads on its own.
+ */
+export const OPERATION_CASES: OperationCase[] = CASES.map((c) => {
+  if (c.operations !== OPERATIONS) return { ...c, operations: { [c.operation]: c.operations[c.operation] } };
+  const operations: Record<string, OperationDefinition> = {};
+  suiteCallees(c.operation, operations);
+  return { ...c, operations };
+});
+
+/** Code-point order, the one every language can reproduce; `localeCompare` is the reader's alphabet. */
+export function compareCodePoints(a: string, b: string): number {
+  const x = Array.from(a, (char) => char.codePointAt(0)!);
+  const y = Array.from(b, (char) => char.codePointAt(0)!);
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+  return x.length - y.length;
+}
+
+const sortedKeys = <T>(record: Record<string, T>): Record<string, T> =>
+  Object.fromEntries(
+    Object.keys(record)
+      .sort(compareCodePoints)
+      .map((key) => [key, record[key]]),
+  );
+
+/** WE's own operations a case's operations call, at any depth, by qualified name, sorted. */
+function coreCalls(operations: Record<string, OperationDefinition>): Record<string, OperationDefinition> {
   const found: Record<string, OperationDefinition> = {};
   const visit = (current: OperationDefinition) => {
     for (const name of callsOf(current)) {
@@ -521,13 +941,80 @@ function coreCalls(op: OperationDefinition): Record<string, OperationDefinition>
       visit(callee);
     }
   };
-  visit(op);
-  return Object.fromEntries(
-    Object.keys(found)
-      .sort()
-      .map((name) => [name, found[name]]),
-  );
+  for (const op of Object.values(operations)) visit(op);
+  return sortedKeys(found);
 }
+
+type StepBody = {
+  entity?: unknown;
+  oneOf?: unknown[];
+  scope?: { anchor?: unknown };
+  parent?: { entity?: unknown };
+  steps?: unknown[];
+  expect?: unknown;
+};
+
+/** Each verb's body in a list of steps, at any depth of `forEach`. */
+function* bodiesOf(steps: unknown[] | undefined): Generator<[string, StepBody]> {
+  for (const step of steps ?? []) {
+    for (const [verb, body] of Object.entries(step as Record<string, unknown>)) {
+      if (verb === 'when' || !body || typeof body !== 'object') continue;
+      yield [verb, body];
+      yield* bodiesOf((body as StepBody).steps);
+    }
+  }
+}
+
+/**
+ * The entity schemas the cases need, as the file carries them: every entity a case seeds, observes or
+ * names in a step (its own operations' and the ones they call), every entity a relation of those
+ * targets, and the access-control entities — each with only what changes what an operation does.
+ */
+export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES): Record<string, VectorEntity> {
+  const named = new Set<string>(PROTECTED_ENTITIES);
+  for (const c of cases) {
+    for (const record of [...c.dataset, ...(c.concurrent ?? []), ...c.observe]) named.add(record.entity);
+    for (const op of [...Object.values(c.operations), ...Object.values(coreCalls(c.operations))])
+      for (const [, body] of bodiesOf(op.steps)) {
+        for (const name of [body.entity, ...(body.oneOf ?? []), body.scope?.anchor, body.parent?.entity])
+          if (typeof name === 'string') named.add(name);
+      }
+  }
+  const out: Record<string, VectorEntity> = {};
+  const add = (name: string) => {
+    if (name in out) return;
+    const schema = CORE_MANIFEST.entities[name];
+    if (!schema) throw new Error(`A case names "${name}", which WE's core manifest does not declare`);
+    out[name] = neutralEntity(schema);
+    for (const relation of Object.values(schema.relations)) if (relation.target) add(relation.target);
+  };
+  for (const name of named) add(name);
+  return sortedKeys(out);
+}
+
+function neutralEntity(schema: EntitySchema): VectorEntity {
+  const properties = Object.fromEntries(
+    Object.entries(schema.properties).map(([name, { type, required, default: fallback }]) => [
+      name,
+      { type, ...(required ? { required } : {}), ...(fallback !== undefined ? { default: fallback } : {}) },
+    ]),
+  );
+  const relations = Object.fromEntries(
+    Object.entries(schema.relations).map(([name, { target, cardinality, ordered, reverseOf }]) => [
+      name,
+      { target, cardinality, ...(ordered ? { ordered } : {}), ...(reverseOf ? { reverseOf } : {}) },
+    ]),
+  );
+  return {
+    properties: sortedKeys(properties),
+    relations: sortedKeys(relations),
+    ...(schema.abstract ? { abstract: true } : {}),
+    ...(schema.blockable ? { blockable: true } : {}),
+  };
+}
+
+/** The access-control entities, as the file lists them. */
+export const VECTOR_PROTECTED_ENTITIES = [...PROTECTED_ENTITIES].sort(compareCodePoints);
 
 export const OPERATION_CONFORMANCE_CASES = OPERATION_CASES.map((c) => `operations.${c.id}` as const);
 export type OperationConformanceCase = `operations.${string}`;
@@ -548,7 +1035,33 @@ const idsIn = (value: unknown): string[] =>
     ? value.map((entry) => (typeof entry === 'string' ? entry : String((entry as { id?: unknown }).id)))
     : [];
 
-async function observe(dataset: DatasetHandle, observations: Observation[]) {
+/** `value` with every string equal to `from` replaced by `to`, at any depth. */
+function swap<T>(value: T, from: string, to: string): T {
+  if (from === to) return value;
+  if (value === from) return to as T;
+  if (Array.isArray(value)) return value.map((entry: unknown) => swap(entry, from, to)) as T;
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, swap(entry, from, to)])) as T;
+  return value;
+}
+
+async function seed(dataset: DatasetHandle, records: readonly SeedRecord[]): Promise<void> {
+  for (const record of records) await model(record.entity).create(dataset, record.fields, { id: record.id });
+  for (const record of records)
+    for (const [relation, ids] of Object.entries(record.relations ?? {}))
+      await model(record.entity).setRelation(dataset, record.id, relation, ids);
+}
+
+/**
+ * Read back what a case observes, in the file's terms: records by id in code-point order, each
+ * relation's members as read when the schema says it is ordered and in code-point order when it is a
+ * set, so a backend that keeps a set in another order still matches.
+ */
+async function observe(
+  dataset: DatasetHandle,
+  observations: readonly Observation[],
+  entities: Record<string, VectorEntity>,
+): Promise<Record<string, ObservedRecord[]>> {
   const records: Record<string, ObservedRecord[]> = {};
   for (const { entity, fields, relations } of observations) {
     const include = Object.fromEntries(relations.map((relation) => [relation, true]));
@@ -559,67 +1072,157 @@ async function observe(dataset: DatasetHandle, observations: Observation[]) {
         for (const field of fields) if (present(row[field])) out[field] = row[field];
         for (const relation of relations) {
           const ids = idsIn(row[relation]);
-          if (ids.length) out[relation] = ids;
+          if (!ids.length) continue;
+          out[relation] = entities[entity]?.relations[relation]?.ordered ? ids : [...ids].sort(compareCodePoints);
         }
         return out;
       })
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort((a, b) => compareCodePoints(a.id, b.id));
   }
   return records;
 }
 
-/** Run one case on a fresh subject and say what it produced, in the vector's terms. */
-export async function runOperationCase(
-  subject: ConformanceSubject,
-  c: OperationCase,
-): Promise<Pick<OperationVector, 'outcome' | 'records'>> {
-  for (const seed of c.dataset) await model(seed.entity).create(subject.dataset, seed.fields, { id: seed.id });
-  for (const seed of c.dataset)
-    for (const [relation, ids] of Object.entries(seed.relations ?? {}))
-      await model(seed.entity).setRelation(subject.dataset, seed.id, relation, ids);
+/** The write check a host would register for the file's policy, with `person` the agent writing. */
+function policyCheck(policy: VectorPolicy, person: string): EntityWriteCheck {
+  return async (write) => {
+    const request: ActionRequest = { action: actionOf(write.entity, write.kind, write.relation) };
+    if (write.kind === 'create') {
+      request.author = person;
+      request.after = write.data ?? {};
+    } else {
+      // Always the backend's answer: what the transaction has staged, or else what is committed.
+      const record = (await write.record?.()) ?? null;
+      request.author = typeof record?.author === 'string' ? record.author : null;
+      request.before = record;
+      if (write.kind === 'edit') {
+        request.after = record ? { ...record, ...write.data } : null;
+        request.changed = Object.keys(write.data ?? {});
+      }
+    }
+    const refusal = evaluate(policy.rules, request, { person, ...policy.invoker });
+    if (refusal) throw new PolicyRefusal(refusal);
+  };
+}
 
-  registerOperations(VECTOR_NAMESPACE, c.operations);
+/**
+ * Commit a vector's `concurrent` records the moment its first `expect` find has read: another
+ * writer landing between the read and the operation's end. Done by wrapping the find's entity's
+ * read, since that read is the only moment the contract lets a caller see. Returns the undo.
+ */
+function interleave(dataset: DatasetHandle, vector: VectorInput, records: readonly SeedRecord[]): () => void {
+  if (!records.length) return () => {};
+  const finds = Object.values(vector.manifest.operations).flatMap((op) =>
+    [...bodiesOf(op.steps)].filter(([verb, body]) => verb === 'find' && body.expect === true),
+  );
+  const entity = finds[0]?.[1].entity;
+  if (typeof entity !== 'string') throw new Error(`${vector.id} has concurrent records but no expect find`);
+  const Model = model(entity) as unknown as Record<string, unknown>;
+  const own = Object.getOwnPropertyDescriptor(Model, 'findAll');
+  const read = Model.findAll as (...args: unknown[]) => Promise<unknown>;
+  let landed = false;
+  Model.findAll = async function (this: unknown, ...args: unknown[]) {
+    const rows = await read.apply(this, args);
+    if (!landed) {
+      landed = true;
+      await seed(dataset, records);
+    }
+    return rows;
+  };
+  return () => {
+    if (own) Object.defineProperty(Model, 'findAll', own);
+    else delete Model.findAll;
+  };
+}
+
+/**
+ * Run one vector on a fresh subject and say what it produced, in the file's terms.
+ *
+ * `registerCalls` registers the vector's `calls` under their own namespaces, as an implementation
+ * with none of WE's operations of its own does; a WE backend already has them.
+ */
+export async function runVector(
+  subject: ConformanceSubject,
+  context: VectorContext,
+  vector: VectorInput,
+  opts: { registerCalls?: boolean } = {},
+): Promise<Pick<OperationVector, 'outcome' | 'records'>> {
+  const agent = subject.agent;
+  const inbound = <T>(value: T) => swap(value, vector.invoker, agent);
+  await seed(subject.dataset, inbound(vector.dataset));
+
+  if (opts.registerCalls) {
+    const byNamespace: Record<string, Record<string, OperationDefinition>> = {};
+    for (const [name, definition] of Object.entries(vector.calls)) {
+      const dot = name.indexOf('.');
+      (byNamespace[name.slice(0, dot)] ??= {})[name.slice(dot + 1)] = definition;
+    }
+    for (const [namespace, operations] of Object.entries(byNamespace))
+      registerOperations(namespace, operations, { entities: context.entities });
+  }
+  registerOperations(VECTOR_NAMESPACE, vector.manifest.operations, {
+    entities: context.entities,
+  });
+  const undo = interleave(subject.dataset, vector, inbound(vector.concurrent ?? []));
+  registerEntityWriteCheck(policyCheck(context.policy, agent));
   let outcome: OperationVector['outcome'];
   try {
-    const result = await runOperation(`${VECTOR_NAMESPACE}.${c.operation}`, c.args, {
+    const result = await runOperation(`${VECTOR_NAMESPACE}.${vector.operation}`, inbound(vector.args), {
       dataset: subject.dataset,
-      invoker: VECTOR_INVOKER,
-      invocationId: c.invocationId,
-      invokedAt: c.invokedAt,
+      invoker: agent,
+      invocationId: vector.invocationId,
+      invokedAt: vector.invokedAt,
     });
-    outcome = { result: result === undefined ? null : result };
+    outcome = { result: result === undefined ? null : swap(result, agent, vector.invoker) };
   } catch (error) {
     if (!isOperationError(error)) throw error;
     outcome = { error: { class: error.class, code: error.code } };
   } finally {
+    registerEntityWriteCheck(null);
+    undo();
     unregisterOperations(VECTOR_NAMESPACE);
   }
-  return { outcome, records: await observe(subject.dataset, c.observe) };
+  const records = await observe(subject.dataset, vector.observe, context.entities);
+  return { outcome, records: swap(records, agent, vector.invoker) };
 }
 
-/** A case as its vector records it: everything another implementation needs to run it. */
-export function vectorOf(c: OperationCase, produced: Pick<OperationVector, 'outcome' | 'records'>): OperationVector {
+/** A case as its vector states it, before it is run. */
+export function vectorInput(c: OperationCase): VectorInput {
   return {
     id: c.id,
     note: c.note,
-    manifest: { version: '1', entities: {}, operations: c.operations },
-    calls: coreCalls(c.operations[c.operation]),
+    manifest: { version: '1', operations: c.operations },
+    calls: coreCalls(c.operations),
     dataset: c.dataset,
     operation: c.operation,
     args: c.args,
     invoker: VECTOR_INVOKER,
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
+    ...(c.concurrent ? { concurrent: c.concurrent } : {}),
     observe: c.observe,
-    ...produced,
+  };
+}
+
+/** A case as its vector records it: everything another implementation needs to run it. */
+export function vectorOf(c: OperationCase, produced: Pick<OperationVector, 'outcome' | 'records'>): OperationVector {
+  return { ...vectorInput(c), ...produced };
+}
+
+/** The file's shared sections, as the cases written here need them. */
+export function vectorContext(): Omit<OperationVectorFile, 'cases'> {
+  return {
+    version: 2,
+    entities: vectorEntities(),
+    protectedEntities: VECTOR_PROTECTED_ENTITIES,
+    policy: VECTOR_POLICY,
   };
 }
 
 export const OPERATION_VECTORS_FILE = new URL('../vectors/operations/operations.json', import.meta.url);
 
 /** The recorded vectors, as committed. */
-export function readOperationVectors(): { version: 1; cases: OperationVector[] } {
-  return JSON.parse(readFileSync(OPERATION_VECTORS_FILE, 'utf8')) as { version: 1; cases: OperationVector[] };
+export function readOperationVectors(): OperationVectorFile {
+  return JSON.parse(readFileSync(OPERATION_VECTORS_FILE, 'utf8')) as OperationVectorFile;
 }
 
 export function describeOperations(name: string, harness: ConformanceHarness, timeout: number): void {
@@ -631,10 +1234,16 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
       return () => harness.teardown?.(subject);
     }, timeout);
 
-    const recorded = new Map(readOperationVectors().cases.map((vector) => [vector.id, vector]));
+    const file = readOperationVectors();
+    const recorded = new Map(file.cases.map((vector) => [vector.id, vector]));
 
     it('has a recorded vector for every case, and no vector without one', () => {
       expect([...recorded.keys()].sort()).toEqual(OPERATION_CASES.map((c) => c.id).sort());
+    });
+
+    it('carries the entities, the protected entities and the policy the cases run under', () => {
+      const { cases: _cases, ...shared } = file;
+      expect(shared).toEqual(vectorContext());
     });
 
     for (const c of OPERATION_CASES) {
@@ -644,7 +1253,7 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
         expect(vector, `no vector recorded for ${c.id}`).toBeDefined();
         // The case as written must still be the case as recorded, or the vector is stale.
         expect(vectorOf(c, { outcome: vector!.outcome, records: vector!.records })).toEqual(vector);
-        expect(await runOperationCase(subject, c)).toEqual({ outcome: vector!.outcome, records: vector!.records });
+        expect(await runVector(subject, file, vector!)).toEqual({ outcome: vector!.outcome, records: vector!.records });
       };
       // Typed by the suite's case list, which names no operation case yet; read by name.
       const gap = (harness.knownGaps as Partial<Record<string, string>> | undefined)?.[id];
