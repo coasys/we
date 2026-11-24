@@ -2666,7 +2666,7 @@ const cpRange = (text: string, needle: string): { start: number; end: number } =
  * what the app draws for the same stored fields.
  */
 const feedRichLines = (): Scenario => {
-  const line = (id: string, author: string, text: string, at: string, marks: object[] = [], format = '') => {
+  const line = (id: string, author: string, text: string, at: string, marks: object[] = []) => {
     const row = {
       kind: 'line',
       id,
@@ -2676,7 +2676,6 @@ const feedRichLines = (): Scenario => {
       author,
       text,
       marks: marks.length ? JSON.stringify(marks) : '',
-      format,
       source: 'typed',
       call: '',
       callTitle: '',
@@ -2704,6 +2703,23 @@ const feedRichLines = (): Scenario => {
     '- `integration-tests-agent-harness`: `docker: command not found`\n\n' +
     '```\n07:09:43 prompt start chars=13062 tokens_in=3266\n07:09:51 prompt done tokens_out=1\n```\n\n' +
     '@Data the full log is at https://example.org/nightly-1121.log';
+  // Data's nightly report, as written: sections with `- ` runs under them, and a closing line.
+  const nightly =
+    "@Hex tonight's nightly (ad4m dev 380d98fe2, without #1884), per run:\n\n" +
+    'coasys-spaces\n' +
+    '- 3d24040a (job 85026): both runs predate we#544. V1 and V3 pass; V2, V4, V5 and V6 time out.\n' +
+    '- 5f78f076 (job 85044): V1, V2, V3, V4 and V6 pass. V5 fails at "Alice starts Build on the Task".\n\n' +
+    'integration-tests-sfu-browsers (11 passing, 1 failing in both runs)\n' +
+    "- 5f78f076 (job 85050): Firefox stops receiving WebKit's video.\n" +
+    '- 7565250c: passed.\n' +
+    'Marvin has the ICE failure queued behind the we#504 rename. Logs: .scratch/nightly-1122/all.log.';
+  // Data's list as Data writes it: plain lines, nothing marked but the mention.
+  const priorities =
+    '@Josh yes. All of these are Lal-approved and touch neither identity nor SFU. In priority order:\n' +
+    '1. ad4m#1868: Holochain gets whole-number floats as msgpack integers. Acorn needs it for Tuesday.\n' +
+    '2. ad4m#1887 then #1888: the Acorn split. They need a WE pin once merged.\n' +
+    '3. we#549: the extraction → interpretation rename rebuilt on dev.\n' +
+    'Also open but less urgent: #1864 (fromJSONSchema; its integration-tests-model job is red).';
   return {
     node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [feedView] },
     tables: {},
@@ -2711,14 +2727,15 @@ const feedRichLines = (): Scenario => {
       modules: {
         feed: {
           feedRows: [
-            line(
-              'r5',
-              'did:hex',
-              markdown,
-              '2026-11-24T10:05:00Z',
-              [{ ...cpRange(markdown, '@Data'), type: 'mention', did: 'did:data' }],
-              'markdown',
-            ),
+            line('r7', 'did:data', nightly, '2026-11-24T10:07:00Z', [
+              { ...cpRange(nightly, '@Hex'), type: 'mention', did: 'did:hex' },
+            ]),
+            line('r6', 'did:data', priorities, '2026-11-24T10:06:00Z', [
+              { ...cpRange(priorities, '@Josh'), type: 'mention', did: 'did:josh' },
+            ]),
+            line('r5', 'did:hex', markdown, '2026-11-24T10:05:00Z', [
+              { ...cpRange(markdown, '@Data'), type: 'mention', did: 'did:data' },
+            ]),
             line('r4', 'did:hex', sovereign, '2026-11-24T10:04:00Z', [
               { ...cpRange(sovereign, '@Data'), type: 'mention', did: 'did:data' },
               { ...cpRange(sovereign, '@Josh'), type: 'mention', did: 'did:josh' },

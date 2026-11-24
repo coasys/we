@@ -16,8 +16,10 @@
  * A thread holds every response, and a call held about a line is one; it is a conversation of its
  * own, not a line of this one, so it is left out.
  */
-import { parseMarks, withFoundLinks } from '@we/block-shared';
+import { isTextBlock, markdownToBlocks, parseMarks, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
+
+import { CORRECTED, SPOKEN } from './source.ts';
 
 /** What a reply's quote needs of the line it answers. */
 export interface ReplyQuote {
@@ -30,7 +32,8 @@ type Row = Record<string, unknown>;
 
 /**
  * A line as the blocks a renderer draws it from — `[{ _type: 'block', text, marks }]` — or `null`
- * for a line with no words.
+ * for a line with no words. A typed line is as many blocks as its markdown makes: headings, list
+ * items, code (`markdownToBlocks`).
  *
  * ## Every line, not only a marked one
  *
@@ -38,6 +41,20 @@ type Row = Record<string, unknown>;
  * looked like the cheap path and was a second look: plain text folds a line break into a space, so a
  * bot's message with paragraphs and a list read as one block of prose — while the same bot's next
  * message, which happened to mention somebody and so carried a mark, kept every break. One path now.
+ *
+ * ## Markdown, unless it was said
+ *
+ * A typed line — a person's or a bot's — is read as markdown, with no flag saying so, as chat apps
+ * read every message. What bots write already is markdown in all but name: `- ` lists, numbered
+ * steps, blank lines between paragraphs; drawn as plain text those were a column of hyphens. Reading
+ * prose as markdown misreads very little: emphasis needs a pair (`*a*`), a heading or a quote a line
+ * that starts with `# ` or `> `, and `share_links_mutex` stays a word. Backticks are the way out.
+ *
+ * A line that was spoken, or spoken and corrected, is drawn as said: a recogniser writes no markdown,
+ * and a transcript shows the words, not what a stray symbol in them might mean.
+ *
+ * The writer's own marks — a bot's mentions, the composer's bold and links — come through the parse
+ * on the words they were over (see `markdownToBlocks`).
  *
  * ## URLs nobody marked
  *
@@ -59,7 +76,12 @@ type Row = Record<string, unknown>;
 export function lineContent(row: Row): Row[] | null {
   const text = typeof row.text === 'string' ? row.text : '';
   if (!text) return null;
-  return [{ _type: 'block', text, marks: withFoundLinks(text, parseMarks(row.marks)) }];
+  const marks = parseMarks(row.marks);
+  if (row.source === SPOKEN || row.source === CORRECTED)
+    return [{ _type: 'block', text, marks: withFoundLinks(text, marks) }];
+  return markdownToBlocks(text, marks).map((block) =>
+    isTextBlock(block) ? { ...block, marks: withFoundLinks(block.text, block.marks ?? []) } : block,
+  );
 }
 
 const timeOf = (row: Row): number => {

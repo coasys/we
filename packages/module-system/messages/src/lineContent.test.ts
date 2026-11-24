@@ -36,3 +36,38 @@ describe('lineContent', () => {
     expect(block({ text: 'hello', marks: '{not json' })!.marks).toEqual([]);
   });
 });
+
+describe('lineContent reads a typed line as markdown', () => {
+  it('draws the markdown, keeping the writer’s mention and linking bare URLs', () => {
+    const text = '## Nightly\n\n- `sfu`: real, see https://x.org/1944.\n\n@Data the log is attached';
+    const at = text.indexOf('@Data');
+    const marks = JSON.stringify([{ start: at, end: at + 5, type: 'mention', did: 'did:data' }]);
+    const out = lineContent({ text, marks, source: 'typed' }) as Block[];
+    expect(out.map((b) => b.text)).toEqual([
+      'Nightly',
+      'sfu: real, see https://x.org/1944.',
+      '@Data the log is attached',
+    ]);
+    expect(out[1].marks.map((m) => m.type)).toEqual(['code', 'link']);
+    expect(out[1].marks[1].href).toBe('https://x.org/1944');
+    expect(out[2].marks).toEqual([{ start: 0, end: 5, type: 'mention', did: 'did:data' }]);
+  });
+
+  it('draws a bot’s hyphen and number lines as list items', () => {
+    const out = lineContent({ text: 'Per job:\n1. sfu: real\n2. harness: runner', marks: '' }) as (Block & {
+      listItem?: string;
+    })[];
+    expect(out.map((b) => [b.text, b.listItem])).toEqual([
+      ['Per job:', undefined],
+      ['sfu: real', 'number'],
+      ['harness: runner', 'number'],
+    ]);
+  });
+
+  it('draws a spoken or corrected line as said, symbols and all', () => {
+    for (const source of ['spoken', 'corrected'])
+      expect(lineContent({ text: '# one *two*', marks: '', source })).toEqual([
+        { _type: 'block', text: '# one *two*', marks: [] },
+      ]);
+  });
+});
