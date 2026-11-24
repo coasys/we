@@ -12,11 +12,14 @@ const acornNavBar: SchemaNode = {
   type: 'Row',
   props: {
     bg: 'surface',
-    borderBottom: '1px solid border',
+    border: '1px solid border',
+    r: 'surface',
+    m: '200',
     px: '400',
-    py: '300',
+    py: '200',
     gap: '300',
     ay: 'center',
+    flexWrap: 'wrap',
   },
   children: [
     { type: 'we-icon', props: { name: 'acorn' } },
@@ -37,7 +40,11 @@ const acornNavBar: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
+                variant: 'ghost',
+                color: { $: "routeStore.segments[2] == view.segment ? 'accent-text' : 'text-muted'" },
+                borderBottom: {
+                  $: "routeStore.segments[2] == view.segment ? '2px solid accent' : '2px solid transparent'",
+                },
                 onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
               },
               children: [
@@ -87,7 +94,7 @@ export const acornTemplate: TemplateSchema = {
               type: 'Column',
               children: [
                 acornNavBar,
-                { type: 'Column', props: { height: '100dvh', width: '100%' }, children: [{ type: '$routes' }] },
+                { type: 'Column', props: { minHeight: '100%', width: '100%' }, children: [{ type: '$routes' }] },
               ],
             },
           },

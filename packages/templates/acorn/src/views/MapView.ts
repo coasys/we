@@ -25,11 +25,11 @@ export const acornMapView: TemplateSchema = {
   // The section wears Acorn itself, so it looks the same inside any shell.
   theme: { themeName: 'acorn' },
   type: 'Column',
-  props: { bg: 'page', minHeight: '100%', p: '500', gap: '300', width: '100%' },
+  props: { 'data-acorn-view': 'map', bg: 'page', minHeight: '100%', p: '500', gap: '300', width: '100%' },
   children: [
     {
       type: 'we-text',
-      props: { fontSize: 'xl', fontWeight: 'bold' },
+      props: { fontSize: '600', fontWeight: 'bold' },
       children: ['Map'],
     },
     { type: '$part', props: { id: 'acorn.mapView' } },

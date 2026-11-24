@@ -557,7 +557,15 @@ export const ACORN_PARTS: Record<string, ModulePart> = {
           children: [
             {
               type: 'Row',
-              props: { gap: '300', ay: 'center', p: '300', bg: 'surface', r: 'surface', width: '100%' },
+              props: {
+                'data-acorn-outcome': '',
+                gap: '300',
+                ay: 'center',
+                p: '300',
+                bg: 'surface',
+                r: 'surface',
+                width: '100%',
+              },
               children: [
                 {
                   type: 'Column',

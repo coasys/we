@@ -21,6 +21,7 @@ export const acornOutcomesView: TemplateSchema = {
   theme: { themeName: 'acorn' },
   type: 'Column',
   props: {
+    'data-acorn-view': 'outcomes',
     bg: 'page',
     minHeight: '100%',
     p: '500',
@@ -32,7 +33,7 @@ export const acornOutcomesView: TemplateSchema = {
   children: [
     {
       type: 'we-text',
-      props: { fontSize: 'xl', fontWeight: 'bold' },
+      props: { fontSize: '600', fontWeight: 'bold' },
       children: ['Outcomes'],
     },
     /*
