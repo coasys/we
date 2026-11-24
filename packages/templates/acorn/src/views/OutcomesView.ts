@@ -17,8 +17,18 @@ export const acornOutcomesView: TemplateSchema = {
     segment: 'outcomes',
     requires: { modules: ['acorn'] },
   },
+  // The section wears Acorn itself, so it looks the same inside any shell.
+  theme: { themeName: 'acorn' },
   type: 'Column',
-  props: { p: '500', gap: '300', width: '100%', maxWidth: 'var(--we-layout-lg)', mx: 'auto' },
+  props: {
+    bg: 'page',
+    minHeight: '100%',
+    p: '500',
+    gap: '300',
+    width: '100%',
+    maxWidth: 'var(--we-layout-lg)',
+    mx: 'auto',
+  },
   children: [
     {
       type: 'we-text',

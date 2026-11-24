@@ -22,8 +22,10 @@ export const acornMapView: TemplateSchema = {
     segment: 'map',
     requires: { modules: ['acorn', 'graph'] },
   },
+  // The section wears Acorn itself, so it looks the same inside any shell.
+  theme: { themeName: 'acorn' },
   type: 'Column',
-  props: { p: '500', gap: '300', width: '100%' },
+  props: { bg: 'page', minHeight: '100%', p: '500', gap: '300', width: '100%' },
   children: [
     {
       type: 'we-text',

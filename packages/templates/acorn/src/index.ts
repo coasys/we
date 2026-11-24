@@ -19,6 +19,7 @@ import { acornPriorityView } from './views/PriorityView.ts';
 import { acornSettingsView } from './views/SettingsView.ts';
 
 export { acornTemplate } from './AcornTemplate.ts';
+export { acornTheme } from './themes.ts';
 export { acornMapView } from './views/MapView.ts';
 export { acornOutcomesView } from './views/OutcomesView.ts';
 export { acornOutcomeTableView } from './views/OutcomeTableView.ts';

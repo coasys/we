@@ -66,6 +66,8 @@ export const acornTemplate: TemplateSchema = {
     description: 'An Acorn project — its outcome tree, priorities and members — as a WE space',
     icon: 'acorn',
     role: 'shell',
+    // The Acorn look — see `themes.ts`. A suggestion the agent can pin over, not a setting.
+    themeId: 'acorn',
     // The views call the acorn module's expression functions; a deployment without the module
     // sees the reason rather than a blank section.
     requires: { modules: ['acorn'] },
