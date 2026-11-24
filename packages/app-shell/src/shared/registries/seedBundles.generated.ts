@@ -25991,7 +25991,7 @@ export const seedBundles: Bundle[] = [
                               },
                               {
                                 type: 'Column',
-                                props: { flex: '1', minWidth: '16rem', gap: '400' },
+                                props: { flex: '1', minWidth: 'min(16rem, 100%)', gap: '400' },
                                 children: [
                                   {
                                     type: '$if',
@@ -27497,10 +27497,7 @@ export const seedBundles: Bundle[] = [
                                                                         children: [
                                                                           {
                                                                             type: 'we-text',
-                                                                            props: {
-                                                                              variant: 'footnote',
-                                                                              whiteSpace: 'nowrap',
-                                                                            },
+                                                                            props: { variant: 'footnote' },
                                                                             children: [
                                                                               'Stuck between two moves — one has to be withdrawn',
                                                                             ],

@@ -62,10 +62,11 @@ const iconButton = (
   ],
 });
 
-const chip = (content: string | { $: string }, tone = 'surface-sunken'): SchemaNode => ({
+/** A count or a status word stays on one line; a sentence (`wrap`) wraps inside its chip. */
+const chip = (content: string | { $: string }, tone = 'surface-sunken', wrap = false): SchemaNode => ({
   type: 'Row',
   props: { px: '200', py: '100', r: 'full', bg: tone, ay: 'center', gap: '100' },
-  children: [text(content, { variant: 'footnote', whiteSpace: 'nowrap' })],
+  children: [text(content, { variant: 'footnote', ...(wrap ? {} : { whiteSpace: 'nowrap' }) })],
 });
 
 // ─── Lanes ─────────────────────────────────────────────────────────────────────
@@ -639,7 +640,7 @@ const recordRow: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'rec.stalled' },
-            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft'),
+            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft', true),
           },
         },
         { type: 'Row', props: { flex: '1' } },
@@ -1438,7 +1439,8 @@ export function workflowsPage(band: Record<string, string>): SchemaNode {
               workflowList,
               {
                 type: 'Column',
-                props: { flex: '1', minWidth: '16rem', gap: '400' },
+                // Never wider than the lane: a docked pane narrower than 16rem still fits.
+                props: { flex: '1', minWidth: 'min(16rem, 100%)', gap: '400' },
                 children: [
                   {
                     type: '$if',
