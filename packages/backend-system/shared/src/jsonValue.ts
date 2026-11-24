@@ -26,7 +26,7 @@ export class JsonValueError extends Error {
  */
 export function writtenJsonValue(field: string, value: unknown): unknown {
   if (value === undefined || value === null || value === '') return undefined;
-  let structured = value;
+  let structured: unknown = value;
   if (typeof value === 'string') {
     try {
       structured = JSON.parse(value) as unknown;

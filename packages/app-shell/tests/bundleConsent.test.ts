@@ -20,6 +20,7 @@ const judged = (over: { groups?: CapabilityGroup[]; modules?: string[]; recordTy
     pages: [],
     themes: [],
     recordTypes: over.recordTypes ?? ['Species'],
+    operations: [],
     workflows: [],
   },
 });
