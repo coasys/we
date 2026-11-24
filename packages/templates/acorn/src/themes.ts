@@ -1,3 +1,6 @@
+// Source consumers need the ambient Vite asset declaration; a runtime import cannot load a .d.ts.
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference
+/// <reference path="./global.d.ts" />
 import type { BundleTheme, ThemeOverrides } from '@we/schema-shared';
 
 import pjBold from './assets/PlusJakartaSans-Bold.woff2?inline';
@@ -61,12 +64,22 @@ const acornOverrides: ThemeOverrides = {
       purple: { hue: 285 },
     },
   },
-  surfaceRadius: '16px',
+  surfaceRadius: '10px',
   controlRadius: '10px',
   inputRadius: '10px',
   avatarRadius: '999px',
   iconWeight: 'light',
   shadowIntensity: 'subtle',
+  // Empty create buttons really are disabled. Keep their labels readable without enabling them.
+  disabledOpacity: 0.9,
+  surfaceOpacity: 1,
+  surfaceBlur: 0,
+  glowIntensity: 'none',
+  // A named subtree must not inherit the Coasis page's aurora through transparent areas.
+  surfaceImages: {
+    page: 'linear-gradient(transparent, transparent)',
+    chrome: 'linear-gradient(transparent, transparent)',
+  },
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
   fontFaces: [
     { family: 'Plus Jakarta Sans', src: pjRegular, weight: '400' },
@@ -87,6 +100,14 @@ const acornOverrides: ThemeOverrides = {
   },
   roles: {
     page: '#f7f5f3',
+    chrome: '#f7f5f3',
+    // Exact Acorn ultramarine, including the button's interactive states.
+    accent: '#344cff',
+    accentHover: '#293edb',
+    accentActive: '#2133b8',
+    onAccent: '#ffffff',
+    accentText: '#344cff',
+    accentSoft: '#e9ecff',
     surface: '#ffffff',
     surfaceRaised: '#ffffff',
     surfaceSunken: '#fbfbf9',
@@ -106,4 +127,56 @@ export const acornTheme: BundleTheme = {
   name: 'Acorn',
   icon: 'acorn',
   overrides: acornOverrides,
+  // Longhand colour declarations survive CSSOM sanitisation (var() shorthands do not).
+  // The layout overrides beat the module part's inline row defaults, only within this theme.
+  // The host confines this sheet to the Acorn theme boundary, including named view roots.
+  css: `
+    [data-acorn-view='table'] [role='table'],
+    [data-acorn-outcome] {
+      border-width: 1px;
+      border-style: solid;
+      border-top-color: var(--we-role-border);
+      border-right-color: var(--we-role-border);
+      border-bottom-color: var(--we-role-border);
+      border-left-color: var(--we-role-border);
+    }
+    [data-acorn-view='table'] [role='table'] {
+      background-color: var(--we-role-surface);
+      border-radius: 10px;
+      box-shadow: 0 4px 20px #c7beb433;
+      overflow: hidden;
+      min-height: 60vh;
+    }
+    [data-acorn-view='table'] [role='row'] { gap: 0 !important; padding: 0 !important; }
+    [data-acorn-view='table'] [role='columnheader'],
+    [data-acorn-view='table'] [role='cell'] {
+      padding: 8px 12px;
+      align-self: stretch;
+      border-right-width: 1px;
+      border-right-style: solid;
+      border-right-color: var(--we-role-border);
+    }
+    [data-acorn-view='table'] [role='row']:has([role='columnheader']) {
+      background-color: var(--we-role-surface-sunken);
+    }
+    [data-acorn-view='table'] [role='row']:hover { background-color: var(--we-role-accent-soft); }
+    [data-acorn-view='table'] [role='cell'] { overflow-wrap: normal; }
+    [data-acorn-view='map'] .we-graph__card-shape {
+      background-color: var(--we-role-surface);
+      color: var(--we-role-text);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    [data-acorn-view='map'] .we-graph__node--card:not(.we-graph__node--selected):not(.we-graph__node--hovered) .we-graph__card-shape {
+      box-shadow: 0 8px 28px #c7beb480;
+    }
+    [data-acorn-outcome] {
+      padding: 20px !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      border-left-width: 3px;
+      border-left-color: var(--we-role-accent);
+      box-shadow: 0 6px 20px #c7beb455;
+    }
+  `,
 };

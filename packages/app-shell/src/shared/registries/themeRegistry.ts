@@ -43,7 +43,7 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
   acorn: {
     name: acornTheme.name,
     icon: acornTheme.icon ?? 'acorn',
-    css: null,
+    css: acornTheme.css ?? null,
     overrides: acornTheme.overrides,
   },
   /*
