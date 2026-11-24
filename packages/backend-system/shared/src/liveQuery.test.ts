@@ -55,6 +55,27 @@ describe('createLiveQuery', () => {
     live.dispose();
   });
 
+  it('follows a changed Map result instead of reading it as an empty object', async () => {
+    const src = source(new Map([['value', 1]]));
+    const live = createLiveQuery(src);
+    await live.first;
+    src.set(new Map([['value', 2]]));
+    await tick();
+    expect(live.getSnapshot().data).toEqual(new Map([['value', 2]]));
+    live.dispose();
+  });
+
+  it('returns a failed handle when the source cannot be watched', async () => {
+    const live = createLiveQuery({
+      read: () => 1,
+      watch: () => {
+        throw new Error('cannot watch');
+      },
+    });
+    await expect(live.first).rejects.toThrow('cannot watch');
+    expect(live.getSnapshot()).toMatchObject({ status: 'error' });
+  });
+
   it('stops calling after dispose, and rejects first when disposed before it answered', async () => {
     const src = source(1);
     const live = createLiveQuery(src);

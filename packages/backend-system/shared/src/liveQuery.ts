@@ -47,6 +47,9 @@ export interface LiveQuery<T> {
 function canonical(value: unknown): string | undefined {
   try {
     return JSON.stringify(value, (_key, v: unknown) => {
+      // JSON.stringify would write a Map or a Set as `{}`, so two different ones would read as equal: their contents are written instead.
+      if (v instanceof Map) return ['Map', [...v.entries()]];
+      if (v instanceof Set) return ['Set', [...v.values()]];
       if (v && typeof v === 'object' && !Array.isArray(v)) {
         return Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
       }
@@ -169,7 +172,13 @@ export function createLiveQuery<T>(source: {
     reading = false;
   };
 
-  stop = source.watch(() => void refresh());
+  try {
+    stop = source.watch(() => void refresh());
+  } catch (error) {
+    // A source that cannot be watched cannot open the handle: it fails, as a read that fails does.
+    store.fail(error);
+    return store.live;
+  }
   if (store.disposed) stop();
   queueMicrotask(() => void refresh());
   return store.live;

@@ -3119,6 +3119,76 @@ describe('following a space from the rows its live queries push', () => {
     failing.mockRestore();
   }, 15000);
 
+  /** Leaves the open space and comes back, with `entity`'s watch (when `only` accepts the query) failing to open. */
+  async function reenterWithFailingWatch(
+    stores: Awaited<ReturnType<typeof openSpace>>['stores'],
+    entity: string,
+    only: (query: unknown) => boolean = () => true,
+  ) {
+    const here = stores.datasets.currentDataset()!.id;
+    const name = `${entity} Elsewhere`;
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe(name));
+    const model = getEntity(entity) as unknown as { query: (...a: unknown[]) => unknown };
+    const real = model.query.bind(model);
+    const failing = vi.spyOn(model, 'query').mockImplementation((...args: unknown[]) =>
+      only(args[1])
+        ? {
+            first: Promise.reject(new Error('executor unreachable')),
+            getSnapshot: () => ({ status: 'error', initial: false }),
+            subscribe: () => () => undefined,
+            dispose: () => undefined,
+          }
+        : real(...args),
+    );
+    await stores.datasets.switchDataset(here);
+    return failing;
+  }
+
+  it('keeps the task states when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Task State Watch Fails');
+    await getEntity('TaskState').create(handle, { name: 'Blocked', slug: 'blocked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked'));
+    const failing = await reenterWithFailingWatch(stores, 'TaskState');
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked');
+    failing.mockRestore();
+  }, 15000);
+
+  it('does not mark the roles loaded without the grants when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Grant Watch Fails');
+    await getEntity('Role').create(handle, { slug: 'steward', name: 'Steward' } as never);
+    await getEntity('RoleGrant').create(handle, { role: 'steward', agent: 'did:key:steward' } as never);
+    await vi.waitFor(() =>
+      expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']),
+    );
+    const failing = await reenterWithFailingWatch(stores, 'RoleGrant');
+    await vi.waitFor(() => expect(stores.spaces.rolesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    // Loaded with the grants the space stores, not with that half empty.
+    expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']);
+    failing.mockRestore();
+  }, 15000);
+
+  it('reads what a collection extracts once when the settings watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Settings Watch Fails');
+    const root = stores.spaces.root();
+    // The space's default is on; this collection is stored off.
+    await CollectionBlock.update(handle, root, { autoExtract: false } as never);
+    const isSettings = (query: unknown) => Array.isArray((query as { where?: { id?: unknown } })?.where?.id);
+    const failing = await reenterWithFailingWatch(stores, 'CollectionBlock', isSettings);
+    await vi.waitFor(() => expect(stores.spaces.root()).toBe(root));
+    await vi.waitFor(() => expect(failing.mock.calls.some((call) => isSettings(call[1]))).toBe(true));
+    expect(stores.spaces.autoInterpret()).toBe(true);
+    // Answered from the stored setting, never from the default standing in for it.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
+    failing.mockRestore();
+  }, 15000);
+
   it('hears a collection switched off without reading it again, and never hydrates its contents', async () => {
     // The space's own collection is asked about on entering, so watch from before that.
     let asked!: ReturnType<typeof vi.spyOn>;
