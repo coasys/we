@@ -6,14 +6,16 @@
  * that fail silently when they break: a renamed kind that stops being found, a duplicate that
  * shows a face twice, a tick that vanishes for a second after the click.
  */
-import { type EntityClass, registerEntity, unregisterEntity } from '@we/entities';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { getEntity } from '@we/entities';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { involvementOptimism } from '../src/shared/involvementOptimism';
 import {
   createInvolvementActions,
   type InvolvementTypeView,
   parseAppliesTo,
+  relationId,
   resolveInvolvementTypes,
 } from '../src/shared/involvements';
 import { applyPendingInvolvements, involvement } from '../src/shared/sources/involvement';
@@ -211,63 +213,68 @@ describe('a write shown before it lands', () => {
 });
 
 describe('the writes', () => {
+  /*
+    Against the in-memory backend, with the space's kinds as records: the writes are declared
+    operations, and what they find is the vocabulary the space actually holds.
+  */
   interface Row {
     id: string;
     agent: string;
     kind: string;
-    node: string;
-    delete: (batch?: string) => Promise<void>;
+    node: unknown;
   }
-  let table: Row[];
-  let notices: string[];
-  let serial = 0;
-
-  const Fake = {
-    findAll: async (_dataset: unknown, query?: { where?: { agent?: string } }) =>
-      table.filter((row) => !query?.where?.agent || row.agent === query.where.agent),
-    create: async (_dataset: unknown, fields: { agent: string; kind: string; node: string[] }) => {
-      const row: Row = {
-        id: `i${++serial}`,
-        agent: fields.agent,
-        kind: fields.kind,
-        node: fields.node[0],
-        delete: async () => {
-          table = table.filter((r) => r !== row);
-        },
-      };
-      table.push(row);
-      return row;
-    },
+  type Model = {
+    findAll(d: unknown, q?: Record<string, unknown>): Promise<Row[]>;
+    create(d: unknown, data: Record<string, unknown>): Promise<Row>;
   };
+  const Involvement = () => getEntity('Involvement') as unknown as Model;
+  let dataset: unknown;
+  let notices: string[];
 
   const types = SEEDED_INVOLVEMENT_TYPES;
   const actions = () =>
     createInvolvementActions({
-      dataset: () => ({}),
+      dataset: () => dataset as never,
       me: () => ME,
       types: () => types,
       notify: (message) => notices.push(message),
     });
+  const table = async () =>
+    (await Involvement().findAll(dataset, { order: { createdAt: 'asc' } })).map((r) => ({
+      agent: r.agent,
+      kind: r.kind,
+      node: relationId(r.node),
+    }));
 
-  beforeEach(() => {
-    table = [];
+  beforeEach(async () => {
     notices = [];
-    registerEntity('Involvement', Fake as unknown as EntityClass);
+    const ports = createInMemoryBackendPorts(
+      { selfId: () => ME },
+      { agent: { id: ME, unlocked: true }, datasets: [{ id: 'ds-involved', name: 'Involved' }] },
+    );
+    dataset = (await ports.lifecycle.get('ds-involved'))!.handle;
+    const InvolvementType = getEntity('InvolvementType') as unknown as Model;
+    for (const kind of types)
+      await InvolvementType.create(dataset, {
+        name: kind.name,
+        slug: kind.slug,
+        semantic: kind.semantic,
+        reflexive: kind.reflexive,
+      });
   });
-  afterEach(() => unregisterEntity('Involvement'));
 
   it('assigns somebody else, and cannot assign them twice by pressing twice', async () => {
     await actions().setInvolvement('t1', ANA, 'assignee', true);
     await actions().setInvolvement('t1', ANA, 'assignee', true);
-    expect(table.map((r) => [r.agent, r.kind, r.node])).toEqual([[ANA, 'assignee', 't1']]);
+    expect(await table()).toEqual([{ agent: ANA, kind: 'assignee', node: 't1' }]);
   });
 
   it('takes every copy off, so a duplicate does not outlive the person removing it', async () => {
-    await Fake.create({}, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Fake.create({}, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Fake.create({}, { agent: ANA, kind: 'assignee', node: ['t2'] });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t2'] });
     await actions().setInvolvement('t1', ANA, 'assignee', false);
-    expect(table.map((r) => r.node)).toEqual(['t2']);
+    expect((await table()).map((r) => r.node)).toEqual(['t2']);
   });
 
   it('writes quick presses in order, so the last one is what is stored', async () => {
@@ -278,41 +285,57 @@ describe('the writes', () => {
       a.setInvolvement('t1', ME, 'reviewer', false),
       a.setInvolvement('t1', ME, 'reviewer', true),
     ]);
-    expect(table.map((r) => [r.agent, r.kind])).toEqual([[ME, 'reviewer']]);
+    expect((await table()).map((r) => [r.agent, r.kind])).toEqual([[ME, 'reviewer']]);
     await Promise.all([
       a.setInvolvement('t1', ME, 'reviewer', false),
       a.setInvolvement('t1', ME, 'reviewer', true),
       a.setInvolvement('t1', ME, 'reviewer', false),
     ]);
-    expect(table).toEqual([]);
+    expect(await table()).toEqual([]);
   });
 
   it('refuses to answer for somebody else', async () => {
     await actions().setInvolvement('e1', ANA, 'going', true);
-    expect(table).toEqual([]);
-    expect(notices).toHaveLength(1);
+    expect(await table()).toEqual([]);
+    expect(notices).toEqual(['Only the person it is about can give that answer.']);
   });
 
   it('gives an agent one answer per record, replacing the last', async () => {
     await actions().respond('e1', 'maybe');
     await actions().respond('e1', 'going');
-    expect(table.map((r) => r.kind)).toEqual(['going']);
+    expect((await table()).map((r) => r.kind)).toEqual(['going']);
     await actions().respond('e1', '');
-    expect(table).toEqual([]);
+    expect(await table()).toEqual([]);
+  });
+
+  it('routes an answer given through setInvolvement to the same one-answer rule', async () => {
+    await actions().respond('e1', 'maybe');
+    await actions().setInvolvement('e1', ME, 'going', true);
+    expect((await table()).map((r) => r.kind)).toEqual(['going']);
+    await actions().setInvolvement('e1', ME, 'going', false);
+    expect(await table()).toEqual([]);
   });
 
   it('leaves what an answer is not about alone', async () => {
     await actions().setInvolvement('e1', ME, 'reviewer', true);
     await actions().respond('e1', 'going');
     await actions().respond('e1', 'not-going');
-    expect(table.map((r) => r.kind).sort()).toEqual(['not-going', 'reviewer']);
+    await actions().respond('e2', 'going');
+    expect((await table()).map((r) => `${r.node}:${r.kind}`).sort()).toEqual([
+      'e1:not-going',
+      'e1:reviewer',
+      'e2:going',
+    ]);
   });
 
   it('refuses an assignment given as an answer, and a kind the space does not have', async () => {
     await actions().respond('e1', 'assignee');
     await actions().setInvolvement('t1', ANA, 'shepherd', true);
-    expect(table).toEqual([]);
-    expect(notices).toHaveLength(2);
+    expect(await table()).toEqual([]);
+    expect(notices).toEqual([
+      'That is not an answer anybody can give to this.',
+      'That is not a kind of involvement this space has.',
+    ]);
   });
 });
 

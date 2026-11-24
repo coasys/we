@@ -4,7 +4,9 @@
  * An `Involvement` is one person's part in one record; an `InvolvementType` is the community's word
  * for a kind of part. The entities carry the reasoning for why this is a record at all and why it
  * sits beside `WeNode.participants` rather than replacing it — see `@we/entities`' manifest modules.
- * This file is what those two decisions cost at write time:
+ * The writes are `core.setInvolvement` and `core.respond` (declared in `@we/entities`, where their
+ * rules are written down); this file is what the host adds around them — the order presses are
+ * written in, the answer drawn before it is stored, and how a refusal reaches the person. The rules:
  *
  * - **Two authorships.** A kind that is not `reflexive` is something one member says about another
  *   — assigning a task — and anybody may write it about anybody. A reflexive kind is an agent's own
@@ -32,7 +34,7 @@
  * Framework-neutral, per `CONVENTIONS.md`: which dataset, who is asking, the vocabulary and how a
  * failure reaches a person all arrive as `InvolvementDeps`.
  */
-import { type DatasetProxy, Involvement, type InvolvementSemantic, runEntityTransaction } from '@we/entities';
+import { type DatasetProxy, type InvolvementSemantic, isOperationError, runOperation } from '@we/entities';
 
 /** What `InvolvementType.semantic` may hold, in the reading order a list uses. */
 export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [
@@ -150,98 +152,65 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
     return next;
   };
 
-  /** Every involvement this agent holds on this node — one query on the agent, narrowed by node here. */
-  async function heldBy(p: DatasetProxy, nodeId: string, agent: string): Promise<Involvement[]> {
-    const rows = await Involvement.findAll(p, { where: { agent } });
-    return rows.filter((row) => relationId(row.node) === nodeId);
-  }
+  /** A refusal the operation names is said as it is; anything else is a failure to save. */
+  const say = (error: unknown, fallback: string) =>
+    notify(
+      isOperationError(error) && error.class === 'precondition' && error.code !== 'refused' ? error.message : fallback,
+    );
+
+  const answerSlugs = () =>
+    types()
+      .filter((t) => t.reflexive)
+      .map((t) => t.slug);
 
   /**
-   * Put somebody on a record, or take them off — a kind one member says about another.
+   * Put somebody on a record, or take them off — `core.setInvolvement`.
    *
    * `on` rather than a toggle, so the write is idempotent: a menu passes the state it wants, which is
    * the opposite of the tick it is showing, and pressing twice on a slow connection cannot turn one
-   * assignment into none. A reflexive kind is routed to `respond`, and refused outright for anybody
-   * but the agent it is about.
+   * assignment into none. The operation routes a reflexive kind to `core.respond`, and refuses it for
+   * anybody but the agent it is about; what is held on screen meanwhile follows the same split.
    */
   async function setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): Promise<void> {
     const p = dataset();
     const self = me();
-    if (!p || !nodeId || !agent || !kind) return;
-    const type = types().find((t) => t.slug === kind);
-    if (!type) {
-      notify('That is not a kind of involvement this space has');
-      return;
-    }
-    if (type.reflexive) {
-      if (agent !== self) {
-        notify(`Only they can say whether they are ${type.name.toLowerCase()}`);
-        return;
-      }
-      await respond(nodeId, on ? kind : '');
-      return;
-    }
-    hold?.(nodeId, agent, kind, on);
-    await inOrder(`${nodeId}\u0000${agent}\u0000${kind}`, async () => {
+    if (!p || !self || !nodeId || !agent || !kind) return;
+    const answer = types().find((t) => t.slug === kind)?.reflexive === true && agent === self;
+    const held = answer ? answerSlugs() : [kind];
+    for (const slug of held) hold?.(nodeId, agent, slug, slug === kind ? on : false);
+    // An answer shares its queue with `respond`, since both rewrite the same agent's one answer.
+    const queue = answer ? `${nodeId}\u0000${self}\u0000answer` : `${nodeId}\u0000${agent}\u0000${kind}`;
+    await inOrder(queue, async () => {
       try {
-        const matching = (await heldBy(p, nodeId, agent)).filter((row) => row.kind === kind);
-        if (on && !matching.length) {
-          await Involvement.create(p, { agent, kind, node: [nodeId] });
-        } else if (!on && matching.length) {
-          // Every copy, not the first: a duplicate left by two members pressing at once must not
-          // survive the person who meant to remove it.
-          await runEntityTransaction(p, async (tx) => {
-            for (const row of matching) await row.delete(tx.batchId);
-          });
-        }
-        done?.(nodeId, agent, kind);
+        await runOperation('core.setInvolvement', { node: nodeId, agent, kind, on }, { dataset: p, invoker: self });
+        for (const slug of held) done?.(nodeId, agent, slug);
       } catch (error) {
-        release?.(nodeId, agent, kind);
+        for (const slug of held) release?.(nodeId, agent, slug);
         console.error('SpaceStore: could not update who is on that', error);
-        notify('Could not save that');
+        say(error, 'Could not save that');
       }
     });
   }
 
   /**
-   * Give this agent's own answer to a record — going, maybe, not going — or withdraw it with `''`.
-   *
-   * One answer per record, so every other reflexive kind this agent holds on it goes in the same
-   * transaction the new one arrives in. Non-reflexive kinds are untouched: answering an invitation
-   * says nothing about whether you were assigned to it.
+   * Give this agent's own answer to a record — going, maybe, not going — or withdraw it with `''`:
+   * `core.respond`, which replaces any answer they gave before in the same write.
    */
   async function respond(nodeId: string, kind: string): Promise<void> {
     const p = dataset();
     const self = me();
     if (!p || !nodeId || !self) return;
-    const answers = new Set(
-      types()
-        .filter((t) => t.reflexive)
-        .map((t) => t.slug),
-    );
-    if (kind && !answers.has(kind)) {
-      notify('That is not an answer anybody can give to this');
-      return;
-    }
-    for (const slug of answers) hold?.(nodeId, self, slug, slug === kind);
+    const answers = answerSlugs();
+    const held = answers.includes(kind) || !kind ? answers : [];
+    for (const slug of held) hold?.(nodeId, self, slug, slug === kind);
     await inOrder(`${nodeId}\u0000${self}\u0000answer`, async () => {
       try {
-        const held = (await heldBy(p, nodeId, self)).filter((row) => answers.has(row.kind));
-        const stale = held.filter((row) => row.kind !== kind);
-        const already = held.some((row) => row.kind === kind);
-        if (stale.length || (!already && kind)) {
-          await runEntityTransaction(p, async (tx) => {
-            for (const row of stale) await row.delete(tx.batchId);
-            if (kind && !already) {
-              await Involvement.create(p, { agent: self, kind, node: [nodeId] }, { batchId: tx.batchId });
-            }
-          });
-        }
-        for (const slug of answers) done?.(nodeId, self, slug);
+        await runOperation('core.respond', { node: nodeId, kind: kind || null }, { dataset: p, invoker: self });
+        for (const slug of held) done?.(nodeId, self, slug);
       } catch (error) {
-        for (const slug of answers) release?.(nodeId, self, slug);
+        for (const slug of held) release?.(nodeId, self, slug);
         console.error('SpaceStore: could not save that answer', error);
-        notify('Could not save your answer');
+        say(error, 'Could not save your answer');
       }
     });
   }
