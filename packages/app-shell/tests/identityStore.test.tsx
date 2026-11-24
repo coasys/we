@@ -575,6 +575,28 @@ describe('which device serves you', () => {
     expect(deviceStore.serverError()).toBe('');
   });
 
+  it('drops a switch or a removal that fails on the backend it replaced', async () => {
+    for (const act of ['serveFrom', 'removeServer'] as const) {
+      const s = servingBackend();
+      let fail!: () => void;
+      s.port[act] = () => new Promise<void>((_, reject) => (fail = () => reject(new Error('old backend failed'))));
+      setPorts({ identity: s.port });
+      const { devices: deviceStore } = mount();
+      await flush();
+      const running = deviceStore[act]('https://a.example');
+      await flush();
+
+      // The backend changes while the old one is still working; then the old one fails.
+      setPorts({ identity: servingBackend().port });
+      await flush();
+      fail();
+      await running;
+
+      expect(deviceStore.serverError()).toBe('');
+      expect(deviceStore.serverBusy()).toBe(false);
+    }
+  });
+
   it('marks the server serving now, its role, and forgets another', async () => {
     const s = servingBackend();
     setPorts({ identity: s.port });

@@ -251,6 +251,10 @@ export function isLoopbackHost(hostname: string): boolean {
 
 const unixNow = () => Math.floor(Date.now() / 1000);
 
+/** The server answered 401: the token is refused, which is the SDK's cue for `onAuthFailed` too. */
+const isUnauthorized = (error: unknown): boolean =>
+  !!error && typeof error === 'object' && (error as { status?: unknown }).status === 401;
+
 /**
  * One login: a challenge from the server, the statement signed here, the token from the server.
  * `audience` is the origin WE dialled — never anything the server said about itself.
@@ -327,9 +331,19 @@ export async function openKeySession(
     finished = true;
     if (timer !== null) clearTimer(timer);
     timer = null;
-    for (const listener of [...listeners]) listener(reason);
+    const heard = [...listeners];
     listeners.clear();
-    client.close();
+    try {
+      for (const listener of heard) {
+        try {
+          listener(reason);
+        } catch {
+          // One listener's failure must not keep the others from hearing, or the client from closing.
+        }
+      }
+    } finally {
+      client.close();
+    }
   };
 
   const schedule = (afterSec: number) => {
@@ -367,8 +381,14 @@ export async function openKeySession(
       // The key is no longer valid, or the grant is gone: renewing cannot work again.
       if (reason === 'key') return end('revoked');
       if (reason === 'grant') return end('ended');
-      // Anything else (the server restarting, the network) is tried again while the token lasts.
-      if (now() + retryAfter < expiresAt) schedule(retryAfter);
+      // The server refused the token: it ended the grant. Which way is the probe's to say, so a
+      // removed device reads as `revoked` rather than as merely `ended`.
+      if (isUnauthorized(error)) return probe();
+      // Anything else (the server restarting, the network) is tried again while the token lasts: at
+      // the usual interval while that fits, then once more halfway to the expiry, until none is left.
+      const left = expiresAt - now();
+      if (left > retryAfter) schedule(retryAfter);
+      else if (left > 1) schedule(Math.floor(left / 2));
       else end('ended');
     }
   }
@@ -376,14 +396,16 @@ export async function openKeySession(
   // The server refused the token: it ended the grant. Ask it once more which way. The probe dials
   // and signs for `origin`, as the session did: the address as typed may carry a path or a case
   // the server would refuse as its audience, which would read a revoked device as merely ended.
-  client.onAuthFailed(() => {
-    if (finished) return;
+  let probing = false;
+  const probe = () => {
+    if (finished || probing) return;
+    probing = true;
     void (async () => {
       try {
-        const probe = await loginOnce(signer, origin, connect, app, now);
+        const probeLogin = await loginOnce(signer, origin, connect, app, now);
         // It lets this computer in still, so the session merely ended. The probe's own grant is
         // not kept: the app starts over to use a new one.
-        const probeClient = connect(origin, () => probe.token);
+        const probeClient = connect(origin, () => probeLogin.token);
         await probeClient.agent.logout().catch(() => false);
         probeClient.close();
         end('ended');
@@ -391,7 +413,8 @@ export async function openKeySession(
         end(error instanceof KeySessionError && error.reason === 'key' ? 'revoked' : 'ended');
       }
     })();
-  });
+  };
+  client.onAuthFailed(probe);
 
   schedule(expiresAt - now() - margin);
 

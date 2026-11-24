@@ -60,7 +60,7 @@ export const ad4mConnector: BackendConnector = createLocalAd4mConnector(
  * starting the renderer over: every store holds the session's data, and a reload is the clean slate
  * switching accounts already relies on (see `accounts-apply` in main.js).
  */
-function serverHost(): Ad4mServerHost | undefined {
+export function serverHost(): Ad4mServerHost | undefined {
   const servers = window.electron?.servers;
   if (!servers) return undefined;
   return {
@@ -70,7 +70,9 @@ function serverHost(): Ad4mServerHost | undefined {
     choose: (address) => servers.choose(address),
     restart() {
       window.location.reload();
-      return Promise.resolve();
+      // The reload replaces this renderer: the promise must not settle before it does, or the
+      // caller would free its controls while the old page is still showing.
+      return new Promise<void>(() => {});
     },
   };
 }

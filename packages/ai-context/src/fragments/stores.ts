@@ -1100,7 +1100,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
       restartExecutor:
-        '(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return',
+        '(): restarts the backend so written settings take effect. On this computer the app starts the backend again with the same arguments and reloads the window, so it does not return. On a server the app asks the server to restart through its own supervisor, which may refuse; the window is not reloaded, and a refusal lands in error',
       setExecutorConfigValue:
         '(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason',
       loadExecutorLogTail: '(): reads the newest lines of the backend’s log into executorLogTail',

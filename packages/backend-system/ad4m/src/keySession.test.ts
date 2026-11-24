@@ -295,14 +295,82 @@ describe('a key session on a server', () => {
     expect(session.token()).toBe('token-2');
     expect(ended).not.toHaveBeenCalled();
 
-    // Down again, until past the expiry.
+    // Down again, late: less than a retry interval of token left. The session stays open for one
+    // more try halfway to the expiry, rather than ending while its token still works.
     failing.sessionChallenge = async () => {
       throw new FakeRpcError(503, 'connection failed');
     };
     server.advance(3550);
     await timers.fire();
+    expect(ended).not.toHaveBeenCalled();
+    expect([...timers.pending.values()][0].ms).toBe(25 * 1000);
+
+    // Still down once the token has run out: now it ends.
+    server.advance(50);
+    await timers.fire();
     expect(ended).toHaveBeenCalledWith('ended');
     expect(timers.pending.size).toBe(0);
+  });
+
+  it('renews on the final try before the expiry when the server is back', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    const session = await open(server, fakeSigner(), timers);
+    const ended = vi.fn();
+    session.onEnded(ended);
+    const agent = (session.client as KeySessionRemote).agent;
+    const real = agent.sessionChallenge;
+    agent.sessionChallenge = async () => {
+      throw new FakeRpcError(503, 'connection failed');
+    };
+    server.advance(3590);
+    await timers.fire();
+    expect(ended).not.toHaveBeenCalled();
+
+    agent.sessionChallenge = real;
+    server.advance(5);
+    await timers.fire();
+    expect(session.token()).toBe('token-2');
+    expect(ended).not.toHaveBeenCalled();
+  });
+
+  it('reads a renewal the server answers 401 as ended or revoked by asking, not as ended at once', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    const session = await open(server, fakeSigner('z6MkDevice'), timers);
+    const ended = vi.fn();
+    session.onEnded(ended);
+
+    // The grant is gone and the key removed, and no socket told this session: the renewal gets a 401.
+    server.grants.clear();
+    server.revokeKeyOnly('z6MkDevice');
+    server.advance(3300);
+    await timers.fire();
+    await flush();
+    await flush();
+
+    expect(ended).toHaveBeenCalledTimes(1);
+    expect(ended).toHaveBeenCalledWith('revoked');
+  });
+
+  it('tells every listener, and closes its client, even when one listener throws', async () => {
+    const server = fakeServer();
+    const session = await open(server);
+    const first = vi.fn(() => {
+      throw new Error('listener failed');
+    });
+    const second = vi.fn();
+    session.onEnded(first);
+    session.onEnded(second);
+
+    server.revokeKeyOnly('z6MkDevice');
+    server.endGrants();
+    await flush();
+    await flush();
+
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledWith('revoked');
+    expect(server.clients[1].closed).toBe(true);
   });
 
   it('logs out on the server when closed, and says nothing ended', async () => {
@@ -829,10 +897,12 @@ describe('choosing which device serves the account (the identity port)', () => {
     expect((await there.serving!()).role).toBe('operator');
     await expect(there.removeServer!(ADDRESS)).rejects.toThrow(/This host is in use/);
 
+    // Choosing the server above restarted once; leaving it is a new restart.
+    expect(host.restart).toHaveBeenCalledTimes(1);
     await there.serveFrom!(THIS_COMPUTER_ID);
     expect(server.loggedOut).toHaveLength(1);
     expect(host.choose).toHaveBeenLastCalledWith(null);
-    expect(host.restart).toHaveBeenCalled();
+    expect(host.restart).toHaveBeenCalledTimes(2);
   });
 
   it('tells whoever listens that the server ended the session, even one that listens later', async () => {

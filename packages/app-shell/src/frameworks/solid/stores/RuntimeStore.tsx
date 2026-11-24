@@ -351,7 +351,10 @@ export interface RuntimeStore {
   /** Ask for a file, then have the backend read it back in. */
   importDatabase: () => Promise<void>;
   setMcpPort: (port: number) => Promise<void>;
-  /** Start the backend over so the written settings take effect. Does not return. */
+  /**
+   * Start the backend over so the written settings take effect. On this computer the window reloads,
+   * so it does not return; on a server it asks the server's supervisor and returns, with no reload.
+   */
   restartExecutor: () => Promise<void>;
   /** Write one key of the config file. Takes the row's key and the control's value; empty clears it. */
   setExecutorConfigValue: (key: string, value: unknown) => Promise<void>;

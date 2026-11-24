@@ -232,12 +232,14 @@ export function DeviceStoreProvider(props: ParentProps) {
   });
 
   async function serverStep(run: () => Promise<void>): Promise<void> {
+    const started = port();
     setServerSteps((n) => n + 1);
     setServerError('');
     try {
       await run();
     } catch (e) {
-      setServerError(e instanceof Error ? e.message : String(e));
+      // A failure of the port this began on is not said on the one that replaced it.
+      if (port() === started) setServerError(e instanceof Error ? e.message : String(e));
     } finally {
       setServerSteps((n) => n - 1);
     }
