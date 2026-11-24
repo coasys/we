@@ -122,7 +122,8 @@ export function presetOf(policy: Policy): PolicyPreset | null {
 /** A `Policy` record as read. */
 export interface PolicyVersion {
   id: string;
-  document?: string;
+  /** The stored document: a policy when it is one, anything else when it is not. */
+  document?: unknown;
   /** The person who wrote it. */
   author?: string | null;
   createdAt?: string | number;
@@ -170,7 +171,7 @@ export function policyInForce(versions: readonly PolicyVersion[], standing: Spac
   let current = OPEN_POLICY;
   const ordered = [...versions].sort((a, b) => timeOf(a) - timeOf(b) || a.id.localeCompare(b.id));
   for (const version of ordered) {
-    const next = readPolicy(version.document ?? '');
+    const next = readPolicy(version.document);
     if (!next) continue;
     const author = version.author ?? null;
     const then = standingAt(standing, momentOf(version.createdAt));

@@ -118,16 +118,16 @@ export const TaskState: CoreEntityDef = {
       approverKind: { type: 'string', predicate: 'we://approver_kind', default: '' },
       /**
        * What must be there before a task may enter this state — "a document in response to it" — as a
-       * JSON list of `{ entity, via?, min? }`: at least `min` records of `entity`, held by the task
+       * list of `{ entity, via?, min? }`: at least `min` records of `entity`, held by the task
        * through the relation `via` (`responses` for what was made in response to it), or anywhere in
        * the space when `via` is empty.
        *
        * Like `approvals`, it is about entering the state from wherever: the space's states then run as
-       * a workflow, a drop into this column is refused until the records exist, and the move records which
-       * ones met it. JSON rather than records of their own because an evidence requirement is part of what the state
-       * asks, written and read with it, never on its own.
+       * a workflow, a drop into this column is refused until the records exist, and the move records
+       * which ones met it. A value on the state rather than records of their own because an evidence
+       * requirement is part of what the state asks, written and read with it, never on its own.
        */
-      evidence: { type: 'string', predicate: 'we://evidence', default: '' },
+      evidence: { type: 'json', predicate: 'we://evidence' },
       schemaVersion: { type: 'number', predicate: 'we://schema_version', default: 1 },
     },
     relations: {},

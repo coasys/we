@@ -23,17 +23,7 @@ export interface TypePresentation {
 
 /** The presentation a `TypeStyle` record stores, read leniently: anything unreadable is unset. */
 export function presentationOf(row: { display?: unknown; controls?: unknown; authoring?: unknown }): TypePresentation {
-  const json = (value: unknown): unknown => {
-    if (typeof value !== 'string' || !value) return undefined;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return undefined;
-    }
-  };
-  const display = json(row.display);
-  const controls = json(row.controls);
-  const authoring = json(row.authoring);
+  const { display, controls, authoring } = row;
   const isObject = (v: unknown): v is Record<string, unknown> =>
     Boolean(v) && typeof v === 'object' && !Array.isArray(v);
   return {
@@ -43,17 +33,16 @@ export function presentationOf(row: { display?: unknown; controls?: unknown; aut
   };
 }
 
-/** What a `TypeStyle` record stores for a layer: each part as JSON, or empty to leave it unset. */
+/** What a `TypeStyle` record stores for a layer: each part as it is, or `null` to leave it unset. */
 export function presentationFields(presentation: TypePresentation): {
-  display: string;
-  controls: string;
-  authoring: string;
+  display: TypePresentation['display'] | null;
+  controls: TypePresentation['controls'] | null;
+  authoring: string[] | null;
 } {
   return {
-    display: presentation.display ? JSON.stringify(presentation.display) : '',
-    controls:
-      presentation.controls && Object.keys(presentation.controls).length ? JSON.stringify(presentation.controls) : '',
-    authoring: presentation.authoring ? JSON.stringify(presentation.authoring) : '',
+    display: presentation.display ?? null,
+    controls: presentation.controls && Object.keys(presentation.controls).length ? presentation.controls : null,
+    authoring: presentation.authoring ?? null,
   };
 }
 

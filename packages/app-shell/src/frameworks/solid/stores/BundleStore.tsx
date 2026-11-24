@@ -192,7 +192,7 @@ export function BundleStoreProvider(props: ParentProps) {
     return JSON.stringify(
       selectBootSnapshot({
         appTemplateId: settings.appTemplateId ?? '',
-        installedBundles: settings.installedBundles ?? '',
+        installedBundles: readInstalledBundles(settings.installedBundles),
         library: templateStore.allTemplates(),
         installedThemes: themeStore.installedThemes(),
       }),
@@ -479,12 +479,10 @@ export function BundleStoreProvider(props: ParentProps) {
         digest: request.digest,
       });
       await datasetStore.updateAgentSettings({
-        installedBundles: JSON.stringify(
-          withInstalled(installedList(), {
-            ...entry,
-            ...(written.size ? { themes: pieces.themes.map((theme) => themeRef(theme.id)) } : {}),
-          }),
-        ),
+        installedBundles: withInstalled(installedList(), {
+          ...entry,
+          ...(written.size ? { themes: pieces.themes.map((theme) => themeRef(theme.id)) } : {}),
+        }),
       });
 
       if (pieces.app) await templateStore.setAppTemplate(pieces.app.id);
@@ -625,7 +623,7 @@ export function BundleStoreProvider(props: ParentProps) {
       for (const id of [...(entry.app ? [entry.app] : []), ...entry.templates]) await templateStore.deleteTemplate(id);
       for (const id of installedThemes(entry)) await themeStore.deleteTheme(id);
       await datasetStore.updateAgentSettings({
-        installedBundles: JSON.stringify(withoutInstalled(installedList(), bundleId)),
+        installedBundles: withoutInstalled(installedList(), bundleId),
       });
       toastService.success(`“${entry.name}” removed`);
     } catch (error) {

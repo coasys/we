@@ -55,18 +55,18 @@ export const TypeStyle: CoreEntityDef = {
       /*
         How a card of this type is laid out, where the model's own display is not what this space or
         board wants — which field titles it, which summarises it, which pictures it, which it lists.
-        JSON of the same shape as an entity's `display`; a key it leaves out falls through to the
-        model's. Empty is unset.
+        An object of the same shape as an entity's `display`; a key it leaves out falls through to the
+        model's. Absent is unset.
 
         Presentation and not meaning, so it lives here rather than on the model: a community choosing
         what its sighting cards show must not need to change the model itself — nor bump its version,
         nor mark it changed against wherever it came from.
       */
-      display: { type: 'string', predicate: 'we://type_display', default: '' },
-      /** The form control a field uses here, by field name — JSON. Empty is unset. */
-      controls: { type: 'string', predicate: 'we://type_controls', default: '' },
-      /** The fields a form for this type asks for, in order — JSON list. Empty is unset. */
-      authoring: { type: 'string', predicate: 'we://type_authoring', default: '' },
+      display: { type: 'json', predicate: 'we://type_display' },
+      /** The form control a field uses here, as an object by field name. Absent is unset. */
+      controls: { type: 'json', predicate: 'we://type_controls' },
+      /** The fields a form for this type asks for, as a list in order. Absent is unset. */
+      authoring: { type: 'json', predicate: 'we://type_authoring' },
     },
     // None. A type is a name here rather than a record: the entity being styled may be a shape this
     // community defined last week, which has no node to point a relation at.

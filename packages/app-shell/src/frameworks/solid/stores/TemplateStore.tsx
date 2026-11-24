@@ -524,10 +524,15 @@ export function TemplateStoreProvider(props: ParentProps) {
     const ids = new Set(accepted.map((t) => t.id));
     setAllTemplates((prev) => withLibrary(prev, [...builtInTemplates.filter((t) => !ids.has(t.id)), ...accepted]));
   });
-  /** A setting as the agent's settings have it, or as the snapshot remembers it until they arrive. */
-  const settingOrRemembered = (key: 'appTemplateId' | 'installedBundles') => {
+  /** The app the agent's settings name, or the one the snapshot remembers until they arrive. */
+  const chosenApp = () => {
     const settings = datasetStore.agentSettings();
-    return settings ? settings[key] : bootSnapshot()?.[key];
+    return settings ? settings.appTemplateId : bootSnapshot()?.appTemplateId;
+  };
+  /** The bundles the agent's settings list, or the ones the snapshot remembers until they arrive. */
+  const rememberedBundles = () => {
+    const settings = datasetStore.agentSettings();
+    return readInstalledBundles(settings ? settings.installedBundles : bootSnapshot()?.installedBundles);
   };
   const [installedIds, setInstalledIds] = createSignal<Set<string>>(new Set());
   const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
@@ -592,7 +597,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   const appTemplate = createMemo<TemplateSchema>(() => {
     const found = resolveAppTemplate({
       safe: safe.on,
-      chosen: settingOrRemembered('appTemplateId'),
+      chosen: chosenApp(),
       seed: deploymentAppId(),
       own: ownApps(),
     });
@@ -616,10 +621,7 @@ export function TemplateStoreProvider(props: ParentProps) {
    * their own — the app's display policy, from the bundle it came in. See `bundles/display.ts`.
    */
   const appSpaceTemplateId = createMemo(() =>
-    appSpaceTemplate(appTemplateId(), [
-      ...seedBundlePieces,
-      ...readInstalledBundles(settingOrRemembered('installedBundles')).map(displaySourceOf),
-    ]),
+    appSpaceTemplate(appTemplateId(), [...seedBundlePieces, ...rememberedBundles().map(displaySourceOf)]),
   );
   async function setAppTemplate(id: string): Promise<boolean> {
     const saved = await datasetStore.updateAgentSettings({ appTemplateId: appChoiceToKeep(id, deploymentAppId()) });
@@ -658,7 +660,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       inUseBundle: appTemplate().source?.bundle,
       sources: [
         ...seedBundlePieces,
-        ...readInstalledBundles(settingOrRemembered('installedBundles')).map((entry) => ({
+        ...rememberedBundles().map((entry) => ({
           bundleId: entry.id,
           brand: entry.brand,
           bootScreen: entry.bootScreen,

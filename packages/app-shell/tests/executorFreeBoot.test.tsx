@@ -3083,7 +3083,7 @@ describe('following a space from the rows its live queries push', () => {
     const { stores, handle } = await openSpace('Pushed Policy');
     expect(stores.spaces.policy().preset).not.toBe('community');
     const reads = spyFindAll('Policy');
-    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await Policy.create(handle, { document: COMMUNITY_POLICY } as never);
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
     expect(reads).not.toHaveBeenCalled();
     reads.mockRestore();
@@ -3423,7 +3423,7 @@ describe('sidebar ordering', () => {
     // ...and it must have been written, or the order is lost on the next boot.
     const root = (await lifecycle.list()).find((d) => d.name === 'we-root')!;
     const settings = await AgentSettings.findOne(root.handle as never);
-    expect(JSON.parse(settings!.datasetOrder as string)).toEqual([before[1], before[0]]);
+    expect(settings!.datasetOrder).toEqual([before[1], before[0]]);
   }, 10000);
 });
 
@@ -4441,10 +4441,9 @@ describe('what a collection interprets', () => {
     const [row] = (await CollectionBlock.findAll(handleA, {
       where: { id: [call.id] },
       include: { runs: { where: { kind: 'extraction' } } },
-    } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: string }[] }[];
+    } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: unknown }[] }[];
     expect(row.runs).toHaveLength(1);
-    expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable' });
-    expect(JSON.parse(row.runs![0].detail ?? '{}').targets).toEqual([]);
+    expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable', detail: { targets: [] } });
   }, 15000);
 
   it('asks for the call’s own classes when the space moves on mid-gather', async () => {
@@ -4550,7 +4549,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'p',
@@ -4654,7 +4653,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'p',
@@ -4855,7 +4854,7 @@ describe('what a collection interprets', () => {
           kind: 'extraction',
           outcome: 'done',
           recordCount: 0,
-          detail: '{"targets":["TaskBlock"]}',
+          detail: { targets: ['TaskBlock'] },
           error: '',
           trigger: 'auto',
           prompt: 'the prompt',

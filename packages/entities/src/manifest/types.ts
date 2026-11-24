@@ -24,13 +24,13 @@ export interface AgentSettingsRecord extends RecordInstance {
   currentTemplateId: string;
   defaultTemplateId: string;
   appTemplateId: string;
-  installedBundles: string;
+  installedBundles?: unknown;
   currentThemeId: string;
   defaultThemeId: string;
   systemLightThemeId: string;
   systemDarkThemeId: string;
-  displayPreferences: string;
-  datasetOrder: string;
+  displayPreferences?: unknown;
+  datasetOrder?: unknown;
   globalSpaceJoined: boolean;
   globalSpaceUrl: string;
   useSpaceTemplate: boolean;
@@ -258,7 +258,7 @@ export interface RoleGrantRecord extends RecordInstance {
 }
 
 export interface PolicyRecord extends RecordInstance {
-  document: string;
+  document?: unknown;
 }
 
 export interface ShapeRecord extends WeNodeRecord {
@@ -369,7 +369,7 @@ export interface TaskStateRecord extends WeNodeRecord {
   retired: boolean;
   approvals: number;
   approverKind: string;
-  evidence: string;
+  evidence?: unknown;
   schemaVersion: number;
 }
 
@@ -441,7 +441,7 @@ export interface ModelRunRecord extends RecordInstance {
   outcome: string;
   error: string;
   recordCount: number;
-  detail: string;
+  detail?: unknown;
   prompt: string;
   output: string;
 }
@@ -449,9 +449,9 @@ export interface ModelRunRecord extends RecordInstance {
 export interface TypeStyleRecord extends RecordInstance {
   nodeType: string;
   color: string;
-  display: string;
-  controls: string;
-  authoring: string;
+  display?: unknown;
+  controls?: unknown;
+  authoring?: unknown;
 }
 
 export interface VideoBlockRecord extends WeNodeRecord {

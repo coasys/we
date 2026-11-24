@@ -103,8 +103,8 @@ export interface PassEntry {
   trigger?: string;
   outcome?: string;
   recordCount?: number;
-  /** The run's per-kind JSON; an extraction's holds `targets`, the entity names it looked for. */
-  detail?: string;
+  /** What only this kind of run carries; an extraction's holds `targets`, the entity names it looked for. */
+  detail?: unknown;
   error?: string;
   prompt?: string;
   output?: string;
@@ -155,14 +155,9 @@ export interface InterpretationLogInput {
 const list = (items: string[] | undefined) => (!items ? '(unavailable)' : items.length ? items.join(', ') : '(none)');
 
 /** The entity names an extraction run looked for, out of its `detail`. */
-function parseTargets(detail: string | undefined): string[] {
-  if (!detail) return [];
-  try {
-    const targets: unknown = (JSON.parse(detail) as { targets?: unknown } | null)?.targets;
-    return Array.isArray(targets) ? targets.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
+function targetsOf(detail: unknown): string[] {
+  const targets = detail && typeof detail === 'object' ? (detail as { targets?: unknown }).targets : undefined;
+  return Array.isArray(targets) ? targets.filter((item): item is string => typeof item === 'string') : [];
 }
 
 /** The whole log, as one Markdown document. */
@@ -210,7 +205,7 @@ export function formatInterpretationLog(input: InterpretationLogInput): string {
   if (!passes.length) out.push('_No interpretation pass has run on this call._', '');
 
   passes.forEach((pass, index) => {
-    const targets = parseTargets(pass.detail);
+    const targets = targetsOf(pass.detail);
     out.push(
       `### Pass ${index + 1}: ${isoOf(pass.createdAt) || 'unknown time'}`,
       '',

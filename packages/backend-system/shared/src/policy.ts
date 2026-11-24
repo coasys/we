@@ -333,16 +333,8 @@ export function policyWarnings(policy: Policy): string[] {
  * said, and dropping a permission only ever allows less.
  */
 export function readPolicy(document: unknown): Policy | null {
-  let value = document;
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-  if (!value || typeof value !== 'object') return null;
-  const raw = value as { format?: unknown; permissions?: unknown; frozen?: unknown };
+  if (!document || typeof document !== 'object') return null;
+  const raw = document as { format?: unknown; permissions?: unknown; frozen?: unknown };
   if (typeof raw.format !== 'number' || !Array.isArray(raw.permissions)) return null;
   const permissions = raw.permissions.filter(
     (p): p is Permission =>

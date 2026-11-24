@@ -1,5 +1,5 @@
 /**
- * What each installed bundle wrote — `AgentSettings.installedBundles`, as JSON.
+ * What each installed bundle wrote — `AgentSettings.installedBundles`, a list.
  *
  * One entry per bundle, keyed by its id, replaced whole by a later install of the same bundle. It
  * names every piece the install wrote under the ids they were written under, so the bundle can be
@@ -51,20 +51,13 @@ export function installedThemes(entry: Pick<InstalledBundle, 'themes' | 'theme'>
   return entry.themes ?? (entry.theme ? [entry.theme] : []);
 }
 
-export function readInstalledBundles(raw: string | undefined | null): InstalledBundle[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    // Written by the installer, so an entry with an id is an InstalledBundle.
-    return Array.isArray(parsed)
-      ? (parsed.filter(
-          (entry: unknown) =>
-            !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string',
-        ) as InstalledBundle[])
-      : [];
-  } catch {
-    return [];
-  }
+/** The installed bundles, from the stored value: none when it is absent or not a list. */
+export function readInstalledBundles(stored: unknown): InstalledBundle[] {
+  if (!Array.isArray(stored)) return [];
+  // Written by the installer, so an entry with an id is an InstalledBundle.
+  return stored.filter(
+    (entry: unknown) => !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string',
+  ) as InstalledBundle[];
 }
 
 /** The list with this bundle's entry put in, replacing any for the same bundle. */

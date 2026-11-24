@@ -96,7 +96,7 @@ import {
   createTaskWorkflowActions,
   needsAgreement,
   openMoveOf,
-  parseTaskStateEvidence,
+  readTaskStateEvidence,
   storeTaskStateEvidence,
   TASK_WORKFLOW,
   type TaskStateRule,
@@ -3122,7 +3122,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         // A record written before these existed has neither: one approval, from anybody.
         approvals: approvalsOf({ slug: '', approvals: r.approvals }),
         approverKind: r.approverKind || '',
-        evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
+        evidence: readTaskStateEvidence(r.evidence).map((g) => ({
           entity: g.entity,
           ...(g.where ? { where: g.where } : {}),
           via: g.via && 'relation' in g.via ? g.via.relation : '',
@@ -3308,7 +3308,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         slug: s.slug,
         approvals: s.approvals,
         approverKind: s.approverKind,
-        evidence: parseTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
+        evidence: readTaskStateEvidence(storeTaskStateEvidence(s.evidence)),
       })),
     [],
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
@@ -4237,7 +4237,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function writeStartingPolicy(dataset: DatasetProxy, starter: SpaceStarter | undefined): Promise<void> {
     const preset = starter?.policy;
     if (!preset) return;
-    await Policy.create(dataset, { document: JSON.stringify(POLICY_PRESETS[preset].policy) });
+    await Policy.create(dataset, { document: POLICY_PRESETS[preset].policy });
   }
 
   async function setPolicyPreset(preset: PolicyPreset): Promise<void> {
@@ -4249,7 +4249,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const problems = validatePolicy(chosen.policy);
     if (problems.length) throw new Error(problems.join(' '));
     // Judged by the write check like any other write: `Policy.edit` under the version in force.
-    await Policy.create(p, { document: JSON.stringify(chosen.policy) });
+    await Policy.create(p, { document: chosen.policy });
     await reloadPolicy();
   }
 

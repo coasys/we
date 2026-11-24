@@ -69,7 +69,7 @@ describe('the agreement on the install record', () => {
   it('is kept, and read back with the record', () => {
     const granted = grantOf(judged({ groups: [first, second] }));
     const entry = installedEntry(pieces, { name: 'Field guide', icon: 'leaf', at: 'now', granted, digest: 'abc' });
-    const [read] = readInstalledBundles(JSON.stringify(withInstalled([], entry)));
+    const [read] = readInstalledBundles(withInstalled([], entry));
     expect(read.granted).toEqual(granted);
     expect(read.digest).toBe('abc');
     expect(whatIsNew(judged({ groups: [first, second] }), read.granted)).toEqual({

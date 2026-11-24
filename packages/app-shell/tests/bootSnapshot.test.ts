@@ -42,7 +42,7 @@ describe('selectBootSnapshot', () => {
   it('keeps the app in use, the rest of its bundle, and the themes they name', () => {
     const snapshot = selectBootSnapshot({
       appTemplateId: 'field-guide--app',
-      installedBundles: '[]',
+      installedBundles: [],
       library,
       installedThemes: [theme('ad4m://moss'), theme('ad4m://other')],
     });
@@ -55,7 +55,7 @@ describe('selectBootSnapshot', () => {
   });
 
   it('keeps no templates for WE’s own app, which is built in', () => {
-    const snapshot = selectBootSnapshot({ appTemplateId: '', installedBundles: '', library, installedThemes: [] });
+    const snapshot = selectBootSnapshot({ appTemplateId: '', installedBundles: [], library, installedThemes: [] });
     expect(snapshot.templates).toEqual([]);
   });
 
@@ -63,7 +63,7 @@ describe('selectBootSnapshot', () => {
     const own = template('my-app', { meta: { name: 'Mine', description: '', icon: 'x', role: 'app' } });
     const snapshot = selectBootSnapshot({
       appTemplateId: 'my-app',
-      installedBundles: '',
+      installedBundles: [],
       library: [...library, own],
       installedThemes: [],
     });
@@ -84,7 +84,7 @@ describe('reading and writing it', () => {
 
   const kept = selectBootSnapshot({
     appTemplateId: 'field-guide--app',
-    installedBundles: '[]',
+    installedBundles: [],
     library,
     installedThemes: [theme('ad4m://moss')],
   });
@@ -109,7 +109,7 @@ describe('reading and writing it', () => {
     writeBootSnapshot('did:key:anna', kept);
     writeBootSnapshot(
       'did:key:anna',
-      selectBootSnapshot({ appTemplateId: '', installedBundles: '[]', library, installedThemes: [] }),
+      selectBootSnapshot({ appTemplateId: '', installedBundles: [], library, installedThemes: [] }),
     );
     expect(readBootSnapshot('did:key:anna')).toBeNull();
   });

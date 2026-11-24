@@ -342,14 +342,8 @@ export function DatasetStoreProvider(props: ParentProps) {
   );
 
   function getDatasetOrder(): string[] {
-    const json = agentSettings()?.datasetOrder;
-    if (!json) return [];
-    try {
-      const order: unknown = JSON.parse(json);
-      return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
-    } catch {
-      return [];
-    }
+    const order = agentSettings()?.datasetOrder;
+    return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
   }
 
   // Derived: datasets sorted by user-defined order (falls back to load order), system datasets excluded
@@ -408,7 +402,7 @@ export function DatasetStoreProvider(props: ParentProps) {
     // Deduplicate while preserving order — guards against any remaining race between
     // the eager update in createSpace and the dataset-added subscription.
     const deduped = [...new Set(newOrder)];
-    settings.datasetOrder = JSON.stringify(deduped);
+    settings.datasetOrder = deduped;
     await settings.save();
     setAgentSettings(settings);
   }
@@ -454,7 +448,7 @@ export function DatasetStoreProvider(props: ParentProps) {
       setDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
-      if (!agentSettings()?.datasetOrder) {
+      if (!Array.isArray(agentSettings()?.datasetOrder)) {
         const systemOrder = [...SYSTEM_DATASETS, 'we-global'];
         const initialOrder = [...refs]
           .sort((a, b) => {
