@@ -18,6 +18,7 @@ export type {
   SourceEntry,
   ModuleCatalogEntry,
   ForeignElementEntry,
+  OperationEntry,
 } from '@we/schema-shared';
 
 import type { ContextData } from '@we/schema-shared';

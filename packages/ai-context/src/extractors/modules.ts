@@ -27,7 +27,7 @@ interface SeedModule {
   package?: string;
 }
 
-interface DefinitionLike {
+export interface DefinitionLike {
   manifest: {
     id: string;
     name: string;
@@ -55,6 +55,8 @@ interface DefinitionLike {
 }
 
 interface ManifestLike {
+  version?: string;
+  operations?: Record<string, unknown>;
   entities: Record<
     string,
     {
@@ -227,7 +229,11 @@ function entityEntries(moduleId: string, manifest: ManifestLike, predicates?: Re
  * skipped rather than failing the whole generation: the reference is still worth writing without it,
  * and the message names what to fix.
  */
-export async function extractModules(repoRoot: string): Promise<ModuleCatalogEntry[]> {
+export async function extractModules(
+  repoRoot: string,
+  /** Each definition as it is read — what the generator registers a module's operations from. */
+  onDefinition?: (definition: DefinitionLike) => void,
+): Promise<ModuleCatalogEntry[]> {
   const shared = (await import('@we/module-shared')) as unknown as Parameters<typeof catalogueModule>[1];
   const out: ModuleCatalogEntry[] = [];
   for (const entry of seedModules(repoRoot)) {
@@ -246,6 +252,7 @@ export async function extractModules(repoRoot: string): Promise<ModuleCatalogEnt
         components: new Proxy({}, { get: (_target, name) => (typeof name === 'string' ? `<${name}>` : undefined) }),
       });
       out.push(catalogueModule(definition, shared));
+      onDefinition?.(definition);
       console.log(`  Module: ${entry.id} (${pkg})`);
     } catch (error) {
       console.warn(`  ⚠ could not catalogue module "${entry.id}" from ${pkg}: ${(error as Error).message}`);

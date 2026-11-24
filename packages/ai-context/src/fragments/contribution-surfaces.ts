@@ -52,6 +52,7 @@ The spine of every one of these decisions is a single rule, from \`packages/temp
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
 | A new kind of thing that gets stored | **Entity** |
+| A write of several records, or a read deciding a write | **Declared operation** (\`operations\` in the declaring manifest) |
 | State or an action a template needs to reach | **Store** |
 | A whole app — its chrome, templates, theme and record types — to ship or install as one | **Bundle** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |

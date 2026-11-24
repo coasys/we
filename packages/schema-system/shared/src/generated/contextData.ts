@@ -1355,7 +1355,7 @@ export const contextData: ContextData = {
           default: "'default'",
         },
         { name: 'appTemplateId', type: 'string', predicate: 'we://app_template', required: false },
-        { name: 'installedBundles', type: 'string', predicate: 'we://installed_bundles', required: false },
+        { name: 'installedBundles', type: 'json', predicate: 'we://installed_bundles', required: false },
         {
           name: 'currentThemeId',
           type: 'string',
@@ -1372,8 +1372,8 @@ export const contextData: ContextData = {
         },
         { name: 'systemLightThemeId', type: 'string', predicate: 'we://system_light_theme', required: false },
         { name: 'systemDarkThemeId', type: 'string', predicate: 'we://system_dark_theme', required: false },
-        { name: 'displayPreferences', type: 'string', predicate: 'we://display_preferences', required: false },
-        { name: 'datasetOrder', type: 'string', predicate: 'we://dataset_order', required: false },
+        { name: 'displayPreferences', type: 'json', predicate: 'we://display_preferences', required: false },
+        { name: 'datasetOrder', type: 'json', predicate: 'we://dataset_order', required: false },
         {
           name: 'globalSpaceJoined',
           type: 'boolean',
@@ -1727,7 +1727,7 @@ export const contextData: ContextData = {
       name: 'Policy',
       className: 'Policy',
       extends: 'Ad4mModel',
-      fields: [{ name: 'document', type: 'string', predicate: 'we://policy_document', required: true }],
+      fields: [{ name: 'document', type: 'json', predicate: 'we://policy_document', required: true }],
       relations: [],
     },
     {
@@ -1892,7 +1892,7 @@ export const contextData: ContextData = {
         { name: 'retired', type: 'boolean', predicate: 'we://retired', required: false, default: 'false' },
         { name: 'approvals', type: 'number', predicate: 'we://approvals', required: false, default: '1' },
         { name: 'approverKind', type: 'string', predicate: 'we://approver_kind', required: false },
-        { name: 'evidence', type: 'string', predicate: 'we://evidence', required: false },
+        { name: 'evidence', type: 'json', predicate: 'we://evidence', required: false },
         { name: 'schemaVersion', type: 'number', predicate: 'we://schema_version', required: false, default: '1' },
       ],
       relations: [],
@@ -1986,7 +1986,7 @@ export const contextData: ContextData = {
         { name: 'outcome', type: 'string', predicate: 'we://outcome', required: false, default: "'done'" },
         { name: 'error', type: 'string', predicate: 'we://error', required: false },
         { name: 'recordCount', type: 'number', predicate: 'we://model_run_record_count', required: false },
-        { name: 'detail', type: 'string', predicate: 'we://model_run_detail', required: false },
+        { name: 'detail', type: 'json', predicate: 'we://model_run_detail', required: false },
         { name: 'prompt', type: 'string', predicate: 'we://prompt', required: false },
         { name: 'output', type: 'string', predicate: 'we://model_run_output', required: false },
       ],
@@ -1999,9 +1999,9 @@ export const contextData: ContextData = {
       fields: [
         { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
         { name: 'color', type: 'string', predicate: 'we://color', required: false },
-        { name: 'display', type: 'string', predicate: 'we://type_display', required: false },
-        { name: 'controls', type: 'string', predicate: 'we://type_controls', required: false },
-        { name: 'authoring', type: 'string', predicate: 'we://type_authoring', required: false },
+        { name: 'display', type: 'json', predicate: 'we://type_display', required: false },
+        { name: 'controls', type: 'json', predicate: 'we://type_controls', required: false },
+        { name: 'authoring', type: 'json', predicate: 'we://type_authoring', required: false },
       ],
       relations: [],
     },
@@ -5233,6 +5233,7 @@ export const contextData: ContextData = {
     },
   ],
   foreignElements: [],
+  operations: [],
   pluginCatalogs: [
     {
       component: 'CesiumGlobe',

@@ -3785,7 +3785,7 @@
         },
         {
           "name": "installedBundles",
-          "type": "string",
+          "type": "json",
           "predicate": "we://installed_bundles",
           "required": false
         },
@@ -3817,13 +3817,13 @@
         },
         {
           "name": "displayPreferences",
-          "type": "string",
+          "type": "json",
           "predicate": "we://display_preferences",
           "required": false
         },
         {
           "name": "datasetOrder",
-          "type": "string",
+          "type": "json",
           "predicate": "we://dataset_order",
           "required": false
         },
@@ -4881,7 +4881,7 @@
       "fields": [
         {
           "name": "document",
-          "type": "string",
+          "type": "json",
           "predicate": "we://policy_document",
           "required": true
         }
@@ -5437,7 +5437,7 @@
         },
         {
           "name": "evidence",
-          "type": "string",
+          "type": "json",
           "predicate": "we://evidence",
           "required": false
         },
@@ -5779,7 +5779,7 @@
         },
         {
           "name": "detail",
-          "type": "string",
+          "type": "json",
           "predicate": "we://model_run_detail",
           "required": false
         },
@@ -5817,19 +5817,19 @@
         },
         {
           "name": "display",
-          "type": "string",
+          "type": "json",
           "predicate": "we://type_display",
           "required": false
         },
         {
           "name": "controls",
-          "type": "string",
+          "type": "json",
           "predicate": "we://type_controls",
           "required": false
         },
         {
           "name": "authoring",
-          "type": "string",
+          "type": "json",
           "predicate": "we://type_authoring",
           "required": false
         }
@@ -10676,6 +10676,7 @@
     }
   ],
   "foreignElements": [],
+  "operations": [],
   "pluginCatalogs": [
     {
       "component": "CesiumGlobe",

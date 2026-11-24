@@ -264,6 +264,7 @@ The spine of every one of these decisions is a single rule, from `packages/templ
 | A stateful capability a community turns on | **Feature module** |
 | A new source of nodes, or arrangement, in a graph | **Graph plugin** |
 | A new kind of thing that gets stored | **Entity** |
+| A write of several records, or a read deciding a write | **Declared operation** (`operations` in the declaring manifest) |
 | State or an action a template needs to reach | **Store** |
 | A whole app — its chrome, templates, theme and record types — to ship or install as one | **Bundle** |
 | A differently-shaped deployment | **Seed** (write nothing — select what exists) |
@@ -475,7 +476,9 @@ onToggle, onFocus, onMouseEnter, onAnimationEnd, a component reporting its size.
 that stores something, publishes something or reaches a device is refused and does nothing; put it on
 the press instead. Navigating, opening and closing surfaces and editing an unsaved draft are exempt, so
 they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
-so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
+so does onBlur on a field somebody typed into. A declared operation (ops.<namespace>.<name>, see
+Declared Operations) that writes anything is a write here too; one that only reads runs anywhere. The
+validator warns about a write on an event nobody causes.
 
 Record mutations via $invoke (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first
@@ -2584,13 +2587,13 @@ AgentSettings extends Ad4mModel:
   - currentTemplateId: string = 'default' [we://current_template]
   - defaultTemplateId: string = 'default' [we://default_template]
   - appTemplateId: string [we://app_template]
-  - installedBundles: string [we://installed_bundles]
+  - installedBundles: json [we://installed_bundles]
   - currentThemeId: string = 'default' [we://current_theme]
   - defaultThemeId: string = 'default' [we://default_theme]
   - systemLightThemeId: string [we://system_light_theme]
   - systemDarkThemeId: string [we://system_dark_theme]
-  - displayPreferences: string [we://display_preferences]
-  - datasetOrder: string [we://dataset_order]
+  - displayPreferences: json [we://display_preferences]
+  - datasetOrder: json [we://dataset_order]
   - globalSpaceJoined: boolean = false [we://global_space_joined]
   - globalSpaceUrl: string [we://global_space_url]
   - useSpaceTemplate: boolean = true [we://use_space_template]
@@ -2808,7 +2811,7 @@ RoleGrant extends Ad4mModel:
 
 Policy extends Ad4mModel:
   Fields:
-  - document: string (required) [we://policy_document]
+  - document: json (required) [we://policy_document]
 
 Shape extends WeNode:
   Fields:
@@ -2916,7 +2919,7 @@ TaskState extends WeNode:
   - retired: boolean = false [we://retired]
   - approvals: number = 1 [we://approvals]
   - approverKind: string [we://approver_kind]
-  - evidence: string [we://evidence]
+  - evidence: json [we://evidence]
   - schemaVersion: number = 1 [we://schema_version]
 
 Template extends WeNode:
@@ -2984,7 +2987,7 @@ ModelRun extends Ad4mModel:
   - outcome: string = 'done' [we://outcome]
   - error: string [we://error]
   - recordCount: number [we://model_run_record_count]
-  - detail: string [we://model_run_detail]
+  - detail: json [we://model_run_detail]
   - prompt: string [we://prompt]
   - output: string [we://model_run_output]
 
@@ -2992,9 +2995,9 @@ TypeStyle extends Ad4mModel:
   Fields:
   - nodeType: string [we://node_type]
   - color: string [we://color]
-  - display: string [we://type_display]
-  - controls: string [we://type_controls]
-  - authoring: string [we://type_authoring]
+  - display: json [we://type_display]
+  - controls: json [we://type_controls]
+  - authoring: json [we://type_authoring]
 
 VideoBlock extends WeNode:
   Fields:
@@ -4257,6 +4260,33 @@ Needs: kernels records.
 - Entities (queryable with $query):
   - Poll extends WeNode: question: string (required), options: string (required), closed: boolean, version: number
   - Vote: pollId: string (required), option: string (required)
+
+---
+
+## Declared Operations
+
+An operation is a named write of several records, or a read deciding a write, declared as data and
+run as one transaction: everything it writes lands together or not at all. Reach for one where it
+exists rather than chaining record.create calls through onSuccess — a chain that fails half way
+leaves half its records behind.
+
+Invoke one as ops.<namespace>.<name>, with ONE argument, its params as an object:
+{ "$invoke": "ops.core.example", "args": [{ "title": { "$": "local.title" } }] }
+A second argument { "dataset": "datasetStore.rootDataset" } targets another dataset, exactly as
+record.create takes one; without it the operation runs in the space on screen, as the signed-in
+person. onSuccess reads what it returns as result. A failure reaches onError with result.message
+(said for the person) and result.code (notFound, refused, a check the operation names, …), and
+the person is told in a toast either way.
+
+An operation that writes is a write for the rule above: it runs only when somebody asked for it.
+One that deletes or takes records out of a relation is confirmed by the host first, as
+record.delete is — do not put a confirmation of your own in front of it. A template reaches an
+operation only where it could make the same writes one at a time.
+
+The namespace is who declared it: core for WE, a module id for a module, a bundle id for an app.
+An app installed at runtime brings its own, which this list does not show.
+
+This build registers no operations yet.
 
 ---
 

@@ -165,7 +165,9 @@ onToggle, onFocus, onMouseEnter, onAnimationEnd, a component reporting its size.
 that stores something, publishes something or reaches a device is refused and does nothing; put it on
 the press instead. Navigating, opening and closing surfaces and editing an unsaved draft are exempt, so
 they work anywhere. onSuccess, onError and onFinally count as part of the press that started them, and
-so does onBlur on a field somebody typed into. The validator warns about a write on an event nobody causes.
+so does onBlur on a field somebody typed into. A declared operation (ops.<namespace>.<name>, see
+Declared Operations) that writes anything is a write here too; one that only reads runs anywhere. The
+validator warns about a write on an event nobody causes.
 
 Record mutations via $invoke (use these for creating/updating/deleting records):
 A RECORD is one stored thing; an ENTITY is its type. Every one of these takes the entity name first

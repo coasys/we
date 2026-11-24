@@ -44,6 +44,35 @@ that is only a kernel plus a declaration is a module.
 **Neither does how core it feels.** Calls are as central to WE as anything and are a module, because
 a deployment can ship without them and nothing else calls them.
 
+### A write of several records: a declared operation
+
+| The intent                                                | The surface                                                     |
+| --------------------------------------------------------- | --------------------------------------------------------------- |
+| One record written, read or deleted                       | `record.*` from a template, the `records` kernel from a module  |
+| A write of several records, or a read deciding a write    | **Declared operation** — `operations` in the declaring manifest |
+| Behaviour that is not a write: a device, a timer, a model | A store action (host or module), as above                       |
+
+A vote that must not count twice, a board with its columns, a post with its blocks: these are one
+act made of several writes, and a store method doing them one by one leaves half of them behind
+when the third fails, and gives every other caller its own copy of the steps to keep in agreement.
+An operation is that act declared as data (`@we/entities`' `operations/`, the format in
+`backend-shared/src/manifest.ts`) and run by one runner in one transaction, through the backend's own
+write path, so the write check judges each write as it would one made by hand.
+
+Everything that writes reaches the same runner: a template with
+`{ "$invoke": "ops.<namespace>.<name>", "args": [{ …params }] }`, a module store with
+`deps.operations.run(name, args)`, an agent with `run_operation`. The namespace is whoever declared
+it, assigned by the host: `core` for WE's own manifest, a module's id for what its
+`contributes.entities.manifest` declares (registered while the module is), a bundle's id for an
+app's. What a template may invoke is **derived**, never written: the effect summary says which
+entities it writes, `operationGroups.ts` maps those to the narrowest capability group that covers
+them, and a destructive one (a delete, an unlink) is confirmed by the host as `record.delete` is. An
+operation that writes counts as a write for the gesture rule; one that only reads does not.
+
+Reach for one when a store method would otherwise be a sequence of writes with a precondition
+between them. Do not reach for one for behaviour the step set cannot say — a device, the clock, a
+model call — which stays a store action.
+
 ### Called versus observed
 
 A capability that only **observes records and produces records** is never called by anyone — it is

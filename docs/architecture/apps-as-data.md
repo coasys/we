@@ -83,10 +83,11 @@ only Close. Decided by content, not version — the install record keeps a diges
 
 ## Whose is what
 
-| Piece                             | Belongs to | So                                                                        |
-| --------------------------------- | ---------- | ------------------------------------------------------------------------- |
-| App, space templates, theme       | The person | In their library; another member of the same space may be in another app. |
-| Record types, workflows, sections | The space  | Added to the spaces their installer runs and ticks, for everyone in each. |
+| Piece                             | Belongs to | So                                                                          |
+| --------------------------------- | ---------- | --------------------------------------------------------------------------- |
+| App, space templates, theme       | The person | In their library; another member of the same space may be in another app.   |
+| Record types, workflows, sections | The space  | Added to the spaces their installer runs and ticks, for everyone in each.   |
+| Declared operations               | The person | Registered while the app is installed; what they write is ordinary records. |
 
 **Setting a space up** adds the app's record types (`shapeStore.addRecordTypes`, recognised by
 `shapeId: we://shapes/bundle/<id>/<name>` so it never adds one twice), installs its workflows through
@@ -106,6 +107,27 @@ already set up is shown as such rather than offered again.
 **Removing an app** removes its app, templates and theme. Never its record types, which hold what
 people made with it, in spaces other people share — and never the sections a space was set up with,
 which are the space's by then.
+
+## Declared operations
+
+An app's compound writes — logging a sighting with its photo and its place, opening a loan — travel
+in the bundle as `operations`, top level rather than inside a record type, since one operation
+spans several. Bringing any makes the file format 2.
+
+- **Namespace = bundle id.** An operation the file calls `log` runs as `<bundle id>.log`, and a
+  template of the app invokes it as `ops.<bundle id>.log`. The file cannot choose a namespace, so it
+  can reach neither WE's `core` operations under another name nor another app's, and a bundle whose
+  id is a namespace already taken (`core`, a module's id) has its operations refused.
+- **Judged on install.** `judgeBundle` runs the static checks against WE's vocabulary and the
+  bundle's own record types, refuses the bundle when they fail, and counts the capability group the
+  operations' writes need towards what the person agrees to. Its templates' `ops.<bundle id>.*`
+  references are judged against those definitions, before anything is registered.
+- **Registered while installed.** The install record keeps the definitions whole, as it keeps record
+  types, because the file is gone by the next boot; `bundleOperations.ts` holds exactly the installed
+  and built-in apps' operations in the registry, and removing an app withdraws them.
+
+An operation is the person's, like the app: another member of a space set up for the app runs it
+only if they have the app too. What it wrote is ordinary records in the space either way.
 
 ## How an app shows spaces
 
