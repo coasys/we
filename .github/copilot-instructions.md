@@ -1206,7 +1206,9 @@ are kept by id already.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
-Renders "then" node if condition is truthy, else renders "else" node.
+Renders "then" node if condition is truthy, else renders "else" node. It takes no children — they
+would never be drawn, so the validator refuses them; several nodes go in "then" as one node with no
+type holding them.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
 TransitionEffect = { type: 'fade'|'slide'|'scale'|'reveal'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string, axis?: 'block'|'inline' }
@@ -1341,8 +1343,9 @@ Module slot outlet:
 Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
 inside a module's own chrome: the module declares the anchor name in its `anchors` list and marks
 where contributions land with this. Resolves to nothing when no module has contributed — no empty
-container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
-template's.
+container, no gap. A template may not write one: chrome is the host's and the modules', not a
+template's, so in a template it has nothing to resolve it — the validator refuses it, and the page
+would draw an "Unknown component" marker. Place the module's part with $part instead.
 
 ---
 
@@ -6147,6 +6150,7 @@ For a specific file: `we-validate-schemas packages/app-shell/src/shared/schemas/
 After creating or modifying a `.schema.ts` file, always run validation to catch:
 - Unknown component types (typos, missing registry entries)
 - A `$ref` naming no definition in the root's `$defs`, or a definition that contains itself
+- Children on `$if` (it draws `then` or `else`), and a `$slot` in a template (it is module chrome only)
 - Invalid or misspelled props (with "did you mean?" suggestions)
 - Prop type mismatches (e.g., number where string expected)
 - Missing required `meta` field on root TemplateSchema nodes

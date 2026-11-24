@@ -767,6 +767,22 @@ function walkNode(
    * made on.
    */
   if (type === '$slot') {
+    /*
+      Anchors exist only in a module's chrome, where the host resolves them before anything is drawn.
+      A template's own tree is drawn as it is, so a `$slot` there has nothing to resolve it and draws
+      the unknown-component marker. Checked only for a whole template: a fragment may be a module's
+      chrome, validated on its own.
+    */
+    if (!state.isFragment) {
+      errors.push({
+        path: `${path}.type`,
+        message:
+          '{ type: "$slot" } is an outlet in a module\'s own chrome, where other modules contribute; a template has ' +
+          'no anchors, so here it draws an "Unknown component" marker. Place the module\'s part with $part instead.',
+        severity: 'error',
+      });
+      return;
+    }
     const anchor = (n.props as { anchor?: unknown } | undefined)?.anchor;
     if (typeof anchor !== 'string' || !anchor) {
       errors.push({
@@ -837,6 +853,21 @@ function walkNode(
           },
     );
     return;
+  }
+
+  /*
+    `$if` draws one of two nodes, `then` or `else`, and nothing else: children written on it are never
+    drawn. Refused rather than drawn, since "children when true" and "children always" are both
+    plausible readings and a template saying neither is better told than guessed at.
+  */
+  if (type === '$if' && Array.isArray(n.children) && n.children.length > 0) {
+    errors.push({
+      path: `${path}.children`,
+      message:
+        `{ type: "$if" } draws its "then" or its "else", never children, so these ${n.children.length} would not ` +
+        'appear. Move them into "then" — one node, or a node with no type holding several.',
+      severity: 'error',
+    });
   }
 
   // Skip operator nodes

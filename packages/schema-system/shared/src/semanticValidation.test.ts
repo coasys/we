@@ -953,3 +953,42 @@ describe('a box shaped as a control', () => {
     expect(warnings(box([{ type: 'we-text', children: ['Note'] }], 'surface'))).toEqual([]);
   });
 });
+
+describe('children that are never drawn', () => {
+  const meta = { name: 'T', description: 'd', icon: 'house' };
+
+  it('refuses children on $if, which draws then or else', () => {
+    const node = {
+      type: '$if',
+      props: { condition: true, then: { type: 'we-text', children: ['shown'] } },
+      children: [{ type: 'we-text', children: ['never'] }],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/draws its "then" or its "else", never children/);
+  });
+
+  it('accepts an $if with then and else only', () => {
+    const node = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['a'] },
+        else: { type: 'we-text', children: ['b'] },
+      },
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('refuses a $slot in a template, which has no anchors', () => {
+    const node = {
+      meta,
+      type: 'Column',
+      children: [{ type: '$slot', props: { anchor: 'call-controls' } }],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/\$slot" \} is an outlet in a module's own chrome/);
+  });
+
+  it("accepts a $slot in a fragment, which may be a module's chrome", () => {
+    const node = { type: 'Row', children: [{ type: '$slot', props: { anchor: 'call-controls' } }] } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});

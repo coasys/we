@@ -1173,4 +1173,14 @@ export const RENDER_CASES: RenderCase[] = [
     },
     { data: { app: { open: true } } },
   ),
+  C('render.if.children-not-drawn', '$if draws then or else and never children, which the validator refuses', {
+    type: 'Column',
+    children: [
+      {
+        type: '$if',
+        props: { condition: true, then: text('then') },
+        children: [text('a child')],
+      },
+    ],
+  }),
 ];

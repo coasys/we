@@ -99,6 +99,7 @@ For a specific file: \`we-validate-schemas packages/app-shell/src/shared/schemas
 After creating or modifying a \`.schema.ts\` file, always run validation to catch:
 - Unknown component types (typos, missing registry entries)
 - A \`$ref\` naming no definition in the root's \`$defs\`, or a definition that contains itself
+- Children on \`$if\` (it draws \`then\` or \`else\`), and a \`$slot\` in a template (it is module chrome only)
 - Invalid or misspelled props (with "did you mean?" suggestions)
 - Prop type mismatches (e.g., number where string expected)
 - Missing required \`meta\` field on root TemplateSchema nodes
