@@ -157,3 +157,5 @@ export * from './entityRegistry';
  * — it is how an implementation shipped refusing every board write with a green suite.
  */
 export { defineEntity } from './entityProxy';
+
+export * from './operations';

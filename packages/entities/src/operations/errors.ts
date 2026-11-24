@@ -1,0 +1,62 @@
+/**
+ * How a declared operation fails, in two classes a caller can act on differently.
+ *
+ * - **static** — the operation, or the call to it, is wrong: malformed, unknown, called with bad
+ *   arguments, reading a name nothing bound. Running it again unchanged fails the same way, so the
+ *   fault is in whoever wrote the definition or the call.
+ * - **precondition** — the data was not as the operation requires: the record was not there, there
+ *   were two, a `check` failed, the policy refused a write. Running it again later may succeed.
+ *
+ * `step` names where it happened, as a path into the operation (`steps.2.forEach[a].steps.0`), so a
+ * failure deep in a loop says which item it was on.
+ */
+export type OperationErrorClass = 'static' | 'precondition';
+
+/** The codes the runner itself raises. A `check` raises one of its operation's own `errors` names. */
+export type StaticErrorCode =
+  | 'malformed'
+  | 'unknownOperation'
+  | 'versionMismatch'
+  | 'badArgs'
+  | 'unboundName'
+  | 'unknownEntity'
+  | 'outsideOneOf'
+  | 'protectedEntity'
+  | 'forEachKey'
+  | 'notAList'
+  | 'callDepth';
+
+export type PreconditionErrorCode =
+  'notFound' | 'ambiguous' | 'alreadyLinked' | 'notLinked' | 'recordExists' | 'expectChanged' | 'refused';
+
+export interface OperationErrorInit {
+  class: OperationErrorClass;
+  code: string;
+  message: string;
+  step?: string;
+}
+
+export class OperationError extends Error {
+  readonly class: OperationErrorClass;
+  readonly code: string;
+  readonly step?: string;
+
+  constructor(init: OperationErrorInit) {
+    super(init.message);
+    this.name = 'OperationError';
+    this.class = init.class;
+    this.code = init.code;
+    if (init.step !== undefined) this.step = init.step;
+  }
+}
+
+/** By name as well as by class, so an error from a second copy of this package still matches. */
+export function isOperationError(error: unknown): error is OperationError {
+  return error instanceof OperationError || (error instanceof Error && error.name === 'OperationError');
+}
+
+export const staticError = (code: StaticErrorCode, message: string, step?: string) =>
+  new OperationError({ class: 'static', code, message, step });
+
+export const preconditionError = (code: string, message: string, step?: string) =>
+  new OperationError({ class: 'precondition', code, message, step });
