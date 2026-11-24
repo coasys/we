@@ -17,6 +17,8 @@ import {
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
+  REF_TYPE,
+  type RefProps,
   refusedProp,
   registerGestureOwner,
   resolveLocalInitial,
@@ -24,6 +26,7 @@ import {
   resolveQueryProp,
   runAsOwner,
   scopeIsAnchored,
+  unresolvedRef,
   validateField,
 } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show, untrack } from 'solid-js';
@@ -706,6 +709,22 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         context={context}
         children={children}
       />
+    );
+  }
+  /*
+    A shared shape that could not be put in its place. `RenderSchema` expands every reference a
+    template's definitions answer, so one that reaches here names a definition there is none of, or
+    one already open above it.
+  */
+  if (node.type === REF_TYPE) {
+    const def = (node.props as RefProps | undefined)?.def ?? '';
+    const cycle = unresolvedRef(node) === 'cycle';
+    const message = cycle
+      ? `Shape "${def}" contains itself: it is drawn once, and not again here`
+      : `Missing shape "${def}": the template defines no shape of that name`;
+    console.error(`[template] ${message}.`);
+    return (
+      <MissingMarker type={REF_TYPE} reason={cycle ? 'cyclic-definition' : 'missing-definition'} message={message} />
     );
   }
 

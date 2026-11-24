@@ -174,12 +174,67 @@ describe('expanding it again', () => {
       children: [{ type: REF_TYPE, props: { def: 'd1' } }],
       $defs: { d1: { type: 'Column', children: [{ type: REF_TYPE, props: { def: 'd1' } }] } },
     } as SchemaNode;
-    expect(() => expandDefinitions(hostile)).not.toThrow();
+    const expanded = expandDefinitions(hostile);
+    // Drawn once, and the reference where it closes is left standing, saying why.
+    expect(expanded.children).toEqual([
+      { type: 'Column', children: [{ type: REF_TYPE, props: { def: 'd1', unresolved: 'cycle' } }] },
+    ]);
   });
 
-  it('answers a reference to a definition that is not there', () => {
-    const missing = { type: 'Column', children: [{ type: REF_TYPE, props: { def: 'nope' } }] } as SchemaNode;
-    expect(() => expandDefinitions(missing)).not.toThrow();
+  it('leaves a reference to a definition that is not there in place, saying so', () => {
+    const missing = {
+      type: 'Column',
+      $defs: { d1: { type: 'we-text', children: ['defined'] } },
+      children: [{ id: 'r', type: REF_TYPE, props: { def: 'nope' } }],
+    } as SchemaNode;
+    expect(expandDefinitions(missing).children).toEqual([
+      { id: 'r', type: REF_TYPE, props: { def: 'nope', unresolved: 'missing' } },
+    ]);
+  });
+});
+
+describe('a reference with nothing to stand for is an error', () => {
+  const template = (extra: Partial<SchemaNode>) =>
+    ({
+      schemaVersion: 1,
+      meta: { name: 'T', description: 'd', icon: 'house' },
+      type: 'Column',
+      ...extra,
+    }) as unknown as SchemaNode;
+
+  async function errorsOf(schema: SchemaNode) {
+    const { buildValidationContext, validateSchema } = await import('./semanticValidation');
+    const { contextData } = await import('./generated/contextData');
+    return validateSchema(schema, buildValidationContext(contextData))
+      .errors.filter((e) => e.severity === 'error')
+      .map((e) => `${e.path}: ${e.message}`);
+  }
+
+  it('reports a $ref naming no definition', async () => {
+    const errors = await errorsOf(
+      template({
+        $defs: { d1: { type: 'we-text', children: ['x'] } },
+        children: [{ type: REF_TYPE, props: { def: 'nope' } }],
+      }),
+    );
+    expect(errors).toEqual([
+      expect.stringMatching(/^\.children\[0\]\.props\.def: .*"nope", which is not one of the root's \$defs/),
+    ]);
+  });
+
+  it('reports a $ref in a template with no $defs at all', async () => {
+    const errors = await errorsOf(template({ children: [{ type: REF_TYPE, props: { def: 'd1' } }] }));
+    expect(errors.join()).toMatch(/not one of the root's \$defs/);
+  });
+
+  it('reports a definition that contains itself', async () => {
+    const errors = await errorsOf(
+      template({
+        $defs: { d1: { type: 'Row', children: [{ type: REF_TYPE, props: { def: 'd1' } }] } },
+        children: [{ type: REF_TYPE, props: { def: 'd1' } }],
+      }),
+    );
+    expect(errors.join()).toMatch(/"d1" contains a \{ type: "\$ref" \} to itself/);
   });
 });
 

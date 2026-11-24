@@ -142,16 +142,24 @@ export const RENDER_CASES: RenderCase[] = [
     },
     children: [{ type: '$ref', props: { def: 'd1' } }],
   }),
-  C('render.node.ref-missing', 'a $ref naming no definition renders an empty Column, not a crash', {
-    type: 'Column',
-    $defs: { d1: text('defined') },
-    children: [{ type: '$ref', props: { def: 'nope' } }, text('after')],
-  }),
-  C('render.node.ref-cycle', 'a definition reaching itself renders an empty Column where the cycle closes', {
-    type: 'Column',
-    $defs: { d1: { type: 'Row', children: [{ type: '$ref', props: { def: 'd1' } }] } },
-    children: [{ type: '$ref', props: { def: 'd1' } }],
-  }),
+  C(
+    'render.node.ref-missing',
+    'a $ref naming no definition renders the missing marker saying so, and its siblings render',
+    {
+      type: 'Column',
+      $defs: { d1: text('defined') },
+      children: [{ type: '$ref', props: { def: 'nope' } }, text('after')],
+    },
+  ),
+  C(
+    'render.node.ref-cycle',
+    'a definition reaching itself is drawn once, with the missing marker where the cycle closes',
+    {
+      type: 'Column',
+      $defs: { d1: { type: 'Row', children: [{ type: '$ref', props: { def: 'd1' } }] } },
+      children: [{ type: '$ref', props: { def: 'd1' } }],
+    },
+  ),
   C(
     'render.node.prop-node-is-data',
     'a node held in an ordinary prop is handed to the component as data; only $if renders a prop',
@@ -1093,4 +1101,16 @@ export const RENDER_CASES: RenderCase[] = [
     'a custom element outside the we- prefix is for the seed to name: mounted as written, no marker',
     { type: 'Column', children: [{ type: 'x-rating', props: { value: 3 } }] },
   ),
+  C('render.node.ref-no-defs', 'a $ref in a template with no $defs at all renders the missing marker', {
+    type: 'Column',
+    children: [text('before'), { type: '$ref', props: { def: 'd1' } }],
+  }),
+  C('render.node.ref-cycle-through', 'a cycle through two definitions draws each once and the marker where it closes', {
+    type: 'Column',
+    $defs: {
+      d1: { type: 'Row', children: [text('one'), { type: '$ref', props: { def: 'd2' } }] },
+      d2: { type: 'Card', children: [text('two'), { type: '$ref', props: { def: 'd1' } }] },
+    },
+    children: [{ type: '$ref', props: { def: 'd1' } }],
+  }),
 ];

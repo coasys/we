@@ -128,6 +128,7 @@ export {
   REF_TYPE,
   type RefProps,
   splitUse,
+  unresolvedRef,
   useCountOf,
 } from './definitions';
 export {

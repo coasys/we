@@ -17,7 +17,7 @@ import {
 import { radius, role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, OperationEntry, StateMemberMeta } from './contextTypes';
-import { expandDefinitions } from './definitions';
+import { expandDefinitions, REF_TYPE, type RefProps, unresolvedRef } from './definitions';
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
@@ -840,6 +840,29 @@ function walkNode(
         severity: 'error',
       });
     }
+    return;
+  }
+
+  /*
+    A shared shape that could not be put in its place. The tree is walked expanded, so a `$ref` still
+    here is one `expandDefinitions` left standing: it names no definition, or one already open above
+    it. Either way the page draws a marker in its place.
+  */
+  if (type === REF_TYPE) {
+    const def = (n.props as RefProps | undefined)?.def;
+    errors.push(
+      unresolvedRef(n) === 'cycle'
+        ? {
+            path: `${path}.props.def`,
+            message: `The shape "${String(def)}" contains a { type: "$ref" } to itself, so it would never end: it is drawn once, and a marker stands where it reaches itself again.`,
+            severity: 'error',
+          }
+        : {
+            path: `${path}.props.def`,
+            message: `{ type: "$ref" } names "${String(def)}", which is not one of the root's $defs, so a marker is drawn in its place.`,
+            severity: 'error',
+          },
+    );
     return;
   }
 

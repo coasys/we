@@ -556,7 +556,7 @@
     },
     {
       "id": "render.node.ref-missing",
-      "note": "a $ref naming no definition renders an empty Column, not a crash",
+      "note": "a $ref naming no definition renders the missing marker saying so, and its siblings render",
       "template": {
         "type": "Column",
         "$defs": {
@@ -585,7 +585,8 @@
               "type": "Column",
               "children": [
                 {
-                  "type": "Column"
+                  "missing": "$ref",
+                  "reason": "missing-definition"
                 },
                 {
                   "type": "we-text",
@@ -600,7 +601,7 @@
     },
     {
       "id": "render.node.ref-cycle",
-      "note": "a definition reaching itself renders an empty Column where the cycle closes",
+      "note": "a definition reaching itself is drawn once, with the missing marker where the cycle closes",
       "template": {
         "type": "Column",
         "$defs": {
@@ -635,7 +636,8 @@
                   "type": "Row",
                   "children": [
                     {
-                      "type": "Column"
+                      "missing": "$ref",
+                      "reason": "cyclic-definition"
                     }
                   ]
                 }
@@ -6175,6 +6177,126 @@
                   "props": {
                     "value": 3
                   }
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-no-defs",
+      "note": "a $ref in a template with no $defs at all renders the missing marker",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["before"]
+          },
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["before"]
+                },
+                {
+                  "missing": "$ref",
+                  "reason": "missing-definition"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-cycle-through",
+      "note": "a cycle through two definitions draws each once and the marker where it closes",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d2"
+                }
+              }
+            ]
+          },
+          "d2": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["two"]
+              },
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["one"]
+                    },
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two"]
+                        },
+                        {
+                          "missing": "$ref",
+                          "reason": "cyclic-definition"
+                        }
+                      ]
+                    }
+                  ]
                 }
               ]
             }

@@ -49,6 +49,18 @@ export const REF_TYPE = '$ref';
 /** Where a `$ref` names its definition: `{ type: '$ref', props: { def } }`. */
 export interface RefProps {
   def: string;
+  /**
+   * Set by `expandDefinitions` on a reference it could not expand, which it leaves in place: there
+   * was no such definition, or the definition is already open above it. Never written by an author.
+   * A `$ref` left without it after expansion found nothing to expand from — a template with no
+   * `$defs` at all — and is missing too.
+   */
+  unresolved?: 'missing' | 'cycle';
+}
+
+/** Why a `$ref` that reached a renderer or a validator could not be drawn. See `RefProps.unresolved`. */
+export function unresolvedRef(node: SchemaNode): 'missing' | 'cycle' {
+  return (node.props as RefProps | undefined)?.unresolved === 'cycle' ? 'cycle' : 'missing';
 }
 
 export interface CompactOptions {
@@ -468,8 +480,12 @@ export function expandDefinitions(schema: SchemaNode, options: { uses?: Definiti
     A definition may itself hold references, so expansion recurses — and a reference cycle would
     recurse for ever. Cycles cannot be produced by `compactDefinitions`, which only ever points a
     reference at a shape that already existed, but a template arrives from a stranger and a hostile
-    one could contain `d1 -> d2 -> d1`. The `open` set turns that into a missing node rather than a
-    hung tab.
+    one could contain `d1 -> d2 -> d1`. The `open` set stops the walk where the cycle closes rather
+    than hanging the tab.
+
+    A reference that cannot be expanded stays where it is, saying why, rather than becoming an empty
+    box: a renderer draws its missing marker there and the validator reports it, which is the
+    difference between a visible mistake and a blank nobody can account for.
   */
   /*
     With a table, each node of a definition takes the id its use recorded for it, and a node the
@@ -482,7 +498,10 @@ export function expandDefinitions(schema: SchemaNode, options: { uses?: Definiti
     if (isRef(node)) {
       const name = refName(node);
       const target = typeof name === 'string' ? defs[name] : undefined;
-      if (!target || !name || open.has(name)) return { type: 'Column' };
+      if (!target || !name || open.has(name)) {
+        const unresolved: RefProps['unresolved'] = target && name ? 'cycle' : 'missing';
+        return { ...node, props: { ...node.props, unresolved } };
+      }
       const into: At = !uses
         ? null
         : at

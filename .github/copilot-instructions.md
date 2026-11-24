@@ -407,6 +407,10 @@ Those two render exactly what two copies of the card would. The definitions live
 template, so everything that will render is still in the document — nothing is fetched, and a
 template can be read as the thing it will be.
 
+A $ref whose def is not a key of the root's $defs, or one inside a definition that leads back to that
+same definition, is an error: the validator reports it, and the page draws a dashed "Missing shape"
+marker in its place (a shape that contains itself is drawn once, with the marker where it closes).
+
 **You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
 automatically, so a thing you write out twice becomes one definition without you doing anything.
 
@@ -6142,6 +6146,7 @@ For a specific file: `we-validate-schemas packages/app-shell/src/shared/schemas/
 
 After creating or modifying a `.schema.ts` file, always run validation to catch:
 - Unknown component types (typos, missing registry entries)
+- A `$ref` naming no definition in the root's `$defs`, or a definition that contains itself
 - Invalid or misspelled props (with "did you mean?" suggestions)
 - Prop type mismatches (e.g., number where string expected)
 - Missing required `meta` field on root TemplateSchema nodes
