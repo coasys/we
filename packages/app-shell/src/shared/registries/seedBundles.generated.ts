@@ -17,6 +17,7 @@ export const seedBundles: Bundle[] = [
     icon: 'tree-structure',
     author: { name: 'WE' },
     app: {
+      schemaVersion: 1,
       id: 'app',
       type: 'Column',
       meta: {
@@ -1129,6 +1130,7 @@ export const seedBundles: Bundle[] = [
     },
     templates: [
       {
+        schemaVersion: 1,
         id: 'space',
         meta: {
           name: 'Coasys',
@@ -30657,6 +30659,7 @@ export const seedBundles: Bundle[] = [
     ],
     pages: [
       {
+        schemaVersion: 1,
         id: 'about',
         meta: {
           name: 'About Coasys',

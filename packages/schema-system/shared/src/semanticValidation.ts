@@ -23,6 +23,7 @@ import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
+import { TEMPLATE_SCHEMA_VERSION } from './templateFormat';
 import { type ChildPositionKind, childrenOf } from './treeUtils';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
@@ -2952,8 +2953,23 @@ export function validateSchema(schema: unknown, context: ValidationContext): Val
   if (!structural.valid) return structural;
 
   const semantic = validateSemantic(expanded, context);
+  /*
+    A template stored without a format version is read as format 1, so this is a warning rather than
+    a refusal; but anything written now says which format it is in, so the next format can tell its
+    templates from these without guessing.
+  */
+  const unversioned: ValidationError[] =
+    expanded && typeof expanded === 'object' && 'meta' in expanded && !('schemaVersion' in expanded)
+      ? [
+          {
+            path: 'schemaVersion',
+            message: `A template says which format it is written in: add "schemaVersion": ${TEMPLATE_SCHEMA_VERSION}. Without it, it is read as format 1.`,
+            severity: 'warning',
+          },
+        ]
+      : [];
   return {
     valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
-    errors: [...structural.errors, ...semantic.errors],
+    errors: [...structural.errors, ...unversioned, ...semantic.errors],
   };
 }

@@ -226,6 +226,7 @@ const notesSection = section('Not covered here — check on real screens', 'Thes
 // ---------------------------------------------------------------------------
 
 export const schemaQueriesTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Queries',
     description: 'Exercises every $query shape against a real backend, through the routing every query takes',

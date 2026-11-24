@@ -8,6 +8,7 @@
   "icon": "tree-structure",
   "author": { "name": "WE" },
   "app": {
+    "schemaVersion": 1,
     "id": "app",
     "type": "Column",
     "meta": {
@@ -1139,6 +1140,7 @@
   },
   "templates": [
     {
+      "schemaVersion": 1,
       "id": "space",
       "meta": {
         "name": "Coasys",
@@ -28601,6 +28603,7 @@
   ],
   "pages": [
     {
+      "schemaVersion": 1,
       "id": "about",
       "meta": {
         "name": "About Coasys",

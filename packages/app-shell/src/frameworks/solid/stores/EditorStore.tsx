@@ -30,7 +30,7 @@ import { toastService } from '@we/components/solid';
 import { operationCatalog } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { contextData, setLocalWarningSink } from '@we/schema-shared';
+import { contextData, setLocalWarningSink, TEMPLATE_SCHEMA_VERSION } from '@we/schema-shared';
 import { buildValidationContext, withEntities, withOperations } from '@we/schema-shared';
 import {
   Accessor,
@@ -861,6 +861,7 @@ export function EditorStoreProvider(props: ParentProps) {
     if (action === 'fresh') {
       schema = {
         ...deepClone(starterTemplate),
+        schemaVersion: TEMPLATE_SCHEMA_VERSION,
         id: templateId,
         meta: { name, icon, description: '' },
       };

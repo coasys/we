@@ -245,6 +245,7 @@ const chatPanels: TemplatePanel[] = [
 ];
 
 export const coasysApp: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'coasys-app',
   type: 'Column',
   meta: {

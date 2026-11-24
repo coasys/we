@@ -34,6 +34,7 @@ const CLOSE_INSPECTOR = [
   { $invoke: 'shellStore.closeTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 export const coasysSpace: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'coasys-space',
   meta: {
     name: 'Coasys',

@@ -18,6 +18,7 @@ import {
 } from '../src/shared/viewResolution';
 
 const view = (id: string, segment?: string, name?: string): TemplateSchema => ({
+  schemaVersion: 1,
   id,
   meta: {
     name: name ?? id,

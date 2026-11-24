@@ -191,6 +191,7 @@ export const pollComposer: SchemaNode = {
  * space.
  */
 export const pollsView: TemplateSchema = {
+  schemaVersion: 1,
   id: 'polls',
   meta: {
     name: 'Polls',

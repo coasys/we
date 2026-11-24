@@ -19,6 +19,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  * Its theme is Dark: what somebody who has never chosen a theme wears while they are in this app.
  */
 export const weApp: TemplateSchema = {
+  schemaVersion: 1,
   type: 'Column',
   meta: {
     name: 'WE',

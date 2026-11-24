@@ -376,7 +376,10 @@ A schema is a tree of nodes. Each node can have:
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
 
-The ROOT node carries one more, and it is required:
+The ROOT node carries two more, and both are required:
+
+- schemaVersion: 1 — the template format it is written in. A host refuses a format newer than it
+  reads, before anything else, rather than rendering part of it. Write 1.
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
   keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own

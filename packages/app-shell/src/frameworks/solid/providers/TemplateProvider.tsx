@@ -87,6 +87,7 @@ import {
   recordRouteBody,
   recordViewCandidates,
   SPACE_ROUTE_PATH,
+  TEMPLATE_SCHEMA_VERSION,
 } from '@we/schema-shared';
 import type { OwnerRef, VisualEditorContextValue } from '@we/schema-solid';
 import { RenderSchema, VisualEditorProvider } from '@we/schema-solid';
@@ -963,6 +964,7 @@ export default function TemplateProvider() {
     the chrome keeps behaving as chrome.
   */
   const appSchema: TemplateSchema = {
+    schemaVersion: TEMPLATE_SCHEMA_VERSION,
     meta: { name: 'App', description: 'The app around every space', icon: '' },
     type: 'Column',
     props: { styles: { display: 'contents' } },
@@ -975,6 +977,7 @@ export default function TemplateProvider() {
   const appEditing = () => editTarget.target().kind === 'app';
 
   const shellSchema: TemplateSchema = {
+    schemaVersion: TEMPLATE_SCHEMA_VERSION,
     meta: { name: 'Shell', description: 'App shell chrome', icon: '' },
     type: 'Column',
     props: { styles: { display: 'contents' } },
@@ -1026,6 +1029,7 @@ export default function TemplateProvider() {
     behind each one, so a safety prompt added to `PROTECTED_SLOTS` is covered by being added.
   */
   const promptSchema: TemplateSchema = {
+    schemaVersion: TEMPLATE_SCHEMA_VERSION,
     meta: { name: 'Safety prompts', description: "The host's own questions", icon: '' },
     type: 'Column',
     props: { styles: { display: 'contents' } },

@@ -73,6 +73,7 @@ const marketplaceBrowser = {
 };
 
 export const marketplaceTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: { name: 'Module Marketplace', description: 'Browse and install community modules', icon: 'storefront' },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'chrome' },

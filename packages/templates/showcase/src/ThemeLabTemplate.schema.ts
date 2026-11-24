@@ -347,6 +347,7 @@ const graph = (title: string, color: Record<string, unknown>): SchemaNode => ({
 });
 
 export const themeLabTemplate = {
+  schemaVersion: 1,
   type: 'Column',
   meta: {
     name: 'Theme lab',

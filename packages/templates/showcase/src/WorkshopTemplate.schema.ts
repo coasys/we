@@ -3432,6 +3432,7 @@ const calendarRoute: RouteSchema = {
 };
 
 export const workshopTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Workshop',
     description: 'A call, its transcript, and what came out of it — as a canvas, a task list and a record.',

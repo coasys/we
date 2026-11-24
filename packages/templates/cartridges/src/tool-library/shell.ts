@@ -7,6 +7,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { VIEWS_MARKER } from '@we/schema-shared';
 
 export const toolLibraryShell: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'tool-library',
   meta: { name: 'Tool Library', description: 'A neighbourhood lending library', icon: 'wrench' },
   type: 'Column',

@@ -108,6 +108,7 @@ const mainContent: SchemaNode = {
 };
 
 export const schemaMutationsTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Schema Mutations',
     description: 'Testing updateSchema diffing engine',

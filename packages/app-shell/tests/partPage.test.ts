@@ -19,6 +19,7 @@ const template = (routes: RouteSchema[], extra: Partial<TemplateSchema> = {}): T
   type: 'Column',
   routes,
   ...extra,
+  schemaVersion: 1,
 });
 
 const view = (id: string, segment: string, children: unknown[] = []): ResolvedView => ({

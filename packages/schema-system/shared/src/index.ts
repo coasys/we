@@ -192,6 +192,12 @@ export {
   readBundle,
   svgProblem,
 } from './bundle';
+export {
+  readTemplate,
+  TEMPLATE_SCHEMA_VERSION,
+  TEMPLATE_SCHEMA_VERSIONS,
+  templateVersionProblem,
+} from './templateFormat';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
 export {
   decodeLocalParam,

@@ -15,6 +15,7 @@ import { expr } from '@we/schema-shared';
 const basePath = '/routing';
 
 export const schemaRoutingTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Schema Routing',
     description: 'Testing $routes token and multi-level routing',

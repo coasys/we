@@ -553,7 +553,8 @@ export const zTemplateSchema: z.ZodType<TemplateSchema> = z
     ...schemaNodeShape(),
     author: z.string().optional(),
     templateVersion: z.number().optional(),
-    schemaVersion: z.number().optional(),
+    // Required in the format; a reader supplies 1 for a template stored without it (readTemplate).
+    schemaVersion: z.number().int().positive(),
     meta: zTemplateMeta,
     _fromSpace: z.boolean().optional(),
     source: z.object({ bundle: z.string(), version: z.string(), piece: z.string() }).strict().optional(),

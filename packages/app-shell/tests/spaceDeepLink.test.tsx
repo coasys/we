@@ -23,6 +23,7 @@ const about: ResolvedView = {
   id: 'about',
   segment: 'about',
   schema: {
+    schemaVersion: 1,
     id: 'about',
     meta: { name: 'About', description: '', icon: '', role: 'view', segment: 'about' },
     type: 'span',

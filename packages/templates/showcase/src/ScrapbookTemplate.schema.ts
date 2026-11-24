@@ -330,6 +330,7 @@ const header: SchemaNode = {
 };
 
 export const scrapbookTemplate = {
+  schemaVersion: 1,
   meta: {
     name: 'Scrapbook',
     description: 'The space as a spread somebody laid out by hand — placed, not arranged.',

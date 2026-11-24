@@ -7,6 +7,7 @@ import { spaceGate } from '../SpaceGate.ts';
 import { NAV_BAR_HEIGHT, spaceHeader, spaceNavBar } from './SpaceHeader.ts';
 
 export const headerLayout: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Default',
     description: 'Welcome screen with perspectives and spaces overview',

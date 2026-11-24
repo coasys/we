@@ -8,7 +8,7 @@ import { updateSchema } from '../src/schemaUpdater';
 const baseMeta = { name: 'Test', description: '', icon: '' };
 
 function makeTemplate(overrides: Partial<TemplateSchema> = {}): TemplateSchema {
-  return { meta: baseMeta, type: 'div', children: [], ...overrides };
+  return { meta: baseMeta, type: 'div', children: [], ...overrides, schemaVersion: 1 };
 }
 
 describe('updateSchema', () => {

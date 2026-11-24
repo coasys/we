@@ -282,6 +282,7 @@ const playlistsRoute: RouteSchema = {
 };
 
 export const youtubeTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'YouTube',
     description: 'The same posts as a video library, with playlists and comments. Embeds only.',

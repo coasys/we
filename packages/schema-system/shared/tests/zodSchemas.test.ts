@@ -90,12 +90,14 @@ describe('zodSchemas', () => {
   });
 
   // --- TemplateSchema ---
-  it('parses a template schema with meta', () => {
+  it('requires a template to say its format version', () => {
+    // A reader supplies it for one stored without (readTemplate); the format itself requires it.
     const template = {
       meta: { name: 'T', description: 'd', icon: 'i' },
       type: 'root',
     };
-    expect(() => zTemplateSchema.parse(template)).not.toThrow();
+    expect(() => zTemplateSchema.parse(template)).toThrow();
+    expect(() => zTemplateSchema.parse({ ...template, schemaVersion: 1 })).not.toThrow();
   });
 
   it('parses a template schema with id and schemaVersion', () => {
@@ -114,6 +116,7 @@ describe('zodSchemas', () => {
 
   it('rejects template schema with extra fields (strict)', () => {
     const template = {
+      schemaVersion: 1,
       meta: { name: 'T', description: 'd', icon: 'i' },
       type: 'root',
       bogus: 123,

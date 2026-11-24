@@ -331,7 +331,12 @@ export type TemplateSchema = SchemaNode & {
   id?: string;
   author?: string;
   templateVersion?: number;
-  schemaVersion?: number;
+  /**
+   * The template format this is written in — `TEMPLATE_SCHEMA_VERSION` for anything written now.
+   * Checked before anything else when a template is read, and supplied as 1 for one stored without
+   * it. See `templateFormat.ts`.
+   */
+  schemaVersion: number;
   meta: TemplateMeta;
   _fromSpace?: boolean;
   /**

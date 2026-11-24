@@ -205,6 +205,7 @@ const photoDetail: RouteSchema = {
 };
 
 export const instagramTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Instagram',
     description: 'The same posts as a photo grid — one space, a different lens.',

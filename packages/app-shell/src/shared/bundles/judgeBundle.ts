@@ -14,7 +14,13 @@
  */
 import { type EntitySchema, validateManifest } from '@we/backend-shared';
 import { effectSummary, getOperation, validateOperations } from '@we/entities';
-import { type Bundle, bundleThemes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
+import {
+  type Bundle,
+  bundleThemes,
+  type SchemaNode,
+  TEMPLATE_SCHEMA_VERSION,
+  type TemplateSchema,
+} from '@we/schema-shared';
 
 import { operationSurface } from '../registries/operationGroups';
 import { type CapabilityGroup, CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
@@ -235,6 +241,7 @@ export function bundleTemplates(bundle: Bundle): Array<TemplateSchema & { id: st
 export function bootScreenTemplate(bundle: Pick<Bundle, 'bootScreen' | 'name'>): TemplateSchema {
   return {
     ...(bundle.bootScreen as SchemaNode),
+    schemaVersion: TEMPLATE_SCHEMA_VERSION,
     meta: { name: `${bundle.name} sign-in`, description: 'The sign-in screen', icon: 'sign-in', role: 'app' },
   };
 }

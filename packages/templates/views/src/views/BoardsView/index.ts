@@ -232,6 +232,7 @@ const boardDetail: SchemaNode = {
 };
 
 export const boardsView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Boards',
     description: "This space's work, arranged — everything in one board, or a board per piece of work",

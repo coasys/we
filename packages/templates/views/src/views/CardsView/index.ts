@@ -34,6 +34,7 @@ const NON_BLOCK_CONTENT_TYPES = [
 ];
 
 export const cardsView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Cards',
     description: 'Everything in the space as a filterable, sortable feed — posts, people, calls and the rest',

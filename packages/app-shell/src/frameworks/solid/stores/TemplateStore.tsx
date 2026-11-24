@@ -46,7 +46,7 @@ import {
   Template,
 } from '@we/entities';
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
-import { ensureNodeIds, hasViewsMarker, templateThemeIds } from '@we/schema-shared';
+import { ensureNodeIds, hasViewsMarker, TEMPLATE_SCHEMA_VERSION, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
 import {
   Accessor,
@@ -87,7 +87,15 @@ import { createTemplateDrafts } from './templateDrafts';
 import { useThemeStore } from './ThemeStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
-const emptyTemplate: TemplateSchema = { id: '', meta: emptyMeta, type: '', children: [], slots: {}, routes: [] };
+const emptyTemplate: TemplateSchema = {
+  schemaVersion: TEMPLATE_SCHEMA_VERSION,
+  id: '',
+  meta: emptyMeta,
+  type: '',
+  children: [],
+  slots: {},
+  routes: [],
+};
 export type TemplateManagementItem = {
   id: string;
   name: string;
