@@ -298,6 +298,9 @@ const SELECTION_FRAME_ID = 'we-graph://selection';
  */
 const CLEAR_ANCHOR_WITHIN = 0.45;
 
+/** What the fold control says on a graph that offers no fold: nothing, and nothing computed to say it. */
+const NO_FOLD_SAYS = { show: false, enabled: false, hides: 0, held: 0 } as const;
+
 /** Radius of an edge's endpoint grip, in screen pixels. Divided by the camera where it is drawn. */
 const ANCHOR_HANDLE_R = 5;
 
@@ -2208,16 +2211,30 @@ export function GraphView(props: GraphViewProps) {
    * cannot fold" rather than as "there is nothing here a fold may take".
    *
    * So the control appears whenever there is anything under the card at all, and says which case it
-   * is in. Asked of the engine for the selected card only, like `canFold`.
+   * is in.
+   *
+   * It is asked of EVERY card, not only the selected one: the caret in a card's corner asks
+   * `caretSays`, which asks this. Each answer walks the whole graph, so on every version bump the
+   * cost was cards × graph — 5 s to dim a 5,000-card canvas, and most of a 12 s mount — on canvases
+   * that never offered a fold at all. So a graph with no `onNodeFold` asks nothing, and `hides`, which
+   * only a tooltip reads, is worked out when it is read.
    */
   const foldSays = (entry: NodeEntry) => {
     version();
-    const hides = engine.foldImpact(entry.node.id);
-    const held = engine.foldHeldElsewhere(entry.node.id);
-    const enabled = engine.canFold(entry.node.id);
-    // The counts are true whether or not anybody is listening — a folded card still has to be able
-    // to say what it is holding. Only the *control* depends on the handler.
-    return { show: !!props.onNodeFold && (enabled || held > 0), enabled, hides, held };
+    // A folded card still answers without the handler: it has to be able to say what it is holding.
+    if (!props.onNodeFold && !entry.folded) return NO_FOLD_SAYS;
+    const id = entry.node.id;
+    const held = engine.foldHeldElsewhere(id);
+    const enabled = engine.canFold(id);
+    // Only the *control* depends on the handler; the counts are true either way.
+    return {
+      show: !!props.onNodeFold && (enabled || held > 0),
+      enabled,
+      get hides() {
+        return engine.foldImpact(id);
+      },
+      held,
+    };
   };
 
   /** "1 card" / "3 cards" — the graph says what it is about in its own tooltips. */
