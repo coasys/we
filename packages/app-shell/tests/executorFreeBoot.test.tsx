@@ -12,7 +12,7 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { type EntityManifest, ModuleSchemasRefused } from '@we/backend-shared';
+import { type EntityManifest, type LivePage, type LiveQuery, ModuleSchemasRefused } from '@we/backend-shared';
 import { type ContentInput, registerCoreBlocks, writePost } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
@@ -32,6 +32,8 @@ import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -1554,27 +1556,14 @@ describe('dataset lifecycle through the real stores', () => {
     const held = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
     };
     const query = Entity.query.bind(Entity);
     const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await held;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, held, () => (toRead = true));
     });
     try {
       await stores.datasets.switchDataset(to);
@@ -1631,28 +1620,15 @@ describe('dataset lifecycle through the real stores', () => {
     const heldRead = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       update: (...a: unknown[]) => Promise<unknown>;
     };
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await heldRead;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, heldRead, () => (toRead = true));
     });
     // The save is held at the store write, so it is still out when To's own template arrives.
     let fail!: () => void;
@@ -2663,11 +2639,17 @@ describe('what the stores actually wrote', () => {
     expect(stores.spaces.policy().roles).toEqual(['admin']);
 
     // An admin may change the rules; choosing what is in force already writes nothing.
+    // Versions are ordered by when they were made, so each is made a moment after the last: two in
+    // the same millisecond would leave which is in force to chance.
+    const later = () => new Promise((resolve) => setTimeout(resolve, 5));
     await stores.spaces.setPolicyPreset('open');
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    await later();
     await stores.spaces.setPolicyPreset('open');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('open'));
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
     expect(await Policy.count(handle as never)).toBe(3);
@@ -3033,6 +3015,24 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('reads the landmarks once when their watch fails to open', async () => {
+    // The watch's first result is what answers for the landmarks; without it they stayed loading.
+    let failing!: ReturnType<typeof vi.spyOn>;
+    const { stores } = await openSpace('Landmark Watch Fails', () => {
+      failing = vi
+        .spyOn(getEntity('SpaceLandmark') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+        .mockImplementation(() => ({
+          first: Promise.reject(new Error('executor unreachable')),
+          getSnapshot: () => ({ status: 'error', initial: false }),
+          subscribe: () => () => undefined,
+          dispose: () => undefined,
+        }));
+    });
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 10000);
+
   it('hears a new task state without reading the states again', async () => {
     const { stores, handle } = await openSpace('Pushed States');
     const reads = spyFindAll('TaskState');
@@ -3096,6 +3096,132 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('keeps the stored policy in force when the policy watch fails to open', async () => {
+    /*
+      The watch's first result is the only read of the versions. When it failed, the policy was marked
+      loaded with no versions, and an empty list is the open policy: writes were judged by it instead
+      of by the policy the space stores.
+    */
+    const { stores, handle } = await openSpace('Policy Watch Fails');
+    const here = stores.datasets.currentDataset()!.id;
+    await Policy.create(handle, { document: COMMUNITY_POLICY } as never);
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+
+    await stores.spaces.createSpace('Policy Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Elsewhere'));
+
+    const failing = vi
+      .spyOn(getEntity('Policy') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+      .mockImplementation(() => ({
+        first: Promise.reject(new Error('executor unreachable')),
+        getSnapshot: () => ({ status: 'error', initial: false }),
+        subscribe: () => () => undefined,
+        dispose: () => undefined,
+      }));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'community' }));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 15000);
+
+  /** Leaves the open space and comes back, with `entity`'s watch (when `only` accepts the query) failing to open. */
+  async function reenterWithFailingWatch(
+    stores: Awaited<ReturnType<typeof openSpace>>['stores'],
+    entity: string,
+    only: (query: unknown) => boolean = () => true,
+  ) {
+    const here = stores.datasets.currentDataset()!.id;
+    const name = `${entity} Elsewhere`;
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe(name));
+    const model = getEntity(entity) as unknown as { query: (...a: unknown[]) => unknown };
+    const real = model.query.bind(model);
+    const failing = vi.spyOn(model, 'query').mockImplementation((...args: unknown[]) =>
+      only(args[1])
+        ? {
+            first: Promise.reject(new Error('executor unreachable')),
+            getSnapshot: () => ({ status: 'error', initial: false }),
+            subscribe: () => () => undefined,
+            dispose: () => undefined,
+          }
+        : real(...args),
+    );
+    await stores.datasets.switchDataset(here);
+    return failing;
+  }
+
+  it('keeps the task states when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Task State Watch Fails');
+    await getEntity('TaskState').create(handle, { name: 'Blocked', slug: 'blocked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked'));
+    const failing = await reenterWithFailingWatch(stores, 'TaskState');
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked');
+    failing.mockRestore();
+  }, 15000);
+
+  it("does not show the last space's task states when the next space cannot read its own", async () => {
+    const { stores, handle } = await openSpace('Task States Before');
+    await getEntity('TaskState').create(handle, { name: 'Parked', slug: 'parked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('parked'));
+    await stores.spaces.createSpace('Task States Unreadable', 'x', 'personal', 'hidden');
+    const next = (await lifecycle.list()).find((d) => d.name === 'Task States Unreadable')!;
+    const model = getEntity('TaskState') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(next.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Task States Unreadable'));
+    await vi.waitFor(() => expect(failingWatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(stores.spaces.taskStates().map((s) => s.slug)).not.toContain('parked');
+    failingWatch.mockRestore();
+    failingRead.mockRestore();
+  }, 15000);
+
+  it('does not mark the roles loaded without the grants when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Grant Watch Fails');
+    await getEntity('Role').create(handle, { slug: 'steward', name: 'Steward' } as never);
+    await getEntity('RoleGrant').create(handle, { role: 'steward', agent: 'did:key:steward' } as never);
+    await vi.waitFor(() =>
+      expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']),
+    );
+    const failing = await reenterWithFailingWatch(stores, 'RoleGrant');
+    await vi.waitFor(() => expect(stores.spaces.rolesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    // Loaded with the grants the space stores, not with that half empty.
+    expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']);
+    failing.mockRestore();
+  }, 15000);
+
+  it('reads what a collection extracts once when the settings watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Settings Watch Fails');
+    const root = stores.spaces.root();
+    // The space's default is on; this collection is stored off.
+    await CollectionBlock.update(handle, root, { autoExtract: false } as never);
+    const isSettings = (query: unknown) => Array.isArray((query as { where?: { id?: unknown } })?.where?.id);
+    const failing = await reenterWithFailingWatch(stores, 'CollectionBlock', isSettings);
+    await vi.waitFor(() => expect(stores.spaces.root()).toBe(root));
+    await vi.waitFor(() => expect(failing.mock.calls.some((call) => isSettings(call[1]))).toBe(true));
+    expect(stores.spaces.autoInterpret()).toBe(true);
+    // Answered from the stored setting, never from the default standing in for it.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
+    failing.mockRestore();
+  }, 15000);
+
   it('hears a collection switched off without reading it again, and never hydrates its contents', async () => {
     // The space's own collection is asked about on entering, so watch from before that.
     let asked!: ReturnType<typeof vi.spyOn>;
@@ -3155,11 +3281,28 @@ describe('entering a space: its collection and its landmarks', () => {
   */
   type Held<T> = { release: () => void; promise: Promise<T> };
   /** Holds every call to `entity.method` until released, passing it on to the real one then. */
-  function hold(entity: string, method: 'findAll' | 'findOne') {
+  function hold(entity: string, method: 'findAll' | 'findOne' | 'query') {
     const target = getEntity(entity) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const real = target[method].bind(target);
     const held: Held<unknown>[] = [];
     let open = false;
+    if (method === 'query') {
+      // A live query is returned at once; what is held is its first result and its subscribers.
+      const gates: (() => void)[] = [];
+      const spy = vi.spyOn(target, method).mockImplementation(((...args: unknown[]) => {
+        const live = real(...args) as unknown as LiveQuery<unknown>;
+        if (open) return live;
+        const gate = new Promise<void>((resolve) => gates.push(resolve));
+        return heldLive(live, gate);
+      }) as never);
+      return {
+        spy,
+        release: () => {
+          open = true;
+          for (const g of gates.splice(0)) g();
+        },
+      };
+    }
     const spy = vi.spyOn(target, method).mockImplementation((...args: unknown[]) => {
       if (open) return real(...args);
       let release!: () => void;
@@ -3206,7 +3349,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const [space] = await Space.findAll(ref.handle as never);
     const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
     await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
@@ -3249,7 +3392,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const carried = spaceRow.root;
     spaceRow.root = undefined;
     const spaceReads = hold('Space', 'findOne');
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     // Both issued while neither has answered.
@@ -5074,13 +5217,7 @@ describe('what a collection interprets', () => {
     // question to the stored-record read the watch's answer then outlives.
     await enterSpace(stores, 'From');
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       findAll: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => Promise<Space[]>;
     };
     let releaseRecord!: () => void;
@@ -5088,15 +5225,9 @@ describe('what a collection interprets', () => {
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== a) return builder;
-      return {
-        subscribe: async (cb) => {
-          await heldRecord;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== a) return live;
+      return heldLive(live, heldRecord);
     });
     // The stored space read inside the collection's answers, held so the switch lands inside it.
     let releaseSpace!: () => void;

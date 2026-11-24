@@ -85,25 +85,56 @@ const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 // ---------------------------------------------------------------------------
 
 interface MockBuilder {
+  first: Promise<unknown>;
   subscribe: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
   /** Simulate the backend pushing new results to the subscriber */
   push: (results: unknown[]) => void;
 }
 
+/** A live query that opens on an empty page; `push` is a change after that. */
 function createMockBuilder(): MockBuilder {
-  let callback: ((results: unknown[]) => void) | null = null;
+  type Snap = { status: 'ready'; data: { results: unknown[] }; initial: boolean };
+  const listeners = new Set<(snapshot: Snap) => void>();
+  let current: Snap = { status: 'ready', data: { results: [] }, initial: true };
   const builder: MockBuilder = {
-    subscribe: vi.fn((cb: (results: unknown[]) => void) => {
-      callback = cb;
-      return Promise.resolve([]);
+    first: Promise.resolve({ results: [] }),
+    subscribe: vi.fn((fn: (snapshot: Snap) => void) => {
+      listeners.add(fn);
+      fn(current);
+      return () => void listeners.delete(fn);
     }),
     dispose: vi.fn(),
     push(results: unknown[]) {
-      callback?.(results);
+      current = { status: 'ready', data: { results }, initial: false };
+      for (const fn of [...listeners]) fn(current);
     },
   };
   return builder;
+}
+
+/** A live query that stays loading until `push` is first called; that first push is the opening result. */
+function createLateBuilder() {
+  type Snap = { status: 'ready'; data: { results: unknown[] }; initial: boolean };
+  const listeners = new Set<(snapshot: Snap) => void>();
+  let current: Snap | null = null;
+  let open!: (page: { results: unknown[] }) => void;
+  const first = new Promise<{ results: unknown[] }>((resolve) => (open = resolve));
+  return {
+    first,
+    subscribe: vi.fn((fn: (snapshot: Snap) => void) => {
+      listeners.add(fn);
+      if (current) fn(current);
+      return () => void listeners.delete(fn);
+    }),
+    dispose: vi.fn(),
+    push(results: unknown[]) {
+      const opening = current === null;
+      current = { status: 'ready', data: { results }, initial: opening };
+      if (opening) open(current.data);
+      for (const fn of [...listeners]) fn(current);
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -743,15 +774,7 @@ describe('$query when', () => {
   it('is not asked until the condition is truthy, and is loaded only once it has been', async () => {
     // A board whose first answer has not come back yet: `createMockBuilder` resolves at once with
     // nothing, which would count as answered.
-    let pending: ((results: unknown[]) => void) | null = null;
-    const boards = {
-      subscribe: vi.fn((cb: (results: unknown[]) => void) => {
-        pending = cb;
-        return new Promise<unknown[]>(() => {});
-      }),
-      dispose: vi.fn(),
-      push: (results: unknown[]) => pending?.(results),
-    };
+    const boards = createLateBuilder();
     const tasks = createMockBuilder();
     const Board = { query: vi.fn(() => boards), findAll: vi.fn() };
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
@@ -841,17 +864,7 @@ describe('$query when', () => {
     card anyway.
   */
   it('ignores an answer that arrives after the condition turned falsy', async () => {
-    let resolveInitial: ((rows: unknown[]) => void) | null = null;
-    let pushRows: ((rows: unknown[]) => void) | null = null;
-    const builder = {
-      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
-        pushRows = cb;
-        return new Promise<unknown[]>((resolve) => {
-          resolveInitial = resolve;
-        });
-      }),
-      dispose: vi.fn(),
-    };
+    const builder = createLateBuilder();
     const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
     const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
     const stores = {
@@ -876,8 +889,8 @@ describe('$query when', () => {
 
     setParams({});
     await tick();
-    resolveInitial!([{ id: 't1' }]);
-    pushRows!([{ id: 't1', status: 'done' }]);
+    builder.push([{ id: 't1' }]);
+    builder.push([{ id: 't1', status: 'done' }]);
     await tick();
 
     expect(container.querySelector('[data-testid="data"]')?.textContent).toBe('[]');
@@ -892,14 +905,7 @@ describe('$query over several entities', () => {
     answered, the list is ordered and limited as a whole, and "no kinds" is an answer.
   */
   it('combines each entity’s answer, tagged, once every one has answered', async () => {
-    let answerTasks: ((rows: unknown[]) => void) | null = null;
-    const tasks = {
-      subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
-        answerTasks = cb;
-        return new Promise<unknown[]>(() => {});
-      }),
-      dispose: vi.fn(),
-    };
+    const tasks = createLateBuilder();
     const events = createMockBuilder();
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
     const Event = { query: vi.fn(() => events), findAll: vi.fn() };
@@ -928,7 +934,7 @@ describe('$query over several entities', () => {
     await tick();
     expect(el()).toEqual([false, []]);
 
-    answerTasks!([
+    tasks.push([
       { id: 't1', at: 3 },
       { id: 't2', at: 1 },
     ]);

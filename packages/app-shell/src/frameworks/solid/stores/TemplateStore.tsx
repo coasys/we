@@ -1728,12 +1728,11 @@ export function TemplateStoreProvider(props: ParentProps) {
       if (changed.length || removed.length) onChange([...changed, ...removed]);
     };
     const watch = Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] });
-    // A backend may or may not hand the first result to the callback as well; taking it twice is
-    // harmless, since an unchanged push reports nothing.
-    void watch
-      .subscribe(take)
-      .then(take)
-      .catch((error: unknown) => console.warn('[TemplateStore] watching templates failed', error));
+    // Called with the rows it opened on, then with each change.
+    watch.subscribe((snapshot) => {
+      if (snapshot.status === 'ready' && snapshot.data) take(snapshot.data.results);
+    });
+    watch.first.catch((error: unknown) => console.warn('[TemplateStore] watching templates failed', error));
     return () => {
       stopped = true;
       watch.dispose();

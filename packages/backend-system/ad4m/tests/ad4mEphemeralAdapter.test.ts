@@ -27,7 +27,7 @@ function fakePerspective(sharedUrl: string | null = 'neighbourhood://Qm1') {
   const handlers: Handler[] = [];
   const sent: Array<{ source: string; predicate: string; target: string }> = [];
   const neighbourhood = {
-    addSignalHandler: vi.fn(async (h: Handler) => {
+    addSignalHandler: vi.fn((h: Handler) => {
       handlers.push(h);
     }),
     removeSignalHandler: vi.fn((h: Handler) => {
@@ -244,32 +244,19 @@ describe('createAd4mEphemeralPort', () => {
    * "starting a call takes a while to show up for the other agent".
    */
   describe('publish timing', () => {
-    it('waits for the signal handler before publishing anything', async () => {
+    it('registers the signal handler before publishing anything', async () => {
       // The presence handshake is one round trip: a joiner broadcasts `hello` and every peer answers
-      // at once. Publishing before the executor has registered our handler means those answers are
-      // delivered to nobody, and the joiner sits in an apparently empty space until each peer's next
-      // heartbeat.
+      // at once. The SDK sends the subscription ahead of the next call on the socket, so a handler
+      // registered before the broadcast hears the answers.
       const env = fakePerspective();
-      let registered = false;
-      // Registration finishes when the test says, not after a timer: a 5 ms wait raced the first
-      // check on a loaded CI runner, and the test failed with nothing wrong.
-      let finishRegistering!: () => void;
-      env.neighbourhood.addSignalHandler.mockImplementationOnce(async (h: Handler) => {
-        await new Promise<void>((resolve) => (finishRegistering = resolve));
-        env.handlers.push(h);
-        registered = true;
-      });
-
       const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
       scope.channel('presence').publish({ hello: true });
-
       await flush();
-      expect(env.sent).toHaveLength(0);
 
-      finishRegistering();
-      await flush();
-      expect(registered).toBe(true);
       expect(env.sent).toHaveLength(1);
+      expect(env.neighbourhood.addSignalHandler.mock.invocationCallOrder[0]).toBeLessThan(
+        env.neighbourhood.sendBroadcastU.mock.invocationCallOrder[0],
+      );
     });
 
     it('holds a coalesced publish and sends it when the in-flight one lands', async () => {

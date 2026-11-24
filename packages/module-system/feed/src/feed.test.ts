@@ -521,13 +521,16 @@ describe('grouping and naming', () => {
     expect(line).toMatchObject({ id: 'msg-1', author: 'did:ann', text: 'lunch?' });
   });
 
-  it('draws a line with marks from one block, and leaves plain text as text', () => {
+  it('draws every line from one block, marked or not', () => {
     const marks = [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }];
     expect(lineContent({ text: '@Ann can you?', marks })).toEqual([
       { _type: 'block', text: '@Ann can you?', marks: [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }] },
     ]);
-    expect(lineContent({ text: 'plain' })).toBeNull();
-    expect(lineContent({ text: 'none', marks: [] })).toBeNull();
+    // Plain text is a block too, so its line breaks are kept; what is not a mark is left out.
+    expect(lineContent({ text: 'plain\nlines' })).toEqual([{ _type: 'block', text: 'plain\nlines', marks: [] }]);
+    expect(lineContent({ text: 'broken', marks: [{ start: 0 }] })).toEqual([
+      { _type: 'block', text: 'broken', marks: [] },
+    ]);
   });
 });
 

@@ -39,8 +39,10 @@ const texts = async () => (await Note.findAll(dataset)).map((note) => note.text)
 async function pushes() {
   const seen: unknown[][] = [];
   const live = Note.query(dataset, {});
-  await live.subscribe((rows) => void seen.push(rows));
-  seen.length = 0;
+  await live.first;
+  live.subscribe((snapshot) => {
+    if (snapshot.status === 'ready' && snapshot.data && !snapshot.initial) seen.push(snapshot.data.results);
+  });
   return { seen, dispose: () => live.dispose() };
 }
 

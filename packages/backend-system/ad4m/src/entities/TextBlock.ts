@@ -55,8 +55,19 @@ export class TextBlock extends WeNode {
   @Property({ through: 'we://direction' })
   direction: string = '';
 
-  /** The block's words, and the one string search, transcripts, notes and the AI all read. */
-  @Property({ through: 'we://text' })
+  /**
+   * The block's words, and the one string search, transcripts, notes and the AI all read.
+   *
+   * A line typed into a conversation is drawn as markdown — by a person or a bot, with no flag
+   * saying so, as chat apps draw every message. What a bot writes is markdown already: `- ` lists,
+   * numbered steps, paragraphs. A transcribed line is drawn as said. The markdown stays here as
+   * written, and the drawing is derived (`lineContent` in `@we/messages`).
+   */
+  @Property({
+    through: 'we://text',
+    interpretationHint:
+      'In a conversation, drawn as markdown: headings, lists, emphasis, inline code, code blocks and links render. A line is read in a narrow column, so short paragraphs and lists read better than one long block; put paths, hashes and commands in inline code. A mention is a mention mark over @Name in marks, its offsets counted in text as stored, markdown included.',
+  })
   text: string = '';
 
   /**

@@ -166,21 +166,32 @@ describe('relations', () => {
 });
 
 describe('live queries', () => {
-  it('pushes the current results, then again on every write to that dataset', async () => {
-    const seen = vi.fn();
+  it('opens on the current results, then makes a snapshot per change to that dataset', async () => {
     const live = Space.query(dataset, { order: { name: 'asc' } });
+    const seen: { names: string[]; initial: boolean }[] = [];
+    live.subscribe((s) => seen.push({ names: s.data!.results.map((r) => r.name as string), initial: s.initial }));
 
-    const initial = await live.subscribe(seen);
-    expect(initial).toHaveLength(0);
-    expect(seen).toHaveBeenCalledTimes(1);
+    expect((await live.first).results).toHaveLength(0);
+    expect(seen).toEqual([{ names: [], initial: true }]);
 
     await Space.create(dataset, { name: 'New' });
-    expect(seen).toHaveBeenCalledTimes(2);
-    expect((seen.mock.lastCall?.[0] as { name: string }[])[0].name).toBe('New');
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    expect(seen[1]).toEqual({ names: ['New'], initial: false });
 
     live.dispose();
     await Space.create(dataset, { name: 'Later' });
-    expect(seen).toHaveBeenCalledTimes(2);
+    await Promise.resolve();
+    expect(seen).toHaveLength(2);
+  });
+
+  it('makes no new snapshot for a write that leaves the result as it was', async () => {
+    const live = Space.query(dataset, { where: { name: 'Nobody' } });
+    await live.first;
+    const opened = live.getSnapshot();
+    await Space.create(dataset, { name: 'Somebody' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(live.getSnapshot()).toBe(opened);
+    live.dispose();
   });
 });
 

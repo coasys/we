@@ -32,14 +32,7 @@
  */
 import { createHash, generateKeyPairSync, randomUUID, sign as signBytes } from 'node:crypto';
 
-import {
-  Ad4mClient,
-  LinkExpression,
-  LinkQuery,
-  type MentionMessage,
-  QuerySubscriptionProxy,
-  WakerSubscriptionManager,
-} from '@coasys/ad4m';
+import { Ad4mClient, LinkExpression, LinkQuery, type MentionMessage, WakerSubscriptionManager } from '@coasys/ad4m';
 import type { BackendPorts } from '@we/backend-shared';
 import { type ContentDocument, registerCoreBlocks, writePost } from '@we/block-shared';
 import { CollectionBlock, TextBlock } from '@we/entities';
@@ -294,7 +287,6 @@ async function botWithWaker() {
   const manager = new WakerSubscriptionManager({
     perspectiveClient: client.perspective,
     logger: { info: () => {}, warn: console.warn, error: console.error, debug: () => {} },
-    QuerySubscriptionProxy,
     debounceMs: 100,
     onWake: (_sub, _result, mentions) => {
       wakes.push(mentions ?? []);

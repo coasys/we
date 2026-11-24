@@ -24,7 +24,7 @@
  * tools of their own), and who may do what in the space.
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
-import { type ContentBlock, type TextContentBlock, writePost as writePostAs } from '@we/block-shared';
+import { markdownToBlocks, writePost as writePostAs } from '@we/block-shared';
 import {
   completeResponse,
   describeEffects,
@@ -183,24 +183,6 @@ function shown(value: unknown, relation: boolean): unknown {
   }
   if (typeof value === 'string' && value.length > MAX_FIELD) return `${value.slice(0, MAX_FIELD)}…`;
   return value;
-}
-
-/** Text as a composition: a paragraph per blank-line-separated run, `#` headings and `-` items read. */
-export function textToBlocks(text: string): ContentBlock[] {
-  return text.split(/\n\s*\n/).flatMap((part) => {
-    const lines = part.split('\n').map((l) => l.trimEnd());
-    if (lines.length > 1 && lines.every((l) => /^\s*[-*]\s+/.test(l)))
-      return lines.map((l): TextContentBlock => ({
-        _type: 'block',
-        listItem: 'bullet',
-        text: l.replace(/^\s*[-*]\s+/, ''),
-      }));
-    const joined = lines.join('\n').trim();
-    if (!joined) return [];
-    const heading = /^(#{1,3})\s+(.*)$/s.exec(joined);
-    if (heading) return [{ _type: 'block', style: `h${heading[1].length}` as 'h1', text: heading[2] }];
-    return [{ _type: 'block', text: joined }];
-  });
 }
 
 export function createDataToolset(options: DataToolsetOptions): SessionToolset {
@@ -468,7 +450,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const container = respondsTo ? undefined : (str(args.in) ?? ((await spaceRoot()).id || undefined));
     try {
       // The composer's own write: `core.createPost`, a reply threaded in the same write.
-      const id = await writePostAs(dataset, textToBlocks(text), {
+      const id = await writePostAs(dataset, markdownToBlocks(text), {
         invoker: options.invoker,
         kind,
         ...(container ? { container } : {}),
@@ -641,7 +623,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     {
       name: 'write_post',
       description:
-        'Write a post, a message or a reply, as the composer would. A reply names what it answers with `respondsTo`; a message names its channel with `in`; a post with neither goes in the space. Plain text: blank lines between paragraphs, `#` for a heading, `-` for list items.',
+        'Write a post, a message or a reply, as the composer would. A reply names what it answers with `respondsTo`; a message names its channel with `in`; a post with neither goes in the space. `text` is markdown: headings, lists, emphasis, inline code, code blocks and links are written as the composer would write them.',
       parameters: {
         type: 'object',
         properties: {
