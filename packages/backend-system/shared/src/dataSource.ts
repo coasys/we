@@ -13,6 +13,7 @@
  * the renderer depends on.
  */
 import type { EphemeralPort } from './ephemeral';
+import type { LiveQuery, Page } from './liveQuery';
 import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
 import type { QueryIR } from './queryIR';
 
@@ -49,18 +50,13 @@ export interface QueryOptions {
   [k: string]: unknown;
 }
 
-/** A live query subscription. `subscribe` resolves with the initial page and re-invokes `cb` on change. */
-export interface QuerySubscription<T = unknown> {
-  subscribe(cb: (rows: T[]) => void): Promise<T[]>;
-  dispose(): void;
-}
-
 /**
  * A queryable model handle — what `$getEntity(name)` returns. The two methods are the entire read
  * contract the renderer depends on.
  */
 export interface EntityClass<T = unknown> {
-  query(dataset: DatasetHandle, opts: QueryOptions): QuerySubscription<T>;
+  /** A live query: opens on the first page of rows and follows it. Dispose it when done. */
+  query(dataset: DatasetHandle, opts: QueryOptions): LiveQuery<Page<T>>;
   findAll(dataset: DatasetHandle, opts: QueryOptions, ctl?: { signal?: AbortSignal }): Promise<T[]>;
 }
 

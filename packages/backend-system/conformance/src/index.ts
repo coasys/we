@@ -26,8 +26,11 @@ import {
   type DatasetHandle,
   type EntityManifest,
   itemFor,
+  type LivePage as Page,
+  type LiveQuery,
   RECORD_TYPE_KEY,
   type RendererDataBindings,
+  type Snapshot,
   unionByFanOut,
   type WorkflowDefinition,
   type WorkflowView,
@@ -149,6 +152,7 @@ export const CONFORMANCE_CASES = [
   'relations.member-counts',
   'writes.checked-first',
   'queries.several-entities',
+  'live.first-and-initial',
   'live.pushes-writes',
   'live.dispose-stops',
   'live.included-child-edit',
@@ -177,10 +181,7 @@ interface Instance extends Row {
   delete(): Promise<void>;
 }
 
-interface LiveQuery {
-  subscribe(callback: (rows: Row[]) => void): Promise<Row[]>;
-  dispose(): void;
-}
+type RowsQuery = LiveQuery<Page<Row>>;
 
 /** The write half: a registered entity class, as the shell's record actions resolve one. */
 interface Model {
@@ -199,7 +200,7 @@ interface Model {
 /** The read half: what `$getEntity` hands a template. */
 interface Reader {
   findAll(dataset: DatasetHandle, query?: Record<string, unknown>): Promise<Row[]>;
-  query(dataset: DatasetHandle, query?: Record<string, unknown>): LiveQuery;
+  query(dataset: DatasetHandle, query?: Record<string, unknown>): RowsQuery;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -239,7 +240,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     let subject: ConformanceSubject;
     let bindings: RendererDataBindings;
     const fetched: string[] = [];
-    const live: LiveQuery[] = [];
+    const live: RowsQuery[] = [];
 
     beforeEach(async () => {
       subject = await harness.setup();
@@ -264,20 +265,27 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
     const reader = (entityName: string) => bindings.$getEntity!(entityName) as unknown as Reader;
     const model = (entityName: string) => getEntity(entityName) as unknown as Model;
 
-    const watch = async (entityName: string, query: Record<string, unknown>) => {
+    /** Open a live query and follow it: `pushes` holds the rows of each snapshot, the first one first. */
+    const follow = async (handle: RowsQuery) => {
       const pushes: Row[][] = [];
-      const handle = reader(entityName).query(subject.dataset, query);
+      const snapshots: Snapshot<Page<Row>>[] = [];
       live.push(handle);
-      // The initial page is what `subscribe` resolves with, and the callback hears only later
-      // changes — so it goes first, ahead of any change that arrived before it resolved.
-      pushes.unshift(await handle.subscribe((rows) => void pushes.push(rows)));
+      await handle.first;
+      // Called at once with the current snapshot, so the opening one is never missed.
+      handle.subscribe((snapshot) => {
+        snapshots.push(snapshot);
+        if (snapshot.data) pushes.push(snapshot.data.results);
+      });
       const dispose = () => {
         const at = live.indexOf(handle);
         if (at >= 0) live.splice(at, 1);
         handle.dispose();
       };
-      return { pushes, dispose };
+      return { handle, pushes, snapshots, dispose };
     };
+
+    const watch = (entityName: string, query: Record<string, unknown>) =>
+      follow(reader(entityName).query(subject.dataset, query));
 
     const test = (id: ConformanceCase, title: string, body: () => void | Promise<void>) => {
       const gap = harness.knownGaps?.[id];
@@ -859,10 +867,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
             [note.id]: 'CollectionBlock',
           });
 
-          const pushes: (readonly unknown[])[] = [];
-          const watching = union.query(subject.dataset, { ...inside, limit: 10 });
-          live.push(watching as LiveQuery);
-          await watching.subscribe((rows) => void pushes.push(rows));
+          const { pushes } = await follow(union.query(subject.dataset, { ...inside, limit: 10 }) as RowsQuery);
           const later = await model('TaskBlock').create(subject.dataset, { title: 'Later' }, inside);
           await eventually(() => expect(kinds(pushes.at(-1))[later.id]).toBe('TaskBlock'), settle);
         },
@@ -871,6 +876,21 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
     describe('live queries', () => {
       const names = (rows: Row[] | undefined) => (rows ?? []).map((r) => r.name).sort();
+
+      test(
+        'live.first-and-initial',
+        'opens on the first result, flagged initial, and a change after it is not',
+        async () => {
+          const { handle, snapshots } = await watch('Space', {});
+          expect((await handle.first).results).toEqual([]);
+          expect(snapshots[0]).toMatchObject({ status: 'ready', initial: true });
+
+          await model('Space').create(subject.dataset, { name: 'Later', description: 'd' });
+          await eventually(() => expect(names(snapshots.at(-1)?.data?.results)).toEqual(['Later']), settle);
+          expect(snapshots.at(-1)?.initial).toBe(false);
+          expect(handle.getSnapshot()).toBe(snapshots.at(-1));
+        },
+      );
 
       test('live.pushes-writes', 'pushes the new result when a write changes it', async () => {
         const { pushes } = await watch('Space', {});

@@ -6,6 +6,7 @@
  * in-memory backend pushes on every write in the dataset, including ones that touch no template.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import type { LivePage, LiveQuery } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -17,10 +18,7 @@ interface Stamped extends TemplateStamp {
 interface TemplateClass {
   create(dataset: unknown, data: Record<string, unknown>): Promise<{ id: string }>;
   update(dataset: unknown, id: string, data: Record<string, unknown>): Promise<unknown>;
-  query(
-    dataset: unknown,
-    query: Record<string, unknown>,
-  ): { subscribe(cb: (rows: Stamped[]) => void): Promise<Stamped[]>; dispose(): void };
+  query(dataset: unknown, query: Record<string, unknown>): LiveQuery<LivePage<Stamped>>;
 }
 const Template = () => getEntity('Template') as unknown as TemplateClass;
 const Signal = () => getEntity('SignalType') as unknown as TemplateClass;
@@ -42,16 +40,19 @@ describe('a watch on a dataset’s templates', () => {
 
     const pushes: Stamped[][] = [];
     const watch = Template().query(dataset, { properties: [...TEMPLATE_WATCH_FIELDS] });
-    const first = await watch.subscribe((rows) => pushes.push(rows));
+    watch.subscribe((snapshot) => pushes.push(snapshot.data!.results));
+    const first = (await watch.first).results;
     let { next } = templateChanges(undefined, first, new Map());
 
     // A write that touches no template: this backend pushes anyway, and nothing has changed.
     await Signal().create(dataset, { name: 'Like', slug: 'like' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const quiet = templateChanges(next, pushes.at(-1)!, new Map());
     expect(quiet.changed).toEqual([]);
     next = quiet.next;
 
     await Template().update(dataset, kept.id, { version: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const edited = templateChanges(next, pushes.at(-1)!, new Map());
     expect(edited.changed).toEqual([kept.id]);
     expect(edited.changed).not.toContain(other.id);
@@ -62,7 +63,7 @@ describe('a watch on a dataset’s templates', () => {
   it('carries no template content, only what says whether it changed', async () => {
     await Template().create(dataset, { slug: 'board', version: 1, name: 'Board' });
     const watch = Template().query(dataset, { properties: [...TEMPLATE_WATCH_FIELDS] });
-    const [row] = await watch.subscribe(() => {});
+    const [row] = (await watch.first).results;
     expect(row).not.toHaveProperty('schema');
     expect(row).not.toHaveProperty('name');
     watch.dispose();

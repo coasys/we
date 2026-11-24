@@ -16,27 +16,45 @@ import {
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
+type Snap = { status: 'loading' | 'ready'; data?: { results: unknown[] }; initial: boolean };
+
+/** A live query by hand: `answer` opens it on the first rows, `push` is a change after that. */
 function model() {
   const builders: {
     subscribe: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     push: (rows: unknown[]) => void;
     answer: (rows: unknown[]) => void;
+    fail: (error: Error) => void;
   }[] = [];
   const Model = {
     query: vi.fn(() => {
-      let push: (rows: unknown[]) => void = () => {};
-      let answer: (rows: unknown[]) => void = () => {};
+      const listeners = new Set<(snapshot: Snap) => void>();
+      let current: Snap = { status: 'loading', initial: false };
+      let resolveFirst: (rows: unknown) => void = () => {};
+      let rejectFirst: (error: Error) => void = () => {};
+      const first = new Promise<unknown>((resolve, reject) => {
+        resolveFirst = resolve;
+        rejectFirst = reject;
+      });
+      const emit = (rows: unknown[], initial: boolean) => {
+        current = { status: 'ready', data: { results: rows }, initial };
+        for (const fn of [...listeners]) fn(current);
+      };
       const builder = {
-        subscribe: vi.fn((cb: (rows: unknown[]) => void) => {
-          push = cb;
-          return new Promise<unknown[]>((resolve) => {
-            answer = resolve;
-          });
+        first,
+        subscribe: vi.fn((fn: (snapshot: Snap) => void) => {
+          listeners.add(fn);
+          if (current.status === 'ready') fn(current);
+          return () => void listeners.delete(fn);
         }),
         dispose: vi.fn(),
-        push: (rows: unknown[]) => push(rows),
-        answer: (rows: unknown[]) => answer(rows),
+        push: (rows: unknown[]) => emit(rows, false),
+        answer: (rows: unknown[]) => {
+          emit(rows, true);
+          resolveFirst({ results: rows });
+        },
+        fail: (error: Error) => rejectFirst(error),
       };
       builders.push(builder);
       return builder;
@@ -62,6 +80,39 @@ describe('a shared subscription', () => {
     builders[0].push([{ id: 'i1' }, { id: 'i2' }]);
     expect(a).toHaveBeenLastCalledWith([{ id: 'i1' }, { id: 'i2' }]);
     expect(b).toHaveBeenLastCalledWith([{ id: 'i1' }, { id: 'i2' }]);
+  });
+
+  it('keeps delivering to the others when one listener throws', async () => {
+    const { Model, builders } = model();
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const b = vi.fn();
+    const bError = vi.fn();
+    acquireSubscription(
+      Model,
+      dataset,
+      question,
+      () => {
+        throw new Error('first listener');
+      },
+      () => {
+        throw new Error('first listener');
+      },
+    );
+    acquireSubscription(Model, dataset, question, b, bError);
+
+    builders[0].answer([{ id: 'i1' }]);
+    await tick();
+    expect(b).toHaveBeenCalledWith([{ id: 'i1' }]);
+
+    const failing = model();
+    acquireSubscription(failing.Model, dataset, { where: { kind: 'other' } }, vi.fn(), () => {
+      throw new Error('first listener');
+    });
+    acquireSubscription(failing.Model, dataset, { where: { kind: 'other' } }, vi.fn(), bError);
+    failing.builders[0].fail(new Error('down'));
+    await tick();
+    expect(bError).toHaveBeenCalledWith(expect.objectContaining({ message: 'down' }));
+    quiet.mockRestore();
   });
 
   it('shares by entity name, whatever object the host wraps the model in', async () => {
@@ -139,20 +190,24 @@ describe('a shared subscription', () => {
     expect(builders[0].dispose).not.toHaveBeenCalled();
   });
 
-  it('disposes again once answered when let go of before the answer came', async () => {
+  it('disposes a subscription let go of before it answered, and the next asker starts its own', async () => {
     const { Model, builders } = model();
     const release = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn());
     release();
     await tick();
-    const early = builders[0].dispose.mock.calls.length;
+    expect(builders[0].dispose).toHaveBeenCalledOnce();
 
-    builders[0].answer([]);
-    await tick();
-    expect(builders[0].dispose.mock.calls.length).toBe(early + 1);
-
-    // And the next asker starts a subscription of its own rather than joining a dead one.
     acquireSubscription(Model, dataset, question, vi.fn(), vi.fn());
     expect(Model.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells every listener when the first open fails', async () => {
+    const { Model, builders } = model();
+    const onError = vi.fn();
+    acquireSubscription(Model, dataset, question, vi.fn(), onError);
+    builders[0].fail(new Error('executor unreachable'));
+    await tick();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'executor unreachable' }));
   });
 });
 
@@ -244,16 +299,10 @@ describe('the last answer of a question let go of', () => {
   });
 
   it('keeps nothing from a failed entry, which the next asker retries', async () => {
-    const { Model } = model();
-    Model.query.mockImplementationOnce(
-      () =>
-        ({
-          subscribe: vi.fn(() => Promise.reject(new Error('No SHACL shape stored for class X'))),
-          dispose: vi.fn(),
-        }) as never,
-    );
+    const { Model, builders } = model();
     const failing = vi.fn();
     const releaseFailing = acquireSubscription(Model, dataset, question, vi.fn(), failing, 'Involvement');
+    builders[0].fail(new Error('No SHACL shape stored for class X'));
     await tick();
     expect(failing).toHaveBeenCalledOnce();
     releaseFailing();
@@ -270,21 +319,15 @@ describe('the last answer of a question let go of', () => {
 
   it('retries a failed entry that is still held when the question is asked again', async () => {
     const { Model, builders } = model();
-    Model.query.mockImplementationOnce(
-      () =>
-        ({
-          subscribe: vi.fn(() => Promise.reject(new Error('No SHACL shape stored for class X'))),
-          dispose: vi.fn(),
-        }) as never,
-    );
     subscriptionPoolConfig.releaseGraceMs = 30;
     acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[0].fail(new Error('No SHACL shape stored for class X'));
     await tick();
 
     const retry = vi.fn();
     acquireSubscription(Model, dataset, question, retry, vi.fn(), 'Involvement');
     expect(Model.query).toHaveBeenCalledTimes(2);
-    builders[0].answer([{ id: 'i1' }]);
+    builders[1].answer([{ id: 'i1' }]);
     await tick();
     expect(retry).toHaveBeenCalledWith([{ id: 'i1' }]);
   });
@@ -393,10 +436,8 @@ describe('the last answer of a question let go of', () => {
   it('drops the kept rows of a question whose live answer then fails', async () => {
     const { Model, builders } = model();
     await askAndLetGo(Model, builders, [{ id: 'i1' }]);
-    Model.query.mockImplementationOnce(
-      () => ({ subscribe: vi.fn(() => Promise.reject(new Error('denied'))), dispose: vi.fn() }) as never,
-    );
     const denied = acquireSubscription(Model, dataset, question, vi.fn(), vi.fn(), 'Involvement');
+    builders[builders.length - 1].fail(new Error('denied'));
     await tick();
     denied();
     await tick();
@@ -430,14 +471,6 @@ describe('a subscription and the schema revision', () => {
 
   it('is not joined by a question asked under a newer revision, so a late rejection cannot stick', async () => {
     const { Model, builders } = model();
-    let reject: (err: Error) => void = () => {};
-    Model.query.mockImplementationOnce(
-      () =>
-        ({
-          subscribe: vi.fn(() => new Promise<unknown[]>((_, r) => (reject = r))),
-          dispose: vi.fn(),
-        }) as never,
-    );
     const first = vi.fn();
     const releaseFirst = acquireSubscription(Model, dataset, question, vi.fn(), first, 'Involvement', 0);
     // Upkeep finishes first: the effect re-runs under revision 1, before the rejection has landed.
@@ -446,9 +479,9 @@ describe('a subscription and the schema revision', () => {
     const secondError = vi.fn();
     acquireSubscription(Model, dataset, question, second, secondError, 'Involvement', 1);
     expect(Model.query).toHaveBeenCalledTimes(2);
-    reject(new Error('No SHACL shape stored for class X'));
+    builders[0].fail(new Error('No SHACL shape stored for class X'));
     await tick();
-    builders[0].answer([{ id: 'i1' }]);
+    builders[1].answer([{ id: 'i1' }]);
     await tick();
     expect(secondError).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith([{ id: 'i1' }]);

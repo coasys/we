@@ -177,26 +177,13 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
     };
 
     /**
-     * Registration is a round trip to the executor, and nothing may be published before it lands.
-     *
-     * `addSignalHandler` returns a promise for a reason: it sets up a subscription on the executor,
-     * not a local callback. Fire-and-forget was a race with the presence handshake, and the losing
-     * side was always the same one — a joiner broadcasts `hello` the instant its scope exists, every
-     * peer answers within milliseconds, and any answer arriving before this resolves is delivered to
-     * nobody. The joiner then sees an empty space until each peer's next heartbeat, which is exactly
-     * the "wait a while for the members to appear" that made this worth finding.
-     *
-     * The rejection is swallowed rather than propagated: a failed registration means this agent
-     * cannot hear, which is bad, but refusing to publish as well would also stop it being heard.
+     * Registered before anything is published, and that order is all the presence handshake needs:
+     * a joiner broadcasts `hello` the instant its scope exists and every peer answers within
+     * milliseconds. The SDK sends the signal subscription ahead of the next call on the same
+     * socket, and the executor applies it before it reads that call, so the answers to `hello`
+     * reach this handler.
      */
-    const subscribeStartedAt = Date.now();
-    const listening = neighbourhood
-      .addSignalHandler(handler)
-      .then(() => trace('ephemeral', 'subscribed', { ms: Date.now() - subscribeStartedAt }))
-      .catch((error: unknown) => {
-        trace('ephemeral', 'subscribe:fail', { ms: Date.now() - subscribeStartedAt, error: String(error) });
-        console.warn('ephemeral: signal handler registration failed — inbound traffic will be missed', error);
-      });
+    neighbourhood.addSignalHandler(handler);
 
     const scope: EphemeralScope = {
       capabilities: ad4mEphemeralCapabilities,
@@ -221,7 +208,6 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
           inFlight = true;
           const startedAt = Date.now();
           try {
-            await listening;
             const source = JSON.stringify(payload);
             const sent = sentHere.get(tag);
             if (sent) {
