@@ -22,6 +22,7 @@ import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { liveRows } from './liveRows';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 
 // jsdom has no constructable stylesheets, and the primitives adopt one as they connect.
@@ -74,20 +75,14 @@ const settled = async () => {
   await tick();
 };
 
-/** A model whose subscription answers with `initial` and can be pushed to afterwards. */
+/** A model whose live query opens on `initial` and can be pushed to afterwards. */
 function live(initial: unknown[]) {
-  let push: (rows: unknown[]) => void = () => {};
+  let current = liveRows(initial);
   return {
     model: {
-      query: vi.fn(() => ({
-        subscribe: (callback: (rows: unknown[]) => void) => {
-          push = callback;
-          return Promise.resolve(initial);
-        },
-        dispose: vi.fn(),
-      })),
+      query: vi.fn(() => (current = liveRows(initial))),
     },
-    push: (rows: unknown[]) => push(rows),
+    push: (rows: unknown[]) => current.push(rows),
   };
 }
 
@@ -119,11 +114,9 @@ async function mountBoard() {
   const column = { id: 'c1', kind: 'column', slug: 'todo', title: 'To do', arranges: [] };
   const boards = {
     query: vi.fn((_dataset: unknown, options: { where?: { kind?: string } }) => ({
-      subscribe: () =>
-        Promise.resolve(
-          options.where?.kind === 'column' ? [column] : [{ id: 'b1', gathers: 'call1', children: [column] }],
-        ),
-      dispose: vi.fn(),
+      ...liveRows<unknown>(
+        options.where?.kind === 'column' ? [column] : [{ id: 'b1', gathers: 'call1', children: [column] }],
+      ),
     })),
   };
   const tasks = live([{ id: 't1', title: 'A task', status: 'todo', createdAt: '2026-09-01' }]);

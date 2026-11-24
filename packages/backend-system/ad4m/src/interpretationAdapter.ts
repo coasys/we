@@ -1329,14 +1329,13 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
       let watch = proposalWatches.get(perspective);
       if (!watch) {
         const listeners = new Set<() => void>();
-        const started = perspective
-          .subscribeQuery(`SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`)
-          .then((sub) => {
-            sub.onResult(() => {
-              for (const listener of [...listeners]) listener();
-            });
-            return sub;
-          });
+        const live = perspective.liveSparql(`SELECT ?base ?kind WHERE { ?base <${OVERLAY_KIND_PREDICATE}> ?kind }`);
+        // The first snapshot is the rows as they are now, not a change; a failed open is no change either.
+        live.subscribe((snapshot) => {
+          if (snapshot.status !== 'ready' || snapshot.initial) return;
+          for (const listener of [...listeners]) listener();
+        });
+        const started = live.first.then(() => live);
         const created = { listeners, started };
         proposalWatches.set(perspective, created);
         // A watch that never started holds nothing; the next caller asks again.

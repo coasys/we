@@ -7,6 +7,7 @@
  * the Feed, whose activity finds run in one `Promise.all`, that one class was the whole Feed in
  * every space with its own SHACL classes.
  */
+import { createLiveQuery } from '@we/backend-shared';
 import {
   type EntityClass,
   mergeDynamicEntities,
@@ -27,7 +28,10 @@ function foreignModel(rows: Record<string, unknown>[], dispose?: () => void): En
   const model = class {};
   Object.assign(model, {
     findAll: async () => rows,
-    query: () => ({ subscribe: async () => rows, dispose: dispose ?? (() => {}) }),
+    query: () => {
+      const live = createLiveQuery({ read: () => ({ results: rows }), watch: () => () => undefined });
+      return { ...live, dispose: () => (dispose?.(), live.dispose()) };
+    },
   });
   return model as unknown as EntityClass;
 }
@@ -73,7 +77,10 @@ describe('a module query as the ORM reads it', () => {
   it('names the field list `properties`, so the backend answers only those fields', async () => {
     const findAll = vi.fn(async () => [{ id: 'call-1', title: 'Standup' }]);
     const model = class {};
-    Object.assign(model, { findAll, query: () => ({ subscribe: async () => [], dispose: () => {} }) });
+    Object.assign(model, {
+      findAll,
+      query: () => createLiveQuery({ read: () => ({ results: [] }), watch: () => () => undefined }),
+    });
     registerDynamicEntities(UUID, { CallThing: model as unknown as EntityClass });
 
     await findEntityRows('CallThing', dataset, moduleQueryAsOrm({ where: { kind: 'call' }, select: ['title'] }));
