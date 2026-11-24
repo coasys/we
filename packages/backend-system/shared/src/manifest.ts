@@ -855,6 +855,15 @@ export function validateManifest(
       });
     }
     for (const [propName, spec] of Object.entries(entity.properties)) {
+      // A `json` property holds a structured value and a default here is a scalar, so the two
+      // cannot agree. Absent is the only starting point a value field has; a reader that wants
+      // "none yet" to look like an empty list says so where it reads.
+      if (spec.type === 'json' && spec.default !== undefined) {
+        errors.push({
+          path: `entities.${entityName}.properties.${propName}.default`,
+          message: 'a json property has no default — absent is how a value field starts',
+        });
+      }
       if (!spec.options) continue;
       const base = `entities.${entityName}.properties.${propName}.options`;
       if (spec.options.length === 0) {

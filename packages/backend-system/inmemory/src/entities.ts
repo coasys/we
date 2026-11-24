@@ -31,8 +31,10 @@ import {
   executeQueryIR,
   type InMemoryDataset,
   type InMemoryRelation,
+  readJsonValue,
   RecordExistsError,
   type Row,
+  writtenJsonValue,
 } from '@we/backend-shared';
 import { checkEntityWrite } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
@@ -487,6 +489,32 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       return out;
     };
 
+    /*
+      A `json` property holds a value, and a row keeps its own copy of it: the caller's object is
+      never the stored one, and an instance hands out a copy, so changing a value in place changes
+      nothing until it is saved. Text written to one is parsed, as on every backend; see
+      `writtenJsonValue`.
+    */
+    const jsonProps = new Set(
+      Object.entries(entity.properties)
+        .filter(([, spec]) => spec.type === 'json')
+        .map(([prop]) => prop),
+    );
+    const stored = (data: Record<string, unknown>): Record<string, unknown> =>
+      jsonProps.size
+        ? Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [
+              key,
+              jsonProps.has(key) ? (writtenJsonValue(`${name}.${key}`, value) ?? null) : value,
+            ]),
+          )
+        : data;
+    const readBack = (key: string, value: unknown): unknown => {
+      const read = readJsonValue(`${name}.${key}`, value);
+      return read !== null && typeof read === 'object' ? structuredClone(read) : read;
+    };
+    const sameJson = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
     /** Instances remember where they came from, so `save()` and `delete()` need no argument. */
     const homes = new WeakMap<object, DatasetEntry>();
 
@@ -542,13 +570,17 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       async save(batch?: string): Promise<void> {
         const dataset = homes.get(this);
         if (!dataset) throw new Error(`${name}.save(): this instance was never loaded from a dataset`);
-        const fields = { ...(this as unknown as Record<string, unknown>) };
+        const fields = stored({ ...(this as unknown as Record<string, unknown>) });
         await writeIn(batch, dataset, async () => {
           const row = tableOf(dataset, name).find((r) => r.id === fields.id);
           if (!row) throw new Error(`${name}.save(): row ${String(fields.id)} no longer exists`);
           const changed: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(fields)) {
             if (typeof value === 'function' || key.startsWith('$')) continue;
+            if (jsonProps.has(key)) {
+              if (!sameJson(row[key], value)) changed[key] = value;
+              continue;
+            }
             // Only what the caller changed since the read: a default standing in for a cleared field
             // is not a change, and must not write the field back.
             if (row[key] === value || loaded.get(this)?.[key] === value) continue;
@@ -605,6 +637,10 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
             tolerates ids or rows and takes `.id` from an object, which those do not have, so a board
             read this way simply had no cards in any column and no error anywhere.
           */
+          if (jsonProps.has(key)) {
+            instance[key] = readBack(key, value);
+            continue;
+          }
           if (relation && target && value && typeof value === 'object') {
             const asEntity = target as unknown as typeof Entity;
             const hydrateOne = (entry: unknown) =>
@@ -714,7 +750,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
           updatedAt: now,
         };
         for (const [key, value] of Object.entries(defaults())) writeField(row, key, value);
-        for (const [key, value] of Object.entries(data)) {
+        for (const [key, value] of Object.entries(stored(data))) {
           if (relationNames.has(key)) continue;
           writeField(row, key, value);
         }
@@ -763,7 +799,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         const dataset = datasetOf(handle);
         const row = tableOf(dataset, name).find((r) => r.id === id);
         if (!row) return null;
-        const changed = Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key)));
+        const changed = stored(Object.fromEntries(Object.entries(data).filter(([key]) => !relationNames.has(key))));
         checkClearable(changed);
         await checkEntityWrite({ dataset: handle, entity: name, kind: 'edit', id, data: changed, record: copied(row) });
         for (const [key, value] of Object.entries(changed)) writeField(row, key, value);

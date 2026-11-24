@@ -25,6 +25,7 @@ import {
   registerFileStore,
   registerTransactionRunner,
 } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import { createAd4mDataBindings } from './ad4mAdapter';
 import { createAd4mEphemeralPort } from './ad4mEphemeralAdapter';
@@ -42,6 +43,7 @@ import { Space } from './entities';
 import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
+import { installJsonValues } from './jsonValues';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
 import { type Ad4mLifecycleOptions, createAd4mAgentSession, createAd4mDatasetLifecycle } from './lifecycleAdapter';
 import { compileManifest, manifestToEntries } from './manifestCompiler';
@@ -190,6 +192,10 @@ export function createAd4mBackendPorts(
   // "this relation's membership is now that list", and every model class — generated, compiled
   // or built from foreign SHACL — inherits the ability to carry it out. See `relationWrites.ts`.
   installRelationWrites(Ad4mModel);
+  // And `json` properties as values: written as a list or an object and read back as one, swapped
+  // for their stored form around each save. Before the write check, so the check sees the values.
+  // See `jsonValues.ts`.
+  installJsonValues(Ad4mModel, CORE_MANIFEST);
   // And the host's write check, asked before every create, edit, delete and relation write any model
   // makes — the one place none of them can go around. See `writeChecks.ts`.
   installWriteChecks(Ad4mModel);

@@ -321,6 +321,25 @@ export type IncludeOf<Q> = Q extends { include?: infer I } ? I : undefined;
  * Values a write accepts for one field. Looser than the read type on purpose: relations are
  * written as ids/URIs however the instance types them, and backends may accept their own
  * representations — the field *names* stay checked, which is where typos live.
+ *
+ * ## `json` properties
+ *
+ * A property declared `type: 'json'` holds a structured value — a list, an object, a number or a
+ * boolean — and reads back as that value, on every backend. Nobody parses or serialises it on the
+ * way in or out: how it is stored is the backend's business. Its interface type is `unknown`,
+ * because a value written by another agent is whatever they wrote, so a reader narrows it.
+ *
+ * - **Absent stays absent.** A write of `''`, `null` or nothing clears it, as for any scalar, and
+ *   an unwritten one reads as absent: a `json` property has no declared default. An empty list or
+ *   object is a value, not an absence — `[]` and unset can mean different things.
+ * - **Text is JSON.** A string written to one is parsed, and refused when it does not parse. A value
+ *   that is itself a string is refused too, since read back it could not be told from text that
+ *   still needs parsing. See `writtenJsonValue`.
+ * - **A stored value that does not parse reads as absent**, reported once per property and never
+ *   thrown, so one bad value does not take its record out of every list. See `readJsonValue`.
+ * - **The whole value is the unit.** A write replaces it, so two writers at once keep the later
+ *   one. Something that needs concurrent edits to merge, or a part of it to be queried, is a record
+ *   or a relation instead.
  */
 export type WriteValue<V> =
   NonNullable<V> extends RecordInstance

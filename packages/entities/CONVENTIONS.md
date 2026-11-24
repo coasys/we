@@ -63,6 +63,23 @@ A new backend implements these interfaces — runtime-compiled the way `@we/back
 or generated the way the AD4M lane is — and registers its implementations in the entity proxy
 registry; consumers never notice which.
 
+## Structured values — `type: 'json'`
+
+A property that holds a list or an object — a space's enabled modules, a block's marks, a route's
+bends — is declared `type: 'json'`, and every caller reads and writes it as the value. Nobody
+parses or serialises it: how it is stored is each backend's business, and the rule they all keep
+is written beside `WriteValue` in `@we/backend-shared`'s `recordContract.ts`. In short:
+
+- It reads back as the value it was written as, and its generated type is `unknown` — whoever wrote
+  it may not have been this code, so a reader narrows it (`Array.isArray`, a small `…Of` helper).
+- It has no `default` (the manifest refuses one). Unwritten, and written `''` or `null`, it is
+  absent; an empty list or object is a value, so "none" and "not decided" stay two things.
+- Text written to one is taken as JSON and refused when it is not; stored text that does not parse
+  reads as absent, reported once.
+- The whole value is the unit, so two people writing at once keep the later value. That is the
+  right trade for a setting somebody changes occasionally. Something two people edit at the same
+  moment, or that anything filters on, wants records or a relation instead (see Relations below).
+
 ## Blocks are entities, with one extra capability
 
 `blockable: true` on an entity's schema says: **a person can create one of these fresh, inline,
