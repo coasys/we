@@ -556,7 +556,7 @@ function chosenEntity(
     );
   if (!allowed)
     throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
-  return writable(chosen as string, step);
+  return writable(chosen, step);
 }
 
 /**
