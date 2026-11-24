@@ -120,6 +120,12 @@ export default class FileUpload extends DesignSystemElement {
   private _addFiles(chosen: File[]) {
     const tooBig = this.maxSize > 0 ? chosen.filter((file) => file.size > this.maxSize) : [];
     const files = tooBig.length ? chosen.filter((file) => !tooBig.includes(file)) : chosen;
+    if (files.length) {
+      this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
+      const detail = this.multiple ? this._files : (this._files[0] ?? null);
+      this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
+    }
+    // After the change, so a host that resets its note on a new choice does not erase this pick's own.
     if (tooBig.length) {
       this.dispatchEvent(
         new CustomEvent('reject', {
@@ -128,11 +134,7 @@ export default class FileUpload extends DesignSystemElement {
           composed: true,
         }),
       );
-      if (!files.length) return;
     }
-    this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
-    const detail = this.multiple ? this._files : (this._files[0] ?? null);
-    this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
   }
 
   private _removeFile(index: number) {

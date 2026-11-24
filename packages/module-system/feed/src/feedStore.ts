@@ -85,7 +85,8 @@ export interface FeedDeps {
   selfId?: () => string | null;
   /**
    * Write a message under `holder` — the store's own, so typed lines and feed messages are written
-   * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
+   * one way. Resolves with the new record's id, or `null` when there was nowhere to write it — which
+   * the send reports as a failure, so a caller never takes a message that was not made for one that was.
    */
   write: (holder: FeedHolder, text: string, marks?: string, files?: File[]) => Promise<string | null>;
 }
@@ -329,7 +330,7 @@ export function createFeed(deps: FeedDeps) {
   /**
    * One line, drawn the moment it is sent and written behind it. Its id is only known once the write
    * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
-   * failed write takes it down and says so to whoever sent it.
+   * failed write — or one that wrote nothing — takes it down and says so to whoever sent it.
    */
   async function post(
     holder: FeedHolder,
@@ -371,7 +372,7 @@ export function createFeed(deps: FeedDeps) {
     const forget = () => setSent(sent().filter((entry) => entry.key !== key));
     try {
       const id = await deps.write(holder, words, marks, files);
-      if (!id) return forget();
+      if (!id) throw new Error('The message could not be sent: there was nowhere to write it.');
       // A read may have landed with it while the write was resolving.
       if (rows().some((row) => row.id === id)) return forget();
       setSent(sent().map((entry) => (entry.key === key ? { key, line: { ...entry.line, id } } : entry)));

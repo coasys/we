@@ -92,7 +92,7 @@ function harness(
   const linked: unknown[] = [];
   const removed: { entity: string; id: string; target?: unknown }[] = [];
   /** The dataset the reader has on screen — `datasetUri` answers it, and a test moves it. */
-  const screen = { uri: 'space-1' };
+  const screen: { uri: string | null; id: string | null } = { uri: 'space-1', id: 'local-1' };
   /** Names of the records whose removal, or whose link, the executor refuses. */
   const unremovable = new Set<string>();
   const failLinks = { on: false };
@@ -158,6 +158,7 @@ function harness(
     onDispose: (stop: () => void) => void disposers.push(stop),
     dataset: () => 'space-1',
     datasetUri: () => screen.uri,
+    datasetId: () => screen.id,
     spaceRoot: () => resolvedRoot() ?? spaceRoot(),
     settings: () => moduleSettings,
     identities: { get: (id: string) => identities.get(id), fetch: () => {} },
@@ -621,11 +622,11 @@ describe('the Feed of one call', () => {
     expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
     expect(h.linked).toEqual([]);
 
-    // Answered with no id: nothing was written, and the file is taken down as well.
+    // Answered with no id: nothing was written, the file is taken down as well, and the send fails.
     h.refusing.clear();
     h.removed.length = 0;
     h.returnsNothing.add('TextBlock');
-    await h.store.sendToFeed('with a file', undefined, [note]);
+    await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('could not be sent');
     expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-2', target: SPACE_1 }]);
     expect(h.linked).toEqual([]);
     vi.useRealTimers();
@@ -694,6 +695,42 @@ describe('the Feed of one call', () => {
 
     expect(h.created.map((c) => c.options)).toEqual([SPACE_1]);
     expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
+    vi.useRealTimers();
+  });
+
+  it('pins a personal space by its local id, in every write and removal, whatever the reader moves to', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const one = new File(['one'], 'one.txt', { type: 'text/plain' });
+    const two = new File(['two'], 'two.txt', { type: 'text/plain' });
+    const local = { dataset: 'local-1' };
+    // No shared URI: only the local id names the space.
+    h.screen.uri = null;
+    h.refusing.add('two.txt');
+    const upload = h.holdCreates();
+
+    const sending = h.store.sendToFeed('with files', undefined, [one, two]);
+    (sending as Promise<unknown>).catch(() => {});
+    h.screen.id = 'local-2';
+    upload.release();
+    await expect(sending as Promise<unknown>).rejects.toThrow('refused');
+
+    expect(h.created.map((c) => c.options)).toEqual([local]);
+    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: local }]);
+    vi.useRealTimers();
+  });
+
+  it('refuses to send, writing nothing, when no space is open to name', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    h.screen.uri = null;
+    h.screen.id = null;
+
+    await expect(h.store.sendToFeed('hello')).rejects.toThrow('no space open');
+
+    expect(h.created).toEqual([]);
     vi.useRealTimers();
   });
 

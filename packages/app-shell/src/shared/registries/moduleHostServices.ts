@@ -60,6 +60,7 @@ import { addLiveMarks, addLivePointerListener } from '../liveView';
 export interface ModuleHostServices {
   dataset?: () => DatasetHandle | null;
   datasetUri?: () => string | null;
+  datasetId?: () => string | null;
   /**
    * Resolve a dataset URI a module named, or `undefined` when this agent does not hold it.
    *
@@ -695,6 +696,7 @@ export function createModuleStoreDeps(framework: {
 
     dataset: tracked(() => services.dataset?.() ?? null),
     datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    datasetId: tracked(() => services.datasetId?.() ?? null),
     spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),

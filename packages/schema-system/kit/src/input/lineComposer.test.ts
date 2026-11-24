@@ -87,6 +87,49 @@ describe('the attach control', () => {
     expect(m.values.attachments).toBe(later);
   });
 
+  it('lets a send that resolves late leave a later send’s files alone, and keeps them when that one fails', async () => {
+    const settle: { resolve: () => void; reject: (e: Error) => void }[] = [];
+    const m = mount(() => new Promise<void>((resolve, reject) => settle.push({ resolve: () => resolve(), reject })));
+    m.choose([file('a.txt')]);
+    m.submit();
+    const second = [file('b.txt')];
+    m.choose(second);
+    m.submit();
+
+    // The first resolves while the second is in flight: the second's files are not its to empty.
+    settle[0].resolve();
+    await flush();
+    expect(m.values.attachments).toBe(second);
+
+    // The second then fails: its files are still there to send again.
+    settle[1].reject(new Error('upload refused'));
+    await flush();
+    expect(m.values.attachments).toBe(second);
+  });
+
+  it('empties the list when the latest send resolves, even after an earlier one did', async () => {
+    const settle: (() => void)[] = [];
+    const m = mount(() => new Promise<void>((resolve) => settle.push(resolve)));
+    m.choose([file('a.txt')]);
+    m.submit();
+    m.choose([file('b.txt')]);
+    m.submit();
+    settle[0]();
+    await flush();
+    settle[1]();
+    await flush();
+    expect(m.values.attachments).toEqual([]);
+  });
+
+  it('keeps the over-limit note of a pick that also had a good file', () => {
+    const m = mount(async () => {});
+    // The uploader's order for one pick: the change with what was kept, then the reject.
+    m.choose([file('ok.txt')]);
+    m.reject('huge.bin');
+    expect(m.values.attachNote).toBe("Files over 25 MB can't be attached: huge.bin");
+    expect(m.values.attachments).toHaveLength(1);
+  });
+
   it('refuses a file over the limit with a line saying which, and clears the line when the list changes', () => {
     const m = mount(async () => {});
     expect(m.upload.props?.maxSize).toBe(ATTACH_MAX_BYTES);

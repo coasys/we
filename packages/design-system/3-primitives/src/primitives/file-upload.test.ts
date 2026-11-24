@@ -49,13 +49,22 @@ describe('we-file-upload files', () => {
     el.maxSize = 4;
     const heard: { files: File[]; names: string }[] = [];
     const changed: unknown[] = [];
-    el.addEventListener('reject', (e) => heard.push((e as CustomEvent).detail));
-    el.addEventListener('change', (e) => changed.push((e as CustomEvent).detail));
+    const order: string[] = [];
+    el.addEventListener('reject', (e) => {
+      order.push('reject');
+      heard.push((e as CustomEvent).detail);
+    });
+    el.addEventListener('change', (e) => {
+      order.push('change');
+      changed.push((e as CustomEvent).detail);
+    });
 
     el._addFiles([new File(['1234'], 'ok.txt'), new File(['12345'], 'big.bin')]);
 
     expect(heard.map((d) => d.names)).toEqual(['big.bin']);
     expect((changed[0] as File[]).map((f) => f.name)).toEqual(['ok.txt']);
+    // The change first: a host that resets its note on a new choice must not erase this pick's own.
+    expect(order).toEqual(['change', 'reject']);
 
     // Only a refused file: no change to announce.
     el._addFiles([new File(['12345'], 'big2.bin')]);

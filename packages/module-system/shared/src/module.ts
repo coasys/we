@@ -702,6 +702,11 @@ export interface ModuleStoreDeps {
   spaceRoot?: () => string;
   /** The current dataset's **global** uri — what presence puts in `Focus.datasetUri`. */
   datasetUri?: () => string | null;
+  /**
+   * The current dataset's **local** id, which names it to the host for a write — as the only name a
+   * personal or unpublished space has, since it has no `datasetUri`. `null` outside a space.
+   */
+  datasetId?: () => string | null;
   /** How the current dataset is named inside a record reference — `n:<cid>` or `p:<uuid>`. Empty while none is open. */
   datasetRefKey?: () => string;
   /** This agent's id in the host's identity scheme. `null` before login. */

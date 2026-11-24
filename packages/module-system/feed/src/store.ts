@@ -66,12 +66,14 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       );
     /*
       The dataset is named once, here, before anything is awaited, and every write and removal below
-      goes to it. Left to the host, a write with no dataset goes to the space on screen — and this send
-      spans file reads and uploads (and a call's Feed outlives navigation), so somebody changing space
-      meanwhile would have the next file, the message and the rollback land in the other one.
+      goes to it. A shared space is named by its URI and any other by its local id. Left to the host,
+      a write with no dataset goes to the space on screen — and this send spans file reads and uploads
+      (and a call's Feed outlives navigation), so somebody changing space meanwhile would have the next
+      file, the message and the rollback land in the other one.
     */
-    const uri = deps.datasetUri?.();
-    const target = uri ? { dataset: uri } : undefined;
+    const name = deps.datasetUri?.() || deps.datasetId?.();
+    if (!name) throw new Error('This message cannot be sent: there is no space open to write it in.');
+    const target = { dataset: name };
     /*
       Each file is a `FileBlock` the message holds — the same record the block composer makes, its bytes
       stored through the dataset's file storage as the record is written. The kernel has no write group,
@@ -110,7 +112,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
   }
 
   /** Take down what a failed write left, newest first; what cannot be removed is left, and the failure stands. */
-  async function discard(written: { entity: string; id: string }[], target?: { dataset: string }) {
+  async function discard(written: { entity: string; id: string }[], target: { dataset: string }) {
     for (const { entity, id } of [...written].reverse()) {
       try {
         await removeEntity?.(entity, id, target);

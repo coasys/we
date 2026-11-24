@@ -252,6 +252,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // The *global* uri, never the local uuid — a uuid is local per-agent, so a call id derived
       // from one would differ on every peer and each would join a call only they can see.
       datasetUri: () => currentDataset()?.sharedUri ?? null,
+      // The local id: the one name a personal or unpublished space has, for a write that must stay in it.
+      datasetId: () => currentDataset()?.id ?? null,
       // The same dataset, named the way a stored reference names it: the CID where there is one, so
       // the reference means the same record to every agent who joined, and the local uuid otherwise.
       datasetRefKey: () => {

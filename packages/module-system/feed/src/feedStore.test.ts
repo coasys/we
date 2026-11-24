@@ -823,6 +823,20 @@ describe('a message sent from the Feed', () => {
     vi.useRealTimers();
   });
 
+  it('takes the line down and rejects when the write made nothing, so no one takes it for sent', async () => {
+    vi.useFakeTimers();
+    const s = busySpace();
+    const f = writing(s);
+    await vi.runAllTimersAsync();
+    const before = f.rows().length;
+    const sending = f.send('on my way');
+    expect(f.rows()).toHaveLength(before + 1);
+    f.writes[0].settle(null);
+    await expect(sending).rejects.toThrow('could not be sent');
+    expect(f.rows()).toHaveLength(before);
+    vi.useRealTimers();
+  });
+
   it('keeps two quick sends in the order they were sent', async () => {
     vi.useFakeTimers();
     const s = busySpace();

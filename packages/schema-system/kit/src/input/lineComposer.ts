@@ -42,7 +42,8 @@ export interface LineComposerOptions {
    * Offer to attach files. The files chosen are the `attachments` local — a list of browser `File`s
    * the caller's `onSubmit` reads as `{ $: 'local.attachments' }`. The composer empties the list when
    * the send *resolves* — not when it starts, so a send that fails leaves the files to try again —
-   * and only if the list is still the one that was sent, so files picked while a slow send ran stay.
+   * and only if that send is the latest and the list is still the one it took, so files picked while
+   * a slow send ran stay, and an earlier send that resolves late does not empty a later one's.
    * That is carried by an `onSuccess` the composer adds to every `$invoke` in `onSubmit` (through
    * `$if` branches too), so `onSubmit` must be made of `$invoke`s whose action returns a promise.
    * A file over {@link ATTACH_MAX_BYTES} is refused with a line saying so.
@@ -67,6 +68,7 @@ function attachControl(label: string): SchemaNode {
       maxSize: ATTACH_MAX_BYTES,
       styles: ATTACH_STYLES,
       files: { $: 'local.attachments' },
+      // The uploader says `change` before `reject` for one pick, so the note it leaves is this pick's.
       onChange: [
         { $setLocal: 'attachNote', value: '' },
         { $setLocal: 'attachments', value: { $: 'event.detail' } },
@@ -152,8 +154,10 @@ export function lineComposer(opts: LineComposerOptions): SchemaNode {
     props: { gap: '100', width: '100%' },
     $localState: {
       attachments: { type: 'array', initial: [] },
-      // The list as the last send took it — what a send that resolves checks the list against.
+      // The list as the latest send took it, and that send's event — what a send that resolves checks
+      // against: only the latest send may empty the list, and only while it is still the list it took.
       sentAttachments: { type: 'array', initial: [] },
+      lastSend: { type: 'object', initial: null },
       // Why a file was left out, until the list changes again.
       attachNote: { type: 'string', initial: '' },
     },
@@ -188,7 +192,7 @@ function emptiedWhenSent(token: SchemaProp): SchemaProp {
 
 const EMPTY_IF_UNCHANGED = {
   $if: {
-    condition: { $: 'local.attachments == local.sentAttachments' },
+    condition: { $: 'event == local.lastSend && local.attachments == local.sentAttachments' },
     then: { $setLocal: 'attachments', value: [] },
   },
 };
@@ -199,6 +203,7 @@ function lineRow(rawOpts: LineComposerOptions): SchemaNode {
         ...rawOpts,
         onSubmit: [
           { $setLocal: 'sentAttachments', value: { $: 'local.attachments' } },
+          { $setLocal: 'lastSend', value: { $: 'event' } },
           emptiedWhenSent(rawOpts.onSubmit),
         ].flat(),
       }
