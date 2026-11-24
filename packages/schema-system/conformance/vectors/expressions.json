@@ -2494,9 +2494,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-missing",
       "env": "stock",
-      "result": {
-        "$number": "-0"
-      },
+      "result": 0,
       "print": "-missing"
     },
     {
@@ -4672,6 +4670,135 @@
         "$undefined": true
       },
       "print": "local.editing"
+    },
+    {
+      "id": "op.mul-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "missing * 2",
+      "env": "stock",
+      "result": 0,
+      "print": "missing * 2"
+    },
+    {
+      "id": "op.sub-undef",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "0 - missing",
+      "env": "stock",
+      "result": 0,
+      "print": "0 - missing"
+    },
+    {
+      "id": "op.neg-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-0",
+      "result": 0,
+      "print": "-0"
+    },
+    {
+      "id": "op.neg-null",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-null",
+      "result": 0,
+      "print": "-null"
+    },
+    {
+      "id": "op.neg-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-'x'",
+      "result": 0,
+      "print": "-'x'"
+    },
+    {
+      "id": "op.mul-neg-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "0 * -1",
+      "result": 0,
+      "print": "0 * -1"
+    },
+    {
+      "id": "op.div-neg-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "0 / -5",
+      "result": 0,
+      "print": "0 / -5"
+    },
+    {
+      "id": "op.mod-neg-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-1 % 1",
+      "result": 0,
+      "print": "-1 % 1"
+    },
+    {
+      "id": "op.add-neg-zero",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-0 + -0",
+      "result": 0,
+      "print": "-0 + -0"
+    },
+    {
+      "id": "op.mod-zero-neg",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "-7 % 0",
+      "result": 0,
+      "print": "-7 % 0"
+    },
+    {
+      "id": "op.min-list",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "min([3, 1, 2])",
+      "result": 1,
+      "print": "min([3, 1, 2])"
+    },
+    {
+      "id": "op.max-list-map",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "max(events.map(e, e.seats))",
+      "env": "where",
+      "result": 20,
+      "print": "max(events.map(e, e.seats))"
+    },
+    {
+      "id": "op.min-variadic",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "min(3, 1, 2)",
+      "result": 1,
+      "print": "min(3, 1, 2)"
+    },
+    {
+      "id": "op.or-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'' || 'x'",
+      "result": true,
+      "print": "'' || 'x'"
+    },
+    {
+      "id": "op.and-string",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "'a' && 'b'",
+      "result": true,
+      "print": "'a' && 'b'"
+    },
+    {
+      "id": "op.contains-case",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "contains('Anna', 'ANN')",
+      "result": true,
+      "print": "contains('Anna', 'ANN')"
+    },
+    {
+      "id": "op.startswith-case",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "startsWith('Anna', 'an')",
+      "result": false,
+      "print": "startsWith('Anna', 'an')"
+    },
+    {
+      "id": "op.endswith-case",
+      "note": "an operator or grammar rule, pinned against a stub env",
+      "source": "endsWith('photo.PNG', '.png')",
+      "result": false,
+      "print": "endsWith('photo.PNG', '.png')"
     }
   ]
 }

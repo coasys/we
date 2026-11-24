@@ -541,7 +541,8 @@ Operators, in JavaScript's spelling and precedence:
   ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
                                  an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
-  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  + - * / %                      arithmetic; + joins strings when either side is one; a missing or
+                                 non-number operand is 0 (so -missing is 0); / and % by 0 are 0
   `…${expr}…`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one
@@ -573,17 +574,17 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.responses)))
     without(items, ...values) — The list with every entry equal to any of `values` taken out. Records compare by `id`, as in `distinct`, so a record and its id both name it. Anything that is not a list gives [].  e.g. without(board.children, column.id)
   Text:
-    contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
-    endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
+    contains(text, needle) — Whether the text contains `needle`, ignoring case: contains('Anna', 'ann') is true. The same test the where-object `contains` makes, and what a search box wants; `startsWith` and `endsWith` compare exactly.  e.g. contains(item.name, local.search)
+    endsWith(text, suffix) — Whether the text ends with `suffix`, comparing exactly — case counts, so endsWith('photo.PNG', '.png') is false.  e.g. endsWith(item.url, '.png')
     lower(text) — The text in lower case.  e.g. lower(item.handle)
     plural(count, one, other) — `one` when count is exactly 1, otherwise `other`.  e.g. plural(count(spaceStore.members), 'Member', 'Members')
     slug(text) — The text as a slug: lower case, every character but a–z, 0–9, whitespace and '-' dropped, the ends trimmed, and each run of whitespace one '-'. A character outside a–z is dropped, not converted, so 'Café au lait' is 'caf-au-lait'. A number is read as its digits; anything else gives ''.  e.g. slug(name)
-    startsWith(text, prefix) — Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.  e.g. startsWith(item.startDate, '2026-08')
+    startsWith(text, prefix) — Whether the text starts with `prefix`, comparing exactly — case counts, so startsWith('Anna', 'an') is false. For structured strings such as an ISO date or a URI; `contains` is the one that ignores case.  e.g. startsWith(item.startDate, '2026-08')
     trim(text) — The text without leading and trailing whitespace.  e.g. trim(local.search) != ''
     upper(text) — The text in upper case.  e.g. upper(item.code)
   Numbers:
-    max(...values) — The largest of the numbers given. Non-numbers count as 0.  e.g. max(local.page - 1, 0)
-    min(...values) — The smallest of the numbers given. Non-numbers count as 0.  e.g. min(count(local.rows), 20)
+    max(...values) — The largest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.  e.g. max(local.page - 1, 0)
+    min(...values) — The smallest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.  e.g. min(count(local.rows), 20)
     round(value, digits?) — The number rounded to `digits` decimal places (default 0). Non-numbers round to 0.  e.g. round(item.progress * 100)
   Objects:
     keys(object) — The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].  e.g. keys(space.moduleSettings)

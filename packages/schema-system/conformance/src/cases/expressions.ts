@@ -311,6 +311,29 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
 
   /* --- the bundle corpus --------------------------------------------------------------- */
   ...BUNDLE_EXPRESSIONS.map((source, i) => C(`bundle.${String(i).padStart(3, '0')}`, source, 'stock')),
+
+  /* --- appended after the bundle corpus, so its positional ids stay put --------------------- */
+  // An absent operand is 0 to arithmetic, unary minus included, and no result is ever -0.
+  C('op.mul-undef', 'missing * 2', 'stock'),
+  C('op.sub-undef', '0 - missing', 'stock'),
+  C('op.neg-zero', '-0'),
+  C('op.neg-null', '-null'),
+  C('op.neg-string', "-'x'"),
+  C('op.mul-neg-zero', '0 * -1'),
+  C('op.div-neg-zero', '0 / -5'),
+  C('op.mod-neg-zero', '-1 % 1'),
+  C('op.add-neg-zero', '-0 + -0'),
+  C('op.mod-zero-neg', '-7 % 0'),
+  // min/max: variadic, or over one list
+  C('op.min-list', 'min([3, 1, 2])'),
+  C('op.max-list-map', 'max(events.map(e, e.seats))', 'where'),
+  C('op.min-variadic', 'min(3, 1, 2)'),
+  // && and || answer with a boolean; contains ignores case, startsWith/endsWith do not
+  C('op.or-string', "'' || 'x'"),
+  C('op.and-string', "'a' && 'b'"),
+  C('op.contains-case', "contains('Anna', 'ANN')"),
+  C('op.startswith-case', "startsWith('Anna', 'an')"),
+  C('op.endswith-case', "endsWith('photo.PNG', '.png')"),
 ];
 
 /* Extra named environments the ported cases need. */

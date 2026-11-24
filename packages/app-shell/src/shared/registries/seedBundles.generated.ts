@@ -26213,7 +26213,7 @@ export const seedBundles: Bundle[] = [
                                                                 props: {
                                                                   gap: '100',
                                                                   p: '300',
-                                                                  r: 'card',
+                                                                  r: 'surface',
                                                                   bg: 'surface-raised',
                                                                   border: '1px solid border',
                                                                   width: '180px',
@@ -26976,7 +26976,7 @@ export const seedBundles: Bundle[] = [
                                                     props: {
                                                       width: '100%',
                                                       height: '480px',
-                                                      r: 'card',
+                                                      r: 'surface',
                                                       border: '1px solid border',
                                                       overflow: 'hidden',
                                                     },
@@ -27127,7 +27127,7 @@ export const seedBundles: Bundle[] = [
                                                                             props: {
                                                                               gap: '100',
                                                                               p: '300',
-                                                                              r: 'card',
+                                                                              r: 'surface',
                                                                               bg: 'surface-raised',
                                                                               border: '1px solid border',
                                                                               width: '180px',
@@ -27374,7 +27374,7 @@ export const seedBundles: Bundle[] = [
                                                             props: {
                                                               gap: '200',
                                                               p: '300',
-                                                              r: 'card',
+                                                              r: 'surface',
                                                               border: {
                                                                 $: "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'",
                                                               },

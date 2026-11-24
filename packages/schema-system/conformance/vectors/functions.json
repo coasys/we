@@ -554,7 +554,7 @@
       "note": "the min built-in",
       "fn": "min",
       "args": [[3, 1, 2]],
-      "result": 0
+      "result": 1
     },
     {
       "id": "min.56",
@@ -572,7 +572,7 @@
       "note": "the max built-in",
       "fn": "max",
       "args": [[3, 1, 2]],
-      "result": 0
+      "result": 3
     },
     {
       "id": "max.58",
@@ -2458,6 +2458,87 @@
         }
       ],
       "result": []
+    },
+    {
+      "id": "min.196",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [[4, "x", 9]],
+      "result": 0
+    },
+    {
+      "id": "min.197",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [[]],
+      "result": 0
+    },
+    {
+      "id": "min.198",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [[5], 2],
+      "result": 2
+    },
+    {
+      "id": "max.199",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [[4, "x", 9]],
+      "result": 9
+    },
+    {
+      "id": "max.200",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [[]],
+      "result": 0
+    },
+    {
+      "id": "max.201",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [[-3, -1]],
+      "result": -1
+    },
+    {
+      "id": "round.202",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [-0.4],
+      "result": 0
+    },
+    {
+      "id": "min.203",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [
+        0,
+        {
+          "$number": "-0"
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "max.204",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [
+        [
+          {
+            "$number": "-0"
+          }
+        ]
+      ],
+      "result": 0
+    },
+    {
+      "id": "round.205",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [-0.004, 2],
+      "result": 0
     }
   ]
 }

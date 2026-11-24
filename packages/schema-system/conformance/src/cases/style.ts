@@ -62,6 +62,8 @@ const TOKEN_PROPS: Record<string, string[]> = {
   fontSize: ['100', '200', '300', '400'],
   fontWeight: ['300', '500', '600', '700', '800', 'regular', 'semibold'],
   letterSpacing: ['tight', 'wide'],
+  // 'card' is no radius name (cards are the surface family) and the validator refuses it; kept as the
+  // case pinning what a resolver emits for an unknown name — a var() no theme declares.
   r: ['0', '200', '300', '400', '500', '600', 'surface', 'control', 'card', 'full'],
   rbl: ['500'],
   rbr: ['500'],

@@ -1,4 +1,11 @@
-import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
+import {
+  BASE_CLASS_LAYERS,
+  CSS_PROP_TO_VAR_SUFFIX,
+  getKeysForLayers,
+  layerKeyMap,
+  radiusKeys,
+  tierKeys,
+} from '@we/design-utils';
 import type { Expr } from '@we/expressions';
 import {
   checkExpression,
@@ -7,7 +14,7 @@ import {
   isExpressionToken,
   parseExpression,
 } from '@we/expressions';
-import { role, semanticValues, space, TONES } from '@we/tokens';
+import { radius, role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, OperationEntry, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
@@ -1371,6 +1378,47 @@ function checkSpaceValue(propName: string, value: unknown, path: string, errors:
 }
 
 /**
+ * A radius that is neither a step of the scale, a theme family nor CSS.
+ *
+ * `r: 'card'` read like a name for a card's corners and is not one: cards are the `surface` family,
+ * which every theme sets as `surfaceRadius`. It resolved to `var(--we-radius-card)`, a variable no
+ * theme declares, so the corners were square under every theme and nothing said so. The names are
+ * the scale and the families, both from the tokens package, so a family added there is accepted
+ * here in the same commit.
+ */
+const RADIUS_PROPS: ReadonlySet<string> = new Set(radiusKeys);
+const RADIUS_NAMES = new Set([...Object.keys(radius), ...Object.keys(semanticValues('radius'))]);
+
+function checkRadiusValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  if (!RADIUS_PROPS.has(propName)) return;
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkRadiusValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'string') return;
+  if (
+    RADIUS_NAMES.has(value) ||
+    CSS_LENGTH_RE.test(value) ||
+    CSS_COMPUTED_LENGTH_RE.test(value) ||
+    CSS_KEYWORD_RE.test(value) ||
+    /\s/.test(value.trim())
+  ) {
+    return;
+  }
+  errors.push({
+    path,
+    message:
+      `"${value}" is not a radius token. Use a step of the scale (${Object.keys(radius).join(', ')}), ` +
+      `a theme family (${Object.keys(semanticValues('radius')).join(', ')}) or a CSS length — a card or any ` +
+      `other sheet is "surface". As written it resolves to var(--we-radius-${value}), which no theme declares, ` +
+      `so the corners are square.`,
+    severity: 'error',
+  });
+}
+
+/**
  * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
  *
  * A plain string is text now, so this would render as the characters themselves — a title reading
@@ -1649,9 +1697,11 @@ function checkProps(
       checkColourValue(propName, propValue, propPath, errors);
     }
     checkSpaceValue(propName, propValue, propPath, errors);
+    checkRadiusValue(propName, propValue, propPath, errors);
     if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
       for (const [bagProp, bagValue] of Object.entries(propValue)) {
         checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+        checkRadiusValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
         if (DROPPED_IN_BAGS.has(bagProp)) {
           errors.push({
             path: `${propPath}.${bagProp}`,

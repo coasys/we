@@ -230,7 +230,8 @@ Operators, in JavaScript's spelling and precedence:
   ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
                                  an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
-  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  + - * / %                      arithmetic; + joins strings when either side is one; a missing or
+                                 non-number operand is 0 (so -missing is 0); / and % by 0 are 0
   \`…\${expr}…\`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one

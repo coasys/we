@@ -153,6 +153,16 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/**
+ * A number the language hands back: never `-0`.
+ *
+ * JavaScript keeps a sign on zero (`0 * -1`, `-0`, `-1 % 1`). It prints as `0` and equals `0`,
+ * but divides into `-Infinity` and survives into a host that tells the two apart, and another
+ * implementation would have to reproduce IEEE's sign rules to agree on a value no template means.
+ * So every number arithmetic produces, here and in the function library, is plain zero instead.
+ */
+export const plainZero = (n: number): number => (n === 0 ? 0 : n);
+
 export function evaluateExpression(expr: Expr, env: EvaluationEnv): unknown {
   return settle(evaluate(expr, env, new Map()));
 }
@@ -184,7 +194,8 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
 
     case 'unary': {
       const operand = settle(evaluate(expr.operand, env, scope));
-      return expr.op === '!' ? !operand : -toNumber(operand);
+      // An absent operand is 0, as it is to binary arithmetic (`missing * 2` is 0), so `-missing` is 0.
+      return expr.op === '!' ? !operand : plainZero(-toNumber(operand));
     }
 
     case 'logical': {
@@ -226,20 +237,22 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
         case 'in':
           return Array.isArray(right) && right.includes(left);
         case '+':
-          if (typeof left === 'number' && typeof right === 'number') return left + right;
+          if (typeof left === 'number' && typeof right === 'number') return plainZero(left + right);
           if (typeof left === 'string' || typeof right === 'string') return asText(left) + asText(right);
-          return toNumber(left) + toNumber(right);
+          return plainZero(toNumber(left) + toNumber(right));
         case '-':
-          return toNumber(left) - toNumber(right);
+          return plainZero(toNumber(left) - toNumber(right));
         case '*':
-          return toNumber(left) * toNumber(right);
+          return plainZero(toNumber(left) * toNumber(right));
+        // Division and remainder by zero are 0, not Infinity or NaN: expressions are total, and a
+        // count divided by an empty list's length is a label that says 0, not one that says NaN.
         case '/': {
           const divisor = toNumber(right);
-          return divisor === 0 ? 0 : toNumber(left) / divisor;
+          return divisor === 0 ? 0 : plainZero(toNumber(left) / divisor);
         }
         case '%': {
           const divisor = toNumber(right);
-          return divisor === 0 ? 0 : toNumber(left) % divisor;
+          return divisor === 0 ? 0 : plainZero(toNumber(left) % divisor);
         }
         default:
           return undefined;

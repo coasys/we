@@ -33,6 +33,7 @@
  * `functions: 'core'` (see `check.ts`), which refuses every name outside `CORE_FUNCTIONS`.
  */
 import { DENIED_PROPERTIES } from './ast';
+import { plainZero } from './evaluate';
 import { readField } from './reach';
 import { asText, matchesWhere } from './where';
 
@@ -231,7 +232,7 @@ defineFunction({
   params: ['items'],
   doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
   example: 'sum(local.replies.map(r, count(r.responses)))',
-  impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
+  impl: ([items]) => plainZero(asList(items).reduce((total: number, value) => total + asNumber(value), 0)),
 });
 
 defineFunction({
@@ -497,7 +498,7 @@ defineFunction({
   name: 'contains',
   category: 'text',
   params: ['text', 'needle'],
-  doc: 'Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.',
+  doc: "Whether the text contains `needle`, ignoring case: contains('Anna', 'ann') is true. The same test the where-object `contains` makes, and what a search box wants; `startsWith` and `endsWith` compare exactly.",
   example: 'contains(item.name, local.search)',
   impl: ([text, needle]) => asText(text).toLowerCase().includes(asText(needle).toLowerCase()),
 });
@@ -506,7 +507,7 @@ defineFunction({
   name: 'startsWith',
   category: 'text',
   params: ['text', 'prefix'],
-  doc: 'Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.',
+  doc: "Whether the text starts with `prefix`, comparing exactly — case counts, so startsWith('Anna', 'an') is false. For structured strings such as an ISO date or a URI; `contains` is the one that ignores case.",
   example: "startsWith(item.startDate, '2026-08')",
   impl: ([text, prefix]) => asText(text).startsWith(asText(prefix)),
 });
@@ -515,7 +516,7 @@ defineFunction({
   name: 'endsWith',
   category: 'text',
   params: ['text', 'suffix'],
-  doc: 'Whether the text ends with `suffix`, case-sensitively.',
+  doc: "Whether the text ends with `suffix`, comparing exactly — case counts, so endsWith('photo.PNG', '.png') is false.",
   example: "endsWith(item.url, '.png')",
   impl: ([text, suffix]) => asText(text).endsWith(asText(suffix)),
 });
@@ -554,26 +555,36 @@ defineFunction({
   example: 'round(item.progress * 100)',
   impl: ([value, digits]) => {
     const factor = 10 ** Math.max(0, Math.floor(asNumber(digits)));
-    return Math.round(asNumber(value) * factor) / factor;
+    return plainZero(Math.round(asNumber(value) * factor) / factor);
   },
 });
+
+/*
+  Variadic, and also over one list: `min(a, b)` for two numbers a template has, `min(xs)` for a
+  column of them. One argument that is a list is the list's entries; anything else is the numbers
+  given. An empty list, like no arguments, answers 0 — the empty value of a number.
+*/
+const extremeOf = (values: unknown[], pick: (...n: number[]) => number): number => {
+  const numbers = values.length === 1 && Array.isArray(values[0]) ? values[0] : values;
+  return numbers.length ? plainZero(pick(...numbers.map(asNumber))) : 0;
+};
 
 defineFunction({
   name: 'min',
   category: 'number',
   params: ['...values'],
-  doc: 'The smallest of the numbers given. Non-numbers count as 0.',
+  doc: 'The smallest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.',
   example: 'min(count(local.rows), 20)',
-  impl: (values) => (values.length ? Math.min(...values.map(asNumber)) : 0),
+  impl: (values) => extremeOf(values, Math.min),
 });
 
 defineFunction({
   name: 'max',
   category: 'number',
   params: ['...values'],
-  doc: 'The largest of the numbers given. Non-numbers count as 0.',
+  doc: 'The largest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.',
   example: 'max(local.page - 1, 0)',
-  impl: (values) => (values.length ? Math.max(...values.map(asNumber)) : 0),
+  impl: (values) => extremeOf(values, Math.max),
 });
 
 // ── Objects ─────────────────────────────────────────────────────────────────

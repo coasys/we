@@ -277,4 +277,18 @@ export const FUNCTION_CASES: FunctionCase[] = numbered([
   F('values', { a: 1, gone: null }),
   F('values', 'text'),
   F('values', U),
+
+  /* ---- appended: new cases go here, so the ids above keep their positions ---- */
+  // min/max over a list given as the only argument; a list beside other arguments is a non-number
+  F('min', [4, 'x', 9]),
+  F('min', []),
+  F('min', [5], 2),
+  F('max', [4, 'x', 9]),
+  F('max', []),
+  F('max', [-3, -1]),
+  // no numeric result is -0
+  F('round', -0.4),
+  F('min', 0, { $number: '-0' }),
+  F('max', [{ $number: '-0' }]),
+  F('round', -0.004, 2),
 ]);

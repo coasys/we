@@ -496,6 +496,43 @@ describe('space values', () => {
   });
 });
 
+/**
+ * `r: 'card'` looked like the name for a card's corners and was not one — cards are the `surface`
+ * family. It resolved to `var(--we-radius-card)`, which no theme declares, so the corners were square.
+ */
+describe('radius values', () => {
+  it('rejects a name that is neither a step nor a family, wherever it is written', () => {
+    for (const props of [
+      { r: 'card' },
+      { rtl: 'round' },
+      { hoverProps: { r: 'card' } },
+      { r: { $: "local.open ? '400' : 'card'" } },
+    ]) {
+      const errors = messages(
+        { type: 'Column', props, $localState: { open: { type: 'boolean', initial: false } } },
+        'error',
+      );
+      expect(errors, JSON.stringify(props)).toHaveLength(1);
+      expect(errors[0]).toContain('is not a radius token');
+    }
+  });
+
+  it('accepts steps, families and CSS', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      props: {
+        r: 'surface',
+        rt: 'pill',
+        rb: '400',
+        rtl: '12px',
+        rbr: 'var(--we-radius-300)',
+        mdUpProps: { r: 'control' },
+      },
+    };
+    expect(messages(node, 'error')).toEqual([]);
+  });
+});
+
 describe('a write wired to an event nobody causes', () => {
   const unasked = (node: SchemaNode) => messages(node, 'warning').filter((m) => m.includes('fires without anybody'));
   const create = { $invoke: 'record.create', args: ['TaskBlock', { title: 'x' }] };
