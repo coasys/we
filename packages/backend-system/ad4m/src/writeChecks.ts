@@ -44,7 +44,7 @@ interface ModelInternals {
   changedFields?: () => string[];
   [SAVING]?: boolean;
   constructor: {
-    getModelMetadata?: () => { className?: string };
+    getModelMetadata?: () => { className?: string; relations?: Record<string, { maxCount?: number }> };
     findOne?: (perspective: unknown, query: { where: { id: string } }) => Promise<ModelInternals | null>;
   };
 }
@@ -93,6 +93,14 @@ const idsOf = (value: unknown): string[] =>
     const id = (v as { id?: unknown })?.id;
     return typeof id === 'string' ? id : '';
   });
+
+/** The ids a relation held when the instance was read, or null when there is no snapshot to say. */
+const currentOf = (model: ModelInternals, relation: string): string[] | null =>
+  model._snapshot && relation in model._snapshot ? idsOf(model._snapshot[relation]) : null;
+
+/** As the SDK reads it: a relation with `maxCount === 1` holds one member, and adding replaces it. */
+const isSingleValued = (model: ModelInternals, relation: string): boolean =>
+  model.constructor.getModelMetadata?.().relations?.[relation]?.maxCount === 1;
 
 /**
  * Install the checks on `Ad4mModel.prototype`. Idempotent.
@@ -157,7 +165,17 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     }),
   );
 
-  wrap('addRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'add', String(key))));
+  // Adding to a single-valued relation replaces its member, so it removes one too when there is one
+  // other than the one added (or, with no snapshot to say, may).
+  wrap('addRelationValue', async (self, [key, value]) => {
+    if (self[SAVING]) return;
+    const relation = String(key);
+    await relationCheck(self, 'add', relation);
+    if (!isSingleValued(self, relation)) return;
+    const current = currentOf(self, relation);
+    const [added] = idsOf(value);
+    if (!current || current.some((id) => id !== added)) await relationCheck(self, 'remove', relation);
+  });
   wrap('removeRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'remove', String(key))));
   // Setting a list adds what is new and removes what is gone. Without a snapshot to diff against,
   // it may do either, so it is checked as both.
@@ -165,7 +183,7 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     if (self[SAVING]) return;
     const relation = String(key);
     const next = idsOf(value);
-    const current = self._snapshot && relation in self._snapshot ? idsOf(self._snapshot[relation]) : null;
+    const current = currentOf(self, relation);
     if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation);
     if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation);
   });

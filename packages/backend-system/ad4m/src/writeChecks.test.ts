@@ -15,7 +15,7 @@ const written = vi.fn();
 
 class FakeModel {
   static getModelMetadata() {
-    return { className: 'Note' };
+    return { className: 'Note', relations: { owner: { maxCount: 1 }, children: {} } };
   }
   static async findOne(_perspective: unknown, query: { where: { id: string } }) {
     const found = new FakeModel(query.where.id);
@@ -29,6 +29,7 @@ class FakeModel {
   author?: string;
   text?: string;
   children?: string[];
+  owner?: string;
 
   constructor(public id?: string) {}
 
@@ -84,6 +85,37 @@ const loaded = () => {
   note._snapshot = { text: 'before', children: ['a'] };
   return note;
 };
+
+describe('adding to a single-valued relation, which replaces its member', () => {
+  const kinds = () => writes.map((w) => `${w.kind}:${w.relation}`);
+
+  it('also checks a remove when it displaces another member, and refuses when remove is denied', async () => {
+    const note = loaded();
+    note.owner = 'did:old';
+    note._snapshot = { ...note._snapshot, owner: 'did:old' };
+    await note.addRelationValue('owner', 'did:new');
+    expect(kinds()).toEqual(['add:owner', 'remove:owner']);
+    refuse = (w) => w.kind === 'remove';
+    written.mockReset();
+    await expect(note.addRelationValue('owner', 'did:new')).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('checks only add on an empty one, or when the member is already the one added', async () => {
+    const empty = loaded();
+    empty._snapshot = { ...empty._snapshot, owner: null };
+    await empty.addRelationValue('owner', 'did:new');
+    const same = loaded();
+    same._snapshot = { ...same._snapshot, owner: 'did:new' };
+    await same.addRelationValue('owner', 'did:new');
+    expect(kinds()).toEqual(['add:owner', 'add:owner']);
+  });
+
+  it('checks only add on a collection', async () => {
+    await loaded().addRelationValue('children', 'b');
+    expect(kinds()).toEqual(['add:children']);
+  });
+});
 
 describe('the write check on the production adapter', () => {
   it('checks a save of a new instance as a create, and its own relation writes not at all', async () => {
