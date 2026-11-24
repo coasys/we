@@ -413,6 +413,10 @@ export function createModuleStoreDeps(framework: {
       remove: async (entity, id) => {
         await services.agentData?.remove(entity, id);
       },
+      run: async (name, args) => {
+        if (!services.agentData) throw new Error(`Cannot run ${name} yet: the host is still starting`);
+        return services.agentData.run(name, args);
+      },
       documents: forwardDocuments(() => services.agentData?.documents),
     },
 

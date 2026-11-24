@@ -107,6 +107,142 @@ export const POCKET_MANIFEST: EntityManifest = {
       relations: {},
     },
   },
+
+  /*
+    The Pocket's writes, declared — run in the personal space through the agent-data kernel, under
+    the module's id (`pocket.gather`). What stays in the store is what only it knows: which folder is
+    open, what reference a drop names, and the picture a document carries.
+  */
+  operations: {
+    rootFolder: {
+      description:
+        'The Pocket’s root folder — the one everything else hangs off — made the first time it is asked for.',
+      steps: [
+        { find: { as: 'found', entity: 'PocketFolder', where: { root: true }, limit: 1 } },
+        {
+          create: { as: 'made', entity: 'PocketFolder', fields: { name: 'Pocket', icon: 'bag-simple', root: true } },
+          when: { $: 'count(found) == 0' },
+        },
+      ],
+      returns: { $: 'count(found) > 0 ? first(found) : made' },
+    },
+
+    gather: {
+      description:
+        'Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.',
+      params: {
+        ref: { type: 'string', required: true, description: 'The record URI — we:<datasetKey>/<Entity>/<id>.' },
+        entity: { type: 'string', description: 'The reference’s entity, written out beside it.' },
+        datasetKey: { type: 'string', description: 'Its dataset key.' },
+        recordId: { type: 'string', description: 'Its record id.' },
+        withinEntity: { type: 'string', description: 'The record it sits inside, where it is a block.' },
+        withinId: { type: 'string', description: 'That record’s id.' },
+        label: { type: 'string', description: 'How it read when it was gathered.' },
+        icon: { type: 'string', description: 'Its icon.' },
+        thumbnail: { type: 'string', description: 'Its picture.' },
+        sourceName: { type: 'string', description: 'The space it came from, by name.' },
+        sourceAuthor: { type: 'string', description: 'Whoever wrote it.' },
+        into: { type: 'string', description: 'The folder to keep it in; the root when omitted.' },
+        origin: {
+          type: 'object',
+          description:
+            'Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.',
+        },
+      },
+      steps: [
+        // Gathering the same thing twice is a move or nothing, never a second row.
+        { find: { as: 'already', entity: 'PocketItem', where: { ref: { $: 'ref' } }, limit: 1 } },
+        {
+          call: {
+            as: 'moved',
+            operation: 'pocket.refile',
+            args: { item: { $: 'origin.id' }, from: { $: 'origin.folder' }, into: { $: 'into' } },
+          },
+          when: { $: 'count(already) > 0 && origin.id && origin.folder && into && origin.folder != into' },
+        },
+        { call: { as: 'root', operation: 'pocket.rootFolder', args: {} }, when: { $: 'count(already) == 0 && !into' } },
+        {
+          create: {
+            as: 'made',
+            entity: 'PocketItem',
+            fields: {
+              ref: { $: 'ref' },
+              entity: { $: 'entity' },
+              datasetKey: { $: 'datasetKey' },
+              recordId: { $: 'recordId' },
+              withinEntity: { $: 'withinEntity' },
+              withinId: { $: 'withinId' },
+              label: { $: 'label' },
+              icon: { $: 'icon' },
+              thumbnail: { $: 'thumbnail' },
+              sourceName: { $: 'sourceName' },
+              sourceAuthor: { $: 'sourceAuthor' },
+              // When *you* kept it, which is not when the thing was made or when the record synced.
+              gatheredAt: { $: 'invokedAt' },
+            },
+            parent: { id: { $: 'into ?? root.id' }, relation: 'items', entity: 'PocketFolder' },
+          },
+          when: { $: 'count(already) == 0' },
+        },
+      ],
+      returns: { $: 'count(already) > 0 ? (moved ?? first(already).id) : made.id' },
+    },
+
+    refile: {
+      description:
+        'Move an item from one folder to another. The item keeps its id and everything it says, gatheredAt included.',
+      params: {
+        item: { type: 'string', required: true, description: 'The PocketItem.' },
+        from: { type: 'string', required: true, description: 'The folder it is in.' },
+        into: { type: 'string', required: true, description: 'The folder it moves to.' },
+      },
+      steps: [
+        {
+          unlink: { entity: 'PocketFolder', id: { $: 'from' }, relation: 'items', target: { $: 'item' } },
+          when: { $: 'from != into' },
+        },
+        {
+          link: { entity: 'PocketFolder', id: { $: 'into' }, relation: 'items', target: { $: 'item' } },
+          when: { $: 'from != into' },
+        },
+      ],
+      returns: { $: 'item' },
+    },
+
+    removeFolders: {
+      description:
+        'Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.',
+      params: {
+        folders: { type: 'list', required: true, description: 'The folders’ ids, a folder after everything under it.' },
+      },
+      steps: [
+        {
+          forEach: {
+            in: { $: 'folders' },
+            as: 'folder',
+            key: { $: 'folder' },
+            steps: [
+              {
+                find: {
+                  as: 'kept',
+                  entity: 'PocketItem',
+                  scope: { anchor: 'PocketFolder', via: 'items', anchorId: { $: 'folder' } },
+                },
+              },
+              {
+                forEach: {
+                  in: { $: 'kept' },
+                  as: 'item',
+                  steps: [{ delete: { entity: 'PocketItem', id: { $: 'item' } } }],
+                },
+              },
+              { delete: { entity: 'PocketFolder', id: { $: 'folder' } } },
+            ],
+          },
+        },
+      ],
+    },
+  },
 };
 
 /** The predicates this module owns. Named so the scheme stays greppable and testable. */

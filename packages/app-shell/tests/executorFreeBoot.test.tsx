@@ -255,7 +255,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 }));
 
 // ── Harness ───────────────────────────────────────────────────────────────────
-import { completeResponse } from '@we/entities';
+import { completeResponse, runOperation } from '@we/entities';
 import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
@@ -539,6 +539,7 @@ describe('boot', () => {
           find: (handle, entity, query) => model(entity).findAll(handle, query),
           update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
           remove: (handle, entity, id) => model(entity).delete(handle, id),
+          run: (handle, name, args) => runOperation(name, args, { dataset: handle, invoker: 'did:test:james' }),
         }),
       });
       return {

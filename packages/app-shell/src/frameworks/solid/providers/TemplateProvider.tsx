@@ -353,6 +353,11 @@ export default function TemplateProvider() {
           (await recordModel(entity).findAll(handle, query)) as unknown as Record<string, unknown>[],
         update: (handle, entity, id, fields) => updateInDataset(entity, id, fields, handle),
         remove: (handle, entity, id) => recordModel(entity).delete(handle, id),
+        run: (handle, name, args) => {
+          const invoker = sessionStore.me()?.did;
+          if (!invoker) throw new Error(`${name}: nobody is signed in`);
+          return runOperation(name, args, { dataset: handle, invoker });
+        },
       }),
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —

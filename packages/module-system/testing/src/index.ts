@@ -318,8 +318,17 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
 /**
  * The agent's personal space, as an array. The same fake with the `AgentDataKernel` shape; its
  * documents carry a personal key, as the real ones do.
+ *
+ * `run` is what a declared operation does here, where the test needs one — a fake has no runner,
+ * and an operation's own behaviour is tested against a real backend. Without it, `run` refuses.
  */
-export function fakeAgentData(options: { author?: string; ready?: boolean } = {}) {
+export function fakeAgentData(
+  options: {
+    author?: string;
+    ready?: boolean;
+    run?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  } = {},
+) {
   const inner = fakeRecords({ ...options, datasetKey: 'p:personal' });
   const kernel: AgentDataKernel = {
     ready: () => options.ready ?? true,
@@ -328,6 +337,10 @@ export function fakeAgentData(options: { author?: string; ready?: boolean } = {}
     find: (entity, query) => inner.kernel.find(entity, query),
     update: (entity, id, fields) => inner.kernel.update(entity, id, fields),
     remove: (entity, id) => inner.kernel.remove(entity, id),
+    run: async (name, args) => {
+      if (!options.run) throw new Error(`fakeAgentData: no fake given for ${name}`);
+      return options.run(name, args ?? {});
+    },
     documents: inner.kernel.documents,
   };
   return { rows: inner.rows, writes: inner.writes, documents: inner.documents, seed: inner.seed, kernel };

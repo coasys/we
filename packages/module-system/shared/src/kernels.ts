@@ -263,6 +263,12 @@ export interface AgentDataKernel {
   /** Delete one record. Irreversible, and only ever this agent's own. */
   remove: (entity: string, id: string) => Promise<void>;
   /**
+   * Run a declared operation in the personal space — the module's own (`pocket.gather`) or WE's —
+   * as this agent, in one transaction, and answer with what it returns. Rejects with the runner's
+   * error (`class`, `code`, `message`). Like every write here, it cannot reach a space.
+   */
+  run: (name: string, args?: Record<string, unknown>) => Promise<unknown>;
+  /**
    * Composed documents of this agent's own — a note is a post in the personal space. `ref` in what
    * `create` returns names the personal space, which means something only on this agent's machine:
    * fine to keep, never to hand to anybody else.

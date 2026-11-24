@@ -68,6 +68,8 @@ export interface RecordWrites {
   find: (handle: DatasetProxy, entity: string, query?: RecordQuery) => Promise<Record<string, unknown>[]>;
   update: (handle: DatasetProxy, entity: string, id: string, fields: Record<string, unknown>) => Promise<unknown>;
   remove: (handle: DatasetProxy, entity: string, id: string) => Promise<unknown>;
+  /** Run a declared operation in the dataset, as the signed-in agent. */
+  run: (handle: DatasetProxy, name: string, args?: Record<string, unknown>) => Promise<unknown>;
 }
 
 /** Where the personal space is, as the dataset store holds it. */
@@ -123,6 +125,11 @@ export function agentDataKernel(personal: PersonalSpaceSource, writes: RecordWri
     remove: async (entity, id) => {
       const ds = await target();
       if (ds) await writes.remove(ds.handle, entity, id);
+    },
+    run: async (name, args) => {
+      const ds = await target();
+      if (!ds) throw new Error(`${name}: your personal space is not open yet`);
+      return writes.run(ds.handle, name, args);
     },
     documents: documentAccess(target),
   };

@@ -68,9 +68,11 @@ describe('a module-declared relation', () => {
     // Where an entity is *installed* says nothing about where a query naming it runs from: the
     // Pocket's panel reads the root dataset while a space is open, so filtering this by scope would
     // put its relations out of reach exactly when they are used.
+    // Under its own id: its operations call each other as `pocket.<name>`, so the manifest only
+    // registers under that one.
     moduleRegistry.register(
       {
-        manifest: { id: 'spacey', name: 'Spacey' },
+        manifest: { id: 'pocket', name: 'Pocket' },
         contributes: { entities: { manifest: POCKET_MANIFEST } },
       } as ModuleDefinition,
       host,
