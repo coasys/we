@@ -37,17 +37,18 @@ Falsy: no value, `null`, `false`, `0`, `-0`, NaN, and `''`. Everything else is t
 
 ### Conversions
 
-**To number** (used by arithmetic, comparison and number functions): a number is itself, and a
-number that is not finite (NaN, ±Infinity) becomes `0`. Otherwise:
+**Reads as a number** (used by arithmetic, comparison and number functions): a finite number is
+itself, and text is a number when the whole of it is a decimal numeral,
+`[+-]?(digits[.digits?] | .digits)([eE][+-]?digits)?` with no white space, and its value is finite
+(`'3'`, `'-2.5'`, `'1e3'`). Nothing else reads as a number: not no value or `null`, not `true` or
+`false`, not `''`, padded text (`' 3'`), `0x10` or `Infinity`, and not a list or an object (`[5]` is
+not `5`).
 
-| From             | Number                                                                                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| no value         | `0`                                                                                                                                            |
-| `null`           | `0`                                                                                                                                            |
-| `true` / `false` | `1` / `0`                                                                                                                                      |
-| text             | ECMAScript `StringToNumber`: surrounding white space ignored, `''` is `0`, decimal, `0x`/`0o`/`0b` and exponent forms read; anything else `0`. |
-| list             | The list converted to text, then to a number (so `[]` is `0`, `[5]` is `5`, `[1, 2]` is `0`).                                                  |
-| object           | `0`                                                                                                                                            |
+**To number** (used by arithmetic and number functions): the number a value reads as, and `0` for a
+value that reads as none. A missing operand is `0` this way, and so is a list.
+
+**No `-0`.** No number the language produces is `-0`: wherever arithmetic or a number function
+would give `-0` (`-missing`, `0 * -1`, `-1 % 1`, `round(-0.4)`, `min(0, -0)`), the result is `0`.
 
 **To text** (used by `+` with text, interpolation and text functions): no value and `null` are `''`;
 text is itself; `true`/`false` are `'true'`/`'false'`; a number is ECMAScript `Number::toString`
@@ -136,28 +137,28 @@ methods. No syntax is added in minor versions; a new capability is a [core funct
 Evaluation is **total**: no expression that parses and reads only bound names fails at run time.
 Wrong-typed input gives the empty value of the expected kind (`[]`, `''`, `0`, `false`, no value).
 
-| Form                 | Value                                                                                                                                                                                                                                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| literal              | Itself. A number literal is the nearest double to its decimal text.                                                                                                                                                                                                                              |
-| `name`               | The bound value. (Unbound names are refused before evaluation: [Names](execution.md#names-and-scope).)                                                                                                                                                                                           |
-| `a.name`             | On an object, its value under `name`, or no value. On a list or text, `length` is its length and any other name is no value. Otherwise no value.                                                                                                                                                 |
-| `a[i]`               | With a number `i`: on a list, the entry at `i`; on text, the code unit at `i` as text; no value when `i` is not a whole number in range, and on anything else. With any other `i`: as `a.name`, with `i` converted to text (so `list['0']` is the first entry, and `record['title']` its title). |
-| `` `…${e}…` ``       | The literal runs and each hole converted to text, concatenated.                                                                                                                                                                                                                                  |
-| `[a, b]`             | A list of the values.                                                                                                                                                                                                                                                                            |
-| `{ k: v }`           | An object; a later duplicate key wins.                                                                                                                                                                                                                                                           |
-| `!a`                 | `true` when `a` is falsy, else `false`.                                                                                                                                                                                                                                                          |
-| `-a`                 | The negation of `a` converted to a number.                                                                                                                                                                                                                                                       |
-| `a && b`             | `false` when `a` is falsy (and `b` is not evaluated); else whether `b` is truthy. Always a boolean.                                                                                                                                                                                              |
-| `a \|\| b`           | `true` when `a` is truthy (and `b` is not evaluated); else whether `b` is truthy. Always a boolean.                                                                                                                                                                                              |
-| `a ?? b`             | `a` unless it is no value or `null`, in which case `b` (evaluated only then).                                                                                                                                                                                                                    |
-| `a == b`, `a != b`   | Strict equality: the same kind and the same value. Numbers compare as doubles (NaN equals nothing, `0 == -0`); text by code units; no value equals only no value; `null` only `null`. A list or an object equals only itself (the same value reached twice), never a separately built one.       |
-| `<`, `>`, `<=`, `>=` | Both sides converted to numbers, then compared. Text does not compare as text here: `'b' < 'c'` is `0 < 0`, `false`.                                                                                                                                                                             |
-| `a in b`             | `true` when `b` is a list with an entry equal to `a` by `==` (except that NaN is in a list holding NaN). `false` when `b` is not a list.                                                                                                                                                         |
-| `a + b`              | Both numbers: the sum. Either text: both converted to text and joined. Otherwise both converted to numbers and summed.                                                                                                                                                                           |
-| `a - b`, `a * b`     | Both converted to numbers.                                                                                                                                                                                                                                                                       |
-| `a / b`, `a % b`     | Both converted to numbers; a divisor of `0` gives `0`. `%` is the remainder with the sign of `a`.                                                                                                                                                                                                |
-| `t ? a : b`          | `a` when `t` is truthy, else `b`; only the chosen side is evaluated.                                                                                                                                                                                                                             |
-| `f(…)`, `x.f(…)`     | The core function's result ([Core functions](#core-functions)). Arguments are evaluated left to right; `x.f(y)` passes `x` first. Missing optional arguments are no value.                                                                                                                       |
+| Form                 | Value                                                                                                                                                                                                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| literal              | Itself. A number literal is the nearest double to its decimal text.                                                                                                                                                                                                                                                  |
+| `name`               | The bound value. (Unbound names are refused before evaluation: [Names](execution.md#names-and-scope).)                                                                                                                                                                                                               |
+| `a.name`             | On an object, its value under `name`, or no value. On a list or text, `length` is its length and any other name is no value. Otherwise no value.                                                                                                                                                                     |
+| `a[i]`               | With a number `i`: on a list, the entry at `i`; on text, the code unit at `i` as text; no value when `i` is not a whole number in range, and on anything else. With any other `i`: as `a.name`, with `i` converted to text (so `list['0']` is the first entry, and `record['title']` its title).                     |
+| `` `…${e}…` ``       | The literal runs and each hole converted to text, concatenated.                                                                                                                                                                                                                                                      |
+| `[a, b]`             | A list of the values.                                                                                                                                                                                                                                                                                                |
+| `{ k: v }`           | An object; a later duplicate key wins.                                                                                                                                                                                                                                                                               |
+| `!a`                 | `true` when `a` is falsy, else `false`.                                                                                                                                                                                                                                                                              |
+| `-a`                 | The negation of `a` converted to a number (so `-missing` is `0`, as `missing * 2` is).                                                                                                                                                                                                                               |
+| `a && b`             | `false` when `a` is falsy (and `b` is not evaluated); else whether `b` is truthy. Always a boolean.                                                                                                                                                                                                                  |
+| `a \|\| b`           | `true` when `a` is truthy (and `b` is not evaluated); else whether `b` is truthy. Always a boolean.                                                                                                                                                                                                                  |
+| `a ?? b`             | `a` unless it is no value or `null`, in which case `b` (evaluated only then).                                                                                                                                                                                                                                        |
+| `a == b`, `a != b`   | Strict equality: the same kind and the same value. Numbers compare as doubles (NaN equals nothing, `0 == -0`); text by code units; no value equals only no value; `null` only `null`. A list or an object equals only itself (the same value reached twice), never a separately built one.                           |
+| `<`, `>`, `<=`, `>=` | When both sides read as numbers, compared as numbers (`'3' < '10'` is `true`). Otherwise, when both are text, compared in code point order (`'b' < 'c'` is `true`, and ISO dates order by time). Otherwise `false`: no value, `null`, a boolean, a list, an object, or a number beside non-numeral text (`3 < 'b'`). |
+| `a in b`             | `true` when `b` is a list with an entry equal to `a` by `==` (except that NaN is in a list holding NaN). `false` when `b` is not a list.                                                                                                                                                                             |
+| `a + b`              | Either text: both converted to text and joined. Otherwise both converted to numbers and summed (`true + 1` is `1`, `[2] + 1` is `1`).                                                                                                                                                                                |
+| `a - b`, `a * b`     | Both converted to numbers.                                                                                                                                                                                                                                                                                           |
+| `a / b`, `a % b`     | Both converted to numbers; a divisor of `0` gives `0`. `%` is the remainder with the sign of `a`.                                                                                                                                                                                                                    |
+| `t ? a : b`          | `a` when `t` is truthy, else `b`; only the chosen side is evaluated.                                                                                                                                                                                                                                                 |
+| `f(…)`, `x.f(…)`     | The core function's result ([Core functions](#core-functions)). Arguments are evaluated left to right; `x.f(y)` passes `x` first. Missing optional arguments are no value.                                                                                                                                           |
 
 An operation's expressions read only the names [Execution](execution.md#names-and-scope) binds; a
 value read from a record is data, and reading a field never runs anything.
@@ -235,18 +236,19 @@ and text arguments are converted to text.
 than no value is identified by its `id`; anything else by itself. Two identities are the same when
 they are `==`, or both NaN. So a record and its id name the same entry.
 
-**Code point order** (used by `sortBy`, `keys`, `values`, `put`, `merge`): text compared by Unicode
-code point, first difference deciding, a shorter prefix first. Not by locale.
+**Code point order** (used by `<` and its kin, `sortBy`, `keys`, `values`, `put`, `merge`): text
+compared by Unicode code point, first difference deciding, a shorter prefix first. Not by locale.
 
 **An object's fields** (used by `keys`, `values`, `put`, `merge`): its keys in code point order,
-leaving out any key whose value is no value or `null`.
+leaving out any key whose value is no value. A key holding `null` is a field: `null` is how a field
+set says "clear this field" (as `''` is), so it is kept, listed and returned like any other value.
 
 ### Lists
 
 | Signature                           | Result                                                                                                                                                                                                                                 |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `count(items)`                      | The number of entries. Not a list: `0`.                                                                                                                                                                                                |
-| `sum(items)`                        | The entries converted to numbers, added. Not a list: `0`.                                                                                                                                                                              |
+| `sum(items)`                        | The entries converted to numbers, added (an entry that reads as no number adds `0`). Not a list: `0`.                                                                                                                                  |
 | `first(items)`                      | The first entry, or no value.                                                                                                                                                                                                          |
 | `last(items)`                       | The last entry, or no value.                                                                                                                                                                                                           |
 | `reverse(items)`                    | A new list, back to front.                                                                                                                                                                                                             |
@@ -294,21 +296,21 @@ white space; trim it as `trim` does; replace each run of white space with one `-
 
 ### Numbers
 
-| Signature               | Result                                                                                                                                                                                                                                            |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `round(value, digits?)` | `value` (converted to a number) rounded to `digits` decimal places: `d` = `digits` converted to a number, floored, at least 0; the result is `roundHalfUp(value × 10^d) / 10^d` in doubles, where halves round toward +∞ (`round(-2.5)` is `-2`). |
-| `min(...values)`        | The smallest of the values converted to numbers; `0` with none.                                                                                                                                                                                   |
-| `max(...values)`        | The largest; `0` with none.                                                                                                                                                                                                                       |
+| Signature               | Result                                                                                                                                                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `round(value, digits?)` | `value` (converted to a number) rounded to `digits` decimal places: `d` = `digits` converted to a number, floored, at least 0; the result is `roundHalfUp(value × 10^d) / 10^d` in doubles, where halves round toward +∞ (`round(-2.5)` is `-2`).   |
+| `min(...values)`        | The smallest of the values converted to numbers. A single argument that is a list stands for its entries (`min([3, 1, 2])` is `1`); a list among several arguments is a value that reads as no number, so `0`. `0` with no values or an empty list. |
+| `max(...values)`        | The largest, by the same rules.                                                                                                                                                                                                                     |
 
 ### Objects
 
-| Signature                 | Result                                                                                                                                                                                                                        |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pick(object, keys)`      | A new object with each key in the list `keys` (converted to text) whose value in `object` is not no value. Not an object: `{}`.                                                                                               |
-| `put(object, key, value)` | A new object: `object`'s fields, with `key` set to `value`, or removed when `value` is no value or `null`. `key` is text, or a finite number as its text; any other key, or a denied name, gives `object`'s fields unchanged. |
-| `merge(...objects)`       | A new object of every object's fields, a later one winning a shared key. Shallow. A key with no value or `null` does not override.                                                                                            |
-| `keys(object)`            | `object`'s field names, in code point order.                                                                                                                                                                                  |
-| `values(object)`          | `object`'s field values, in the order `keys` gives.                                                                                                                                                                           |
+| Signature                 | Result                                                                                                                                                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pick(object, keys)`      | A new object with each key in the list `keys` (converted to text) whose value in `object` is not no value. Not an object: `{}`.                                                                                                       |
+| `put(object, key, value)` | A new object: `object`'s fields, with `key` set to `value` (`null` included), or removed when `value` is no value. `key` is text, or a finite number as its text; any other key, or a denied name, gives `object`'s fields unchanged. |
+| `merge(...objects)`       | A new object of every object's fields, a later one winning a shared key. Shallow. A key holding `null` overrides (a clear survives the merge); a key with no value does not.                                                          |
+| `keys(object)`            | `object`'s field names, in code point order, a key holding `null` or `''` included.                                                                                                                                                   |
+| `values(object)`          | `object`'s field values, in the order `keys` gives, `null` included.                                                                                                                                                                  |
 
 > **Why these functions.** The list and object builders exist because an operation writes a
 > relation's whole list or a `json` field's whole value, and so has to compute the new one from the
