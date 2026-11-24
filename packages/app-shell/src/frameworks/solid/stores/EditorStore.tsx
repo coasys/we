@@ -27,10 +27,11 @@ import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agen
 import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
+import { operationCatalog } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
-import { buildValidationContext, withEntities } from '@we/schema-shared';
+import { buildValidationContext, withEntities, withOperations } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -269,7 +270,8 @@ export function EditorStoreProvider(props: ParentProps) {
   const getValidationCtx = createMemo(() => {
     const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
     const shapes = shapeStore.spaceShapes().map((s) => s.name);
-    return withEntities(baseValidationCtx, [...foreign, ...shapes]);
+    // And the operations registered since the context was generated — an installed app's own.
+    return withOperations(withEntities(baseValidationCtx, [...foreign, ...shapes]), operationCatalog());
   });
 
   // --- Chat state ---

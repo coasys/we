@@ -568,6 +568,22 @@ export interface DatasetTarget {
   dataset?: string;
 }
 
+/**
+ * Declared operations, for a module store — the same runner a template's `ops.<ns>.<name>` reaches.
+ *
+ * Run as the signed-in agent, in one transaction, under the space's write check like any write. A
+ * module runs its own operations by its id (`polls.vote`) and WE's by `core.<name>`; the namespace is
+ * the host's to assign, so a module cannot run what it did not declare under a name it chose.
+ */
+export interface ModuleOperations {
+  /**
+   * Run one by qualified name, with its params, and answer with what it returns. `target` names the
+   * dataset as every other write here does — the space on screen when absent, and a refusal when it
+   * names one this agent does not hold. Rejects with the runner's error (`class`, `code`, `message`).
+   */
+  run(name: string, args?: Record<string, unknown>, target?: DatasetTarget): Promise<unknown>;
+}
+
 /** Where a newly created record should be attached, and nothing else. */
 export interface CreateEntityOptions extends DatasetTarget {
   /**
@@ -741,6 +757,8 @@ export interface ModuleStoreDeps {
   notify?: (tone: NotifyTone, message: string, options?: NotifyOptions) => void;
   /** Who an agent id belongs to. */
   identities?: ModuleIdentityAccess;
+  /** Declared operations — see {@link ModuleOperations}. Absent on a host that runs none. */
+  operations?: ModuleOperations;
   /** Naming and reaching spaces. */
   datasets?: ModuleDatasetAccess;
   /**

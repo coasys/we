@@ -12,7 +12,7 @@
  * what a space's template exists to do. A community's own record types are content by this rule
  * with nothing to register.
  */
-import type { OperationEffects } from '@we/entities';
+import { describeOperation, listOperations, type OperationEffects, operationWrites } from '@we/entities';
 
 import type { CapabilityGroup } from './templateSurface';
 
@@ -55,4 +55,30 @@ export function operationSurface(effects: OperationEffects): OperationSurface {
     widest = Math.max(widest, WIDTH.indexOf(group));
   }
   return { group: WIDTH[widest], destructive: effects.destructive };
+}
+
+/**
+ * A registered operation as the template surface classifies it: the group its writes need, whether
+ * the host confirms it first, and whether it may run with nobody asking — only when it writes
+ * nothing, since the gesture rule is about writes and an operation that writes is one. Undefined for
+ * a name nothing is registered under.
+ */
+export interface OperationMemberSpec extends OperationSurface {
+  ambient: boolean;
+}
+
+export function operationMemberSpec(name: string): OperationMemberSpec | undefined {
+  const described = describeOperation(name);
+  if (!described) return undefined;
+  return { ...operationSurface(described.effects), ambient: !operationWrites(described.effects) };
+}
+
+/** Every registered operation, classified — the derived half of the template surface. */
+export function operationSurfaceEntries(): Record<string, OperationMemberSpec> {
+  const out: Record<string, OperationMemberSpec> = {};
+  for (const name of listOperations()) {
+    const spec = operationMemberSpec(name);
+    if (spec) out[name] = spec;
+  }
+  return out;
 }

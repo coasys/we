@@ -105,8 +105,25 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
   const blocked = new Set<string>();
   const modules = new Set<string>();
 
+  /*
+    Its own operations are not registered until it is installed, so a template of its invoking one
+    is classified here, from the same effect summary the registry would read.
+  */
+  const ownOperations = bundle.operations ?? {};
+  const ownLookup = (name: string) =>
+    name.startsWith(`${bundle.id}.`) ? ownOperations[name.slice(bundle.id.length + 1)] : getOperation(name);
+  const ownSurface = (name: string) => {
+    if (!name.startsWith(`${bundle.id}.`)) return undefined;
+    const definition = ownLookup(name);
+    return definition ? operationSurface(effectSummary(definition, { operations: ownLookup })) : undefined;
+  };
+
   const judge = (template: TemplateSchema, grants: readonly CapabilityGroup[], label: string) => {
-    const accepted = acceptTemplate(template, { origin: `the bundle "${bundle.name}"`, grants });
+    const accepted = acceptTemplate(template, {
+      origin: `the bundle "${bundle.name}"`,
+      grants,
+      operation: ownSurface,
+    });
     if (!accepted.schema) {
       refusals.push(
         `${label} is not a template this app can draw — ${accepted.refusals.slice(1, 2).join('') || 'its structure is invalid'}`,
@@ -165,13 +182,12 @@ export function judgeBundle(bundle: Bundle, deps: BundleJudgeDeps): BundleJudgem
     app's is not there to be reached. What they write counts towards what the person agrees to: the
     group their writes need, as a store action's would.
   */
-  const operations = bundle.operations ?? {};
+  const operations = ownOperations;
   if (Object.keys(operations).length) {
     const own = Object.fromEntries(
       (bundle.recordTypes ?? []).flatMap((type) => Object.entries(type.manifest.entities)),
     );
-    const lookup = (name: string) =>
-      name.startsWith(`${bundle.id}.`) ? operations[name.slice(bundle.id.length + 1)] : getOperation(name);
+    const lookup = ownLookup;
     const problems = validateOperations(
       { version: bundle.version, entities: own, operations },
       { namespace: bundle.id, external: deps.vocabulary, operations: lookup },

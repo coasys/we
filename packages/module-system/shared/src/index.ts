@@ -90,6 +90,7 @@ export type {
   ModuleIdentityAccess,
   ModuleLauncher,
   ModuleManifest,
+  ModuleOperations,
   ModulePart,
   PartInput,
   ModulePermission,

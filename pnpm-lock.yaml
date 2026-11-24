@@ -2053,6 +2053,9 @@ importers:
       '@we/clock':
         specifier: workspace:*
         version: link:../../clock
+      '@we/entities':
+        specifier: workspace:*
+        version: link:../../entities
       '@we/schema-shared':
         specifier: workspace:*
         version: link:../../schema-system/shared

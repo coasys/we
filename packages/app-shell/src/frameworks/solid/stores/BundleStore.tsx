@@ -22,6 +22,7 @@
  */
 import { type BootSnapshot, selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { currentProductName } from '@shared/bundles/brand';
+import { syncBundleOperations } from '@shared/bundles/bundleOperations';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
 import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
 import {
@@ -215,6 +216,21 @@ export function BundleStoreProvider(props: ParentProps) {
   const [busy, setBusy] = createSignal(false);
 
   const installedList = () => readInstalledBundles(datasetStore.agentSettings()?.installedBundles);
+
+  /*
+    The operations of every app this agent has — built in or installed — under each app's id, and
+    only while it is here: an uninstall takes them with it. See `bundleOperations.ts`.
+  */
+  createEffect(() =>
+    syncBundleOperations([
+      ...seedBundlePieces.map((pieces) => ({
+        id: pieces.bundleId,
+        version: pieces.version,
+        operations: pieces.operations,
+      })),
+      ...installedList(),
+    ]),
+  );
 
   const sources = (): SetUpSource[] => [
     ...seedBundlePieces.map((pieces) => ({

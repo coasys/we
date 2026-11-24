@@ -23,10 +23,12 @@ import type {
   AgentDataKernel,
   ComposedDocument,
   CopiedIn,
+  DatasetTarget,
   DocumentAccess,
   LiveAnchor,
   LiveDecoration,
   ModuleDefinition,
+  ModuleOperations,
   ModuleStoreDeps,
   PresenceKernel,
   RecordQuery,
@@ -150,6 +152,45 @@ export function fakeDocuments(options: { datasetKey?: string } = {}) {
     read: (id) => Promise.resolve(documents.get(id)?.document ?? null),
   };
   return { documents, writes, access };
+}
+
+/** One call a store made to {@link fakeOperations}. */
+export interface FakeOperationCall {
+  name: string;
+  args?: Record<string, unknown>;
+  target?: DatasetTarget;
+}
+
+/**
+ * Declared operations as a test answers them: a function per qualified name, given the params, whose
+ * value is what the operation returns. A name with no answer is refused as the runner refuses an
+ * operation nobody registered — an error named `OperationError`, class `static`, code
+ * `unknownOperation` — and an answer that throws is the operation failing. Every call is recorded,
+ * target included.
+ *
+ * ```ts
+ * const ops = fakeOperations({ 'polls.vote': ({ poll }) => `vote-on-${poll}` });
+ * const store = createPollStore(fakeDeps({ operations: ops.access }));
+ * ```
+ */
+export function fakeOperations(answers: Record<string, (args: Record<string, unknown>) => unknown> = {}) {
+  const calls: FakeOperationCall[] = [];
+  const access: ModuleOperations = {
+    run: (name, args, target) => {
+      calls.push({ name, ...(args ? { args } : {}), ...(target ? { target } : {}) });
+      const answer = answers[name];
+      if (!answer) {
+        const error = new Error(`No operation "${name}" is registered`) as Error & { class: string; code: string };
+        error.name = 'OperationError';
+        error.class = 'static';
+        error.code = 'unknownOperation';
+        return Promise.reject(error);
+      }
+      // An answer that throws is the operation failing, which a caller sees as a rejection.
+      return Promise.resolve().then(() => answer(args ?? {}));
+    },
+  };
+  return { access, calls };
 }
 
 /**

@@ -110,6 +110,13 @@ for what a person made or kept. Pair it with `manifest.scope: 'agent'` (the pock
 personal space carries the ordinary space schema, so its records can be core content too: a note is a
 post there, written through `agentData.documents`.
 
+**A write of several records is a declared operation**, not a store method doing them one by one.
+Put it in `operations` beside `entities` in the same manifest: it registers under your module's id
+while the module does (`polls.vote`), `lintModule` runs the operations' static checks against your
+entities and WE's, a template invokes it as `ops.<id>.<name>` (classified by what it writes, never by
+hand), and your store runs it with `deps.operations.run('<id>.<name>', args)`. See "A write of
+several records" in `docs/architecture/capabilities-and-surfaces.md`.
+
 **Own the container, never the content.** A note is a core composition — a post nobody else can see —
 and what the notes module owns is only where one was shared. A vote names its poll by id and is read
 back by a query. Two nouns for one thing means records that can never meet.
@@ -364,6 +371,9 @@ await store.vote('poll-1', 'tea');
 expect(records.rows).toHaveLength(1);
 expect(lintModule(pollsModule).problems).toEqual([]);
 ```
+
+A store that runs operations takes `fakeDeps({ operations: fakeOperations({ 'polls.vote': (args) => … }).access })`;
+each answer is what the operation returns, and every call is recorded with its target.
 
 `buildStore` hands the store only the kernels the manifest names, as the registry does, so a test
 cannot pass while the manifest forgets one. `lintModule` is the registry's own judgement, pure.

@@ -24,7 +24,7 @@
  */
 import type { EntityManifestEntry, SchemaPort } from '@we/backend-shared';
 import { type BlockEntityStatic, registerBlock, unregisterBlock } from '@we/block-shared';
-import { unregisterEntity } from '@we/entities';
+import { registerOperations, unregisterEntity, unregisterOperations } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type Activity,
@@ -593,6 +593,14 @@ export const moduleRegistry = {
     modules.set(id, { definition, store, disposers, panels });
     if (store) moduleStores[id] = store;
 
+    /*
+      Its declared operations, under its id — the namespace is the host's to give, so a module can
+      only bring operations under the name it registered as. `lintModule` ran the static checks above.
+    */
+    const operations = contributes?.entities?.manifest.operations;
+    if (operations && Object.keys(operations).length)
+      registerOperations(id, operations, { version: contributes?.entities?.manifest.version });
+
     const holds = contributes?.holds;
     for (const [index, slot] of (contributes?.slots ?? []).entries()) {
       slotRegistry.register({ ...slot, node: gateOnSpace(id, slot.node, holds), id: `${id}:${index}` });
@@ -705,6 +713,7 @@ export const moduleRegistry = {
     for (const entityName of Object.keys(contributes?.entities?.manifest.entities ?? {})) unregisterEntity(entityName);
     for (const block of contributes?.blocks ?? []) unregisterBlock(moduleBlockNodeType(block));
     compiledEntities.delete(id);
+    unregisterOperations(id);
     delete moduleStores[id];
     modules.delete(id);
 

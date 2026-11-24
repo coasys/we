@@ -12,7 +12,7 @@ import { resolveParts, resolvePartsInRoutes } from '@shared/registries/modulePar
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { onSlotRegistryChanged, slotRegistry } from '@shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '@shared/registries/templateBag';
-import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { buildTemplateBag, CHROME_TIER, type OperationHost, SPACE_TIER } from '@shared/registries/templateSurface';
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { readSpaceRoot } from '@shared/spaceLandmarks';
@@ -21,7 +21,7 @@ import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withInterpretationDefaults } from '@we/entities';
-import { completeResponse, respondsThrough } from '@we/entities';
+import { completeResponse, isOperationError, respondsThrough, runOperation } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -183,6 +183,28 @@ export default function TemplateProvider() {
     delete: (entity: string, id: string, options?: { dataset?: string }) => {
       const [Entity, p] = resolve(entity, options);
       return Entity.delete(p, id);
+    },
+  };
+
+  /*
+    Declared operations from a template: the dataset named the way `record.create` takes one (the
+    space on screen when none is), the signed-in agent as invoker, and a fresh invocation — the
+    runner fills its id and time. A refused write was already said in a toast by the write check, as
+    for any write; any other failure of the operation is said the same way here, so a press that did
+    nothing never does so silently. The error still reaches the template's onError.
+  */
+  const operationHost: OperationHost = {
+    run: async (name, params, options) => {
+      const invoker = sessionStore.me()?.did;
+      if (!invoker) throw new Error('Sign in to do this.');
+      const dataset = resolveDataset(options?.dataset) ?? datasetStore.currentDataset()?.handle;
+      if (!dataset) throw new Error('Open a space to do this.');
+      try {
+        return await runOperation(name, params, { dataset, invoker });
+      } catch (error) {
+        if (isOperationError(error) && error.code !== 'refused') toastService.error(error.message);
+        throw error;
+      }
     },
   };
 
@@ -382,6 +404,18 @@ export default function TemplateProvider() {
           .catch((error: unknown) => console.warn('module host: could not move the mentions in an edited line', error));
       },
 
+      /*
+        A declared operation from a module store: the dataset named by URI as every write here is, an
+        unresolvable name refusing rather than running elsewhere, and the signed-in agent as invoker.
+      */
+      runOperation: async (name, args, target) => {
+        const dataset = moduleTarget(target?.dataset);
+        if (!dataset) throw new Error(`${name}: no dataset to run it in`);
+        const invoker = sessionStore.me()?.did;
+        if (!invoker) throw new Error(`${name}: nobody is signed in`);
+        return runOperation(name, args, { dataset, invoker });
+      },
+
       removeEntity: async (entity, id, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
@@ -439,6 +473,12 @@ export default function TemplateProvider() {
     modules: moduleStores,
     consoleStore,
     record: recordActions,
+    /*
+      Declared operations, run as the signed-in agent. The bag hands each `ops.<ns>.<name>` this one
+      runner with its own name, classified by what it writes — see `operationNamespaces` in
+      `templateSurface.ts`.
+    */
+    ops: operationHost,
     /*
       Copy a string, and say so. A host action rather than a store's, because what is copied is
       whatever the schema is showing — a prompt, a log, an id — and no store owns that. The toast is

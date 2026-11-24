@@ -183,6 +183,8 @@ export interface ModuleHostServices {
   agentData?: AgentDataKernel;
   /** How the current dataset is named in a record reference. */
   datasetRefKey?: () => string;
+  /** Run a declared operation as the signed-in agent — the host's `ops.<ns>.<name>`, imperative. */
+  runOperation?: (name: string, args?: Record<string, unknown>, target?: DatasetTarget) => Promise<unknown>;
 }
 
 const services: ModuleHostServices = {};
@@ -718,6 +720,13 @@ export function createModuleStoreDeps(framework: {
     identities: {
       get: (agentId) => services.identities?.get(agentId),
       fetch: (agentId) => services.identities?.fetch(agentId),
+    },
+    // Forwarded like the rest: the runner needs the session and the datasets, bound after stores mount.
+    operations: {
+      run: async (name, args, target) => {
+        if (!services.runOperation) throw new Error(`Cannot run ${name} yet: the host is still starting`);
+        return services.runOperation(name, args, target);
+      },
     },
 
     kernels,

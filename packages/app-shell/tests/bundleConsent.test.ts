@@ -64,6 +64,7 @@ describe('the agreement on the install record', () => {
     themes: [],
     recordTypes: [],
     workflows: [],
+    operations: {},
   } as never;
 
   it('is kept, and read back with the record', () => {

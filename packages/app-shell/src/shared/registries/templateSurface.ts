@@ -41,6 +41,8 @@ import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
 import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
+import { operationMemberSpec, operationSurfaceEntries } from './operationGroups';
+
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
  *
@@ -1852,6 +1854,51 @@ function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
 }
 
 /**
+ * What the host lends for declared operations: one runner, which every `ops.<ns>.<name>` in a bag
+ * calls with its own name. `options.dataset` is the same store path `record.create` takes.
+ */
+export interface OperationHost {
+  run(name: string, params?: Record<string, unknown>, options?: { dataset?: string }): Promise<unknown>;
+}
+
+/**
+ * The operations a bag holds, by namespace, each classified from what it writes.
+ *
+ * Never written by hand: the group an operation needs, and whether it is destructive, come from its
+ * effect summary through `operationGroups.ts`, so a new operation is reachable by exactly the
+ * templates that could make its writes one at a time. One that is not granted is absent, as a store
+ * member is; one that writes is gated on somebody asking, as a store write is; a destructive one is
+ * confirmed by the host first.
+ */
+function operationNamespaces(
+  host: OperationHost,
+  granted: ReadonlySet<CapabilityGroup>,
+  options: BuildBagOptions,
+): Record<string, Record<string, AnyFn>> {
+  const out: Record<string, Record<string, AnyFn>> = {};
+  for (const [name, spec] of Object.entries(operationSurfaceEntries())) {
+    if (!granted.has(spec.group)) continue;
+    const path = `ops.${name}`;
+    // One argument, the params, and the dataset option after it; nothing else reaches the runner.
+    let method: AnyFn = (params?: unknown, given?: unknown) =>
+      host.run(
+        name,
+        params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined,
+        given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : undefined,
+      );
+    if (spec.destructive && options.onDestructive) {
+      const guard = options.onDestructive;
+      const bound = method;
+      method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
+    }
+    const dot = name.indexOf('.');
+    const namespace = name.slice(0, dot);
+    (out[namespace] ??= {})[name.slice(dot + 1)] = spec.ambient ? method : gated(path, method, options.gesture);
+  }
+  return out;
+}
+
+/**
  * Build the bag a template renders against.
  *
  * Copies rather than proxies, so what a template can reach is decided once at construction and is
@@ -1884,6 +1931,19 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
             !granted.has('host-layout'),
             options.gesture,
           ),
+      });
+      continue;
+    }
+
+    /*
+      Declared operations, re-read on every access for the reason modules are: the registry gains a
+      namespace when a module registers or a bundle is installed, after this bag was built.
+    */
+    if (key === 'ops') {
+      const host = stores[key] as OperationHost | undefined;
+      Object.defineProperty(bag, key, {
+        enumerable: true,
+        get: () => (host ? operationNamespaces(host, granted, options) : {}),
       });
       continue;
     }
@@ -2102,7 +2162,19 @@ function collectReferences(value: unknown, into: { path: string; via: 'store' | 
  * first two segments decide access, which is exactly what the bag does — it filters members, and
  * everything below one travels with it.
  */
-export function inspectTemplateSurface(schema: unknown, grants: readonly CapabilityGroup[]): SurfaceInspection {
+export interface InspectOptions {
+  /**
+   * The surface of an operation the registry does not hold yet — a bundle's own, judged before it is
+   * installed. Consulted before the registry.
+   */
+  operation?: (name: string) => { group: CapabilityGroup } | undefined;
+}
+
+export function inspectTemplateSurface(
+  schema: unknown,
+  grants: readonly CapabilityGroup[],
+  options: InspectOptions = {},
+): SurfaceInspection {
   const granted = new Set(grants);
   const references: { path: string; via: 'store' | 'action' }[] = [];
   collectReferences(schema, references);
@@ -2119,6 +2191,22 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
 
     const root = path.split('.')[0];
     if (UNGATED_ROOTS.has(root)) continue;
+
+    // A declared operation is classified by what it writes, from the registry — `ops.<ns>.<name>`.
+    if (root === 'ops') {
+      const name = path.split('.').slice(1, 3).join('.');
+      const spec = options.operation?.(name) ?? operationMemberSpec(name);
+      if (!spec) {
+        blocked.push({ path, via, group: null });
+        continue;
+      }
+      const reference: SurfaceReference = { path, via, group: spec.group };
+      if (granted.has(spec.group)) {
+        allowed.push(reference);
+        groups.add(spec.group);
+      } else blocked.push(reference);
+      continue;
+    }
 
     const parsed = classify(path);
     /*

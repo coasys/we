@@ -21,6 +21,38 @@ describe('lintModule — refusals', () => {
     expect(lintModule(mod()).problems).toEqual([]);
   });
 
+  it('runs the static checks on the operations a module declares, under its id', () => {
+    const withOps = (operations: Record<string, unknown>) =>
+      mod({
+        contributes: {
+          entities: {
+            manifest: {
+              version: '1',
+              entities: { Tally: { properties: { count: { type: 'number', default: 0 } }, relations: {} } },
+              operations,
+            } as never,
+          },
+        },
+      });
+    const good = {
+      bump: {
+        description: 'Start a tally and post about it.',
+        steps: [
+          { create: { as: 'tally', entity: 'Tally', fields: { count: 1 } } },
+          { create: { entity: 'CollectionBlock', fields: { kind: 'post' } } },
+          { call: { operation: 'demo.noop', args: {} } },
+        ],
+      },
+      noop: { description: 'Nothing.', steps: [] },
+    };
+    expect(lintModule(withOps(good)).problems).toEqual([]);
+    const bad = lintModule(
+      withOps({ bump: { description: 'x', steps: [{ create: { entity: 'Nope', fields: {} } }] } }),
+    ).problems;
+    expect(bad).toHaveLength(1);
+    expect(bad[0]).toContain('invalid operation at operations.bump.steps.0.create');
+  });
+
   it('requires a unique name on every panel', () => {
     const twins = mod({
       contributes: {

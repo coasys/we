@@ -10,6 +10,8 @@
  * or misleading but not worth taking the module out of the app over.
  */
 import { validateManifest } from '@we/backend-shared';
+import { getOperation, validateOperations } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { SchemaNode } from '@we/schema-shared';
 import { freeNames } from '@we/schema-shared';
 
@@ -134,6 +136,23 @@ export function lintModule(
     });
     if (!result.valid) {
       for (const error of result.errors) problems.push(`invalid entities manifest at ${error.path}: ${error.message}`);
+    }
+
+    /*
+      Its declared operations, with the static checks a bundle's get — under the module's id, which
+      is the namespace the host registers them under, over its own entities and WE's vocabulary
+      (what an operation writes is usually a post or a task as much as the module's own records).
+      Only once the manifest itself is valid: the checks read the entities it declares.
+    */
+    if (result.valid && Object.keys(contributes.entities.manifest.operations ?? {}).length) {
+      const own = contributes.entities.manifest.operations ?? {};
+      const issues = validateOperations(contributes.entities.manifest, {
+        namespace: manifest.id,
+        external: CORE_MANIFEST.entities,
+        operations: (name) =>
+          name.startsWith(`${manifest.id}.`) ? own[name.slice(manifest.id.length + 1)] : getOperation(name),
+      });
+      for (const issue of issues) problems.push(`invalid operation at ${issue.path}: ${issue.message}`);
     }
   }
 
