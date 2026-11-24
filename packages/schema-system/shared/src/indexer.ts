@@ -38,8 +38,7 @@ function findKey(at: ChildPosition): string {
   }
 }
 
-const findIndex = (at: ChildPosition): number =>
-  at.in === 'children' || at.in === 'routes' ? at.index : at.in === 'props' ? (at.index ?? 0) : 0;
+const findIndex = (at: ChildPosition): number => (at.in === 'children' || at.in === 'routes' ? at.index : 0);
 
 /**
  * Every component name a schema mounts, anywhere in its tree.

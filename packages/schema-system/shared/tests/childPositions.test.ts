@@ -69,10 +69,11 @@ function everyPosition(): SchemaNode {
       },
       {
         type: 'FlipCard',
+        // Only a declared node prop holds a child: a node-shaped value in any other prop, alone or
+        // in a list, is data the component is handed as it is.
         props: {
-          front: leaf('InPropFront'),
-          // A list of nodes in a prop, beside data that is not one.
-          items: [leaf('InPropList'), { label: 'an option', value: 'a' }],
+          front: leaf('NotANodeInUndeclaredProp'),
+          items: [leaf('NotANodeInPropList'), { label: 'an option', value: 'a' }],
           hoverProps: { bg: 'surface' },
           onClick: { $invoke: 'x.y', args: [{ type: 'NotANodeInHandlerArgs' }] },
         },
@@ -103,8 +104,6 @@ const ALL_TYPES = [
   'InThen',
   'InElse',
   'FlipCard',
-  'InPropFront',
-  'InPropList',
   'Tabs',
   'Row',
   'InSlot',
@@ -115,7 +114,7 @@ const ALL_TYPES = [
   'InPanel',
   'InDef',
 ];
-const NOT_NODES = ['fade', 'NotANodeInHandlerArgs'];
+const NOT_NODES = ['fade', 'NotANodeInHandlerArgs', 'NotANodeInUndeclaredProp', 'NotANodeInPropList'];
 /** Reached only through `$defs`: a walk of the tree as rendered meets them at the `$ref` instead. */
 const ONLY_IN_DEFS = ['InDef'];
 
@@ -158,6 +157,11 @@ describe('every walk reaches every node', () => {
     const json = JSON.stringify(schema);
     expect(json).not.toMatch(/"type":"fade","duration":200,"id"/);
     expect(json).not.toMatch(/"label":"an option","value":"a","id"/);
+    const flip = schema.children!.find(
+      (c) => typeof c === 'object' && (c as SchemaNode).type === 'FlipCard',
+    ) as SchemaNode;
+    expect((flip.props!.front as SchemaNode).id).toBeUndefined();
+    expect(((flip.props!.items as SchemaNode[])[0] as SchemaNode).id).toBeUndefined();
   });
 
   it('deriveNodeIds numbers every node but the root', () => {
@@ -179,7 +183,8 @@ describe('every walk reaches every node', () => {
       return findNodeById(schema, node.id!)?.key;
     };
     expect(keyOf('InChildren')).toBe('children');
-    expect(keyOf('InPropFront')).toBe('props.front');
+    expect(keyOf('InThen')).toBe('children');
+    expect(keyOf('InElse')).toBe('props.else');
     expect(keyOf('InSlot')).toBe('children');
     expect(keyOf('Tabs')).toBe('children');
     expect(keyOf('InRoute')).toBe('children');

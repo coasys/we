@@ -9,8 +9,9 @@ import {
   forEachChild,
   getComponentMeta,
   getScopeAtNode,
-  isPropsSchemaNode,
+  isSchemaChild,
   mergeNode,
+  nodePropsOf,
   RENDERED_POSITIONS,
   replaceNodeInTree,
 } from '@we/schema-shared';
@@ -734,7 +735,7 @@ function NodeProperties(props: {
 
   // Content — `children` holds either child nodes (owned by the Layers tree) or content
   // the ContentEditor owns: text, a bound value, or a value-level conditional.
-  const hasChildNodes = createMemo(() => !!props.node.children?.some((c) => isPropsSchemaNode(c)));
+  const hasChildNodes = createMemo(() => !!props.node.children?.some((c) => isSchemaChild(c)));
 
   const showContent = createMemo(() => {
     if (hasChildNodes()) return false;
@@ -763,16 +764,15 @@ function NodeProperties(props: {
   const logicProps = createMemo(() => (props.node.type === '$if' ? new Set(['condition']) : new Set<string>()));
 
   // Complex (non-primitive) props — raw JSON escape hatch.
-  // SchemaNode-valued props ($if's then/else, slot content) are excluded: they're whole
-  // subtrees, already navigable and editable through the Layers tree above, and showing
-  // them here as JSON blobs buries the props that are only editable here.
+  // Node props ($if's then/else) are excluded: they're whole subtrees, already navigable and
+  // editable through the Layers tree above, and showing them here as JSON blobs buries the props
+  // that are only editable here.
   const complexProps = createMemo(() =>
     Object.entries(currentProps()).filter(([k, v]) => {
       const t = typeof v;
       if (t === 'string' || t === 'boolean' || t === 'number') return false;
       if (logicProps().has(k)) return false;
-      if (isPropsSchemaNode(v)) return false;
-      if (Array.isArray(v) && v.length > 0 && v.every(isPropsSchemaNode)) return false;
+      if (nodePropsOf(props.node.type).includes(k) && isSchemaChild(v)) return false;
       return true;
     }),
   );

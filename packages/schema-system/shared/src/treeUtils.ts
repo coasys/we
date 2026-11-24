@@ -6,7 +6,6 @@
  * node — so index traversal and scope traversal disagreed about what the tree
  * contained. One definition each, here.
  */
-import { TEMPLATE_HTML_ELEMENTS } from './templateElements';
 import type { SchemaNode } from './types';
 
 /**
@@ -46,19 +45,24 @@ export const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
 };
 
 /**
- * Returns true if val is a SchemaNode embedded as a prop value.
+ * The props that hold a node, by the type of the node that declares them: the one table of node
+ * props. A prop not listed here holds data, whatever its value looks like.
  *
- * Requires `type` to name something the renderer mounts: a component (PascalCase), a custom element
- * (we-button), a control-flow node ($if, $each), or one of the native elements a template may use
- * (`then: { type: 'div' }`). That is what tells a node apart from everything else a prop holds —
- * a TransitionConfig (`{ type: 'fade' }`), a style or state object (`hoverProps`), a select's
- * options, data items, operator tokens — none of which is a node or may be given an id.
+ * A node-shaped value in any other prop is handed to the component as the JSON it is, so counting
+ * it as a child would make every walk disagree with the renderer: ids given to what is never drawn,
+ * edits reaching it, the validator judging it as a node. Guessing from the value's shape had exactly
+ * that failure — a graph's behaviour list (`{ type: 'drag-node' }`) read as three custom elements.
+ *
+ * In this format version only `$if` declares node props. A component prop joins the table when the
+ * renderer draws it as a node.
  */
-export function isPropsSchemaNode(val: unknown): val is SchemaNode {
-  if (typeof val !== 'object' || val === null || Array.isArray(val)) return false;
-  const type = (val as Record<string, unknown>).type;
-  if (typeof type !== 'string') return false;
-  return /^[A-Z$]/.test(type) || type.includes('-') || TEMPLATE_HTML_ELEMENTS.has(type);
+export const NODE_PROPS: Readonly<Record<string, readonly string[]>> = {
+  $if: ['then', 'else'],
+};
+
+/** The node props a node of `type` declares; none for any type the table does not list. */
+export function nodePropsOf(type: unknown): readonly string[] {
+  return (typeof type === 'string' && Object.hasOwn(NODE_PROPS, type) ? NODE_PROPS[type] : undefined) ?? [];
 }
 
 // ── Child positions: the one answer to "what are a node's children" ──────────────────────────
@@ -72,9 +76,8 @@ export function isPropsSchemaNode(val: unknown): val is SchemaNode {
  *   is part of the tree, so every walk reaches them all.
  * - `routes` — each entry of `routes`. A route is always a node, whatever else it carries.
  * - `slots` — the node under each name in `slots`.
- * - `props` — a prop whose value, or an entry of whose list value, names something the renderer
- *   mounts (`isPropsSchemaNode`): `$if`'s `then` and `else`, a card's `front`. Only that level: a
- *   node buried inside other prop data (a handler's arguments, an options list) is data.
+ * - `props` — the value of each node prop its type declares (`NODE_PROPS`): `$if`'s `then` and
+ *   `else`. Every other prop holds data, a node-shaped value included.
  * - `panels` — the `node` of each `meta.panels` entry. The entry is configuration; its node is
  *   the interface.
  * - `$defs` — each shape in `$defs`. Root only. A walk over the tree *as rendered* leaves these
@@ -89,12 +92,12 @@ export const CHILD_POSITIONS = ['children', 'routes', 'slots', 'props', 'panels'
 
 export type ChildPositionKind = (typeof CHILD_POSITIONS)[number];
 
-/** Where one child sits in its parent. `index` is absent for a prop that holds a single node. */
+/** Where one child sits in its parent. */
 export type ChildPosition =
   | { in: 'children'; index: number }
   | { in: 'routes'; index: number }
   | { in: 'slots'; name: string }
-  | { in: 'props'; name: string; index?: number }
+  | { in: 'props'; name: string }
   | { in: 'panels'; index: number }
   | { in: '$defs'; name: string };
 
@@ -133,12 +136,9 @@ export function forEachChild(
         break;
       case 'props':
         if (isObject(node.props))
-          for (const [name, value] of Object.entries(node.props)) {
-            if (Array.isArray(value))
-              value.forEach((item, index) => {
-                if (isPropsSchemaNode(item)) fn(item, { in: 'props', name, index });
-              });
-            else if (isPropsSchemaNode(value)) fn(value, { in: 'props', name });
+          for (const name of nodePropsOf(node.type)) {
+            const value = node.props[name];
+            if (isSchemaChild(value)) fn(value, { in: 'props', name });
           }
         break;
       case 'panels':
@@ -161,7 +161,7 @@ export function childrenOf(node: SchemaNode, kinds: readonly ChildPositionKind[]
   return out;
 }
 
-/** A position as a short name — `c.0`, `s:header`, `p:then`, `p:items.2`, `panel:1`, `d:d3`. */
+/** A position as a short name — `c.0`, `s:header`, `p:then`, `panel:1`, `d:d3`. */
 export function positionName(at: ChildPosition): string {
   switch (at.in) {
     case 'children':
@@ -171,7 +171,7 @@ export function positionName(at: ChildPosition): string {
     case 'slots':
       return `s:${at.name}`;
     case 'props':
-      return at.index === undefined ? `p:${at.name}` : `p:${at.name}.${at.index}`;
+      return `p:${at.name}`;
     case 'panels':
       return `panel:${at.index}`;
     case '$defs':
@@ -214,19 +214,14 @@ export function mapChildren(
           ) as Record<string, SchemaNode>;
         break;
       case 'props':
-        if (isObject(node.props))
-          out.props = Object.fromEntries(
-            Object.entries(node.props).map(([name, value]) => {
-              if (Array.isArray(value))
-                return [
-                  name,
-                  value.map((item, index) =>
-                    isPropsSchemaNode(item) ? map(item, { in: 'props', name, index }) : item,
-                  ),
-                ];
-              return [name, isPropsSchemaNode(value) ? map(value, { in: 'props', name }) : value];
-            }),
-          ) as SchemaNode['props'];
+        if (isObject(node.props)) {
+          const props = { ...node.props };
+          for (const name of nodePropsOf(node.type)) {
+            const value = props[name];
+            if (isSchemaChild(value)) props[name] = map(value, { in: 'props', name });
+          }
+          out.props = props;
+        }
         break;
       case 'panels': {
         const panels = panelsOf(node);

@@ -131,9 +131,8 @@ A node holds other nodes at exactly these positions, visited in this order:
    entry is part of the tree.
 2. **`routes`** — each entry of `routes`. A route is always a node.
 3. **`slots`** — the node under each name in `slots`.
-4. **`props`** — the value of each _node prop_, or each node in a node prop's list. A node prop is a
-   prop the block type or the component declares as taking a node: in this version, `then` and
-   `else` of a [`$if`](blocks.md#if), and a component's props its catalog entry declares as nodes.
+4. **`props`** — the value of each _node prop_. A node prop is a prop its type declares as taking a
+   node: in this version, `then` and `else` of a [`$if`](blocks.md#if), and no other.
 5. **`panels`** — the `node` of each `meta.panels` entry. The entry itself is configuration.
 6. **`$defs`** — each value of `$defs`. Root only.
 
@@ -150,10 +149,13 @@ names it (or walks the tree with every `$ref` [expanded](#shared-shapes-defs-and
 > decided for itself they disagreed, and each disagreement was silent: nodes in a panel with no ids,
 > a component in a panel invisible to an uninstall check, a route outlet in a prop reported missing.
 
+> **Planned.** Node props a component declares in its catalog entry (a card's front and back), drawn
+> as nodes. Until then a component prop holds data, whatever its value looks like.
+
 ---
 
 Implemented by: [`treeUtils.ts`](../../../packages/schema-system/shared/src/treeUtils.ts)
-(`CHILD_POSITIONS`, `RENDERED_POSITIONS`, `forEachChild`, `childrenOf`, `mapChildren`).
+(`NODE_PROPS`, `CHILD_POSITIONS`, `RENDERED_POSITIONS`, `forEachChild`, `childrenOf`, `mapChildren`).
 Pinned by: [`childPositions.test.ts`](../../../packages/schema-system/shared/tests/childPositions.test.ts)
 (one template with a node at every position and a non-node beside each, every walk checked against
 it); render vector `render.node.prop-node-is-data`.
