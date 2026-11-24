@@ -46,7 +46,7 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
     members,
     contains: { $: INTERPRETABLE },
     // Where each card came from, for a badge or a lens by conversation.
-    origin: 'extractedFrom',
+    origin: 'interpretedFrom',
     // Which run made each card, for its "by AI" mark — see `generatedRun` in `@we/entities`.
     madeBy: 'generatedBy',
     connections: 'Relationship',

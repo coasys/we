@@ -68,7 +68,7 @@ describe('the calls list', () => {
   /**
    * And every OTHER query it holds is bounded too.
    *
-   * The findings groups are one query per extractable model per card, so they outnumber the
+   * The findings groups are one query per interpretable model per card, so they outnumber the
    * transcripts they sit beside: eight models and twenty calls is a hundred and sixty
    * subscriptions. Asserted over every query rather than over a named one, so a group added later
    * cannot reintroduce the shape by another route — which is exactly how the transcript got here.

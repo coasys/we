@@ -48,7 +48,7 @@
         "defaultTemplateId": "workshop",
         "defaultThemeId": "dark",
         "autoInterpret": true,
-        "extractionTargets": ["TaskBlock", "EventBlock", "Relationship"],
+        "interpretationTargets": ["TaskBlock", "EventBlock", "Relationship"],
         "taskStates": ["$todo", "$doing", "$done"]
       },
       "records": [

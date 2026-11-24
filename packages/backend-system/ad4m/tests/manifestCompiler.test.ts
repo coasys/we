@@ -332,10 +332,10 @@ describe('a manifest extending the core vocabulary', () => {
     const compiled = kinds(classes.Sighting);
     const handWritten = kinds(ALL_MODELS.find((m) => m.name === 'TextBlock'));
 
-    for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom']) {
+    for (const name of ['partOf', 'respondsTo', 'inThread', 'interpretedFrom']) {
       expect(compiled[name], name).toBe('belongsToOne');
     }
-    for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom', 'responses', 'thread', 'signals']) {
+    for (const name of ['partOf', 'respondsTo', 'inThread', 'interpretedFrom', 'responses', 'thread', 'signals']) {
       expect(compiled[name], name).toBe(handWritten[name]);
     }
   });

@@ -122,7 +122,7 @@ export interface ModuleHostServices {
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
   /** What one call extracts and what else it could. Absent reads as an empty list. */
   interpretationTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
-  /** Whether `extractionTargets` is the whole answer yet. Absent reads as true. */
+  /** Whether `interpretationTargets` is the whole answer yet. Absent reads as true. */
   interpretationTargetsLoaded?: () => boolean;
   setInterpretationTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** `dataset` absent means the space on screen. */

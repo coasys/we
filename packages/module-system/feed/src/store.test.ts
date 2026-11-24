@@ -604,9 +604,9 @@ describe('the Feed of one call', () => {
       {},
       async (entity, query) => {
         const where = query.where as Record<string, unknown> | undefined;
-        if (entity === 'CollectionBlock' && where?.id === 'call-9') return [{ id: 'call-9', extracted: ['task-1'] }];
+        if (entity === 'CollectionBlock' && where?.id === 'call-9') return [{ id: 'call-9', interpreted: ['task-1'] }];
         if (entity === 'TaskBlock' && query.within === 'root-1')
-          return [{ id: 'task-1', title: 'Ship', createdAt: 5, extractedFrom: 'call-9' }];
+          return [{ id: 'task-1', title: 'Ship', createdAt: 5, interpretedFrom: 'call-9' }];
         if (entity === 'TextBlock' && query.within === 'call-9') return CALL_LINES['call-9'];
         return [];
       },

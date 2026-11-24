@@ -383,14 +383,14 @@ describe('a new kind of record', () => {
 describe('a feed an agent makes', () => {
   it('starts with its space’s interpretation defaults, as one the app makes does', async () => {
     const [space] = await model('Space').findAll(dataset);
-    await model('Space').update(dataset, space.id, { autoInterpret: true, extractionTargets: '["TaskBlock"]' });
+    await model('Space').update(dataset, space.id, { autoInterpret: true, interpretationTargets: '["TaskBlock"]' });
     const answer = await tools().call('create_record', {
       entity: 'CollectionBlock',
       fields: { kind: 'channel', mode: 'feed', title: 'Planning' },
       in: rootId,
     });
     const channel = await model('CollectionBlock').findOne(dataset, { where: { id: madeId(answer.text) } });
-    expect(channel).toMatchObject({ autoExtract: true, extractionTargets: '["TaskBlock"]' });
+    expect(channel).toMatchObject({ autoInterpret: true, interpretationTargets: '["TaskBlock"]' });
   });
 });
 

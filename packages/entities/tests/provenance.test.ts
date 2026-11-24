@@ -12,7 +12,7 @@ describe('generatedRun', () => {
   });
 
   it('reads lineage as lineage: coming from a call is not being written by a model', () => {
-    expect(generatedRun({ extractedFrom: 'we://call/1' } as never)).toBeUndefined();
+    expect(generatedRun({ interpretedFrom: 'we://call/1' } as never)).toBeUndefined();
   });
 
   it('says nothing for what a person made', () => {

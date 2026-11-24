@@ -1052,11 +1052,11 @@ const peopleSection: SchemaNode = {
 
 /**
  * Whether a model made the selected record: a run marks it (`generatedRun`), or it came out of a
- * conversation — `extractedFrom`, or the call on screen listing it, for what a standing watch
+ * conversation — `interpretedFrom`, or the call on screen listing it, for what a standing watch
  * extracts with no run on it. The rule the cards' `modelMark` follows.
  */
 const MODEL_MADE =
-  'generatedRun({ record: row }) || row.extractedFrom || row.id in first(local.inspectedCall).extracted';
+  'generatedRun({ record: row }) || row.interpretedFrom || row.id in first(local.inspectedCall).interpreted';
 
 /**
  * Where the selected record came from — extracted from the conversation, written by AI, or added by
@@ -1119,7 +1119,7 @@ const originLine: SchemaNode = {
                   children: [
                     {
                       $:
-                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Interpreted from the conversation · run by \${author.name} · \` : ` +
+                        `row.interpretedFrom || row.id in first(local.inspectedCall).interpreted ? \`Interpreted from the conversation · run by \${author.name} · \` : ` +
                         `generatedRun({ record: row }) ? \`Written by AI · run by \${author.name} · \` : ` +
                         "`Added by ${author.did == me.did ? 'you' : author.name} · `",
                     },

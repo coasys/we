@@ -28,7 +28,7 @@
               "predicate": "we://flag",
               "value": "we://shape/software-team/question"
             },
-            "extractable": true,
+            "interpretable": true,
             "relations": {},
             "interpretationHint": "A question somebody puts to the team that needs an answer or a decision: \"should we…?\", \"do we…?\", \"what if we…?\". Not a rhetorical question, and not a question about the conversation itself.",
             "properties": {
@@ -73,7 +73,7 @@
               "predicate": "we://flag",
               "value": "we://shape/software-team/tension"
             },
-            "extractable": true,
+            "interpretable": true,
             "relations": {},
             "interpretationHint": "A conflict somebody names between two goals, plans or constraints: one thing could delay, break or cost another. Not a bug report and not a task.",
             "properties": {
@@ -116,7 +116,7 @@
               "predicate": "we://flag",
               "value": "we://shape/software-team/decision"
             },
-            "extractable": true,
+            "interpretable": true,
             "relations": {},
             "interpretationHint": "Something the speakers agree on or settle: \"okay, X comes first\", \"let's go with Y\", \"we're doing Z\". Not a proposal nobody agreed to.",
             "properties": {
@@ -159,7 +159,7 @@
               "predicate": "we://flag",
               "value": "we://shape/software-team/task"
             },
-            "extractable": true,
+            "interpretable": true,
             "relations": {},
             "interpretationHint": "A piece of work the speakers say needs doing and is not done yet: \"we need to…\", \"I'll…\", \"someone should…\".",
             "properties": {

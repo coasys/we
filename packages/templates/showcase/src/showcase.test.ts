@@ -1645,7 +1645,7 @@ describe('the workshop’s canvas', () => {
       Not every kind the space has: what extraction may write for this call, where a record of it
       exists, and whatever has been placed — a note, a dropped record, a shape — each once.
 
-      One query over every extractable kind rather than one per kind inside the loop. Each of those
+      One query over every interpretable kind rather than one per kind inside the loop. Each of those
       answered its own row and nothing outside could read them, so the key could not tell a canvas
       with nothing on it from one with cards, and the sentence for the empty one never showed.
     */
@@ -1686,7 +1686,7 @@ describe('the workshop’s people', () => {
     expect(kanban).toContain('Group by person');
     // Where a card came from is a mark and a hovercard line, never the author's name on its face.
     // Each card says where it came from itself, whichever call that was — the board is the space's.
-    expect(kanban).toContain('card.extractedFrom');
+    expect(kanban).toContain('card.interpretedFrom');
     // Pressing a card opens it in the inspector through the same parameters the canvas writes.
     expect(kanban).toContain('"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]');
     expect(kanban).toContain('Interpreted from the conversation');
@@ -1904,7 +1904,7 @@ describe('the workshop inspector’s people', () => {
   });
 
   it('says where the record came from, which a card’s face no longer does', () => {
-    expect(inspector).toContain('row.id in first(local.inspectedCall).extracted');
+    expect(inspector).toContain('row.id in first(local.inspectedCall).interpreted');
     expect(inspector).toContain('Interpreted from the conversation');
     // Under the title and description, ahead of People, rather than at the foot of the panel.
     expect(inspector.indexOf('Interpreted from the conversation')).toBeLessThan(inspector.indexOf('involvementMenu('));
@@ -2384,7 +2384,7 @@ describe('the workshop’s space-wide views', () => {
       dim: [{ when: rest, style: { opacity: 0.1 } }],
     });
     expect(read({ scope: 'space' })).toEqual({ hide: null, dim: [] });
-    expect(canvas).toContain('"origin":"extractedFrom"');
+    expect(canvas).toContain('"origin":"interpretedFrom"');
   });
 
   it('scopes to the call on screen, to the messages outside calls, or to any record named', () => {
@@ -2415,9 +2415,9 @@ describe('the workshop’s space-wide views', () => {
   it('applies the same lens to the board and the calendar', () => {
     const kanban = route('/kanban');
     expect(kanban).toContain('"syncParam":"from"');
-    expect(kanban).toContain('only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null');
+    expect(kanban).toContain('only: local.boardOnlySource ? first(local.boardOnlySource).interpreted : null');
     const calendar = route('/calendar');
     expect(calendar).toContain('"calendarFrom":{"entity":"CollectionBlock"');
-    expect(calendar).toContain('(e.id in first(local.calendarFrom).extracted)');
+    expect(calendar).toContain('(e.id in first(local.calendarFrom).interpreted)');
   });
 });

@@ -39,7 +39,7 @@ function sightingDraft(): ShapeDraft {
     classHint: 'A specific observation of a bird.',
     identityMember: species.rowId,
     nameMember: '',
-    extractable: false,
+    interpretable: false,
     members: [
       { ...species, hint: 'The common name.' },
       { ...emptyDraftProperty(), name: 'seenAt', type: 'date', required: true },
@@ -99,10 +99,10 @@ describe('draftToManifest', () => {
     reproduce, one layer down, the exact gap it exists to close.
   */
   it('carries the interpretation flag onto the entity when it is set', () => {
-    const draft = { ...sightingDraft(), extractable: true };
+    const draft = { ...sightingDraft(), interpretable: true };
     const result = draftToManifest(draft, UUID);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.manifest.entities.Sighting.extractable).toBe(true);
+    if (result.ok) expect(result.manifest.entities.Sighting.interpretable).toBe(true);
   });
 
   it('omits the interpretation flag rather than writing false', () => {
@@ -110,7 +110,7 @@ describe('draftToManifest', () => {
     expect(result.ok).toBe(true);
     // Same rule as `required` and `identity`: a stored definition reads as the declarations
     // somebody made, not as every field the IR has.
-    if (result.ok) expect('extractable' in result.manifest.entities.Sighting).toBe(false);
+    if (result.ok) expect('interpretable' in result.manifest.entities.Sighting).toBe(false);
   });
 
   it('lowers a to-many relationship as a many cardinality', () => {
@@ -359,11 +359,11 @@ describe('manifestToDraft', () => {
   });
 
   it('lifts the interpretation flag back onto the draft, so editing does not silently clear it', () => {
-    const first = draftToManifest({ ...sightingDraft(), extractable: true }, UUID);
+    const first = draftToManifest({ ...sightingDraft(), interpretable: true }, UUID);
     if (!first.ok) throw new Error('fixture failed');
     // Opening a stored model in the wizard and saving it again must not turn interpretation off — the
     // one direction this could fail in that nobody would notice until a pass stopped finding things.
-    expect(manifestToDraft('Sighting', first.manifest).extractable).toBe(true);
+    expect(manifestToDraft('Sighting', first.manifest).interpretable).toBe(true);
   });
 
   it('lifts identity onto the row that holds it, not onto its name', () => {

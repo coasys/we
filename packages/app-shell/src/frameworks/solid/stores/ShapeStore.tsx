@@ -189,7 +189,7 @@ export interface ShapeStore {
   hintEntities: Accessor<HintEntityView[]>;
   /**
    * Entity names an interpretation pass *could* write here — core vocabulary that declares itself
-   * extractable, plus every adopted shape that does.
+   * interpretable, plus every adopted shape that does.
    *
    * Candidacy, not a decision. Which of these a call actually looks for is two layers down: the
    * space names its defaults (`spaceStore.interpretationTargets`) and a call may add or remove for
@@ -247,7 +247,7 @@ export interface ShapeStore {
    * this store in the provider tree.
    *
    * Used on save and nowhere else, which is what makes the imported case behave: a shape that
-   * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
+   * arrives already marked interpretable — copied, forked, synced from a peer — becomes a *candidate*
    * this space can switch on, not a target that starts writing into it unasked.
    */
   provideInterpretationEnroller: (enrol: (entity: string) => Promise<void>) => () => void;
@@ -502,7 +502,7 @@ export function ShapeStoreProvider(props: ParentProps) {
 
     One rule for the list on screen and for `interpretationCandidatesFor` below: candidacy is which
     models may be extracted into, not which names the registry happens to resolve — an adopted
-    model whose manifest is not extractable resolves all the same.
+    model whose manifest is not interpretable resolves all the same.
   */
   const interpretationCandidatesOf = (
     shapes: readonly { name: string; manifest: EntityManifest | null }[],
@@ -945,12 +945,12 @@ export function ShapeStoreProvider(props: ParentProps) {
 
   function setInterpretable(on: boolean): void {
     const draft = shapeDraft();
-    if (draft) setShapeDraft({ ...draft, extractable: on });
+    if (draft) setShapeDraft({ ...draft, interpretable: on });
   }
 
   const interpretationNeedsIdentity = createMemo(() => {
     const draft = shapeDraft();
-    return Boolean(draft?.extractable) && !draft?.identityMember;
+    return Boolean(draft?.interpretable) && !draft?.identityMember;
   });
 
   /** Append a row and open it — you added it in order to fill it in. */
@@ -1255,7 +1255,7 @@ export function ShapeStoreProvider(props: ParentProps) {
       /*
         Ticking the switch is the space's decision, so it does not need making twice.
 
-        `extractable` on the entity is candidacy — it travels with the definition, so a fork of this
+        `interpretable` on the entity is candidacy — it travels with the definition, so a fork of this
         model lands elsewhere as something that space may switch on. Enrolling it in *this* space's
         defaults is a separate fact, and asking for it separately would be the two-affordances-for-
         one-intent problem: whoever ticked the box in this wizard is the community, saying yes, now.
@@ -1263,7 +1263,7 @@ export function ShapeStoreProvider(props: ParentProps) {
         Best-effort. The model is saved and adopted by this point, so a failure here is one setting
         that did not stick, not a lost definition — and the space's own settings can fix it.
       */
-      if (draft.extractable) {
+      if (draft.interpretable) {
         try {
           await interpretationEnroller.get()?.(entityName);
         } catch (err) {

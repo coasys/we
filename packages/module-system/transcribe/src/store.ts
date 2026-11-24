@@ -167,7 +167,7 @@ export const TRANSCRIBE_ACTIVITY = 'transcribe';
  * What extraction is allowed to produce from a transcript — **asked, no longer declared.**
  *
  * This was `EXTRACT_CLASSES = ['TaskBlock', 'EventBlock']`, and the list is now
- * `interpretation.targets()`: core vocabulary that declares itself `extractable`, plus every model
+ * `interpretation.targets()`: core vocabulary that declares itself `interpretable`, plus every model
  * the space's own community defined and marked so. The constant is gone because it was the reason a
  * community could write careful AI hints for a `Sighting` and never have anything extract one —
  * the hints were stored, synced and editable, and the list that decided what to look for named two
@@ -175,8 +175,8 @@ export const TRANSCRIBE_ACTIVITY = 'transcribe';
  *
  * The argument for keeping that list *short* is not gone, it moved. Every entity named puts its
  * **whole shape** into the prompt, so the list is the cost and the quality control: a longer one is
- * slower, dearer and vaguer rather than more capable. That is now the case for `extractable` being
- * opt-in — see `EntitySchema.extractable`, which also records why `TextBlock` must never carry it
+ * slower, dearer and vaguer rather than more capable. That is now the case for `interpretable` being
+ * opt-in — see `EntitySchema.interpretable`, which also records why `TextBlock` must never carry it
  * (its shape is mostly serialization — `indent`, `textFormat`, `listType` — a dozen fields a model
  * can only fill with noise) and why `CollectionBlock` must not either (it carries `mode`, and a
  * machine-written collection with no mode reads as legacy, which makes `reconcileBlocks` willing to
@@ -1468,7 +1468,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   ): Promise<void> {
     // The call it was suggested on; the live one; or, for a suggestion only known space-wide, the
     // call the record came out of — which every record a pass changes has.
-    const collection = call || targetCollection() || relationId(before?.extractedFrom);
+    const collection = call || targetCollection() || relationId(before?.interpretedFrom);
     if (!createEntity || !collection || !before) return;
     for (const name of names) {
       const field = proposal.fields.find((f) => f.name === name);
@@ -2585,7 +2585,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           This swallowed the one failure worth reporting. A watch is registered without anyone
           asking for it, so when it fails there is nothing on screen that was waiting on a result —
           which meant a node whose executor could not auto-extract was indistinguishable, for three
-          days, from a call in which nobody happened to say anything extractable.
+          days, from a call in which nobody happened to say anything interpretable.
 
           Still not thrown. The caller is a call starting, and a watch that cannot be registered is
           not a reason to interrupt one — the Interpret button remains the whole feature without it.

@@ -75,7 +75,7 @@ const BOARD = 'first(local.board)';
   before the board is worked out rather than after, so every count, the Unplaced column and the people
   filter agree about what is on the board.
 */
-const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did, only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null, onlyShow: local.boardOnlyShow })`;
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did, only: local.boardOnlySource ? first(local.boardOnlySource).interpreted : null, onlyShow: local.boardOnlyShow })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
@@ -140,7 +140,7 @@ export interface TaskCardOptions {
    * besides. A small mark says what is true; who ran the pass is in the people hovercard, with the
    * rest of where the card came from.
    */
-  extracted?: string;
+  interpreted?: string;
   /**
    * Mark a card extraction **made** and nobody has kept — an expression, per row.
    *
@@ -357,7 +357,7 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
             different question. The sparkle is what says this card is unusual, so it is where the answer
             is. A card somebody added by hand has nothing unusual to explain, and says nothing.
           */
-          modelMark({ as, ...(opts.extracted ? { extracted: opts.extracted } : {}) }),
+          modelMark({ as, ...(opts.interpreted ? { interpreted: opts.interpreted } : {}) }),
           // The card's state, where the caller says the column does not already give it away.
           {
             type: '$if',
@@ -678,7 +678,7 @@ export interface TaskBoardOptions {
   /** The board's record id, as an expression. */
   boardId: SchemaProp;
   /**
-   * Pick out what one record produced — its `extracted` relation — dimming or hiding the rest.
+   * Pick out what one record produced — its `interpreted` relation — dimming or hiding the rest.
    *
    * The "this call" lens on a space's board. `record` is the producer, as an expression (empty
    * narrows nothing); `param` is the address parameter holding the mode, `dim` or `hide`, so the
@@ -693,8 +693,8 @@ export interface TaskBoardOptions {
   controls?: SchemaNode[];
   /** Shown when there is no work here at all. */
   empty: SchemaNode;
-  /** Whether a card was interpreted from a conversation, as an expression over `card` — see {@link TaskCardOptions.extracted}. */
-  extracted?: string;
+  /** Whether a card was interpreted from a conversation, as an expression over `card` — see {@link TaskCardOptions.interpreted}. */
+  interpreted?: string;
   /** Each card's fill, as an expression over `card` — see {@link TaskCardOptions.bg}. */
   bg?: SchemaProp;
   /**
@@ -1004,7 +1004,7 @@ function boardCard(opts: TaskBoardOptions, showState: string, from: string): Sch
     : taskCard({
         actions: moveTaskMenu(from),
         waiting: `${VIEW}.workflow[card.id]`,
-        extracted: opts.extracted,
+        interpreted: opts.interpreted,
         bg: opts.bg,
         showState,
         pending: `card.id in (${UNCONFIRMED})`,
@@ -1723,7 +1723,7 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
     */
     $queries: {
       /*
-        What the record behind `onlyFrom` produced — its `extracted` ids, on its one row. Asked only
+        What the record behind `onlyFrom` produced — its `interpreted` ids, on its one row. Asked only
         when there is a record to ask about: an absent id would be pruned and widen the read.
       */
       // Declared on every board, so the one expression every list reads can always name it; a board

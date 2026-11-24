@@ -63,7 +63,7 @@ describe('foreignInterpretationCandidates', () => {
   it('names only classes WE actually defines, none of them an interpretation target', () => {
     for (const name of WE_PLUMBING_CLASSES) {
       expect(CORE_MANIFEST.entities[name], name).toBeDefined();
-      expect(CORE_MANIFEST.entities[name]?.extractable, name).not.toBe(true);
+      expect(CORE_MANIFEST.entities[name]?.interpretable, name).not.toBe(true);
     }
   });
 });

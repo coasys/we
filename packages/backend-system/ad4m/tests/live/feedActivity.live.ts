@@ -3,13 +3,13 @@
  * whether a row says where it came from without being asked.
  *
  * The Feed draws "3 tasks, from Monday sync" by reading each kind of record the space can extract,
- * a page at a time, and grouping by `extractedFrom`. It used to `include` that relation. The source
+ * a page at a time, and grouping by `interpretedFrom`. It used to `include` that relation. The source
  * is usually the call, a collection holding every line said in it, so the include hydrated the call
  * into every row of the page — measured on staging at about 18 KB a row, 926 KB for one page of
  * connections, re-read on every refresh. The Feed reads only the source's id, and the title from the
  * calls it reads anyway, so it dropped the include.
  *
- * That relies on one thing the unit tests cannot check: that a row carries `extractedFrom`, a
+ * That relies on one thing the unit tests cannot check: that a row carries `interpretedFrom`, a
  * reverse relation, as the source's id when nothing includes it. If the executor stopped resolving
  * reverse relations unasked, every activity row would read as made by hand and nothing would fail —
  * so this asks the executor. The sizes print beside it.
@@ -67,7 +67,7 @@ describe('the Feed’s activity read', () => {
         const task = (await TaskBlock.create(handle, { title: `Task ${i}` } as never, {
           parent: { id: root.id, relation: 'children', entity: 'CollectionBlock' },
         })) as { id: string };
-        await CollectionBlock.addRelation(handle, call.id, 'extracted', task.id);
+        await CollectionBlock.addRelation(handle, call.id, 'interpreted', task.id);
       }
 
       // The query the Feed's host makes of one activity type: `within` as `parent`, as `withinAsParent`.
@@ -80,10 +80,10 @@ describe('the Feed’s activity read', () => {
         TaskBlock.findAll as unknown as (h: never, q: unknown) => Promise<Record<string, unknown>[]>
       ).bind(TaskBlock);
       const bare = await findAll(handle, page);
-      const included = await findAll(handle, { ...page, include: { extractedFrom: true } });
+      const included = await findAll(handle, { ...page, include: { interpretedFrom: true } });
 
       expect(bare).toHaveLength(PAGE);
-      for (const row of bare) expect(row.extractedFrom).toBe(call.id);
+      for (const row of bare) expect(row.interpretedFrom).toBe(call.id);
 
       const before = bytes(included);
       const after = bytes(bare);

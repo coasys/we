@@ -159,7 +159,7 @@ const request = (classes: string[], extra: Record<string, unknown> = {}) => ({
   watchId: WATCH,
   classes,
   parent: { id: 'we://collection/root', relation: 'children', entity: 'CollectionBlock' },
-  provenance: { id: 'we://collection/root', relation: 'extracted', entity: 'CollectionBlock' },
+  provenance: { id: 'we://collection/root', relation: 'interpreted', entity: 'CollectionBlock' },
   ...extra,
 });
 

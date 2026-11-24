@@ -65,7 +65,7 @@ export const Relationship: CoreEntityDef = {
       drawn by hand carried no `connection` key, and the executor shows a model only the instances
       that have one, so the structure people had drawn was invisible to the pass meant to extend it.
     */
-    extractable: true,
+    interpretable: true,
     // `sourceType`/`targetType` are absent: they are set from what was connected, not typed by hand,
     // and so is `relationshipTypeId` — the form offers the kinds this community has named.
     //

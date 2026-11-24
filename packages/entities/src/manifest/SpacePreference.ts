@@ -63,7 +63,7 @@ export const SpacePreference: CoreEntityDef = {
        * What this agent, in this space, decides about each capability's settings, as JSON.
        *
        * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
-       * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+       * declares. One field rather than one per setting: `autoInterpret` and `interpretationTargets` are
        * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
        * the shape this replaces.
        *

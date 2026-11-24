@@ -58,7 +58,7 @@ function perspectiveReturning(ids: string[], existing: StoredLink[] = []) {
 const request = (run?: string) => ({
   classes: ['TaskBlock'],
   parent: { id: CALL, relation: 'children', entity: 'CollectionBlock' },
-  provenance: { id: CALL, relation: 'extracted', entity: 'CollectionBlock' },
+  provenance: { id: CALL, relation: 'interpreted', entity: 'CollectionBlock' },
   recognised: { id: CALL, relation: 'recognised', entity: 'CollectionBlock' },
   ...(run ? { run } : {}),
 });

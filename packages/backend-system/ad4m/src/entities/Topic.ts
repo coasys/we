@@ -44,15 +44,15 @@ import { WeNode } from './WeNode';
  * fragment cannot be written against "Hiring" the way one is written against `slug: 'like'`. A slug
  * here would be ceremony with no reader.
  *
- * ## Not extractable, and no interpretation hints — for now
+ * ## Not interpretable, and no interpretation hints — for now
  *
- * Both are deliberate omissions rather than oversights. `extractable` would let an interpreter mint
+ * Both are deliberate omissions rather than oversights. `interpretable` would let an interpreter mint
  * *new* topics from a transcript, which is close to the opposite of the point: a topic set is
  * curated, and the wanted behaviour is linking to what exists. That needs a prompt that can see
  * existing instances, which `runInterpretation(turns, basePrefix, classes)` cannot do — it is given
- * class names and nothing else. And a hint is only ever read for an extractable class, so one added
+ * class names and nothing else. And a hint is only ever read for an interpretable class, so one added
  * now would be stored, synced, editable and never read, which is precisely the failure
- * `EntitySchema.extractable` exists to have fixed.
+ * `EntitySchema.interpretable` exists to have fixed.
  *
  * Both become relevant together, if and when classification against a supplied vocabulary is
  * something the executor can do.

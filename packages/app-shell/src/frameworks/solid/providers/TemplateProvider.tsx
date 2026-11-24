@@ -237,7 +237,7 @@ export default function TemplateProvider() {
     fields: Record<string, unknown>,
     perspective?: DatasetProxy,
   ): Promise<Record<string, unknown>> {
-    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
+    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoInterpret' in fields || !perspective)
       return fields;
     const space =
       perspective === datasetStore.currentDataset()?.handle

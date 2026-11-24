@@ -2255,7 +2255,7 @@ describe('staged suggestions', () => {
   /**
    * Keeping a change, and the account of it.
    *
-   * A *create* survives being accepted — it is a record, and the call links it as `extracted`. An
+   * A *create* survives being accepted — it is a record, and the call links it as `interpreted`. An
    * *update* did not: it applied its value to a record that was already agreed and resolved its
    * overlay, and after that nothing anywhere said it had happened. The record held a new value with
    * no provenance and the reviewer's decision left no mark, so the panel had three of the four
@@ -2340,7 +2340,7 @@ describe('staged suggestions', () => {
       const i = interpreterWith([change]);
       const h = harness([], {
         interpretation: i.port,
-        records: { find: async () => [{ ...held, extractedFrom: 'call-origin' }] },
+        records: { find: async () => [{ ...held, interpretedFrom: 'call-origin' }] },
       });
       // What a card's marker loads: the space's suggestions, with no conversation named.
       (h.store.changedIds as () => string[])();

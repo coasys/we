@@ -69,7 +69,7 @@ export async function rowCount(page, label) {
  */
 export async function enableTargets(page, names, perspective) {
   const Space = getEntityForDataset('Space', perspective);
-  const stored = async () => String((await Space.findAll(perspective))[0]?.extractionTargets ?? '');
+  const stored = async () => String((await Space.findAll(perspective))[0]?.interpretationTargets ?? '');
   const has = (name) => (t) => JSON.parse(t || '[]').includes(name);
   await openSpaceSettings(page, 'Features');
   await page.getByText('What new calls look for').waitFor({ timeout: 30_000 });

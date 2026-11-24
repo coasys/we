@@ -868,7 +868,7 @@ const shapeWizardModal: SchemaNode = {
           model an interpretation pass names puts its whole shape into the prompt at the community's
           expense.
 
-          Ticking it does two things, deliberately. It marks the *model* extractable, which travels
+          Ticking it does two things, deliberately. It marks the *model* interpretable, which travels
           with the definition — so a fork of it lands in another space as something that space may
           switch on. And it adds this model to *this* space's default targets on save, because
           whoever ticked the box is the community saying yes, now; asking the same question again in
@@ -902,7 +902,7 @@ const shapeWizardModal: SchemaNode = {
                   type: 'we-switch',
                   props: {
                     size: 'sm',
-                    checked: { $: 'shapeStore.shapeDraft.extractable' },
+                    checked: { $: 'shapeStore.shapeDraft.interpretable' },
                     // Bare `event.detail` — an operator around it would resolve at render time,
                     // before the event exists.
                     onChange: { $invoke: 'shapeStore.setInterpretable', args: [{ $: 'event.detail' }] },

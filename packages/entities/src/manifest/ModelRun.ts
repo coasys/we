@@ -12,7 +12,7 @@ import type { CoreEntityDef } from './defs';
  *
  * ## One entity for every kind of run
  *
- * `kind` says what the model was doing (`extraction`, `transcription`, `chat`, `agent`, more as
+ * `kind` says what the model was doing (`interpretation`, `transcription`, `chat`, `agent`, more as
  * writers appear),
  * and everything else is common: the model, what started it, how it ended. What only one kind
  * carries goes in {@link detail}, read whole by the surface that knows that kind. So a new writer
@@ -44,7 +44,7 @@ export const ModelRun: CoreEntityDef = {
   entity: {
     flag: { predicate: 'we://flag', value: 'we://model_run' },
     properties: {
-      /** What the model was doing: `extraction`, `transcription`, `chat`, `agent`. */
+      /** What the model was doing: `interpretation`, `transcription`, `chat`, `agent`. */
       kind: { type: 'string', predicate: 'we://model_run_kind', default: '' },
       /** The model, by the name the backend reports. Empty where it reported none. */
       model: { type: 'string', predicate: 'we://model_run_model', default: '' },

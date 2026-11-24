@@ -35,7 +35,7 @@ export function readDna(path = DNA_PATH) {
         properties,
         titleField,
         titlePredicate: properties[titleField]?.predicate,
-        extractable: Boolean(entity.extractable),
+        interpretable: Boolean(entity.interpretable),
       });
     }
   }

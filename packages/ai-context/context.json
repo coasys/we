@@ -4077,15 +4077,15 @@
           "required": false
         },
         {
-          "name": "autoExtract",
+          "name": "autoInterpret",
           "type": "boolean",
-          "predicate": "we://auto_extract",
+          "predicate": "we://auto_interpret",
           "required": false
         },
         {
-          "name": "extractionTargets",
+          "name": "interpretationTargets",
           "type": "string",
-          "predicate": "we://extraction_targets",
+          "predicate": "we://interpretation_targets",
           "required": false
         }
       ],
@@ -4112,9 +4112,9 @@
           "target": "CollectionBlock"
         },
         {
-          "name": "extracted",
+          "name": "interpreted",
           "kind": "HasMany",
-          "predicate": "we://extracted"
+          "predicate": "we://interpreted"
         },
         {
           "name": "recognised",
@@ -5140,9 +5140,9 @@
           "required": false
         },
         {
-          "name": "extractionTargets",
+          "name": "interpretationTargets",
           "type": "string",
-          "predicate": "we://extraction_targets",
+          "predicate": "we://interpretation_targets",
           "required": false
         },
         {
@@ -5912,9 +5912,9 @@
           "predicate": "we://child"
         },
         {
-          "name": "extractedFrom",
+          "name": "interpretedFrom",
           "kind": "HasOne",
-          "predicate": "we://extracted"
+          "predicate": "we://interpreted"
         },
         {
           "name": "runs",

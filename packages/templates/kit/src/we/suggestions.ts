@@ -305,7 +305,7 @@ export function suggestionsToggle(opts: SuggestionsToggleOptions): SchemaNode {
             children: [
               /*
                 An hourglass for waiting on a decision, and the name where there is room — see
-                `headerLabel`. Not the sparkle a card's extracted mark uses: that means "extracted", which
+                `headerLabel`. Not the sparkle a card's extracted mark uses: that means "interpreted", which
                 an accepted record still is.
               */
               ...(labelled

@@ -47,18 +47,18 @@ export class WeNode extends Ad4mModel {
 
   /**
    * The collection this node lives in — `CollectionBlock.children` read backwards, as
-   * `extractedFrom` reads `extracted`. Read-only: the link belongs to the collection. Stored as
+   * `interpretedFrom` reads `interpreted`. Read-only: the link belongs to the collection. Stored as
    * AD4M's own containment predicate, as `children` is — see `containment.ts`.
    */
   @BelongsToOne({ through: 'ad4m://has_child', polymorphic: true })
   partOf?: string;
 
   /**
-   * Where this record was extracted from — `CollectionBlock.extracted` read backwards. Provenance,
-   * not containment: see the manifest's `extractedFrom`. Read-only, as `respondsTo` is.
+   * Where this record was extracted from — `CollectionBlock.interpreted` read backwards. Provenance,
+   * not containment: see the manifest's `interpretedFrom`. Read-only, as `respondsTo` is.
    */
-  @BelongsToOne({ through: 'we://extracted', polymorphic: true })
-  extractedFrom?: string;
+  @BelongsToOne({ through: 'we://interpreted', polymorphic: true })
+  interpretedFrom?: string;
 
   /** Every time a model was asked to do something about this record. See the manifest's `runs`. */
   @HasMany(() => ModelRun, { through: 'we://model_run' })

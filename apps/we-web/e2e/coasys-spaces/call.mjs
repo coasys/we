@@ -130,7 +130,7 @@ export async function stopTranscribing(page) {
 /**
  * Registers the call's interpretation watch, the one the app's `watchConversation` registers (app-shell
  * DatasetStore.tsx): the same id, the call's own targets, filed under the space's collection, with
- * `extracted` and `recognised` back to the call.
+ * `interpreted` and `recognised` back to the call.
  *
  * The stub tier stands in for the transcriber here, as {@link typeIntoCall} stands in for its write.
  * The app registers a call's watch only when the transcribe module first files a transcribed line
@@ -139,7 +139,7 @@ export async function stopTranscribing(page) {
  */
 export async function watchCall(who, perspective, callId) {
   const targets = await until(
-    async () => (await perspective.get(new LinkQuery({ source: callId, predicate: 'we://extraction_targets' })))[0],
+    async () => (await perspective.get(new LinkQuery({ source: callId, predicate: 'we://interpretation_targets' })))[0],
     Boolean,
     { timeout: 60_000, what: 'the call to record what it looks for' },
   );
@@ -152,7 +152,7 @@ export async function watchCall(who, perspective, callId) {
     watchId: `we-call-${callId.replace(/[^a-zA-Z0-9]+/g, '-')}`,
     classes,
     parent: { id: root || callId, relation: 'children', entity: 'CollectionBlock' },
-    provenance: { id: callId, relation: 'extracted', entity: 'CollectionBlock' },
+    provenance: { id: callId, relation: 'interpreted', entity: 'CollectionBlock' },
     recognised: { id: callId, relation: 'recognised', entity: 'CollectionBlock' },
   });
   return classes;

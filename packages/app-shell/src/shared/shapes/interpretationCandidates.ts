@@ -6,7 +6,7 @@
  * names reaches `foreignInterpretationCandidates` at all.
  *
  * One explicit list, taken from the core manifest rather than worked out by a heuristic: everything
- * in it is a core entity that is not `extractable` (a test holds both). WE's content classes — the
+ * in it is a core entity that is not `interpretable` (a test holds both). WE's content classes — the
  * blocks, `Topic`, a task — are deliberately absent, so a foreign class named like one of those is
  * reported as `shadowed` rather than dropped without a word.
  */
@@ -48,7 +48,7 @@ export const WE_PLUMBING_CLASSES: readonly string[] = [
 /**
  * Classes a space already has — registered by another app, or by hand — that a call may extract into.
  *
- * WE offers its own extractable vocabulary and the shapes a community adopted in WE. A space can also
+ * WE offers its own interpretable vocabulary and the shapes a community adopted in WE. A space can also
  * hold SHACL classes WE did not write (`foreignSchemas`), and the executor extracts into those just
  * as well: it resolves a class by name from the space's SHACL, with no WE model involved, and reads
  * an interpretation hint where the class has one and goes without where it does not. So every such
@@ -63,7 +63,7 @@ export const WE_PLUMBING_CLASSES: readonly string[] = [
  *
  * `adopted` are the shapes this community defined in WE. Their SHACL reads as foreign too (no WE
  * model is registered globally for them), but they are offered — or not — by their own manifest's
- * `extractable`, so they are skipped here without a word.
+ * `interpretable`, so they are skipped here without a word.
  */
 export function foreignInterpretationCandidates(
   foreign: readonly { name: string; interpretationHint?: string }[],

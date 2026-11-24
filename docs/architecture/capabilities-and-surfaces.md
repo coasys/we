@@ -112,7 +112,7 @@ dependency between them — which is exactly how `@we/module-transcribe` came to
 lifecycle and re-publish nine of interpretation's members.
 
 Policies belong with the state they read: the space. `Space.autoInterpret` and
-`Space.extractionTargets` are already two thirds of this one, and the auto-processor it registers is
+`Space.interpretationTargets` are already two thirds of this one, and the auto-processor it registers is
 already a scope query stored in the shared graph. Written as data rather than as an effect inside a
 capability, a policy becomes a **wire**: a trigger, a selector over records, a processor, and its
 options.
@@ -154,7 +154,7 @@ the module, and it is why the declaration also renders the control: a module tha
 gets a screen with nothing to register, which is the step whose omission is otherwise silent.
 
 **What is not a setting**: a processor's own configuration. `Space.autoInterpret` and
-`Space.extractionTargets` look like settings and are the parameters of a _wire_ — whether one exists,
+`Space.interpretationTargets` look like settings and are the parameters of a _wire_ — whether one exists,
 and what its processor writes. They stay where they are until wires do, because moving them onto the
 settings layer would be migrating them twice.
 

@@ -55,7 +55,7 @@ export class TaskBlock extends WeNode {
    * fresh copies of everything it finds. Without this, pressing Interpret twice on one call
    * produced two of every task.
    *
-   * It is not what admits a class to extraction — `extractable` on the entity is (a class
+   * It is not what admits a class to extraction — `interpretable` on the entity is (a class
    * without an identity property still extracts, it merely duplicates). Which is why an
    * authoring surface offering the one should warn about the absence of the other.
    *

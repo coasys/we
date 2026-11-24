@@ -3,9 +3,9 @@
  *
  * ## Two levels, and only one of them is live
  *
- * A space holds **defaults** (`Space.autoInterpret`, `Space.extractionTargets`); every collection
+ * A space holds **defaults** (`Space.autoInterpret`, `Space.interpretationTargets`); every collection
  * that can be extracted — a call, a channel, the space's own collection of messages typed outside
- * any call — holds **its own answer** (`CollectionBlock.autoExtract`, `.extractionTargets`), copied
+ * any call — holds **its own answer** (`CollectionBlock.autoInterpret`, `.interpretationTargets`), copied
  * from the defaults when it is made. From then on the collection's answer is the answer, and the
  * only way it changes is somebody changing it on that collection.
  *
@@ -32,15 +32,15 @@
  * What a space extracts before anybody decides — the two classes that were hardcoded until the
  * setting existed.
  *
- * A floor, not a default anybody chose. `Space.extractionTargets` follows the `enabledModules` rule
+ * A floor, not a default anybody chose. `Space.interpretationTargets` follows the `enabledModules` rule
  * that empty means "not decided", and reading it as "none" would make a space that never touched
  * the setting extract nothing with nothing on screen to say why.
  */
 export const LEGACY_INTERPRETATION_TARGETS = ['TaskBlock', 'EventBlock'];
 
 /**
- * A JSON array of entity names as stored on `Space.extractionTargets` and
- * `CollectionBlock.extractionTargets`.
+ * A JSON array of entity names as stored on `Space.interpretationTargets` and
+ * `CollectionBlock.interpretationTargets`.
  *
  * `null` means "nothing was written" and is the caller's cue to defer to the level above. It is
  * distinct from `[]`, which is a decision to extract nothing — the reason this is a string rather
@@ -58,11 +58,11 @@ export function parseEntityList(raw: string | undefined | null): string[] | null
 
 /**
  * The models this space's new collections start with: its own list where it has one, else the
- * floor — narrowed to what is actually extractable here.
+ * floor — narrowed to what is actually interpretable here.
  *
  * Narrowing matters beyond tidiness: a pass whose perspective has no shape for a listed model fails
  * `assertShapesInstalled` and takes the whole pass down, so a list naming a model since deleted, or
- * one whose `extractable` was withdrawn in a release, has to narrow quietly rather than break
+ * one whose `interpretable` was withdrawn in a release, has to narrow quietly rather than break
  * extraction. Order follows `candidates` so a list reads the same way every time rather than in
  * whatever order somebody happened to tick things.
  */
@@ -97,19 +97,21 @@ export function resolveCollectionAutoInterpret(spaceAuto: boolean, own: boolean 
  * The copy a new collection is made with — the space's defaults as they stand right now.
  *
  * The list is copied as the space states it (or the floor), not narrowed: narrowing happens on
- * every read, so a model that becomes extractable later is picked up by a collection that already
+ * every read, so a model that becomes interpretable later is picked up by a collection that already
  * named it, and nothing here needs to know the candidates.
  *
  * `undefined` for a dataset with no space, which leaves the collection unset — and an unset
  * collection reads as off wherever there is no space to defer to.
  */
 export function collectionInterpretationDefaults(
-  space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
-): { autoExtract: boolean; extractionTargets: string } | undefined {
+  space: { autoInterpret?: boolean; interpretationTargets?: string } | null | undefined,
+): { autoInterpret: boolean; interpretationTargets: string } | undefined {
   if (!space) return undefined;
   return {
-    autoExtract: space.autoInterpret === true,
-    extractionTargets: JSON.stringify(parseEntityList(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS),
+    autoInterpret: space.autoInterpret === true,
+    interpretationTargets: JSON.stringify(
+      parseEntityList(space.interpretationTargets) ?? LEGACY_INTERPRETATION_TARGETS,
+    ),
   };
 }
 
@@ -124,9 +126,9 @@ export function collectionInterpretationDefaults(
 export function withInterpretationDefaults(
   entity: string,
   fields: Record<string, unknown>,
-  space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
+  space: { autoInterpret?: boolean; interpretationTargets?: string } | null | undefined,
 ): Record<string, unknown> {
-  if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields) return fields;
+  if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoInterpret' in fields) return fields;
   const defaults = collectionInterpretationDefaults(space);
   return defaults ? { ...defaults, ...fields } : fields;
 }

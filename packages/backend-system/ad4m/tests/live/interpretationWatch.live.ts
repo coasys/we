@@ -76,7 +76,7 @@ describe('a standing watch, against a real executor', () => {
         watchId: WATCH,
         classes: ['TaskBlock'],
         parent: { id: call.id, relation: 'children', entity: 'CollectionBlock' },
-        provenance: { id: call.id, relation: 'extracted', entity: 'CollectionBlock' },
+        provenance: { id: call.id, relation: 'interpreted', entity: 'CollectionBlock' },
         ...extra,
       });
       const classLinks = async () => (await perspective.get(new LinkQuery({ source: NODE, predicate: CLASS }))).length;

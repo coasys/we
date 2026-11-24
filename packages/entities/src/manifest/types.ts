@@ -87,13 +87,13 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   version: number;
   sourceRef: string;
   sourceName: string;
-  autoExtract?: boolean;
-  extractionTargets: string;
+  autoInterpret?: boolean;
+  interpretationTargets: string;
   children: string[];
   arranges: string[];
   gathers?: string;
   board?: CollectionBlockRecord;
-  extracted: string[];
+  interpreted: string[];
   recognised: string[];
   amendments: string[];
   addChildren(value: string | { id: string }, batch?: string): Promise<unknown>;
@@ -306,7 +306,7 @@ export interface SpaceRecord extends WeNodeRecord {
   defaultThemeId: string;
   enabledModules: string;
   enabledViews: string;
-  extractionTargets: string;
+  interpretationTargets: string;
   autoInterpret: boolean;
   threadMode: string;
   moduleSettings: string;

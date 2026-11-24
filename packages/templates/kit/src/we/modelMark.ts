@@ -8,19 +8,19 @@ import type { SchemaNode } from '@we/schema-shared';
  * run marks in the future. A record a person made has nothing unusual to explain, and draws nothing.
  *
  * The words name what kind of making it was where the record says: extracted from a conversation
- * when it carries `extractedFrom`, otherwise written by AI. "Run by" is the record's author, which
+ * when it carries `interpretedFrom`, otherwise written by AI. "Run by" is the record's author, which
  * for model-made work is whoever's node did the running, not whoever proposed the work.
  *
- * `extracted` widens the mark to records a caller knows came out of a conversation without a run
+ * `interpreted` widens the mark to records a caller knows came out of a conversation without a run
  * naming them, which is what a pass a standing watch runs writes today.
  */
-export function modelMark(opts: { as: string; extracted?: string }): SchemaNode {
+export function modelMark(opts: { as: string; interpreted?: string }): SchemaNode {
   const { as } = opts;
   const generated = `generatedRun({ record: ${as} })`;
   return {
     type: '$if',
     props: {
-      condition: { $: opts.extracted ? `${generated} || (${opts.extracted})` : generated },
+      condition: { $: opts.interpreted ? `${generated} || (${opts.interpreted})` : generated },
       then: {
         type: 'we-tooltip',
         props: { placement: 'top' },
@@ -44,7 +44,7 @@ export function modelMark(opts: { as: string; extracted?: string }): SchemaNode 
                           fontSize: '200',
                           text: {
                             $:
-                              `\`\${${as}.extractedFrom ? 'Interpreted from the conversation' : 'Written by AI'}` +
+                              `\`\${${as}.interpretedFrom ? 'Interpreted from the conversation' : 'Written by AI'}` +
                               " · run by ${author.did == me.did ? 'you' : author.name}`",
                           },
                         },

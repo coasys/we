@@ -241,7 +241,7 @@ includes is counted from its records. The format is in
 
 What it writes:
 
-- **`settings`:** the `Space` record's own fields (template, theme, `extractionTargets`, …).
+- **`settings`:** the `Space` record's own fields (template, theme, `interpretationTargets`, …).
 - **`records`:** written in order, each `{ "$id", "entity", "fields", "in" }`:
   - **`$id`** names the record so the rest of the starter can refer to it before it has a real id.
     Give one only to a record something refers to; `validate:seed` warns about an `$id` nothing uses.

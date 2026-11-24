@@ -1136,17 +1136,17 @@ describe('the interpretation panel', () => {
       transcript too, an untyped include carries no class constraint, and a query names one entity —
       so the panel asked "all the tasks, then all the events" and got the grouping that produced.
 
-      `CollectionBlock.extracted` is written beside containment by every pass, so the relation is the
+      `CollectionBlock.interpreted` is written beside containment by every pass, so the relation is the
       answer. An include over it comes back polymorphically, which is why the rows can be ordered by
       when they were made rather than by which model they happen to be, and why there is a number to
       put beside the heading at all.
     */
-    expect(json).toContain('"extracted":{"order":{"createdAt":"desc"}}');
+    expect(json).toContain('"interpreted":{"order":{"createdAt":"desc"}}');
     // And the amendments in the same include, so "what did this call produce" and "what did it
     // change" are one answer rather than two that can disagree about whether it has been asked yet.
     expect(json).toContain('"amendments":{"order":{"createdAt":"desc"}}');
     expect(json).toContain(
-      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+      'first(local.interpretedFrom).interpreted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
     );
     // Keyed on the class each row turned out to be. Not `item.type`, which is a real property on a
     // CollectionBlock and so means something else on some of the rows a call can hold.
@@ -1510,7 +1510,7 @@ describe('the interpretation panel', () => {
       on exactly the right question.
     */
     expect(json).toContain(
-      '"condition":{"$":"count(first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds)))"}',
+      '"condition":{"$":"count(first(local.interpretedFrom).interpreted.filter(r, !(r.id in modules.transcribe.unconfirmedIds)))"}',
     );
   });
 
@@ -1581,9 +1581,9 @@ describe('the interpretation panel', () => {
       a shared link must not impose it on whoever opens it.
     */
     expect(json).toContain('"persist":"transcribe.proposalsOpen"');
-    expect(json).toContain('"persist":"transcribe.extractedOpen"');
+    expect(json).toContain('"persist":"transcribe.interpretedOpen"');
     expect(json).toContain('"$toggleLocal":"proposalsOpen"');
-    expect(json).toContain('"$toggleLocal":"extractedOpen"');
+    expect(json).toContain('"$toggleLocal":"interpretedOpen"');
   });
 
   it('leaves the panel’s own openness to the host', () => {
@@ -1916,7 +1916,7 @@ describe('the history of what was read', () => {
     */
     expect(json).toContain('"entity":"ModelRun"');
     expect(json).toContain('"via":"runs"');
-    expect(json).toContain('"kind":"extraction"');
+    expect(json).toContain('"kind":"interpretation"');
     expect(json).toContain(`"anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
   });
 
@@ -2050,7 +2050,7 @@ describe('the history of what was read', () => {
       toggle twice. A heading carrying an action — Logs' export — is split into two toggles around
       it, the name and the count, so a field may have two; the name is always one of them.
     */
-    const fields = ['proposalsOpen', 'changesListOpen', 'extractedOpen', 'logsOpen'];
+    const fields = ['proposalsOpen', 'changesListOpen', 'interpretedOpen', 'logsOpen'];
     const found: Record<string, string[]> = {};
 
     const walk = (node: unknown): void => {
@@ -2071,7 +2071,7 @@ describe('the history of what was read', () => {
     for (const [field, label] of [
       ['proposalsOpen', 'Pending acceptance'],
       ['changesListOpen', 'Pending changes'],
-      ['extractedOpen', 'Accepted'],
+      ['interpretedOpen', 'Accepted'],
       ['logsOpen', 'Logs'],
     ]) {
       expect(found[field].some((toggle) => toggle.includes(`"${label}"`))).toBe(true);
@@ -2316,7 +2316,7 @@ describe("the transcript's reply", () => {
 /*
   What a conversation recognised is not what it made.
 
-  A pass that matched a record already in the space used to link it as `extracted`, so the panel
+  A pass that matched a record already in the space used to link it as `interpreted`, so the panel
   listed last week's task under "Accepted" as though somebody had just kept it. Recognised records
   are linked as `recognised` now, and drawn in their own section, saying where they were first found.
 */
@@ -2328,12 +2328,12 @@ describe('records a conversation recognised', () => {
     expect(panelJson).toContain('Already in the space');
     // Accepted is still only what this conversation made.
     expect(panelJson).toContain(
-      'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
+      'first(local.interpretedFrom).interpreted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))',
     );
   });
 
   it('names the conversation that made each one, by asking which one extracted it', () => {
-    expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
+    expect(panelJson).toContain('"where":{"interpreted":{"some":{"id":{"$":"item.id"}}}}');
   });
 });
 
