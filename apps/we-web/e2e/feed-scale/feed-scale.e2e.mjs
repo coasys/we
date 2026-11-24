@@ -55,7 +55,7 @@ import { LinkQuery } from '@coasys/ad4m';
 import * as h from '@we/e2e';
 
 import { createSpace, dismissNamePrompt, openSpace } from '../steps/space.mjs';
-import { JOB, cpuSeconds, loadPhases, memory, metrics, summaryLine } from './results.mjs';
+import { JOB, cpuSeconds, idleAfterLoadsSkipped, loadPhases, memory, metrics, summaryLine } from './results.mjs';
 import { PROCESSOR_ID, messageShape, processorIds, seedMessages } from './seed.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
@@ -364,7 +364,7 @@ async function waitForRow(page, queries, load, { shown, timeout, pollMs = 250, l
   }
 }
 
-test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 * 3_600_000 }, async () => {
+test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 * 3_600_000 }, async (t) => {
   let executor = null;
   let app = null;
   let browser = null;
@@ -443,7 +443,9 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     // ARTIFACTS: a run stopped mid-import must not leave gigabytes for CI to upload), then
     // loaded into the perspective by `runtime.importData`. The call is operator-only, so it goes
     // as the executor's admin credential on the suite's own socket (writer.mjs, no client-side
-    // timeout) — it can run for many minutes at a million messages.
+    // timeout) — it can run for many minutes at a million messages. The test's own budget bounds it:
+    // `t.signal` aborts at the test timeout, the import rejects, and the `finally` below still stops
+    // the executor (which deletes its data) after the seed file is gone.
     log(`seeding ${MESSAGES} messages (${WORKERS} generation workers)`);
     seeded = await seedMessages({
       url: executor.url,
@@ -453,6 +455,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       count: MESSAGES,
       workers: WORKERS,
       onProgress: (written, count) => log(`generated links for ${written}/${count}`),
+      signal: t.signal,
     });
     // Nothing should have registered one meanwhile (no page was open). If one did, the seed timings
     // are not the seeding's own and the idle read below is not a watch-off one: neither is published
@@ -827,6 +830,9 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       throw error;
     }
     const cpuAfter = cpuOf(executor.pid);
+    // Closing the reader's socket does not stop the queries the executor is still answering for it:
+    // count them before it closes (a closed socket's calls leave `unanswered`).
+    const stillAnswering = queries.unanswered().length;
     await closing(reader, false);
     tallyLate();
     const afterUi = rssOf(executor.pid);
@@ -839,7 +845,9 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     const watchOn = detail.watch.afterUi.length > 0;
     if (watchOn) {
       if (cpuBefore !== null && cpuAfter !== null) run.cpu.uiPhase = cpuAfter - cpuBefore;
-      run.cpu.idleAfterUi = await idleCpuPercent(executor.pid, IDLE_SECONDS);
+      const skipped = idleAfterLoadsSkipped(run, stillAnswering);
+      if (skipped) log(`executor idle after the loads not measured: ${skipped}`);
+      else run.cpu.idleAfterUi = await idleCpuPercent(executor.pid, IDLE_SECONDS);
     }
     log(
       `executor CPU: ${run.cpu.uiPhase?.toFixed(1) ?? 'not counted'} s over the loads; idle after them ` +

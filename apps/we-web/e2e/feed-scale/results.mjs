@@ -20,6 +20,18 @@ export function median(values) {
 
 export const max = (values) => (values.length ? Math.max(...values) : null);
 
+/**
+ * Why the executor's idle CPU after the loads must not be read, or `null` when it may: like the read
+ * after the seeding, it needs nothing from the loads still running — every load drew
+ * (`run.newestFailures` and `run.olderFailures` empty), and `stillAnswering`, the calls unanswered
+ * when the reader closed, is 0.
+ */
+export function idleAfterLoadsSkipped(run, stillAnswering) {
+  if ((run.newestFailures?.length ?? 0) + (run.olderFailures?.length ?? 0) > 0) return 'a load did not draw';
+  if (stillAnswering > 0) return `${stillAnswering} call(s) unanswered when the reader closed`;
+  return null;
+}
+
 const round = (n, places = 1) => (n === null ? null : Math.round(n * 10 ** places) / 10 ** places);
 
 /**

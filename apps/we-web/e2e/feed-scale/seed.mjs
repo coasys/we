@@ -348,7 +348,8 @@ export async function generateSeedFile({
  * file. Resolves with what was written and how long each step took, and the newest and oldest
  * messages, which the suite then looks for on screen.
  *
- * `onProgress(written, count)` is called about once a percent, over the generation.
+ * `onProgress(written, count)` is called about once a percent, over the generation. `signal` bounds
+ * the import: when it aborts, the call rejects with its reason and the file is still deleted.
  */
 export async function seedMessages({
   url,
@@ -360,6 +361,7 @@ export async function seedMessages({
   seed = 1,
   workers = availableParallelism(),
   onProgress = () => {},
+  signal,
 }) {
   const started = Date.now();
   const generated = await generateSeedFile({ shape, count, endMs, seed, workers, onProgress });
@@ -371,7 +373,7 @@ export async function seedMessages({
   // deleted — and the file goes even if closing the writer fails.
   let writer = null;
   try {
-    writer = await openWriter(url, token);
+    writer = await openWriter(url, token, { signal });
     result = await writer.importPerspective(uuid, generated.filePath);
   } finally {
     try {

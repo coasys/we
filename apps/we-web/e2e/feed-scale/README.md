@@ -114,7 +114,9 @@ The suite treats the watch in two ways:
   `executor.cpu_seconds.ui_phase` and `executor.idle_cpu_percent.after_ui` are the numbers that
   move when the watch's cost changes — and they are published only when the space's watch is
   actually registered afterwards (`detail.watch.afterUi`); a load that ran with no watch must not
-  set them. `idle_cpu_percent.after_seed` is the same executor and store
+  set them. `idle_cpu_percent.after_ui` is also left out when a load did not draw or a call was
+  still unanswered when the reader closed: closing the socket does not stop the executor's work on
+  it, so the spell would not be idle. `idle_cpu_percent.after_seed` is the same executor and store
   with no watch, for comparison.
 
 ## How the space is filled
@@ -162,7 +164,9 @@ executor's one bulk read of a file.
 - **Why the suite has its own writer for the call.** `runtime.importData` is operator-only: it goes
   on a raw WebSocket (`writer.mjs`) as the executor's admin credential, not the managed user's
   token. The socket keeps no client-side timeout — the SDK's fixed 30 s would give up on a call
-  that runs over a minute at a million messages.
+  that runs over a minute at a million messages. The test's own 6-hour timeout bounds it instead:
+  the test's `AbortSignal` closes the socket and rejects the call, so the seed file is deleted and
+  the executor stopped (with its data) even when the executor never answers.
 - **It needs an executor with the import.** Before ad4m #1780, `runtime.importData` with
   `type: "perspective"` stored nothing; the suite then fails its check that the seeded messages
   are there.

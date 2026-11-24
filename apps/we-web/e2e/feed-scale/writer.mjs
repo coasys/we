@@ -6,33 +6,50 @@
  * twelve million links can take longer, so the suite sends `runtime.importData` on a raw socket and
  * waits for the answer however long it takes. What the executor is
  * asked to do, and the frames that carry it, are the same as through the SDK; only the client stops
- * keeping a clock on it. A dropped connection still fails the call it holds.
+ * keeping a clock on it. A dropped connection still fails the call it holds, and so does `signal`:
+ * when it aborts, the socket closes and every call it holds rejects with the signal's reason, so a
+ * caller's cleanup runs even when the executor keeps the socket open and never answers.
  *
  * `token` must be the executor's admin credential: `runtime.importData` is operator-only and
  * refuses a managed user's token.
  */
 
 /**
- * One WebSocket to the executor at `url` (http or https), as `token`.
+ * One WebSocket to the executor at `url` (http or https), as `token`, for as long as `signal` allows.
  * @returns {Promise<{ importPerspective, close }>}
  */
-export async function openWriter(url, token) {
+export async function openWriter(url, token, { signal } = {}) {
+  signal?.throwIfAborted();
   const wsUrl = `${url.replace(/^http/, 'ws')}/api/v1/ws?token=${encodeURIComponent(token)}`;
   const ws = new WebSocket(wsUrl);
   const pending = new Map();
   let next = 0;
   let closed = null;
 
-  await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = () => reject(new Error(`could not connect to ${url}`));
-  });
-  ws.onerror = null;
-  ws.onclose = (event) => {
-    closed = new Error(`the executor closed the connection (${event.code} ${event.reason})`);
+  const fail = (error) => {
+    closed ??= error;
     for (const { reject } of pending.values()) reject(closed);
     pending.clear();
   };
+  const abort = () => {
+    fail(signal.reason);
+    ws.close();
+  };
+  signal?.addEventListener('abort', abort, { once: true });
+
+  try {
+    await new Promise((resolve, reject) => {
+      ws.onopen = resolve;
+      ws.onerror = () => reject(new Error(`could not connect to ${url}`));
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  } catch (error) {
+    signal?.removeEventListener('abort', abort);
+    ws.close();
+    throw error;
+  }
+  ws.onerror = null;
+  ws.onclose = (event) => fail(new Error(`the executor closed the connection (${event.code} ${event.reason})`));
   ws.onmessage = (event) => {
     let reply;
     try {
@@ -61,6 +78,9 @@ export async function openWriter(url, token) {
   return {
     importPerspective: (uuid, filePath) =>
       call('runtime.importData', { type: 'perspective', filePath, perspectiveUuid: uuid }),
-    close: () => ws.close(),
+    close: () => {
+      signal?.removeEventListener('abort', abort);
+      ws.close();
+    },
   };
 }

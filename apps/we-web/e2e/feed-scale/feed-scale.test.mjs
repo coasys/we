@@ -3,13 +3,23 @@
  * file it generates, the import call's wire shape, and the numbers it reports.
  */
 import { createHash, createPublicKey, verify } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
-import { JOB, cpuSeconds, loadPhases, max, median, memory, metrics, summaryLine } from './results.mjs';
+import {
+  JOB,
+  cpuSeconds,
+  idleAfterLoadsSkipped,
+  loadPhases,
+  max,
+  median,
+  memory,
+  metrics,
+  summaryLine,
+} from './results.mjs';
 import {
   AUTHORS,
   SPAN_MS,
@@ -304,6 +314,63 @@ describe('import call', () => {
       vi.unstubAllGlobals();
     }
   }, 60_000);
+
+  /** An executor that takes the call, keeps the socket open and never answers. */
+  class SilentSocket {
+    static sent = [];
+    static closed = 0;
+    constructor() {
+      setTimeout(() => this.onopen?.(), 0);
+    }
+    send(payload) {
+      SilentSocket.sent.push(JSON.parse(payload));
+    }
+    close() {
+      SilentSocket.closed += 1;
+    }
+  }
+
+  it('rejects an unanswered import when its signal aborts, closes the socket and deletes the file', async () => {
+    SilentSocket.sent = [];
+    SilentSocket.closed = 0;
+    vi.stubGlobal('WebSocket', SilentSocket);
+    try {
+      const shape = { root: 'ad4m://obj/root', properties: [{ predicate: 'we://text', target: null }], links: 3 };
+      const budget = new AbortController();
+      const seeding = seedMessages({
+        url: 'http://127.0.0.1:40000',
+        token: 't',
+        uuid: 'u',
+        shape,
+        count: 3,
+        workers: 1,
+        signal: budget.signal,
+      });
+      await vi.waitFor(() => expect(SilentSocket.sent).toHaveLength(1), { timeout: 30_000 });
+      const { filePath } = SilentSocket.sent[0].params;
+      expect(existsSync(filePath)).toBe(true);
+      budget.abort(new Error('the suite budget ran out'));
+      await expect(seeding).rejects.toThrow('the suite budget ran out');
+      expect(SilentSocket.closed).toBeGreaterThan(0);
+      expect(existsSync(filePath)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }, 60_000);
+
+  it('does not open the socket when the signal has already aborted', async () => {
+    SilentSocket.sent = [];
+    vi.stubGlobal('WebSocket', SilentSocket);
+    try {
+      const reason = new Error('already over');
+      await expect(openWriter('http://127.0.0.1:40000', 't', { signal: AbortSignal.abort(reason) })).rejects.toBe(
+        reason,
+      );
+      expect(SilentSocket.sent).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('results', () => {
@@ -313,6 +380,18 @@ describe('results', () => {
     expect(median([4, 1, 3, 2])).toBe(2.5);
     expect(max([1, 9, 3])).toBe(9);
     expect(max([])).toBe(null);
+  });
+
+  it('reads the idle CPU after the loads only when every load drew and every call was answered', () => {
+    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: [] }, 0)).toBe(null);
+    expect(idleAfterLoadsSkipped({}, 0)).toBe(null);
+    expect(idleAfterLoadsSkipped({ newestFailures: ['timeout'], olderFailures: [] }, 0)).toBe('a load did not draw');
+    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: ['page-closed'] }, 2)).toBe(
+      'a load did not draw',
+    );
+    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: [] }, 3)).toBe(
+      '3 call(s) unanswered when the reader closed',
+    );
   });
 
   const full = {
