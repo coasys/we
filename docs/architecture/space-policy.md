@@ -71,6 +71,12 @@ in the space, with a message asking the person to update, rather than being gues
 backend asks it from its own write path before a create, an edit, a delete, or a relation add or
 remove. A refused write rejects with a `PolicyRefusal` and writes nothing.
 
+An add to a single-valued relation (a `@HasOne`, `maxCount` 1) replaces its member, so it needs both
+`<Entity>.<relation>.add` and `.remove`, even when the relation is empty: the model's snapshot does not
+move on a relation write, so it cannot rule a replacement out. A role that may fill such a relation
+needs both permissions. (The in-memory backend has no add on a to-one relation: it sets the link
+through the record, which is an edit.)
+
 - **The backends.** The in-memory backend asks in each write method. The production adapter installs
   the check on its model base class (`backend-ad4m/src/writeChecks.ts`), so every model class,
   including ones a space defines later, inherits it. The writes a create makes for itself (its named
