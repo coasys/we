@@ -305,7 +305,7 @@ export const CollectionBlock: CoreEntityDef = {
       interpreted: { target: '', cardinality: 'many', predicate: 'we://interpreted' },
       /**
        * Records a pass found in this conversation that another had already made — "Already in the
-       * space", where {@link extracted} is "made here".
+       * space", where {@link interpreted} is "made here".
        *
        * A pass that recognises something already in the space writes nothing new, which is right,
        * and used to link it here as `interpreted` all the same — so a review panel listed a task from
@@ -321,7 +321,7 @@ export const CollectionBlock: CoreEntityDef = {
        * Changes a pass suggested to records that already existed, and somebody kept — see
        * {@link Amendment}.
        *
-       * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
+       * The counterpart to {@link interpreted} for the other kind of suggestion a pass makes, and it
        * is a separate relation rather than more entries in that one because the two are about
        * different things. `interpreted` names *records* the call produced; this names *amendments*,
        * which are their own records and whose subject is usually something the call did not create
