@@ -37,6 +37,15 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
+import {
+  describeOperations,
+  OPERATION_CASES,
+  OPERATION_CONFORMANCE_CASES,
+  type OperationCase,
+  type OperationConformanceCase,
+  type OperationVector,
+  readOperationVectors,
+} from './operations';
 import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
 import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
@@ -44,6 +53,12 @@ import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 export {
   EMPTY_VALUE_CASES,
   type EmptyValueCase,
+  OPERATION_CASES,
+  OPERATION_CONFORMANCE_CASES,
+  type OperationCase,
+  type OperationConformanceCase,
+  type OperationVector,
+  readOperationVectors,
   SAME_BATCH_CASES,
   type SameBatchCase,
   TEMPLATE_QUERY_CASES,
@@ -1154,4 +1169,5 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
   describeWriteCases(name, harness, timeout);
   describeSameBatch(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
+  describeOperations(name, harness, timeout);
 }
