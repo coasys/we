@@ -59,7 +59,12 @@ export default function App() {
           under it; they are `pointer-events: none`, so nothing they cover becomes unreachable.
         */}
         <LiveViewHost />
-        <ToastContainer />
+        {/*
+          Bottom right, off the view tabs: a run of errors at top right stacked
+          over the tabs a person was reaching for. Down here it covers nothing
+          that moves — the chrome is at the edges, and the working area is above.
+        */}
+        <ToastContainer position="bottom-right" />
       </StoreProvider>
     </ErrorBoundary>
   );

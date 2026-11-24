@@ -56,6 +56,9 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
 
 const toApp = (ref: DatasetRef): AppDataset => ref;
 
+/** How long a switch waits on the foreign-entity read before `$modelsPending` stops waiting on it. */
+const FOREIGN_SCHEMAS_WAIT_MS = 30_000;
+
 /**
  * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
  *
@@ -875,9 +878,22 @@ export function DatasetStoreProvider(props: ParentProps) {
       // this dataset) and publish their manifest — the port registers them for name-based query
       // resolution as part of the same pass.
       // Stale guard: if the user navigated away before this resolves, skip updates.
+      /*
+        Bounded: a read that never answers (a mounted language hanging on the network) would
+        otherwise hold `$modelsPending` — and every query on a model it has not registered — silent
+        forever. At the bound the flag settles and the failure is said once; an answer arriving
+        later still publishes, under the same read guard.
+      */
+      const bound = setTimeout(() => {
+        if (!readIsLatest() || currentDataset()?.id !== uuid || entitiesReadFor() === uuid) return;
+        console.warn(`DatasetStore: foreignSchemas did not answer inside ${FOREIGN_SCHEMAS_WAIT_MS / 1000} s`);
+        setEntitiesReadFor(uuid);
+        toastService.error('Some of this space’s models did not load', undefined, `models:${uuid}`);
+      }, FOREIGN_SCHEMAS_WAIT_MS);
       void (async () => {
         try {
           const manifest = await schemas.foreignSchemas(handle);
+          clearTimeout(bound);
           if (readIsLatest() && currentDataset()?.id === uuid)
             batch(() => {
               // By name, so a list of them — another app's classes in Social DNA — is in order with no sort of its own.
@@ -885,6 +901,7 @@ export function DatasetStoreProvider(props: ParentProps) {
               setEntitiesReadFor(uuid);
             });
         } catch (err) {
+          clearTimeout(bound);
           console.warn('DatasetStore: foreignSchemas failed', err);
           // Read, and answered with nothing: a failed read must not hold back everything that waits on it.
           if (readIsLatest() && currentDataset()?.id === uuid)
@@ -899,7 +916,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       // Switching is a navigation, and a navigation that silently does not happen is the worst
       // failure a store can have: the sidebar highlights the space, the URL says the space, and the
       // content is the previous one's. Console-only, this looked like the app ignoring a click.
-      toastService.error('Could not open that space');
+      // Keyed by the space: failing to open B just after A is a second failure, not a repeat.
+      toastService.error('Could not open that space', undefined, `open-space:${uuid}`);
     }
   }
 

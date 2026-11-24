@@ -780,7 +780,40 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     setViewEnabled: hereOnly('space-settings', 2),
     reorderViews: hereOnly('space-settings', 1),
+    /*
+      The whole section list at once — the lifecycle's "these are this space's sections" write.
+      Same tier and arity guard as `reorderViews` for the same reason: the space id is the last
+      parameter and a template must not name a space it is not standing in.
+    */
+    setSpaceViews: hereOnly('space-settings', 1),
     removeSpaceFromGlobal: destructive('space-admin'),
+
+    /*
+      The Acorn project lifecycle — listing, creating, joining and opening a mounted
+      project, which lands as an ordinary space underneath.
+
+      It looks like `joinSpace`'s act and is `createSpace`'s: each member ends by writing
+      this space's template and views on a dataset the template may never have been in —
+      and join begins by templating and installing a language — so all of it is
+      `space-admin`, the grant `createSpace` keeps rather than being reachable from
+      anywhere that can navigate. A space template still gets the navigation half: it can
+      read `acornAvailable`, see the same rows `spaceList` gives it elsewhere, and ask for
+      the dialog through `shellStore.setAcornProjectsOpen`. The buttons inside that dialog
+      are the host's own chrome, which is where the grant actually runs.
+    */
+    acornAvailable: state('navigation'),
+    acornProjects: state('navigation'),
+    /*
+      The operation's progress/parked-failure state is the same read the project
+      list is — the dialog's own chrome needs it and it names nothing new. The
+      Retry that resumes it stays `space-admin` beside the buttons that parked it.
+    */
+    acornPending: state('navigation'),
+    listAcornProjects: action('space-admin'),
+    openAcornProject: action('space-admin'),
+    joinAcornProject: action('space-admin'),
+    createAcornProject: action('space-admin'),
+    retryAcornProject: action('space-admin'),
 
     // ── agent: this agent's own preferences, private to them ──
     installedModules: state('agent'),
@@ -1208,6 +1241,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       them to a stranger's neighbourhood without a word.
     */
     setJoinSpaceOpen: ambient('navigation'),
+    acornProjectsOpen: state('space-admin'),
+    /*
+      And the Acorn projects dialog, by the same argument twice over: asking for chrome's
+      own dialog is neither joining nor creating — the acts themselves are the spaceStore
+      members above, and keep their own grants.
+    */
+    setAcornProjectsOpen: ambient('navigation'),
     /*
       `host-layout`, like the destructive prompt beside it and for the same reason: the *chrome*
       draws this, and chrome renders at a tier that sees everything, so the classification is about

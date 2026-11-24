@@ -7585,6 +7585,9 @@
         "joinSpaceOpen": {
           "type": "boolean"
         },
+        "acornProjectsOpen": {
+          "type": "boolean"
+        },
         "pendingScreenSources": {
           "type": "array"
         },
@@ -7675,6 +7678,7 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "chooseScreenSource",
         "confirmDestructive",
         "cancelDestructive",
@@ -7728,6 +7732,7 @@
         "closeShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
@@ -7757,6 +7762,7 @@
         "openShellView",
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
+        "setAcornProjectsOpen",
         "chooseScreenSource",
         "scrollToId",
         "beginDockResize",
@@ -7986,6 +7992,16 @@
           "type": "array",
           "properties": ["id", "author", "createdAt"]
         },
+        "acornAvailable": {
+          "type": "boolean"
+        },
+        "acornProjects": {
+          "type": "array",
+          "properties": ["datasetId", "name", "languageAddress"]
+        },
+        "acornPending": {
+          "type": "object"
+        },
         "spaceModuleSettings": {
           "type": "array"
         },
@@ -8059,7 +8075,13 @@
         "updateSpaceImage",
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
+        "setSpaceViews",
         "setSpaceDefaultTheme",
+        "retryAcornProject",
+        "listAcornProjects",
+        "createAcornProject",
+        "joinAcornProject",
+        "openAcornProject",
         "setModuleEnabled",
         "setSpaceModuleSetting",
         "setMyModuleSetting",
@@ -8141,7 +8163,11 @@
         "updateSpaceImage",
         "updateSpaceMeta",
         "setSpaceDefaultTemplate",
+        "setSpaceViews",
         "setSpaceDefaultTheme",
+        "createAcornProject",
+        "joinAcornProject",
+        "openAcornProject",
         "setModuleEnabled",
         "setSpaceModuleSetting",
         "setMyModuleSetting",

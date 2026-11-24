@@ -78,6 +78,7 @@
     "@we/schema-kit": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "@we/schema-solid": "workspace:*",
+    "@we/template-acorn": "workspace:*",
     "@we/template-default": "workspace:*",
     "@we/template-kit": "workspace:*",
     "@we/template-shell": "workspace:*",
