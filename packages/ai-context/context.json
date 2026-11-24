@@ -2409,7 +2409,7 @@
         },
         {
           "name": "onSubmit",
-          "type": "((line: { text: string; marks: string; }) => void)",
+          "type": "((line: { text: string; marks: StandoffMark[]; }) => void)",
           "optional": true
         },
         {
@@ -3869,13 +3869,13 @@
         },
         {
           "name": "installedModules",
-          "type": "string",
+          "type": "json",
           "predicate": "we://installed_modules",
           "required": false
         },
         {
           "name": "moduleSettings",
-          "type": "string",
+          "type": "json",
           "predicate": "we://module_settings",
           "required": false
         }
@@ -4084,7 +4084,7 @@
         },
         {
           "name": "extractionTargets",
-          "type": "string",
+          "type": "json",
           "predicate": "we://extraction_targets",
           "required": false
         }
@@ -5129,19 +5129,19 @@
         },
         {
           "name": "enabledModules",
-          "type": "string",
+          "type": "json",
           "predicate": "we://enabled_modules",
           "required": false
         },
         {
           "name": "enabledViews",
-          "type": "string",
+          "type": "json",
           "predicate": "we://enabled_views",
           "required": false
         },
         {
           "name": "extractionTargets",
-          "type": "string",
+          "type": "json",
           "predicate": "we://extraction_targets",
           "required": false
         },
@@ -5161,13 +5161,13 @@
         },
         {
           "name": "moduleSettings",
-          "type": "string",
+          "type": "json",
           "predicate": "we://module_settings",
           "required": false
         },
         {
           "name": "archivedWorkflows",
-          "type": "string",
+          "type": "json",
           "predicate": "we://archived_workflows",
           "required": false
         },
@@ -5224,19 +5224,19 @@
         },
         {
           "name": "mutedModules",
-          "type": "string",
+          "type": "json",
           "predicate": "we://muted_modules",
           "required": false
         },
         {
           "name": "moduleSettings",
-          "type": "string",
+          "type": "json",
           "predicate": "we://module_settings",
           "required": false
         },
         {
           "name": "hiddenViews",
-          "type": "string",
+          "type": "json",
           "predicate": "we://hidden_views",
           "required": false
         },

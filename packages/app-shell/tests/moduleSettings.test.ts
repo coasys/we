@@ -5,16 +5,16 @@
  * wins and what silence means, and neither needs a dataset to be wrong.
  */
 import type { ModuleSetting } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   clearSetting,
   type LevelValues,
-  parseSettings,
   resolveGroup,
   resolveSetting,
   type SettingGroup,
   settingRows,
+  settingsOf,
   writeSetting,
 } from '../src/shared/moduleSettings';
 
@@ -52,12 +52,17 @@ describe('what a level saying nothing means', () => {
     });
   });
 
-  it('survives a malformed blob rather than taking the space down', () => {
+  it('survives a malformed value rather than taking the space down', () => {
     // One bad write must not make a space unreadable, and the value it resolves to is the default
     // rather than anything inferred from the wreckage.
-    expect(parseSettings('{oh dear')).toEqual({});
-    expect(parseSettings('')).toEqual({});
-    expect(parseSettings('["not", "an", "object"]')).toEqual({});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(settingsOf('{oh dear')).toEqual({});
+    expect(settingsOf(undefined)).toEqual({});
+    expect(settingsOf(['not', 'an', 'object'])).toEqual({});
+    expect(settingsOf({ call: 'not a group', transcribe: { language: 'no' } })).toEqual({
+      transcribe: { language: 'no' },
+    });
+    warn.mockRestore();
   });
 
   it('ignores a value of the wrong shape', () => {
@@ -228,8 +233,8 @@ describe('what a settings screen draws', () => {
 
 describe('writing a level’s opinion', () => {
   it('leaves the other groups and keys alone', () => {
-    const before = JSON.stringify({ call: { video: false }, transcribe: { language: 'no' } });
-    const after = parseSettings(writeSetting(before, 'transcribe', 'recordCalls', false));
+    const before = { call: { video: false }, transcribe: { language: 'no' } };
+    const after = writeSetting(before, 'transcribe', 'recordCalls', false);
 
     expect(after).toEqual({ call: { video: false }, transcribe: { language: 'no', recordCalls: false } });
   });
@@ -237,8 +242,8 @@ describe('writing a level’s opinion', () => {
   it('clears back to having no opinion, rather than to a value', () => {
     // The counterpart of "absent is not off": a reset must remove the key, or the level goes on
     // deciding — with a control that now reads as untouched.
-    const before = writeSetting('', 'transcribe', 'recordCalls', false);
-    expect(parseSettings(clearSetting(before, 'transcribe', 'recordCalls'))).toEqual({});
+    const before = writeSetting(undefined, 'transcribe', 'recordCalls', false);
+    expect(clearSetting(before, 'transcribe', 'recordCalls')).toEqual({});
   });
 });
 

@@ -174,21 +174,21 @@ export const CollectionBlock: CoreEntityDef = {
        */
       autoExtract: { type: 'boolean', predicate: 'we://auto_extract' },
       /**
-       * The models this collection looks for, as a JSON array of entity names — copied from the
+       * The models this collection looks for, as a list of entity names — copied from the
        * space's default (`Space.extractionTargets`) when the collection is made, for `autoExtract`'s
        * reason.
        *
-       * **`'[]'` means none, and that is different from unset.** Unset is a collection made without
-       * a copy, and reads as the space's default; `'[]'` is a conversation whose participants turned
-       * everything off, and extracts nothing. A string rather than one link per model for exactly
-       * that: zero links could not tell the two apart.
+       * **An empty list means none, and that is different from unset.** Unset is a collection made
+       * without a copy, and reads as the space's default; `[]` is a conversation whose participants
+       * turned everything off, and extracts nothing. A value rather than one link per model for
+       * exactly that: zero links could not tell the two apart.
        *
        * Always intersected with the candidates when read, so a model since deleted narrows the list
        * rather than failing the pass. Rewritten whole, so two people toggling in the same instant
        * lose one edit — the trade `Space.enabledModules` makes, and the right one for a list somebody
        * presses occasionally.
        */
-      extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
+      extractionTargets: { type: 'json', predicate: 'we://extraction_targets' },
     },
     relations: {
       // ── Membership ────────────────────────────────────────────────────────────────────

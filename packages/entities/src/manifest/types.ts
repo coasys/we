@@ -37,8 +37,8 @@ export interface AgentSettingsRecord extends RecordInstance {
   useTemplateTheme: boolean;
   followTemplateUpdates: boolean;
   themeScope: string;
-  installedModules: string;
-  moduleSettings: string;
+  installedModules?: unknown;
+  moduleSettings?: unknown;
   hiddenTemplates: TemplateRecord[];
   installedThemes: ThemeRecord[];
   spaceTemplatePreferences: SpaceTemplatePreferenceRecord[];
@@ -88,7 +88,7 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   sourceRef: string;
   sourceName: string;
   autoExtract?: boolean;
-  extractionTargets: string;
+  extractionTargets?: unknown;
   children: string[];
   arranges: string[];
   gathers?: string;
@@ -304,13 +304,13 @@ export interface SpaceRecord extends WeNodeRecord {
   coverImage?: string;
   defaultTemplateId: string;
   defaultThemeId: string;
-  enabledModules: string;
-  enabledViews: string;
-  extractionTargets: string;
+  enabledModules?: unknown;
+  enabledViews?: unknown;
+  extractionTargets?: unknown;
   autoInterpret: boolean;
   threadMode: string;
-  moduleSettings: string;
-  archivedWorkflows: string;
+  moduleSettings?: unknown;
+  archivedWorkflows?: unknown;
   taskWorkflowRule: string;
   location?: LocationBlockRecord;
   taskStates: string[];
@@ -326,9 +326,9 @@ export interface SpaceRecord extends WeNodeRecord {
 
 export interface SpacePreferenceRecord extends WeNodeRecord {
   spaceUuid: string;
-  mutedModules: string;
-  moduleSettings: string;
-  hiddenViews: string;
+  mutedModules?: unknown;
+  moduleSettings?: unknown;
+  hiddenViews?: unknown;
   templateId: string;
   themeId: string;
 }

@@ -129,8 +129,8 @@ export { createJsonShapeStore } from './shapeStore';
 export { decodeTemplateFile, encodeTemplateFile, type StoredSchema, TEMPLATE_FILE_NAME } from './utils/templateFile';
 export {
   collectionInterpretationDefaults,
+  entityListOf,
   LEGACY_INTERPRETATION_TARGETS,
-  parseEntityList,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
   resolveSpaceInterpretationTargets,

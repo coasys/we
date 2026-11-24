@@ -110,8 +110,8 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       // defaults to, which is `default` — so every fixture would photograph the same layout.
       defaultTemplateId: fixture.templateId,
       ...(fixture.themeId || fixture.theme ? { defaultThemeId: fixture.themeId ?? fixture.theme!.id } : {}),
-      ...(fixture.space.enabledViews ? { enabledViews: JSON.stringify(fixture.space.enabledViews) } : {}),
-      ...(fixture.space.enabledModules ? { enabledModules: JSON.stringify(fixture.space.enabledModules) } : {}),
+      ...(fixture.space.enabledViews ? { enabledViews: fixture.space.enabledViews } : {}),
+      ...(fixture.space.enabledModules ? { enabledModules: fixture.space.enabledModules } : {}),
     },
     { id: `${fixture.id}-space` },
   );

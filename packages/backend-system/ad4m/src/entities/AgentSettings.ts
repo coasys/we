@@ -139,7 +139,7 @@ export class AgentSettings extends Ad4mModel {
   themeScope: string = '';
 
   /**
-   * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
+   * Which feature modules this agent wants available to them, anywhere, as a list of ids.
    *
    * The middle of three layers. The deployment's seed says what is shipped; this says what I want
    * from it; `Space.enabledModules` says what a community runs. A module renders only where all
@@ -153,10 +153,10 @@ export class AgentSettings extends Ad4mModel {
    * would broadcast which modules I have turned off to every other member.
    */
   @Property({ through: 'we://installed_modules' })
-  installedModules: string = '';
+  installedModules?: unknown;
 
   /**
-   * What this agent decides about each capability's settings, as JSON.
+   * What this agent decides about each capability's settings, as an object keyed by group.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
    * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -169,7 +169,7 @@ export class AgentSettings extends Ad4mModel {
    * `restrict` setting differs.
    */
   @Property({ through: 'we://module_settings' })
-  moduleSettings: string = '';
+  moduleSettings?: unknown;
 
   /**
    * The library templates this agent took out of their lists — not deleted, only hidden. Every

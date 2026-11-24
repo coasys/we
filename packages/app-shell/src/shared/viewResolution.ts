@@ -27,15 +27,15 @@ export interface ViewSetting {
 }
 
 /**
- * Parse a stored JSON id list, or fall back.
+ * The sections a stored `Space.enabledViews` value says, or the fallback.
  *
  * Three rules, and each exists because of what its opposite would do:
  *
  * - **Unset means "not decided", never "none".** Every space predating views has no value here, so
  *   reading empty as "none" would land as every existing space losing every tab at once.
- * - **Malformed is a corrupt setting, not a decision.** Same fallback, plus a warning — an
- *   unparseable value is a bug somewhere, and answering it with "this space has no sections" hides
- *   the bug behind a plausible-looking empty nav.
+ * - **Not a list is a corrupt setting, not a decision.** Same fallback, plus a warning — such a
+ *   value is a bug somewhere, and answering it with "this space has no sections" hides the bug
+ *   behind a plausible-looking empty nav.
  * - **Order is content.** The stored list is the nav order, so it is preserved exactly rather than
  *   sorted or re-derived.
  *
@@ -45,19 +45,13 @@ export interface ViewSetting {
  * view exists and it is back. Pruning the stored list here would make that one-way.
  */
 export function resolveEnabledViews(
-  raw: string | undefined,
+  stored: unknown,
   known: (id: string) => boolean,
   fallbackOrder: string[],
 ): string[] {
-  if (raw) {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((id): id is string => typeof id === 'string').filter(known);
-      }
-    } catch {
-      console.warn('space.enabledViews is not valid JSON; falling back to the bundled set');
-    }
+  if (Array.isArray(stored)) return stored.filter((id): id is string => typeof id === 'string').filter(known);
+  if (stored !== undefined && stored !== null && stored !== '') {
+    console.warn('space.enabledViews is not a list; falling back to the bundled set');
   }
   return fallbackOrder.filter(known);
 }
@@ -96,15 +90,9 @@ export function preserveUnknownViews(next: string[], stored: string[], known: (i
   return out;
 }
 
-/** Parse a stored JSON id list of exclusions. A malformed one excludes nothing. */
-export function parseIdList(raw: string | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-  } catch {
-    return [];
-  }
+/** The ids a stored list holds — of exclusions, say. Anything that is not a list holds none. */
+export function idListOf(stored: unknown): string[] {
+  return Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [];
 }
 
 /**
@@ -166,14 +154,15 @@ export function routableSections(available: Map<string, TemplateSchema>, order: 
  */
 export function activeSections(opts: {
   routable: ResolvedView[];
-  enabledRaw: string | undefined;
+  /** `Space.enabledViews` as stored. */
+  enabled: unknown;
   hidden: string[];
   fallbackOrder: string[];
 }): ResolvedView[] {
   const byId = new Map(opts.routable.map((view) => [view.id, view]));
   const hidden = new Set(opts.hidden);
 
-  return resolveEnabledViews(opts.enabledRaw, (id) => byId.has(id), opts.fallbackOrder)
+  return resolveEnabledViews(opts.enabled, (id) => byId.has(id), opts.fallbackOrder)
     .filter((id) => !hidden.has(id))
     .map((id) => byId.get(id)!);
 }
@@ -187,13 +176,14 @@ export function activeSections(opts: {
  * wrong, fix for both.
  */
 export function viewSettings(opts: {
-  enabledRaw: string | undefined;
+  /** `Space.enabledViews` as stored. */
+  enabled: unknown;
   hidden: string[];
   available: Map<string, TemplateSchema>;
   fallbackOrder: string[];
   isBuiltIn: (id: string) => boolean;
 }): ViewSetting[] {
-  const enabledOrder = resolveEnabledViews(opts.enabledRaw, (id) => opts.available.has(id), opts.fallbackOrder);
+  const enabledOrder = resolveEnabledViews(opts.enabled, (id) => opts.available.has(id), opts.fallbackOrder);
   const enabled = new Set(enabledOrder);
   const hidden = new Set(opts.hidden);
 

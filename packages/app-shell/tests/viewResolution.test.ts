@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   activeSections,
-  parseIdList,
+  idListOf,
   preserveUnknownViews,
   resolveEnabledViews,
   routableSections,
@@ -45,37 +45,37 @@ describe('resolveEnabledViews', () => {
   it('falls back and warns on a malformed value rather than resolving to nothing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    expect(resolveEnabledViews('{not json', known, FALLBACK)).toEqual(FALLBACK);
+    expect(resolveEnabledViews({ not: 'a list' }, known, FALLBACK)).toEqual(FALLBACK);
     expect(warn).toHaveBeenCalled();
 
     warn.mockRestore();
   });
 
   it('preserves the stored order, because the order is the nav order', () => {
-    expect(resolveEnabledViews('["graph","about"]', known, FALLBACK)).toEqual(['graph', 'about']);
+    expect(resolveEnabledViews(['graph', 'about'], known, FALLBACK)).toEqual(['graph', 'about']);
   });
 
   it('honours an explicit empty list as a real decision', () => {
     // Distinct from unset: somebody turned every section off, which is legal.
-    expect(resolveEnabledViews('[]', known, FALLBACK)).toEqual([]);
+    expect(resolveEnabledViews([], known, FALLBACK)).toEqual([]);
   });
 
   it('drops ids this build does not have, without disturbing the rest', () => {
-    expect(resolveEnabledViews('["about","globe","cards"]', known, FALLBACK)).toEqual(['about', 'cards']);
+    expect(resolveEnabledViews(['about', 'globe', 'cards'], known, FALLBACK)).toEqual(['about', 'cards']);
   });
 
   it('ignores non-string entries', () => {
-    expect(resolveEnabledViews('["about",42,null,"cards"]', known, FALLBACK)).toEqual(['about', 'cards']);
+    expect(resolveEnabledViews(['about', 42, null, 'cards'], known, FALLBACK)).toEqual(['about', 'cards']);
   });
 });
 
-describe('parseIdList', () => {
-  it('reads a list, and treats absent or malformed as excluding nothing', () => {
-    expect(parseIdList('["a","b"]')).toEqual(['a', 'b']);
-    expect(parseIdList(undefined)).toEqual([]);
-    expect(parseIdList('')).toEqual([]);
-    expect(parseIdList('{')).toEqual([]);
-    expect(parseIdList('"a string"')).toEqual([]);
+describe('idListOf', () => {
+  it('reads a list, and treats absent or anything else as excluding nothing', () => {
+    expect(idListOf(['a', 'b'])).toEqual(['a', 'b']);
+    expect(idListOf(undefined)).toEqual([]);
+    expect(idListOf('["a"]')).toEqual([]);
+    expect(idListOf({ a: 1 })).toEqual([]);
+    expect(idListOf(['a', 7, null])).toEqual(['a']);
   });
 });
 
@@ -128,9 +128,9 @@ describe('routableSections', () => {
     const map = available('about', 'cards', 'graph');
     const table = routableSections(map, FALLBACK);
 
-    for (const enabledRaw of [undefined, '[]', '["graph"]', '["graph","about","cards"]']) {
+    for (const enabled of [undefined, [], ['graph'], ['graph', 'about', 'cards']]) {
       for (const hidden of [[], ['about'], ['about', 'cards', 'graph']]) {
-        activeSections({ routable: table, enabledRaw, hidden, fallbackOrder: FALLBACK });
+        activeSections({ routable: table, enabled, hidden, fallbackOrder: FALLBACK });
         expect(routableSections(map, FALLBACK)).toEqual(table);
       }
     }
@@ -143,7 +143,7 @@ describe('activeSections', () => {
   it("keeps only the enabled sections, in the space's own order", () => {
     const sections = activeSections({
       routable: routable(),
-      enabledRaw: '["cards","about"]',
+      enabled: ['cards', 'about'],
       hidden: [],
       fallbackOrder: FALLBACK,
     });
@@ -154,7 +154,7 @@ describe('activeSections', () => {
   it('takes segments from the routable list rather than re-deriving them', () => {
     // If these could disagree the nav would link somewhere the route table has no route for.
     const table = routable();
-    const sections = activeSections({ routable: table, enabledRaw: undefined, hidden: [], fallbackOrder: FALLBACK });
+    const sections = activeSections({ routable: table, enabled: undefined, hidden: [], fallbackOrder: FALLBACK });
 
     for (const section of sections) {
       expect(section.segment).toBe(table.find((r) => r.id === section.id)!.segment);
@@ -164,7 +164,7 @@ describe('activeSections', () => {
   it("removes an agent's hidden sections without disturbing the order of the rest", () => {
     const sections = activeSections({
       routable: routable(),
-      enabledRaw: '["about","cards","graph"]',
+      enabled: ['about', 'cards', 'graph'],
       hidden: ['cards'],
       fallbackOrder: FALLBACK,
     });
@@ -177,7 +177,7 @@ describe('activeSections', () => {
     // members opening the same URL would disagree about whether it exists.
     const sections = activeSections({
       routable: routable(),
-      enabledRaw: '["about"]',
+      enabled: ['about'],
       hidden: [],
       fallbackOrder: [],
     });
@@ -186,7 +186,7 @@ describe('activeSections', () => {
   });
 
   it('carries the view schema through, since the host builds routes out of it', () => {
-    const sections = activeSections({ routable: routable(), enabledRaw: '["about"]', hidden: [], fallbackOrder: [] });
+    const sections = activeSections({ routable: routable(), enabled: ['about'], hidden: [], fallbackOrder: [] });
 
     expect(sections[0].schema.type).toBe('Column');
   });
@@ -201,7 +201,7 @@ describe('viewSettings', () => {
 
   it('lists every available section, including the ones this space has turned off', () => {
     // The settings page must show what is absent — that is the whole point of it.
-    const settings = viewSettings({ ...opts, enabledRaw: '["about"]', hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: ['about'], hidden: [] });
 
     expect(settings.map((s) => s.id)).toEqual(['about', 'cards', 'graph']);
     expect(settings.map((s) => s.enabled)).toEqual([true, false, false]);
@@ -215,7 +215,7 @@ describe('viewSettings', () => {
       It matters more than a mismatch: the list is what a drag reads its result from, so reordering
       against a list that was never showing the real order wrote an order nobody had arranged.
     */
-    const settings = viewSettings({ ...opts, enabledRaw: '["graph","about"]', hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: ['graph', 'about'], hidden: [] });
 
     expect(settings.map((s) => s.id)).toEqual(['graph', 'about', 'cards']);
   });
@@ -223,7 +223,7 @@ describe('viewSettings', () => {
   it('groups the sections the space does not have after the ones it does', () => {
     // They have no position, so there is nothing to sort them by — and keeping them out of the
     // ordered run is what lets the drag zone hold only the rows that have an order.
-    const settings = viewSettings({ ...opts, enabledRaw: '["cards"]', hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: ['cards'], hidden: [] });
 
     expect(settings.map((s) => [s.id, s.enabled])).toEqual([
       ['cards', true],
@@ -242,7 +242,7 @@ describe('viewSettings', () => {
       What makes the write safe is that it can be intersected with the current enabled set, which
       requires the two groups to be distinguishable in the list. They are, by `enabled`.
     */
-    const settings = viewSettings({ ...opts, enabledRaw: '["cards"]', hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: ['cards'], hidden: [] });
     const draggable = settings.filter((s) => s.enabled).map((s) => s.id);
 
     expect(draggable).toEqual(['cards']);
@@ -250,13 +250,13 @@ describe('viewSettings', () => {
 
   it('orders by the space, not by which sections the agent has hidden', () => {
     // Hiding is personal and positionless; it must not move a row for everybody looking at it.
-    const settings = viewSettings({ ...opts, enabledRaw: '["about","cards","graph"]', hidden: ['about'] });
+    const settings = viewSettings({ ...opts, enabled: ['about', 'cards', 'graph'], hidden: ['about'] });
 
     expect(settings.map((s) => s.id)).toEqual(['about', 'cards', 'graph']);
   });
 
   it('reports the two layers separately, so a row can say which one is off', () => {
-    const settings = viewSettings({ ...opts, enabledRaw: '["about","cards"]', hidden: ['cards'] });
+    const settings = viewSettings({ ...opts, enabled: ['about', 'cards'], hidden: ['cards'] });
     const byId = Object.fromEntries(settings.map((s) => [s.id, s]));
 
     expect(byId.about).toMatchObject({ enabled: true, visible: true });
@@ -267,14 +267,14 @@ describe('viewSettings', () => {
   });
 
   it('marks which sections came from the bundle', () => {
-    const settings = viewSettings({ ...opts, enabledRaw: undefined, hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: undefined, hidden: [] });
 
     expect(settings.find((s) => s.id === 'graph')?.builtIn).toBe(false);
     expect(settings.find((s) => s.id === 'about')?.builtIn).toBe(true);
   });
 
   it('carries each section its own name, description and icon for the row to render', () => {
-    const settings = viewSettings({ ...opts, enabledRaw: undefined, hidden: [] });
+    const settings = viewSettings({ ...opts, enabled: undefined, hidden: [] });
 
     expect(settings[0]).toMatchObject({ name: 'about', description: 'the about section', icon: 'square' });
   });

@@ -258,8 +258,10 @@ function formatEntities(models: EntityEntry[]): string {
       meaning nothing. It is the field a text block's entire inline structure lives in, so a schema
       author reading this had a name, a type of `json`, and no way to find out what is in it.
     */
-    'A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth',
-    'knowing: it holds inline structure over `text` as standoff annotations — a JSON array of',
+    'A `json` field holds a structured value — a list or an object, read and written as one, never as',
+    'text to parse — and is not a queryable value. The space settings among them (`Space.enabledViews`,',
+    '`Space.moduleSettings`, …) are read through the spaceStore members that resolve them. `TextBlock.marks` is the',
+    'one worth knowing: it holds inline structure over `text` as standoff annotations — a list of',
     '`{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,',
     '`em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block',
     'with `text` and no `marks` is one unmarked span, which is why a transcriber can write a',

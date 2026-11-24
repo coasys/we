@@ -26,10 +26,10 @@ import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
 import {
   clearSetting,
   type LevelValues,
-  parseSettings,
   resolveGroup,
   type SettingRow,
   settingRows,
+  settingsOf,
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
@@ -115,7 +115,7 @@ import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
 import {
   activeSections,
-  parseIdList,
+  idListOf,
   preserveUnknownViews,
   resolveEnabledViews,
   routableSections,
@@ -144,8 +144,8 @@ import {
 import { toastService } from '@we/components/solid';
 import {
   collectionInterpretationDefaults,
+  entityListOf,
   LEGACY_INTERPRETATION_TARGETS,
-  parseEntityList,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
   resolveSpaceInterpretationTargets,
@@ -253,7 +253,7 @@ export type {
 } from './space/types';
 
 /*
-  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `parseEntityList` and the
+  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `entityListOf` and the
   per-collection resolvers below — lives in `collectionInterpretation` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
@@ -1080,16 +1080,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const preferenceFor = (spaceUuid: string | undefined): SpacePreference | undefined =>
     spaceUuid ? spacePreferences().find((p) => p.spaceUuid === spaceUuid) : undefined;
 
-  const mutedModulesFor = (spaceUuid: string | undefined): string[] => {
-    const raw = preferenceFor(spaceUuid)?.mutedModules;
-    if (!raw) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
-    } catch {
-      return [];
-    }
-  };
+  const mutedModulesFor = (spaceUuid: string | undefined): string[] => idListOf(preferenceFor(spaceUuid)?.mutedModules);
 
   /**
    * Sections this agent has hidden in one space — the private half of the section list.
@@ -1097,8 +1088,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Exclusions, like `mutedModulesFor`: a section the community adds later shows up, because silence
    * about a view is "no opinion" rather than "no".
    */
-  const hiddenViewsFor = (spaceUuid: string | undefined): string[] =>
-    parseIdList(preferenceFor(spaceUuid)?.hiddenViews);
+  const hiddenViewsFor = (spaceUuid: string | undefined): string[] => idListOf(preferenceFor(spaceUuid)?.hiddenViews);
 
   /**
    * This agent's template/theme override for a space, normalised to one of the three values a
@@ -1245,12 +1235,12 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const viewSettingsFor = (
     spaceUuid: string | undefined,
-    raw: string | undefined,
+    enabled: unknown,
     modulesOn: readonly string[],
   ): ViewSetting[] => {
     const off = viewsOffFor(modulesOn);
     return viewSettings({
-      enabledRaw: raw,
+      enabled,
       hidden: hiddenViewsFor(spaceUuid),
       available: new Map([...availableViews()].filter(([id]) => !off.has(id))),
       fallbackOrder: defaultViewOrder(),
@@ -3461,7 +3451,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
   }
 
-  const archivedWorkflows = createMemo<string[]>(() => parseIdList(currentSpace()?.archivedWorkflows), [], {
+  const archivedWorkflows = createMemo<string[]>(() => idListOf(currentSpace()?.archivedWorkflows), [], {
     equals: (a, b) => a.join('\u0000') === b.join('\u0000'),
   });
 
@@ -3474,10 +3464,10 @@ export function SpaceStoreProvider(props: ParentProps) {
     const space = currentSpace();
     if (!ds || !space) return;
     if (!canAdministerCurrentSpace()) throw new Error('Only whoever administers this space can archive its workflows');
-    const current = parseIdList(space.archivedWorkflows);
+    const current = idListOf(space.archivedWorkflows);
     const next = archived ? [...new Set([...current, name])] : current.filter((n) => n !== name);
     if (next.join('\u0000') === current.join('\u0000')) return;
-    await writeSpaceFields(ds, space, { archivedWorkflows: next.length ? JSON.stringify(next) : '' });
+    await writeSpaceFields(ds, space, { archivedWorkflows: next });
   }
 
   /** The state's evidence requirements as stored, for an edit that adds or takes one away. */
@@ -4367,9 +4357,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     const uuid = datasetStore.currentDataset()?.id;
     return {
       deployment: getSeed().settings ?? {},
-      agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
-      space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
-      'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
+      agent: settingsOf(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
+      space: settingsOf(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
+      'agent-in-space': settingsOf(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
     };
   });
 
@@ -4434,8 +4424,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    const stored = space.moduleSettings;
+    const next = value === undefined ? clearSetting(stored, group, key) : writeSetting(stored, group, key, value);
     await writeSpaceFields(ds, space, { moduleSettings: next });
   }
 
@@ -4448,15 +4438,15 @@ export function SpaceStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    const raw = preferenceFor(uuid)?.moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    const stored = preferenceFor(uuid)?.moduleSettings;
+    const next = value === undefined ? clearSetting(stored, group, key) : writeSetting(stored, group, key, value);
     await updateSpacePreference(uuid, { moduleSettings: next });
   }
 
   /** The same, for this agent everywhere. Also private, and also the root dataset. */
   async function setAgentModuleSetting(group: string, key: string, value?: SettingValue): Promise<void> {
-    const raw = datasetStore.agentSettings()?.moduleSettings;
-    const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
+    const stored = datasetStore.agentSettings()?.moduleSettings;
+    const next = value === undefined ? clearSetting(stored, group, key) : writeSetting(stored, group, key, value);
     await datasetStore.updateAgentSettings({ moduleSettings: next });
   }
 
@@ -4499,7 +4489,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * watch for a call its participants had switched off for the moment it took to read.
    */
   const [collectionSettings, setCollectionSettings] = createSignal<
-    Record<string, { autoExtract?: boolean; extractionTargets?: string }>
+    Record<string, { autoExtract?: boolean; extractionTargets?: unknown }>
   >({});
   const [loadedCollections, setLoadedCollections] = createSignal<ReadonlySet<string>>(new Set());
   const [askedCollections, setAskedCollections] = createSignal<string[]>([]);
@@ -4610,7 +4600,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function writeCollectionSettings(
     collectionId: string,
-    fields: { autoExtract?: boolean; extractionTargets?: string },
+    fields: { autoExtract?: boolean; extractionTargets?: string[] },
     what: string,
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
@@ -4651,11 +4641,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(interpretationTargetsFor(collectionId));
     if (on) next.add(entity);
     else next.delete(entity);
-    await writeCollectionSettings(
-      collectionId,
-      { extractionTargets: JSON.stringify([...next]) },
-      'what this interprets',
-    );
+    await writeCollectionSettings(collectionId, { extractionTargets: [...next] }, 'what this interprets');
   }
 
   /**
@@ -4878,7 +4864,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const spaceViews = createMemo<ResolvedView[]>(() =>
     activeSections({
       routable: routableHere(),
-      enabledRaw: currentSpace()?.enabledViews,
+      enabled: currentSpace()?.enabledViews,
       hidden: hiddenViewsFor(datasetStore.currentDataset()?.id),
       fallbackOrder: defaultViewOrder(),
     }),
@@ -4899,7 +4885,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const enabledViewIds = createMemo<string[]>(() =>
     activeSections({
       routable: routableHere(),
-      enabledRaw: currentSpace()?.enabledViews,
+      enabled: currentSpace()?.enabledViews,
       hidden: [],
       fallbackOrder: defaultViewOrder(),
     }).map((view) => view.id),
@@ -5254,7 +5240,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Writes the resolved list, so the first toggle pins whatever was on by fallback — the same
     // reason `setModuleEnabled` does, and the same consequence: a module added to the seed later
     // will not silently appear for an agent who has already decided.
-    await datasetStore.updateAgentSettings({ installedModules: JSON.stringify([...next]) });
+    await datasetStore.updateAgentSettings({ installedModules: [...next] });
   }
 
   /**
@@ -5289,7 +5275,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(mutedModulesFor(uuid));
     if (visible) next.delete(moduleId);
     else next.add(moduleId);
-    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) });
+    await updateSpacePreference(uuid, { mutedModules: [...next] });
   }
 
   /**
@@ -5688,11 +5674,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     const save = defaultSaveFor(ds, 'extractionTargets');
     const isNewest = save.ops.begin();
     const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
-    const current = parseEntityList(base) ?? LEGACY_INTERPRETATION_TARGETS;
+    const current = entityListOf(base) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
-    const extractionTargets = JSON.stringify([...next]);
+    const extractionTargets = [...next];
     save.value = extractionTargets;
     save.pending += 1;
     try {
@@ -5721,7 +5707,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Writes the resolved list, not a diff — so the first toggle also pins everything that was on by
     // fallback, and a module added to the seed later doesn't silently appear in a space that had
     // already made a decision.
-    await writeSpaceFields(ds, space, { enabledModules: JSON.stringify([...next]) });
+    await writeSpaceFields(ds, space, { enabledModules: [...next] });
   }
 
   /**
@@ -5789,8 +5775,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       `preserveUnknownViews`.
     */
     const available = availableViews();
-    const merged = preserveUnknownViews(viewIds, parseIdList(space.enabledViews), (id) => available.has(id));
-    await writeSpaceFields(ds, space, { enabledViews: JSON.stringify(merged) });
+    const merged = preserveUnknownViews(viewIds, idListOf(space.enabledViews), (id) => available.has(id));
+    await writeSpaceFields(ds, space, { enabledViews: merged });
   }
 
   /**
@@ -5806,7 +5792,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(hiddenViewsFor(uuid));
     if (visible) next.delete(viewId);
     else next.add(viewId);
-    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) });
+    await updateSpacePreference(uuid, { hiddenViews: [...next] });
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
@@ -5959,8 +5945,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     string,
     {
       key: string;
-      confirmed: string | undefined;
-      value: string | undefined;
+      /** The field's value — an id for a default, a list of entity names for the interpretation list. */
+      confirmed: unknown;
+      value: unknown;
       ops: Latest;
       pending: number;
       tail: Promise<unknown>;
@@ -5976,7 +5963,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const fields: Partial<Space> = {};
     for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
       const save = defaultSaves.get(`${ds.id}:${field}`);
-      if (save) fields[field] = save.value;
+      if (save) (fields as Record<string, unknown>)[field] = save.value;
     }
     return fields;
   };
@@ -6049,7 +6036,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       save.confirmed = templateId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed });
+      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed as string | undefined });
       throw error;
     } finally {
       save.pending -= 1;
@@ -6073,7 +6060,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       save.confirmed = themeId;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed });
+      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed as string | undefined });
       throw error;
     } finally {
       save.pending -= 1;

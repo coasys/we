@@ -172,8 +172,7 @@ export function starterSettings(starter: SpaceStarter | undefined): Record<strin
   const fields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(starter.settings ?? {})) {
     if (IDENTITY_FIELDS.has(key) || isReferenceValue(value)) continue;
-    // `enabledModules`, `enabledViews` and `extractionTargets` hold their list as one JSON string.
-    fields[key] = Array.isArray(value) ? JSON.stringify(value) : value;
+    fields[key] = value;
   }
   return fields;
 }

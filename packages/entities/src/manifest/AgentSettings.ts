@@ -99,7 +99,7 @@ export const AgentSettings: CoreEntityDef = {
        */
       themeScope: { type: 'string', predicate: 'we://theme_scope', default: '' },
       /**
-       * Which feature modules this agent wants available to them, anywhere, as a JSON array of ids.
+       * Which feature modules this agent wants available to them, anywhere, as a list of ids.
        *
        * The middle of three layers. The deployment's seed says what is shipped; this says what I want
        * from it; `Space.enabledModules` says what a community runs. A module renders only where all
@@ -112,9 +112,9 @@ export const AgentSettings: CoreEntityDef = {
        * Mine, so it lives in the root dataset rather than in any space. Writing it into a shared space
        * would broadcast which modules I have turned off to every other member.
        */
-      installedModules: { type: 'string', predicate: 'we://installed_modules', default: '' },
+      installedModules: { type: 'json', predicate: 'we://installed_modules' },
       /**
-       * What this agent decides about each capability's settings, as JSON.
+       * What this agent decides about each capability's settings, as an object keyed by group.
        *
        * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
        * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -126,7 +126,7 @@ export const AgentSettings: CoreEntityDef = {
        * has an opinion. See `moduleSettings.ts` in the app shell for the order and for how a
        * `restrict` setting differs.
        */
-      moduleSettings: { type: 'string', predicate: 'we://module_settings', default: '' },
+      moduleSettings: { type: 'json', predicate: 'we://module_settings' },
     },
     relations: {
       /**

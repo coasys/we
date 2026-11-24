@@ -47,21 +47,22 @@ export class Space extends WeNode {
   defaultThemeId: string = '';
 
   /**
-   * Which feature modules this community has turned on, as a JSON array of module ids.
+   * Which feature modules this community has turned on, as a list of module ids.
    *
    * **Empty means "not decided", not "none".** A space created before this field existed, or by an
    * agent who never opened the setting, must keep rendering the chrome it always had — so an unset
    * value falls back to the modules the deployment's seed activated. Treating empty as "none" would
    * silently strip existing spaces of every module the moment this shipped.
    *
-   * A JSON string rather than a relation because the values are ids from the seed, not entities in
-   * the perspective — the same shape `AgentSettings.datasetOrder` uses for an ordered id list.
+   * A value rather than a relation because the values are ids from the seed, not records in the
+   * space. Written whole, so two people toggling at the same moment keep only the later list — the
+   * trade every setting here makes, and the right one for something pressed occasionally.
    */
   @Property({ through: 'we://enabled_modules' })
-  enabledModules: string = '';
+  enabledModules?: unknown;
 
   /**
-   * Which sections this community's spaces have, and in what order — a JSON array of view ids.
+   * Which sections this community's spaces have, and in what order — a list of view ids.
    *
    * The community's decision, exactly as `enabledModules` is: every member sees the same
    * sections, because "what is in this space" is a fact about the space rather than a preference
@@ -73,15 +74,15 @@ export class Space extends WeNode {
    * as every existing space silently losing every tab.
    *
    * Ordered, and the order is the nav order: this is the one field a community reorders its own
-   * sections by. A JSON string rather than a relation because the values are ids from a registry
-   * or a marketplace, not entities in the perspective — the shape `datasetOrder` already uses.
+   * sections by. A value rather than a relation because the values are ids from a registry or a
+   * marketplace, not records in the space.
    */
   @Property({ through: 'we://enabled_views' })
-  enabledViews: string = '';
+  enabledViews?: unknown;
 
   /**
    * Which candidate models a new collection here starts out interpreting — a call, a channel, the
-   * space's own collection — as a JSON array of entity names.
+   * space's own collection — as a list of entity names.
    *
    * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
    * a question about whether an LLM *could* mint one, answered by the codebase; this says which
@@ -101,11 +102,11 @@ export class Space extends WeNode {
    * nothing regresses; the first toggle writes the resolved list and the community owns it
    * thereafter.
    *
-   * A JSON string rather than a relation because the values are entity *names* — there is
-   * nothing in the perspective to point at. Same shape as `enabledModules` and `enabledViews`.
+   * A value rather than a relation because the values are entity *names* — there is no record
+   * to point at. Same shape as `enabledModules` and `enabledViews`.
    */
   @Property({ through: 'we://extraction_targets' })
-  extractionTargets: string = '';
+  extractionTargets?: unknown;
 
   /**
    * Whether a new collection here is interpreted as it grows — a call as it happens, a channel as
@@ -150,7 +151,7 @@ export class Space extends WeNode {
   threadMode: string = 'fractal';
 
   /**
-   * What this community decides about each capability's settings, as JSON.
+   * What this community decides about each capability's settings, as an object keyed by group.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
    * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -178,20 +179,20 @@ export class Space extends WeNode {
    * override** — one is not evidence the resolver needs one. Recording is the one to watch.
    */
   @Property({ through: 'we://module_settings' })
-  moduleSettings: string = '';
+  moduleSettings?: unknown;
 
   /**
-   * The workflows this space has put away, by name — a JSON list. An archived workflow is kept, so the
+   * The workflows this space has put away, by name — a list. An archived workflow is kept, so the
    * records going through it still show and can still finish, but it is not offered for starting
    * on anything new and is listed apart.
    *
    * A property of the space rather than of the workflow, because archiving is how this community
    * arranges its workflows, not part of what a workflow is: the backend holds the definition, and a
-   * definition knows nothing about being put away. A JSON string for `enabledViews`' reason —
-   * the values are names, not entities.
+   * definition knows nothing about being put away. A value rather than a relation for
+   * `enabledViews`' reason — the values are names, not records.
    */
   @Property({ through: 'we://archived_workflows' })
-  archivedWorkflows: string = '';
+  archivedWorkflows?: unknown;
 
   /**
    * How a task may move between this space's states, in their order: empty for anywhere (a board

@@ -674,7 +674,7 @@ export function DatasetStoreProvider(props: ParentProps) {
 
   /** The stored fields of an `AgentSettings` record — its keys minus its methods. */
   type AgentSettingsField = {
-    [K in keyof AgentSettings]: AgentSettings[K] extends (...args: never[]) => unknown ? never : K;
+    [K in keyof AgentSettings]-?: AgentSettings[K] extends (...args: never[]) => unknown ? never : K;
   }[keyof AgentSettings];
 
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {

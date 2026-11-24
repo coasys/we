@@ -40,16 +40,17 @@ export class SpacePreference extends WeNode {
   spaceUuid: string = '';
 
   /**
-   * Module ids this agent has muted here, as a JSON array.
+   * Module ids this agent has muted here, as a list.
    *
    * A list of exclusions rather than of inclusions, so a module the community enables later still
    * appears — silence about a module means "no opinion", not "no".
    */
   @Property({ through: 'we://muted_modules' })
-  mutedModules: string = '';
+  mutedModules?: unknown;
 
   /**
-   * What this agent, in this space, decides about each capability's settings, as JSON.
+   * What this agent, in this space, decides about each capability's settings, as an object keyed
+   * by group.
    *
    * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
    * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
@@ -62,10 +63,10 @@ export class SpacePreference extends WeNode {
    * `restrict` setting differs.
    */
   @Property({ through: 'we://module_settings' })
-  moduleSettings: string = '';
+  moduleSettings?: unknown;
 
   /**
-   * View ids this agent has hidden here, as a JSON array.
+   * View ids this agent has hidden here, as a list.
    *
    * The private half of the section list: the community decides which sections a space *has*
    * (`Space.enabledViews`), and this decides which of them one agent bothers to see. Kept apart
@@ -77,7 +78,7 @@ export class SpacePreference extends WeNode {
    * adds later appears, because silence about a view means "no opinion", not "no".
    */
   @Property({ through: 'we://hidden_views' })
-  hiddenViews: string = '';
+  hiddenViews?: unknown;
 
   /**
    * The template this agent wants when they open this space, overriding the space's default.

@@ -1704,7 +1704,7 @@ The first phrase is drawn in full before anything types, so the line reads right
 - AudioDisplay
   Props: title: string | undefined, artist: string | undefined, audioUrl: string | undefined, duration: number | undefined, albumArt: string | undefined
 - BlockComposer (DesignSystemElement)
-  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; submit: () => void; focus: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean, compact?: boolean, onSubmit?: ((line: { text: string; marks: string; }) => void), placeholder?: string
+  Props: editorState?: EditorStateInput, dataset?: unknown, onSave?: ((document: ContentDocument) => void), onReady?: ((api: { save: () => void; submit: () => void; focus: () => void; }) => void), onDirtyChange?: ((dirty: boolean) => void), mentions?: MentionCandidate[], collaborate?: string, autoFocus?: boolean, handles?: boolean, compact?: boolean, onSubmit?: ((line: { text: string; marks: StandoffMark[]; }) => void), placeholder?: string
 - BlockRenderer (DesignSystemElement)
   Props: editorState?: EditorStateInput, dataset?: unknown, blockDrag?: BlockDragSource, rootClass?: string
 - CalloutDisplay
@@ -2556,8 +2556,10 @@ zIndex: 'dropdown', 'sticky', 'chrome', 'modal', 'popover', 'toast', 'tooltip'
 
 Available data models for $query and store data:
 
-A `json` field is a stored blob rather than a queryable value. `TextBlock.marks` is the one worth
-knowing: it holds inline structure over `text` as standoff annotations — a JSON array of
+A `json` field holds a structured value — a list or an object, read and written as one, never as
+text to parse — and is not a queryable value. The space settings among them (`Space.enabledViews`,
+`Space.moduleSettings`, …) are read through the spaceStore members that resolve them. `TextBlock.marks` is the
+one worth knowing: it holds inline structure over `text` as standoff annotations — a list of
 `{ start, end, type, ...data }` ranges, offsets in Unicode **code points** — with types `strong`,
 `em`, `underline`, `strike`, `code`, `link` (`href`), `nodeLink` and `mention` (`did`). A block
 with `text` and no `marks` is one unmarked span, which is why a transcriber can write a
@@ -2583,8 +2585,8 @@ AgentSettings extends Ad4mModel:
   - useTemplateTheme: boolean = true [we://use_template_theme]
   - followTemplateUpdates: boolean = false [we://follow_template_updates]
   - themeScope: string [we://theme_scope]
-  - installedModules: string [we://installed_modules]
-  - moduleSettings: string [we://module_settings]
+  - installedModules: json [we://installed_modules]
+  - moduleSettings: json [we://module_settings]
   Relations:
   - hiddenTemplates: HasMany → Template [we://hidden_template]
   - installedThemes: HasMany → Theme [we://installed_theme]
@@ -2626,7 +2628,7 @@ CollectionBlock extends WeNode:
   - sourceRef: string [we://source_ref]
   - sourceName: string [we://source_name]
   - autoExtract: boolean [we://auto_extract]
-  - extractionTargets: string [we://extraction_targets]
+  - extractionTargets: json [we://extraction_targets]
   Relations:
   - children: HasMany [we://child]
   - arranges: HasMany [we://arranges]
@@ -2840,13 +2842,13 @@ Space extends WeNode:
   - coverImage: string [we://thumbnail]
   - defaultTemplateId: string [we://default_template_id]
   - defaultThemeId: string [we://default_theme_id]
-  - enabledModules: string [we://enabled_modules]
-  - enabledViews: string [we://enabled_views]
-  - extractionTargets: string [we://extraction_targets]
+  - enabledModules: json [we://enabled_modules]
+  - enabledViews: json [we://enabled_views]
+  - extractionTargets: json [we://extraction_targets]
   - autoInterpret: boolean = true [we://auto_interpret]
   - threadMode: string = 'fractal' [we://thread_mode]
-  - moduleSettings: string [we://module_settings]
-  - archivedWorkflows: string [we://archived_workflows]
+  - moduleSettings: json [we://module_settings]
+  - archivedWorkflows: json [we://archived_workflows]
   - taskWorkflowRule: string [we://task_workflow_rule]
   Relations:
   - location: HasOne → LocationBlock [we://location]
@@ -2858,9 +2860,9 @@ Space extends WeNode:
 SpacePreference extends WeNode:
   Fields:
   - spaceUuid: string [we://space_uuid]
-  - mutedModules: string [we://muted_modules]
-  - moduleSettings: string [we://module_settings]
-  - hiddenViews: string [we://hidden_views]
+  - mutedModules: json [we://muted_modules]
+  - moduleSettings: json [we://module_settings]
+  - hiddenViews: json [we://hidden_views]
   - templateId: string [we://template_id]
   - themeId: string [we://theme_id]
 

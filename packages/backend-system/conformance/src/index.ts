@@ -37,6 +37,7 @@ import { CORE_MANIFEST } from '@we/entities/manifest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
+import { describeJsonValues, JSON_VALUE_CASES, type JsonValueCase } from './jsonValues';
 import {
   describeOperations,
   OPERATION_CASES,
@@ -53,6 +54,8 @@ import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 export {
   EMPTY_VALUE_CASES,
   type EmptyValueCase,
+  JSON_VALUE_CASES,
+  type JsonValueCase,
   OPERATION_CASES,
   OPERATION_CONFORMANCE_CASES,
   type OperationCase,
@@ -191,11 +194,12 @@ export const CONFORMANCE_CASES = [
 ] as const;
 
 /**
- * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, grouped and
- * named writes, relation writes in the batch that created the record, and the template queries.
+ * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
+ * values, grouped and named writes, relation writes in the batch that created the record, and the
+ * template queries.
  */
 export type ConformanceCase =
-  (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | WriteCase | SameBatchCase | TemplateQueryCase;
+  (typeof CONFORMANCE_CASES)[number] | EmptyValueCase | JsonValueCase | WriteCase | SameBatchCase | TemplateQueryCase;
 
 interface Row {
   id: string;
@@ -1166,6 +1170,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
   });
 
   describeEmptyValues(name, harness, timeout);
+  describeJsonValues(name, harness, timeout);
   describeWriteCases(name, harness, timeout);
   describeSameBatch(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);

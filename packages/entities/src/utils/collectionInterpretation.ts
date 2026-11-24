@@ -24,8 +24,8 @@
  *
  * ## Absent is not off
  *
- * Unset (`undefined`, or `''` for the list) is a collection made without a copy, and defers to the
- * space. `'[]'` is a conversation whose participants turned everything off, and answers `[]`.
+ * Unset is a collection made without a copy, and defers to the space. An empty list is a
+ * conversation whose participants turned everything off, and answers `[]`.
  */
 
 /**
@@ -39,21 +39,14 @@
 export const LEGACY_INTERPRETATION_TARGETS = ['TaskBlock', 'EventBlock'];
 
 /**
- * A JSON array of entity names as stored on `Space.extractionTargets` and
- * `CollectionBlock.extractionTargets`.
+ * The entity names `Space.extractionTargets` or `CollectionBlock.extractionTargets` holds.
  *
- * `null` means "nothing was written" and is the caller's cue to defer to the level above. It is
- * distinct from `[]`, which is a decision to extract nothing — the reason this is a string rather
- * than a set of links.
+ * `null` means "nothing was written" — or something that is not a list, which is no decision
+ * either — and is the caller's cue to defer to the level above. It is distinct from `[]`, which is
+ * a decision to extract nothing: the reason this is a value rather than a set of links.
  */
-export function parseEntityList(raw: string | undefined | null): string[] | null {
-  if (raw === undefined || raw === null || raw === '') return null;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : null;
-  } catch {
-    return null;
-  }
+export function entityListOf(value: unknown): string[] | null {
+  return Array.isArray(value) ? value.filter((name): name is string => typeof name === 'string') : null;
 }
 
 /**
@@ -66,11 +59,8 @@ export function parseEntityList(raw: string | undefined | null): string[] | null
  * extraction. Order follows `candidates` so a list reads the same way every time rather than in
  * whatever order somebody happened to tick things.
  */
-export function resolveSpaceInterpretationTargets(
-  candidates: readonly string[],
-  spaceRaw: string | undefined,
-): string[] {
-  const chosen = parseEntityList(spaceRaw) ?? LEGACY_INTERPRETATION_TARGETS;
+export function resolveSpaceInterpretationTargets(candidates: readonly string[], spaceTargets: unknown): string[] {
+  const chosen = entityListOf(spaceTargets) ?? LEGACY_INTERPRETATION_TARGETS;
   return candidates.filter((entity) => chosen.includes(entity));
 }
 
@@ -80,11 +70,11 @@ export function resolveSpaceInterpretationTargets(
  */
 export function resolveCollectionInterpretationTargets(
   candidates: readonly string[],
-  spaceRaw: string | undefined,
-  ownRaw: string | undefined,
+  spaceTargets: unknown,
+  ownTargets: unknown,
 ): string[] {
-  const own = parseEntityList(ownRaw);
-  if (!own) return resolveSpaceInterpretationTargets(candidates, spaceRaw);
+  const own = entityListOf(ownTargets);
+  if (!own) return resolveSpaceInterpretationTargets(candidates, spaceTargets);
   return candidates.filter((entity) => own.includes(entity));
 }
 
@@ -104,12 +94,12 @@ export function resolveCollectionAutoInterpret(spaceAuto: boolean, own: boolean 
  * collection reads as off wherever there is no space to defer to.
  */
 export function collectionInterpretationDefaults(
-  space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
-): { autoExtract: boolean; extractionTargets: string } | undefined {
+  space: { autoInterpret?: boolean; extractionTargets?: unknown } | null | undefined,
+): { autoExtract: boolean; extractionTargets: string[] } | undefined {
   if (!space) return undefined;
   return {
     autoExtract: space.autoInterpret === true,
-    extractionTargets: JSON.stringify(parseEntityList(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS),
+    extractionTargets: [...(entityListOf(space.extractionTargets) ?? LEGACY_INTERPRETATION_TARGETS)],
   };
 }
 
@@ -124,7 +114,7 @@ export function collectionInterpretationDefaults(
 export function withInterpretationDefaults(
   entity: string,
   fields: Record<string, unknown>,
-  space: { autoInterpret?: boolean; extractionTargets?: string } | null | undefined,
+  space: { autoInterpret?: boolean; extractionTargets?: unknown } | null | undefined,
 ): Record<string, unknown> {
   if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields) return fields;
   const defaults = collectionInterpretationDefaults(space);
