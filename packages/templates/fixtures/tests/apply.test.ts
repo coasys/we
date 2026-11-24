@@ -119,7 +119,7 @@ describe('editor state', () => {
   });
 
   it('encodes UTF-8 the way the app does, and the app decodes it back exactly', () => {
-    // `createBlocks` writes base64 of the UTF-8 bytes; `decodeEditorState` reads it with a
+    // Writing a post stores base64 of the UTF-8 bytes; `decodeEditorState` reads it with a
     // TextDecoder. A bare `atob` — what the app used to do — yields Latin-1 mojibake, which is why
     // fixture bodies were kept ASCII for a while. They need not be any more.
     const bytes = atob(editorState(['Sørensen']).split(';base64,')[1]);

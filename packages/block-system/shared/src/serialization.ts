@@ -326,7 +326,7 @@ function isFileData(value: unknown): value is FileData {
 function normalizeInput(input: ContentInput): { blocks: ContentBlock[]; base?: string[] } {
   if (isContentDocument(input)) return { blocks: input.blocks, base: input.base };
   if (isContentBlockArray(input)) return { blocks: input };
-  throw new Error('createBlocks: the content is not a composition (expected blocks or a document)');
+  throw new Error('The content is not a composition (expected blocks or a document)');
 }
 
 // ── File assets ──────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ export async function resolveExpressionAddresses(
  *
  * - **Its files are addresses in this dataset's storage.** Nobody outside the dataset can fetch
  *   them, so a copy that kept them would draw a broken picture for everybody but its author. They
- *   are resolved to payloads here, and `createBlocks` in the destination uploads them again — under
+ *   are resolved to payloads here, and writing the post in the destination uploads them again — under
  *   their original names, which `resolveExpressionAddresses` carries forward.
  * - **Its keys are record ids in this dataset.** In another they name nothing, so they come off.
  *
@@ -519,7 +519,7 @@ async function writeCompositionState(
 /**
  * Derive a composition's stored document from the blocks already inside it.
  *
- * For a composition written record by record rather than through `createBlocks` — a space
+ * For a composition written record by record rather than through `core.createPost` — a space
  * starter's posts, say, which arrive as a `CollectionBlock` and the blocks it contains. Until this
  * runs the root stores no document, and a renderer, which draws from the stored document alone for
  * speed, shows it empty. Answers whether there was a composition to write.
@@ -561,104 +561,6 @@ async function writeMentions(root: RecordInstance, blocks: readonly ContentBlock
  */
 export type BlockAnchor = ParentRef;
 
-export interface CreateBlocksOptions {
-  /** Free label stamped onto the root saying what it is for — see the discussion below. */
-  kind?: string;
-  /**
-   * Who owns the root's children (`'document'` | `'feed'` | `'collaborative'`).
-   *
-   * Defaults to `'document'` **when a `kind` is given**, because everything this function creates
-   * is a composed artifact: it persists an editor's document, which is the definition of document
-   * mode. A feed container is not made here — it is made with `record.create` and named by its
-   * template — so the default is right for every caller of this function and wrong for none.
-   *
-   * Left unset when no `kind` is given, so a caller that opts out of the whole vocabulary writes
-   * neither field and reads back as legacy.
-   */
-  mode?: CollectionMode;
-  /** Attach the root to something that already exists. See {@link BlockAnchor}. */
-  anchor?: BlockAnchor;
-  /**
-   * An open write group to join, instead of opening one.
-   *
-   * For a caller whose act is larger than composing a document — creating a card *and* recording
-   * where it sits on a board. Without it the two commit separately and anything watching the data
-   * layer catches the state between them, which on a board looked like the card appearing
-   * unpositioned and then moving.
-   */
-  batchId?: string;
-  /**
-   * Scalars to set on the root beside `kind` and `mode`, in the same save — where a copied post
-   * came from (`sourceRef`, `sourceName`). Only fields the root's model declares are written.
-   */
-  fields?: Record<string, string>;
-  /**
-   * Relations to set on the root as it is created, by name: a to-one as the single-entry list the
-   * model layer takes (`{ generatedBy: [runId] }`). In the create itself rather than after it, so
-   * the root is never seen without them.
-   */
-  relations?: Record<string, string[]>;
-}
-
-/**
- * Create the block models for a composition, in one write group via runEntityTransaction — if any
- * block creation or linking fails, commitBatch() is never called.
- *
- * Parent-child relationships are established via the `children` relation on the root and on any
- * nested collection.
- *
- * `kind` stamps what the collection is onto the root — `'post'` for a post. Supplied by the caller
- * rather than assumed here, because not every root composition is a post: the block system knows
- * how to persist a document, not what the document is for. It is the only discriminator a reader
- * has, so a caller writing something it means to be found should always pass one.
- *
- * Mutates the blocks handed in: every persisted block gets its `_key` stamped, so a caller holding
- * the document can reconcile against it later.
- */
-export async function createBlocks(
-  perspective: BlockDataset,
-  input: ContentInput,
-  options: CreateBlocksOptions = {},
-): Promise<BlockRecord | undefined> {
-  const { kind, mode = kind ? 'document' : undefined, anchor, batchId, fields, relations } = options;
-  const { blocks } = normalizeInput(input);
-  const registration = getBlockRegistration('root') ?? getBlockRegistration('collection');
-  if (!registration) throw new Error('createBlocks: no collection model is registered');
-
-  return runEntityTransaction(
-    perspective,
-    async (tx) => {
-      // The file store wants addresses, not payloads; upload before anything is written so the
-      // records and the blob agree about every asset.
-      const uploaded = await preUploadFileAssets(perspective, blocks);
-      const root = (await registration.model.create(
-        perspective,
-        { ...relations },
-        {
-          batchId: tx.batchId,
-          ...(anchor && { parent: anchor }),
-        },
-      )) as BlockRecord;
-
-      // Models are written from the author's blocks (file payloads), the blob from the uploaded
-      // copies (file addresses); the two walk in lockstep so every key lands on both.
-      for (let i = 0; i < blocks.length; i++) await persistBlock(perspective, tx.batchId, blocks[i], uploaded[i], root);
-
-      // Assigned before the blob write below so both land in that one `save`, rather than costing a
-      // second round trip for one string.
-      if (kind && 'kind' in root) root.kind = kind;
-      if (mode && 'mode' in root) root.mode = mode;
-      for (const [name, value] of Object.entries(fields ?? {})) {
-        if (value && name in root) root[name] = value;
-      }
-
-      await writeCompositionState(root, uploaded, tx.batchId);
-      return root;
-    },
-    { batchId },
-  );
-}
-
 // ── A post, as a declared operation ─────────────────────────────────────────────
 
 export interface WritePostOptions {
@@ -666,7 +568,12 @@ export interface WritePostOptions {
   invoker: string;
   /** What the root is for — see `CreateBlocksOptions.kind`. */
   kind?: string;
-  /** Who owns the root's children; `'document'` when a `kind` is given, as `createBlocks` has it. */
+  /**
+   * Who owns the root's children (`'document'` | `'feed'` | `'collaborative'`). Defaults to
+   * `'document'` when a `kind` is given: what is written here persists an editor's document, which
+   * is what document mode is. Left unset with no `kind`, so a caller outside the vocabulary writes
+   * neither field.
+   */
   mode?: CollectionMode;
   /** Scalars beside `kind` and `mode` — where a copied post came from. Only the root's own fields are written. */
   fields?: Record<string, string>;
@@ -678,6 +585,14 @@ export interface WritePostOptions {
   generatedBy?: string;
   /** The invocation's id — a replay supplies the original; otherwise a fresh one. */
   invocationId?: string;
+}
+
+export interface PlanPostOptions extends Omit<WritePostOptions, 'invoker'> {
+  /**
+   * Where `core.createPost` runs inside the operation invoked, when another operation calls it —
+   * `COMPOSE_CARD_POST` for a card composed on a canvas — so the blocks' planned ids match.
+   */
+  within?: readonly string[];
 }
 
 /** One block as `core.createPost` takes it. */
@@ -699,15 +614,15 @@ interface PlannedBlock {
  * reply's thread subject is read here too (`threadSubject`), since which entity it is is something
  * only a read can say.
  *
- * Stamps `_key` onto the blocks handed in, as `createBlocks` does, so a composer holding the document
- * can reconcile against it later.
+ * Stamps `_key` onto the blocks handed in, so a composer holding the document can reconcile against
+ * it later.
  */
 export async function planPost(
   perspective: BlockDataset,
   input: ContentInput,
-  options: Omit<WritePostOptions, 'invoker'> = {},
+  options: PlanPostOptions = {},
 ): Promise<{ invocationId: string; args: Record<string, unknown> }> {
-  const { kind, mode = kind ? 'document' : undefined, fields, container, respondsTo, generatedBy } = options;
+  const { kind, mode = kind ? 'document' : undefined, fields, container, respondsTo, generatedBy, within } = options;
   const invocationId = options.invocationId ?? crypto.randomUUID();
   const { blocks } = normalizeInput(input);
   const uploaded = await preUploadFileAssets(perspective, blocks);
@@ -724,7 +639,7 @@ export async function planPost(
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
       if (!registration) continue;
       const key = path ? `${path}.${i}` : String(i);
-      const id = await postBlockId(invocationId, key);
+      const id = await postBlockId(invocationId, key, within);
       block._key = id;
       if (stored[i]) stored[i]._key = id;
       planned.push({
@@ -1016,7 +931,7 @@ export async function reconcileBlocks(
     throw new Error(
       `reconcileBlocks refused: collection '${root.kind || 'untitled'}' is in '${root.mode}' mode, not 'document'. ` +
         'Reconciling it would delete every child the incoming document omits, which in a container ' +
-        "many agents write to is everyone else's content. Append with createBlocks({ anchor }) instead.",
+        "many agents write to is everyone else's content. Append with core.createPost (its container) instead.",
     );
   }
 

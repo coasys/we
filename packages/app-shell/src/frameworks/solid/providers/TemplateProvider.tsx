@@ -21,7 +21,7 @@ import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withInterpretationDefaults } from '@we/entities';
-import { completeResponse, isOperationError, respondsThrough, runOperation } from '@we/entities';
+import { completeResponse, isOperationError, respondsThrough, runOperation, threadSubject } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -336,8 +336,16 @@ export default function TemplateProvider() {
         return created?.id ?? null;
       },
 
+      threadSubject: async (id, options) => {
+        const perspective = moduleTarget(options?.dataset);
+        return perspective ? threadSubject(perspective, id) : null;
+      },
+
       // A post, from a module: always the space on screen. See `RecordsKernel.documents`.
-      documents: documentAccess(() => datasetStore.currentDataset()),
+      documents: documentAccess(
+        () => datasetStore.currentDataset(),
+        () => sessionStore.me()?.did,
+      ),
 
       /*
         This agent's own records, in their personal space — the write half of
@@ -358,6 +366,7 @@ export default function TemplateProvider() {
           if (!invoker) throw new Error(`${name}: nobody is signed in`);
           return runOperation(name, args, { dataset: handle, invoker });
         },
+        invoker: () => sessionStore.me()?.did,
       }),
 
       // Add-one on a to-many relation. An instance bound to an existing base expression is enough —

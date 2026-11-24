@@ -6,7 +6,7 @@
  * without the template and theme registries a provider mounts.
  */
 import { datasetKey, formatRef } from '@we/backend-shared';
-import { type ContentInput, copyableContent, createBlocks, deleteBlocks, reconcileBlocks } from '@we/block-shared';
+import { type ContentInput, copyableContent, deleteBlocks, reconcileBlocks, writePost } from '@we/block-shared';
 import { CollectionBlock, type DatasetProxy } from '@we/entities';
 import type { AgentDataKernel, CreateEntityOptions, DocumentAccess, RecordQuery } from '@we/module-shared';
 
@@ -26,16 +26,23 @@ export interface WriteTarget {
  * pinned to the space on screen, and a note lives in the personal space. The accessor may answer
  * with a promise, for a dataset that is still coming up.
  */
-export function documentAccess(target: () => WriteTarget | null | Promise<WriteTarget | null>): DocumentAccess {
+export function documentAccess(
+  target: () => WriteTarget | null | Promise<WriteTarget | null>,
+  invoker: () => string | undefined,
+): DocumentAccess {
   const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
   return {
+    // Through `core.createPost`, as the composer's save and an agent's post are: the agent acting
+    // is whoever is signed in, as for every write a module makes.
     create: async (document, options) => {
       const ds = await target();
       if (!ds) return null;
-      const root = await createBlocks(ds.handle, document as ContentInput, { kind: options?.kind ?? 'post' });
-      if (!root?.id) return null;
+      const by = invoker();
+      if (!by) throw new Error('Sign in to write this.');
+      const id = await writePost(ds.handle, document as ContentInput, { invoker: by, kind: options?.kind ?? 'post' });
+      if (!id) return null;
       const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
-      return { id: root.id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id: root.id }) };
+      return { id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id }) };
     },
     update: async (id, document) => {
       const ds = await target();
@@ -70,6 +77,8 @@ export interface RecordWrites {
   remove: (handle: DatasetProxy, entity: string, id: string) => Promise<unknown>;
   /** Run a declared operation in the dataset, as the signed-in agent. */
   run: (handle: DatasetProxy, name: string, args?: Record<string, unknown>) => Promise<unknown>;
+  /** Who is signed in — the agent a document written here is written as. */
+  invoker: () => string | undefined;
 }
 
 /** Where the personal space is, as the dataset store holds it. */
@@ -131,6 +140,6 @@ export function agentDataKernel(personal: PersonalSpaceSource, writes: RecordWri
       if (!ds) throw new Error(`${name}: your personal space is not open yet`);
       return writes.run(ds.handle, name, args);
     },
-    documents: documentAccess(target),
+    documents: documentAccess(target, writes.invoker),
   };
 }

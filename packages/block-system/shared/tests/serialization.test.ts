@@ -52,7 +52,6 @@ vi.mock('@we/entities/manifest', () => ({
 import type { ContentBlock, ContentDocument, TextContentBlock } from '../src/content';
 import { type BlockEntityStatic, registerBlock } from '../src/registry';
 import {
-  createBlocks,
   deleteBlocks,
   extractBlockData,
   extractMentions,
@@ -152,6 +151,38 @@ function paragraph(text: string, extra: Partial<TextContentBlock> = {}): TextCon
 function blobOf(root: FakeCollection): ContentBlock[] {
   const file = root.editorState as { data_base64: string };
   return decodeEditorState(`data:application/json;base64,${file.data_base64}`)!;
+}
+
+/**
+ * A composition written record by record — the root, then each block under its parent — and its
+ * stored document derived from what it holds, the way a space starter writes one. Every key is
+ * stamped onto the blocks handed in, as writing a post does, so a case can hold the document and
+ * edit it. Writing a post through its operation is tested against a real backend in the app shell.
+ */
+async function compose(blocks: ContentBlock[], kind = 'post'): Promise<FakeCollection> {
+  const root = (await FakeCollection.create(perspective, {})) as FakeCollection;
+  // Set after: the fake's own field initialisers run after its constructor copies the data in.
+  root.kind = kind;
+  root.mode = 'document';
+  await writeUnder(root, blocks);
+  await refreshComposition(perspective, root.id);
+  return root;
+}
+
+async function writeUnder(parent: FakeCollection, blocks: readonly ContentBlock[]): Promise<void> {
+  for (const block of blocks) {
+    const collection = block._type === 'collection';
+    const made =
+      block._type === 'block'
+        ? await FakeText.create(perspective, textBlockToRecord(block as TextContentBlock))
+        : block._type === 'image'
+          ? await FakeImage.create(perspective, extractBlockData('ImageBlock', block))
+          : await FakeCollection.create(perspective, {});
+    if (collection) Object.assign(made, extractBlockData('CollectionBlock', block));
+    block._key = made.id;
+    await parent.addChildren(made.id);
+    if (collection) await writeUnder(made as FakeCollection, (block as { content?: ContentBlock[] }).content ?? []);
+  }
 }
 
 beforeEach(() => {
@@ -281,7 +312,7 @@ describe('extractMentions', () => {
 describe('refreshComposition', () => {
   /*
     A composition written record by record — a root, then the blocks inside it — the way a space
-    starter writes one, rather than through `createBlocks`. The renderer draws from the stored
+    starter writes one, rather than through `core.createPost`. The renderer draws from the stored
     document alone, so until this runs the post is blank however many blocks it holds.
   */
   async function writtenByHand() {
@@ -309,107 +340,8 @@ describe('refreshComposition', () => {
     expect(root.mentions).toEqual(['did:ann']);
   });
 
-  it('stores what createBlocks would have stored for the same document', async () => {
-    const { root } = await writtenByHand();
-    await refreshComposition(perspective, root.id);
-    const composed = (await createBlocks(perspective, blobOf(root), { kind: 'post' })) as unknown as FakeCollection;
-    expect(composed.textContent).toBe(root.textContent);
-    expect(composed.mentions).toEqual(root.mentions);
-  });
-
   it('answers false for something that is not a composition', async () => {
     expect(await refreshComposition(perspective, 'no-such-id')).toBe(false);
-  });
-});
-
-// ── createBlocks ────────────────────────────────────────────────────────────
-
-describe('createBlocks', () => {
-  it('creates the tree, links children, stamps keys, and writes the root blob', async () => {
-    const blocks: ContentBlock[] = [paragraph('first'), paragraph('second')];
-
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
-
-    expect(root).toBeInstanceOf(FakeCollection);
-    expect(root.kind).toBe('post');
-    expect(root.type).toBeUndefined();
-    expect(root.children).toHaveLength(2);
-    // keys stamped back onto the caller's blocks for later reconciliation
-    expect(blocks[0]._key).toBe(root.children[0]);
-    expect(blocks[1]._key).toBe(root.children[1]);
-    // blob + search index written; the blob is Portable Text with the model ids as keys
-    expect(root.editorState).toMatchObject({ name: 'editor-state.json', file_type: 'application/json' });
-    expect(blobOf(root).map((b) => b._key)).toEqual(root.children);
-    expect(root.textContent).toBe('first second');
-  });
-
-  it('persists list items as their own text blocks carrying the list metadata', async () => {
-    const root = (await createBlocks(perspective, [
-      { _type: 'block', listItem: 'number', text: 'item one' },
-      { _type: 'block', listItem: 'number', level: 1, text: 'nested' },
-    ])) as unknown as FakeCollection;
-    const items = FakeBlock.created.filter((b) => b instanceof FakeText);
-    expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ style: 'normal', listItem: 'number', level: 0, text: 'item one' });
-    expect(items[1]).toMatchObject({ level: 1 });
-    expect(root.children).toEqual(items.map((i) => i.id));
-  });
-
-  it('persists a nested collection as a child with children of its own', async () => {
-    const blocks: ContentBlock[] = [
-      {
-        _type: 'collection',
-        layout: 'grid',
-        columnCount: 2,
-        content: [{ _type: 'image', src: 'Qm://x' }, paragraph('cap')],
-      },
-    ];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
-    const nested = byId.get(root.children[0]) as unknown as FakeCollection;
-    expect(nested).toBeInstanceOf(FakeCollection);
-    expect(nested.layout).toBe('grid');
-    expect(nested.children).toHaveLength(2);
-    expect(byId.get(nested.children[0])).toBeInstanceOf(FakeImage);
-    expect(root.textContent).toBe('cap');
-    // keys at every depth
-    expect((blocks[0] as unknown as { content: ContentBlock[] }).content[0]._key).toBe(nested.children[0]);
-  });
-
-  it('refuses content that is not a composition', async () => {
-    await expect(
-      createBlocks(perspective, { type: 'root', children: [] } as unknown as ContentBlock[], { kind: 'post' }),
-    ).rejects.toThrow('not a composition');
-  });
-
-  it('defaults mode to document when a kind is given — everything it creates is a composition', async () => {
-    const root = (await createBlocks(perspective, [paragraph('x')], { kind: 'message' })) as unknown as FakeCollection;
-    expect(root.mode).toBe('document');
-  });
-
-  it('writes neither kind nor mode when the caller opts out of the vocabulary', async () => {
-    const root = (await createBlocks(perspective, [paragraph('x')])) as unknown as FakeCollection;
-    expect(root.kind).toBeUndefined();
-    expect(root.mode).toBeUndefined();
-  });
-
-  it('honours an explicit mode over the default', async () => {
-    const root = (await createBlocks(perspective, [paragraph('x')], {
-      kind: 'channel',
-      mode: 'feed',
-    })) as unknown as FakeCollection;
-    expect(root.mode).toBe('feed');
-  });
-
-  it('passes the anchor to the root only — descendants attach to their in-tree parent', async () => {
-    const anchor = { id: 'channel-1', relation: 'children', entity: 'CollectionBlock' };
-    const root = (await createBlocks(perspective, [paragraph('first'), paragraph('second')], {
-      kind: 'message',
-      anchor,
-    })) as unknown as FakeCollection;
-    expect(root.createdWithParent).toEqual(anchor);
-    for (const child of FakeBlock.created.filter((b) => b instanceof FakeText)) {
-      expect(child.createdWithParent).toBeUndefined();
-    }
   });
 });
 
@@ -423,36 +355,12 @@ describe('mentions', () => {
     did,
   });
 
-  it('writes a mention edge per distinct DID named in the composition', async () => {
-    const root = (await createBlocks(
-      perspective,
-      [
-        paragraph('hi @alice', { marks: [mention('did:key:alice', '@alice', 3)] }),
-        paragraph('@bob', { marks: [mention('did:key:bob', '@bob')] }),
-      ],
-      { kind: 'post' },
-    )) as unknown as FakeCollection;
-    expect(root.mentions).toEqual(['did:key:alice', 'did:key:bob']);
-  });
-
-  it('de-duplicates — naming someone twice is one fact about the post', async () => {
-    const root = (await createBlocks(
-      perspective,
-      [
-        paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
-        paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
-      ],
-      { kind: 'post' },
-    )) as unknown as FakeCollection;
-    expect(root.mentions).toEqual(['did:key:alice']);
-  });
-
   it('reconciles on edit — adds the new, drops the removed, leaves the kept alone', async () => {
     const blocks: ContentBlock[] = [
       paragraph('@alice', { marks: [mention('did:key:alice', '@alice')] }),
       paragraph('@bob', { marks: [mention('did:key:bob', '@bob')] }),
     ];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
+    const root = await compose(blocks);
     expect(root.mentions).toEqual(['did:key:alice', 'did:key:bob']);
 
     const edited: ContentDocument = {
@@ -473,7 +381,7 @@ describe('mentions', () => {
 /** Persist an initial two-paragraph post and return its pieces. */
 async function seedPost() {
   const blocks: ContentBlock[] = [paragraph('one'), paragraph('two')];
-  const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
+  const root = await compose(blocks);
   const [p1, p2] = root.children.map((id) => byId.get(id)!) as FakeText[];
   return { root, p1, p2, blocks };
 }
@@ -574,7 +482,7 @@ describe('reconcileBlocks', () => {
 
   it('reconciles inside a nested collection', async () => {
     const blocks: ContentBlock[] = [{ _type: 'collection', layout: 'grid', content: [paragraph('a'), paragraph('b')] }];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
+    const root = await compose(blocks);
     const nested = byId.get(root.children[0]) as unknown as FakeCollection;
     const [a, b] = nested.children.map((id) => byId.get(id)!) as FakeText[];
 
@@ -601,9 +509,9 @@ describe('deleteBlocks', () => {
       post left every reply to it reachable by nothing and rendered by nothing. Survivable while a
       thread was one level; not now that the orphan is a subtree.
     */
-    const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as unknown as FakeCollection;
-    const reply = (await createBlocks(perspective, [paragraph('b')], { kind: 'reply' })) as unknown as FakeCollection;
-    const nested = (await createBlocks(perspective, [paragraph('c')], { kind: 'reply' })) as unknown as FakeCollection;
+    const post = await compose([paragraph('a')]);
+    const reply = await compose([paragraph('b')], 'reply');
+    const nested = await compose([paragraph('c')], 'reply');
     const body = byId.get(post.children[0]) as FakeText;
     post.responses = [reply.id];
     reply.responses = [nested.id];
@@ -618,8 +526,8 @@ describe('deleteBlocks', () => {
   });
 
   it('leaves a conversation held about it standing — a call is a response, and a feed of its own', async () => {
-    const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as unknown as FakeCollection;
-    const reply = (await createBlocks(perspective, [paragraph('b')], { kind: 'reply' })) as unknown as FakeCollection;
+    const post = await compose([paragraph('a')]);
+    const reply = await compose([paragraph('b')], 'reply');
     const call = (await FakeCollection.create(perspective, {})) as FakeCollection;
     // Set after: the fake's own field initialisers run after its constructor copies the data in.
     call.kind = 'call';
@@ -636,7 +544,7 @@ describe('deleteBlocks', () => {
   it('skips a reply that resolves to nothing rather than failing the delete', async () => {
     // `responses` is polymorphic and multi-writer: an id on it may be something this build has no
     // block class for, or a record a peer removed. Neither is a reason to leave the post standing.
-    const post = (await createBlocks(perspective, [paragraph('a')], { kind: 'post' })) as unknown as FakeCollection;
+    const post = await compose([paragraph('a')]);
     post.responses = ['id-does-not-exist'];
 
     await deleteBlocks(perspective, post.id);
@@ -653,7 +561,7 @@ describe('loadBlocks', () => {
       paragraph('one', { marks: [{ start: 0, end: 3, type: 'em' }] }),
       { _type: 'collection', layout: 'grid', content: [{ _type: 'image', src: 'Qm://x' }] },
     ];
-    const root = (await createBlocks(perspective, blocks, { kind: 'post' })) as unknown as FakeCollection;
+    const root = await compose(blocks);
 
     const loaded = await loadBlocks(perspective, root.id);
     expect(loaded).toEqual([

@@ -6,9 +6,18 @@
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { type ContentBlock, decodeEditorState, planPost, registerCoreBlocks, writePost } from '@we/block-shared';
-import { getEntity, isOperationError, runOperation } from '@we/entities';
+import {
+  COMPOSE_CARD_POST,
+  getEntity,
+  isOperationError,
+  registerOperations,
+  runOperation,
+  threadSubject,
+  unregisterOperations,
+} from '@we/entities';
+import { FEED_MANIFEST } from '@we/module-feed';
 import { pollsModule } from '@we/module-polls';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
@@ -139,6 +148,39 @@ describe('core.createPost', () => {
     }
   });
 
+  it('writes list items as text blocks carrying their list metadata', async () => {
+    const blocks: ContentBlock[] = [
+      { _type: 'block', listItem: 'number', text: 'item one' } as ContentBlock,
+      { _type: 'block', listItem: 'number', level: 1, text: 'nested' } as ContentBlock,
+    ];
+    await writePost(dataset, blocks, { invoker: ME, kind: 'post' });
+    expect(await read('TextBlock', blocks[0]._key!)).toMatchObject({ listItem: 'number', text: 'item one' });
+    expect(await read('TextBlock', blocks[1]._key!)).toMatchObject({ listItem: 'number', level: 1 });
+  });
+
+  it('is a document when it says what it is, in the mode given where one is, and neither without a kind', async () => {
+    const message = await writePost(dataset, [paragraph('x')], { invoker: ME, kind: 'message' });
+    const room = await writePost(dataset, [paragraph('x')], { invoker: ME, kind: 'channel', mode: 'feed' });
+    const plain = await writePost(dataset, [paragraph('x')], { invoker: ME });
+    expect((await read('CollectionBlock', message)).mode).toBe('document');
+    expect((await read('CollectionBlock', room)).mode).toBe('feed');
+    // Read back with the entity's empty defaults: neither was written.
+    expect(await read('CollectionBlock', plain)).toMatchObject({ kind: '', mode: '' });
+  });
+
+  it('mentions each person it names once', async () => {
+    const mention = (did: string) => ({ start: 0, end: 2, type: 'mention', did });
+    const id = await writePost(
+      dataset,
+      [
+        { _type: 'block', text: '@a', marks: [mention('did:key:alice')] } as ContentBlock,
+        { _type: 'block', text: '@a @b', marks: [mention('did:key:alice'), mention('did:key:bob')] } as ContentBlock,
+      ],
+      { invoker: ME, kind: 'post' },
+    );
+    expect(ids((await read('CollectionBlock', id)).mentions)).toEqual(['did:key:alice', 'did:key:bob']);
+  });
+
   it('refuses a post that is both in a collection and a reply', async () => {
     const failure = await writePost(dataset, [paragraph('where?')], {
       invoker: ME,
@@ -146,5 +188,67 @@ describe('core.createPost', () => {
       respondsTo: channel.id,
     }).catch((error: unknown) => error);
     expect(isOperationError(failure) && failure.code).toBe('twoPlaces');
+  });
+});
+
+describe('core.composeCard', () => {
+  it('keeps the card where the canvas’s content lives and places it, in one write, its blocks named as planned', async () => {
+    const canvas = await model('CollectionBlock').create(dataset, { kind: 'canvas' });
+    const blocks = [paragraph('on the canvas')];
+    const { invocationId, args } = await planPost(dataset, blocks, { kind: 'card', within: COMPOSE_CARD_POST });
+    const card = (await runOperation(
+      'core.composeCard',
+      {
+        root: args.root,
+        blocks: args.blocks,
+        mentions: args.mentions,
+        home: channel.id,
+        canvas: canvas.id,
+        at: { x: 40, y: 60 },
+      },
+      { dataset, invoker: ME, invocationId },
+    )) as string;
+
+    expect(ids((await read('CollectionBlock', channel.id)).children)).toEqual([card]);
+    const root = await read('CollectionBlock', card);
+    expect(root).toMatchObject({ kind: 'card', mode: 'document' });
+    expect(ids(root.children)).toEqual([blocks[0]._key]);
+    expect(decodeEditorState(root.editorState)?.map((b) => b._key)).toEqual([blocks[0]._key]);
+    const placements = await model('Placement').findAll(dataset, {
+      parent: { id: canvas.id, relation: 'children', entity: 'CollectionBlock' },
+    });
+    expect(placements).toHaveLength(1);
+    expect(placements[0]).toMatchObject({ nodeType: 'CollectionBlock', x: 40, y: 60, node: card });
+  });
+});
+
+describe('feed.reply', () => {
+  beforeEach(() => registerOperations('feed', FEED_MANIFEST.operations, { version: FEED_MANIFEST.version }));
+  afterEach(() => unregisterOperations('feed'));
+
+  it('answers a line with a line: a response to it, threaded under its subject, mentioning whom its marks name', async () => {
+    const line = await model('TextBlock').create(dataset, { text: 'who has the venue?', source: 'typed' });
+    const reply = async (to: string, text: string, marks?: unknown[]) => {
+      const thread = await threadSubject(dataset as never, to);
+      return (await runOperation(
+        'feed.reply',
+        {
+          line: to,
+          text,
+          ...(marks ? { marks } : {}),
+          ...(thread ? { thread: thread.id, threadEntity: thread.entity } : {}),
+        },
+        { dataset, invoker: ME },
+      )) as string;
+    };
+    const first = await reply(line.id, '@Ann does', [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }]);
+    const second = await reply(first, 'thanks');
+
+    expect(await read('TextBlock', first)).toMatchObject({ text: '@Ann does', source: 'typed' });
+    expect(ids((await read('TextBlock', first)).mentions)).toEqual(['did:ann']);
+    expect(ids((await read('TextBlock', line.id)).responses)).toEqual([first]);
+    expect(ids((await read('TextBlock', first)).responses)).toEqual([second]);
+    // The whole conversation under the line is one read of its thread.
+    expect(ids((await read('TextBlock', line.id)).thread).sort()).toEqual([first, second].sort());
   });
 });

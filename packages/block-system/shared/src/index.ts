@@ -62,12 +62,11 @@ export {
 export { registerCoreBlocks } from './core-blocks';
 export type { CollectionMode } from './modes';
 export { isCollectionMode, isReconcilable } from './modes';
-export type { BlockAnchor, ContentInput, CreateBlocksOptions, WritePostOptions } from './serialization';
+export type { BlockAnchor, ContentInput, PlanPostOptions, WritePostOptions } from './serialization';
 export {
   childrenToBlocks,
   copyableContent,
   createBlock,
-  createBlocks,
   deleteBlocks,
   encodeEditorState,
   extractBlockData,

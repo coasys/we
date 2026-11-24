@@ -39,10 +39,30 @@ export function createFeedStore(deps: ModuleStoreDeps) {
   const updateEntity: RecordsKernel['update'] | undefined =
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
+  /**
+   * A reply, as the Feed's declared operation (`feed.reply`): the line made a response to the one it
+   * answers and threaded under its thread's subject, in one write. The subject is the host's to read
+   * (`threadSubject`); a line it cannot place is still answered, unthreaded.
+   */
+  async function writeReply(line: string, words: string, marks?: unknown) {
+    const operations = deps.operations;
+    if (!operations) return null;
+    const thread = (await records?.threadSubject?.(line).catch(() => null)) ?? null;
+    const id = await operations.run('feed.reply', {
+      line,
+      text: words,
+      ...(Array.isArray(marks) && marks.length ? { marks } : {}),
+      ...(thread ? { thread: thread.id, threadEntity: thread.entity } : {}),
+    });
+    return typeof id === 'string' ? id : null;
+  }
+
   /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
   async function writeMessage(holder: FeedHolder, text: string, marks?: unknown) {
     const words = String(text ?? '').trim();
-    if (!words || !createEntity) return null;
+    if (!words) return null;
+    if (holder.relation === 'responses') return writeReply(holder.id, words, marks);
+    if (!createEntity) return null;
     return createEntity(
       'TextBlock',
       { text: words, source: TYPED, ...(Array.isArray(marks) && marks.length ? { marks } : {}) },

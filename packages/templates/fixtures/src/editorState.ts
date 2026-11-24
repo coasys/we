@@ -7,7 +7,7 @@
  * here and diverge from what a real post looks like, which is the one thing a fidelity fixture
  * must not do.
  *
- * The blob is the Portable Text projection `createBlocks` writes: one `block` per paragraph with
+ * The blob is the Portable Text projection writing a post stores: one `block` per paragraph with
  * its canonical `text`, its (empty) `marks`, and the derived `children` span a Portable Text
  * consumer reads. Block keys are the ids of the `TextBlock` models `apply` writes beside the blob,
  * so the two agree the way a real post's do. Hand-built rather than imported from
@@ -37,7 +37,7 @@ const block = (value: string, key: string): PortableTextBlock => ({
   markDefs: [],
 });
 
-/** Base64 of the UTF-8 bytes, matching what `createBlocks` writes for a real post. */
+/** Base64 of the UTF-8 bytes, matching what writing a real post stores. */
 function encode(json: string): string {
   const bytes = new TextEncoder().encode(json);
   let binary = '';

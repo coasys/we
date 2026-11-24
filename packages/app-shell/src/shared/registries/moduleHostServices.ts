@@ -179,6 +179,8 @@ export interface ModuleHostServices {
   ) => () => void;
   /** Composed documents in the space on screen — the records kernel's `documents`. */
   documents?: DocumentAccess;
+  /** The subject of the thread a response to a record joins — the records kernel's `threadSubject`. */
+  threadSubject?: (id: string, options?: DatasetTarget) => Promise<{ id: string; entity: string } | null>;
   /** This agent's own records, in their personal space. */
   agentData?: AgentDataKernel;
   /** How the current dataset is named in a record reference. */
@@ -394,6 +396,7 @@ export function createModuleStoreDeps(framework: {
       find: async (entity, query, target) => (await services.findEntities?.(entity, query, target)) ?? [],
       subscribe: (entity, query, cb, target) => services.subscribeEntities?.(entity, query, cb, target) ?? (() => {}),
       documents: forwardDocuments(() => services.documents),
+      threadSubject: async (id, target) => (await services.threadSubject?.(id, target)) ?? null,
       onCopiedIn: (cb) => {
         copiedInListeners.add(cb);
         return () => copiedInListeners.delete(cb);

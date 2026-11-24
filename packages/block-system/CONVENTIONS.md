@@ -235,9 +235,12 @@ modifying the global registry:
 
 Persistence lives in `@we/block-shared/src/serialization.ts`.
 
-**Save:** `createBlocks(perspective, document)` uploads any `FileData` assets (replacing them with
-file-storage addresses), creates one model per block linked via `children`, writes the Portable
-Text blob and the `textContent` search index onto the root, and reconciles `we://mention` edges.
+**Save:** `writePost(perspective, document, { invoker, … })` uploads any `FileData` assets
+(replacing them with file-storage addresses in the blob), plans each block's id, encodes the
+Portable Text blob, the `textContent` search index and the mentions, and runs `core.createPost`,
+which creates one model per block linked via `children` and the root holding them, in one
+operation. `planPost` is the first half alone, for an operation that calls `core.createPost`
+(`core.composeCard`).
 
 **Edit:** `reconcileBlocks(perspective, root, document)` updates blocks whose `_key` survived,
 creates the rest, and computes removals **against `document.base`** — the keys the author loaded —

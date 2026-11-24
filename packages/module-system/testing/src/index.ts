@@ -283,6 +283,15 @@ export function fakeRecords(options: { author?: string; datasetKey?: string } = 
       return () => subscriptions.delete(fire);
     },
     documents: documents.access,
+    // The rule the host reads: a response's own subject when it is one, else the record itself.
+    // eslint-disable-next-line @typescript-eslint/require-await -- the kernel's answer is a promise.
+    threadSubject: async (id) => {
+      const record = rows.find((r) => r.id === id);
+      if (!record) return null;
+      const subjectId = typeof record.inThread === 'string' && record.inThread ? record.inThread : id;
+      const subject = rows.find((r) => r.id === subjectId);
+      return subject ? { id: subjectId, entity: String(subject.__entity) } : null;
+    },
     onCopiedIn: (cb) => {
       copiedIn.add(cb);
       return () => copiedIn.delete(cb);

@@ -164,8 +164,9 @@ regenerable from the models (`loadBlocks`). Nothing is rewritten in place.
 
 **Save.** The composer's `onSave` hands `spaceStore.createPost` / `updatePost` a
 `ContentDocument` — `{ blocks, base }`, where `base` is the keys of the blocks that were loaded.
-`createBlocks` uploads file assets, creates the models, writes the blob, the `textContent` search
-index and the `we://mention` edges. `reconcileBlocks` updates blocks whose key survived, creates the
+`writePost` uploads file assets, plans each block's id, encodes the blob, the `textContent` search
+index and the mentions, and runs `core.createPost`, which writes the root, its blocks and the
+`we://mention` edges as one operation. `reconcileBlocks` updates blocks whose key survived, creates the
 rest, and computes removals against `base` rather than current state, so a block another agent
 added mid-edit is kept. It refuses any collection whose `mode` is not `document`.
 

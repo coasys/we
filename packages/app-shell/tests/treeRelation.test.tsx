@@ -11,7 +11,7 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { toastService } from '@we/components/solid';
-import { getEntity } from '@we/entities';
+import { getEntity, registerEntity, unregisterEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -62,7 +62,17 @@ const { world } = vi.hoisted(() => ({
 const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingModel } = vi.hoisted(() => {
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
-    const instance = { ...row };
+    const instance: AnyRow = { ...row };
+    // An edit through the record, as the operations runner makes one: '' clears a field, a to-one
+    // with accessors takes a one-element list, anything else is written as given.
+    instance.save = async () => {
+      const stored = table.get(row.id)!;
+      for (const [field, value] of Object.entries(instance)) {
+        if (typeof value === 'function' || field === 'id' || value == null) continue;
+        if (value === '') delete stored[field];
+        else stored[field] = Array.isArray(value) && toOnes.includes(field) ? value[0] : value;
+      }
+    };
     for (const prop of world.bare ? [] : toOnes) {
       const suffix = prop.charAt(0).toUpperCase() + prop.slice(1);
       instance[`set${suffix}`] = async (value: unknown) => {
@@ -277,28 +287,19 @@ const ENTRIES = [
 ];
 
 /*
-  The foreign models are doubles — a drop along one writes the model's own field through its own
-  accessors, which is the behaviour under test. WE's own records (placements, connections) are the
-  in-memory backend's, since their writes are declared operations the real runner makes.
+  The foreign models are doubles — a drop along one writes the model's own field, through the
+  declared operations the real runner makes, onto these. Registered as the dataset's classes, as a
+  foreign schema's are, so the runner reaches them the way it reaches any record type. WE's own
+  records (placements, connections) are the in-memory backend's.
 */
-vi.mock('@we/entities', async () => {
-  const actual = await vi.importActual<
-    Record<string, unknown> & { getEntityForDataset: (n: string, d?: unknown) => unknown }
-  >('@we/entities');
-  const foreign: Record<string, unknown> = {
-    DiscussionTopic: TopicModel,
-    Position: PositionModel,
-    Post: PostModel,
-    Author: AuthorModel,
-    AgendaItem: AgendaModel,
-    Meeting: MeetingModel,
-  };
-  return {
-    ...actual,
-    getEntityForDataset: (name: string, dataset?: unknown) =>
-      foreign[name] ?? actual.getEntityForDataset(name, dataset),
-  };
-});
+const FOREIGN: Record<string, unknown> = {
+  DiscussionTopic: TopicModel,
+  Position: PositionModel,
+  Post: PostModel,
+  Author: AuthorModel,
+  AgendaItem: AgendaModel,
+  Meeting: MeetingModel,
+};
 
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
   useDatasetStore: () => ({
@@ -370,6 +371,7 @@ beforeEach(async () => {
     { agent: { id: 'did:key:z6Mk', unlocked: true }, datasets: [{ id: 'ds-relation-tree', name: 'Tree' }] },
   );
   handle = (await ports.lifecycle.get('ds-relation-tree'))!.handle;
+  for (const [name, double] of Object.entries(FOREIGN)) registerEntity(name, double as never);
   await model('CollectionBlock').create(handle, { kind: 'canvas' }, { id: CANVAS });
   world.topics.clear();
   world.positions.clear();
@@ -884,4 +886,5 @@ describe('a tree drop writes the link the edge stands for', () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  for (const name of Object.keys(FOREIGN)) unregisterEntity(name);
 });

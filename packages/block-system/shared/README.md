@@ -11,7 +11,8 @@ the serialization pipeline between a composition and AD4M block models.
 - `registry.ts` — node-type → { model class, display/input component }
   registrations; framework packages add their components via
   `updateBlockRegistration`.
-- `serialization.ts` — the persistence pipeline: `createBlocks`,
+- `serialization.ts` — the persistence pipeline: `planPost` / `writePost`
+  (a new post, through the `core.createPost` operation),
   `reconcileBlocks` (id-claiming, duplicate detection, orphan deletion —
   tested in `tests/serialization.test.ts`), `loadBlocks`, `deleteBlocks`,
   `resolveExpressionAddresses`, and the text-content extraction that feeds

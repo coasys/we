@@ -431,7 +431,7 @@ function isBlank(value: RecordFieldValue): boolean {
 export function recordDraftFields(draft: RecordDraft): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of draft.fields) {
-    // A relation is linked after the record exists — the ORM skips a relation in a create payload.
+    // A relation goes in beside these, as ids, with whatever was filled in inline for it.
     if (field.control === 'relation') continue;
     if (!field.required && isBlank(field.value)) continue;
     out[field.name] = field.control === 'number' ? Number(field.value) : field.value;

@@ -2,7 +2,7 @@ import type { ContentBlock } from './content';
 import { fromPortableText, isContentBlockArray, isContentDocument } from './content';
 
 /**
- * Decode base64 that was produced from UTF-8 — the way `createBlocks` writes the blob. A bare
+ * Decode base64 that was produced from UTF-8 — the way writing a post stores the blob. A bare
  * `atob` gives back Latin-1 code units and turns every non-ASCII character in a post into mojibake,
  * which is a bug the fixtures package documented before this existed.
  */

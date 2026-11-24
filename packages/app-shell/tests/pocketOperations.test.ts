@@ -94,6 +94,7 @@ describe('deleting a folder through the store', () => {
         update: async () => undefined,
         remove: async () => undefined,
         run: (handle, name, args) => runOperation(name, args, { dataset: handle, invoker: ME }),
+        invoker: () => ME,
       },
     );
     const store = pocketModule.createStore!({

@@ -13,7 +13,7 @@
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { type EntityManifest, ModuleSchemasRefused } from '@we/backend-shared';
-import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { type ContentInput, registerCoreBlocks, writePost } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
 import {
@@ -343,6 +343,11 @@ function mountShell(): Stores {
   return out;
 }
 
+/** A post written as this agent, through `core.createPost`, as the composer writes one. */
+const composed = async (handle: unknown, blocks: ContentInput, kind: string) => ({
+  id: await writePost(handle as never, blocks, { invoker: 'did:test:james', kind }),
+});
+
 const ready = (stores: Stores) => vi.waitFor(() => expect(stores.session.bootState()).toBe('ready'), { timeout: 5000 });
 
 beforeEach(() => {
@@ -540,6 +545,7 @@ describe('boot', () => {
           update: (handle, entity, id, fields) => model(entity).update(handle, id, fields),
           remove: (handle, entity, id) => model(entity).delete(handle, id),
           run: (handle, name, args) => runOperation(name, args, { dataset: handle, invoker: 'did:test:james' }),
+          invoker: () => 'did:test:james',
         }),
       });
       return {
@@ -2922,7 +2928,7 @@ describe('the personal space', () => {
     // The composer registers these when it mounts; this suite mounts no renderer.
     registerCoreBlocks();
 
-    const root = await createBlocks(personal.handle, [{ _type: 'block', text: 'only mine' }], { kind: 'post' });
+    const root = await composed(personal.handle, [{ _type: 'block', text: 'only mine' }], 'post');
 
     const notes = await CollectionBlock.findAll(personal.handle as never, { where: { kind: 'post' } });
     expect(notes.map((note) => note.id)).toEqual([root!.id]);
@@ -3311,7 +3317,7 @@ describe('bringing a note into a space', () => {
     await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
     registerCoreBlocks();
     const personal = stores.datasets.personalDataset()!;
-    const note = await createBlocks(personal.handle, [{ _type: 'block', text: 'ready to post' }], { kind: 'post' });
+    const note = await composed(personal.handle, [{ _type: 'block', text: 'ready to post' }], 'post');
 
     await stores.spaces.createSpace('Gardeners', 'x', 'personal', 'hidden');
     const space = (await lifecycle.list()).find((d) => d.name === 'Gardeners')!;
@@ -3347,13 +3353,13 @@ describe('bringing a note into a space', () => {
     await vi.waitFor(() => expect(stores.datasets.personalDataset()).not.toBeNull());
     registerCoreBlocks();
     const personal = stores.datasets.personalDataset()!;
-    const note = await createBlocks(
+    const note = await composed(
       personal.handle,
       [
         { _type: 'block', text: 'the heading' },
         { _type: 'block', text: 'just this paragraph' },
       ],
-      { kind: 'post' },
+      'post',
     );
     const [, paragraph] = (await CollectionBlock.findOne(personal.handle as never, { where: { id: note!.id } }))!
       .children as string[];
@@ -3362,7 +3368,7 @@ describe('bringing a note into a space', () => {
     const space = (await lifecycle.list()).find((d) => d.name === 'Workshop')!;
     await stores.spaces.navigateToSpace(space.id);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
-    const canvas = await createBlocks(space.handle, [], { kind: 'canvas' });
+    const canvas = await composed(space.handle, [], 'canvas');
 
     await stores.records.dropOnCanvas(canvas!.id, {
       entity: 'TextBlock',
@@ -3397,7 +3403,7 @@ describe('bringing a note into a space', () => {
     const space = (await lifecycle.list()).find((d) => d.name === 'Here')!;
     await stores.spaces.navigateToSpace(space.id);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
-    const post = await createBlocks(space.handle, [{ _type: 'block', text: 'already here' }], { kind: 'post' });
+    const post = await composed(space.handle, [{ _type: 'block', text: 'already here' }], 'post');
 
     await stores.records.bringIn({ items: [{ ref: { entity: 'CollectionBlock', id: post!.id } }] });
 

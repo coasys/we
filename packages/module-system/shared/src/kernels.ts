@@ -204,6 +204,13 @@ export interface RecordsKernel {
     target?: DatasetTarget,
   ) => () => void;
   /**
+   * The subject of the thread a response to this record joins, and its entity — the record itself,
+   * or, when it is itself a response, the subject of the thread it is in. Null when it cannot be
+   * read. For a module running `core.thread`, whose link needs the subject's entity, which only a
+   * read can say.
+   */
+  threadSubject: (id: string, target?: DatasetTarget) => Promise<{ id: string; entity: string } | null>;
+  /**
    * Hear about a post written into the space on screen from somewhere else — something dragged in
    * and copied or quoted. Returns the unsubscribe.
    *

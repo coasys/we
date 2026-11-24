@@ -14,10 +14,12 @@
 import { defineModule, type ModuleHost, type ModuleStoreDeps } from '@we/module-shared';
 
 import { callFeedView, feedPanel, feedView } from './Feed.schema';
+import { FEED_MANIFEST } from './operations';
 import { createFeedStore } from './store';
 
 export { type FeedFind, readFeedWindow } from './feed';
 export { callFeedView, feedPanel, feedView } from './Feed.schema';
+export { FEED_MANIFEST } from './operations';
 export { createFeedStore } from './store';
 
 export const feedModule = defineModule({
@@ -36,6 +38,9 @@ export const feedModule = defineModule({
   },
 
   contributes: {
+    // No entities of its own — the Feed writes WE's vocabulary — only its one operation, a reply.
+    entities: { manifest: FEED_MANIFEST },
+
     parts: {
       feedView: {
         node: feedView,
