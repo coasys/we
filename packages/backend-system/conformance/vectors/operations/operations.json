@@ -1239,6 +1239,575 @@
           }
         ]
       }
+    },
+    {
+      "id": "core-move-card",
+      "note": "core.moveCard leaves one column, joins the other where it was dropped, and takes a bound column’s state",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "moveCard": {
+            "description": "Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.",
+            "params": {
+              "to": {
+                "type": "string",
+                "required": true,
+                "description": "The column it joins."
+              },
+              "from": {
+                "type": "string",
+                "description": "The column it leaves."
+              },
+              "card": {
+                "type": "string",
+                "required": true,
+                "description": "The card."
+              },
+              "ids": {
+                "type": "list",
+                "description": "The joined column’s order with the card where it was dropped. Omit to append."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "target",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "to"
+                    }
+                  },
+                  "one": true
+                }
+              },
+              {
+                "find": {
+                  "as": "task",
+                  "entity": "TaskBlock",
+                  "where": {
+                    "id": {
+                      "$": "card"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "target.slug"
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": "arranges",
+                  "targets": {
+                    "$": "concat(ids, (target.arranges ?? []).filter(i, !(i in ids)))"
+                  }
+                },
+                "when": {
+                  "$": "card in (ids ?? [])"
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "to"
+                  },
+                  "relation": "arranges",
+                  "target": {
+                    "$": "card"
+                  }
+                },
+                "when": {
+                  "$": "!(card in (ids ?? []))"
+                }
+              },
+              {
+                "unlink": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "from"
+                  },
+                  "relation": "arranges",
+                  "target": {
+                    "$": "card"
+                  }
+                },
+                "when": {
+                  "$": "from && from != to"
+                }
+              },
+              {
+                "update": {
+                  "entity": "TaskBlock",
+                  "id": {
+                    "$": "card"
+                  },
+                  "fields": {
+                    "status": {
+                      "$": "target.slug"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "count(task) > 0"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:a",
+          "fields": {
+            "title": "A",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:b",
+          "fields": {
+            "title": "B",
+            "status": "done"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:todo",
+          "fields": {
+            "kind": "column",
+            "slug": "todo"
+          },
+          "relations": {
+            "arranges": ["urn:example:a"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:done",
+          "fields": {
+            "kind": "column",
+            "slug": "done"
+          },
+          "relations": {
+            "arranges": ["urn:example:b"]
+          }
+        }
+      ],
+      "operation": "moveCard",
+      "args": {
+        "from": "urn:example:todo",
+        "to": "urn:example:done",
+        "card": "urn:example:a",
+        "ids": ["urn:example:a", "urn:example:b"]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000010",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "slug"],
+          "relations": ["arranges"]
+        },
+        {
+          "entity": "TaskBlock",
+          "fields": ["title", "status"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:done",
+            "kind": "column",
+            "slug": "done",
+            "arranges": ["urn:example:a", "urn:example:b"]
+          },
+          {
+            "id": "urn:example:todo",
+            "kind": "column",
+            "slug": "todo"
+          }
+        ],
+        "TaskBlock": [
+          {
+            "id": "urn:example:a",
+            "title": "A",
+            "status": "done"
+          },
+          {
+            "id": "urn:example:b",
+            "title": "B",
+            "status": "done"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-remove-board-column",
+      "note": "core.removeBoardColumn hands the column’s cards to the board and deletes the column, never a card",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "removeBoardColumn": {
+            "description": "Take a column off a board — never the work in it: its cards move to the board’s own arrangement, so a made board keeps them.",
+            "params": {
+              "board": {
+                "type": "string",
+                "required": true,
+                "description": "The board."
+              },
+              "column": {
+                "type": "string",
+                "required": true,
+                "description": "The column."
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "boards",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "board"
+                    }
+                  }
+                }
+              },
+              {
+                "find": {
+                  "as": "columns",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "id": {
+                      "$": "column"
+                    }
+                  }
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "board"
+                  },
+                  "relation": "arranges",
+                  "targets": {
+                    "$": "distinct(first(boards).arranges, first(columns).arranges)"
+                  }
+                },
+                "when": {
+                  "$": "count(boards) > 0 && count(distinct(first(boards).arranges, first(columns).arranges)) > count(first(boards).arranges)"
+                }
+              },
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "board"
+                  },
+                  "relation": "children",
+                  "targets": {
+                    "$": "without(first(boards).children, column)"
+                  }
+                },
+                "when": {
+                  "$": "count(boards) > 0"
+                }
+              },
+              {
+                "delete": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "column"
+                  }
+                },
+                "when": {
+                  "$": "first(columns).kind == 'column'"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "dataset": [
+        {
+          "entity": "TaskBlock",
+          "id": "urn:example:a",
+          "fields": {
+            "title": "A",
+            "status": "todo"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:lane",
+          "fields": {
+            "kind": "column",
+            "title": "Thursday"
+          },
+          "relations": {
+            "arranges": ["urn:example:a"]
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:board",
+          "fields": {
+            "kind": "board",
+            "title": "Week"
+          },
+          "relations": {
+            "children": ["urn:example:lane"]
+          }
+        }
+      ],
+      "operation": "removeBoardColumn",
+      "args": {
+        "board": "urn:example:board",
+        "column": "urn:example:lane"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000011",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title"],
+          "relations": ["children", "arranges"]
+        },
+        {
+          "entity": "TaskBlock",
+          "fields": ["title"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:board",
+            "kind": "board",
+            "title": "Week",
+            "arranges": ["urn:example:a"]
+          }
+        ],
+        "TaskBlock": [
+          {
+            "id": "urn:example:a",
+            "title": "A"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-place-card",
+      "note": "core.placeCard edits the placement a canvas draws, removes the duplicate it outranks, and answers with what it held",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "placeCard": {
+            "description": "Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.",
+            "params": {
+              "canvas": {
+                "type": "string",
+                "required": true,
+                "description": "The canvas."
+              },
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record the card is."
+              },
+              "nodeType": {
+                "type": "string",
+                "description": "Its entity, for a placement made here."
+              },
+              "fields": {
+                "type": "object",
+                "required": true,
+                "description": "Placement fields — x and y, a size, a colour, a rank …"
+              },
+              "placement": {
+                "type": "string",
+                "description": "The placement the canvas draws for the card, where it has one."
+              },
+              "duplicates": {
+                "type": "list",
+                "description": "Placements of the card the drawn one outranks, to remove."
+              },
+              "create": {
+                "type": "boolean",
+                "description": "Whether a card with no placement may be given one. False for a style, which needs a position."
+              }
+            },
+            "errors": {
+              "notPlaced": "Drag this onto the canvas first — how a card looks is saved with where it sits."
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "current",
+                  "entity": "Placement",
+                  "where": {
+                    "id": {
+                      "$": "placement"
+                    }
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "count(current) > 0 || create != false"
+                  },
+                  "error": "notPlaced"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "duplicates ?? []"
+                  },
+                  "as": "duplicate",
+                  "key": {
+                    "$": "duplicate"
+                  },
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "Placement",
+                        "id": {
+                          "$": "duplicate"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "update": {
+                  "entity": "Placement",
+                  "id": {
+                    "$": "placement"
+                  },
+                  "fields": {
+                    "$": "fields"
+                  }
+                },
+                "when": {
+                  "$": "count(current) > 0"
+                }
+              },
+              {
+                "create": {
+                  "entity": "Placement",
+                  "fields": {
+                    "$": "merge(fields, { nodeType: nodeType, node: [node] })"
+                  },
+                  "parent": {
+                    "id": {
+                      "$": "canvas"
+                    },
+                    "relation": "children",
+                    "entity": "CollectionBlock"
+                  }
+                },
+                "when": {
+                  "$": "count(current) == 0"
+                }
+              }
+            ],
+            "returns": {
+              "from": {
+                "$": "count(current) > 0 ? pick(first(current), keys(fields)) : null"
+              },
+              "to": {
+                "$": "fields"
+              }
+            }
+          }
+        }
+      },
+      "dataset": [
+        {
+          "entity": "Placement",
+          "id": "urn:example:drawn",
+          "fields": {
+            "nodeType": "TaskBlock",
+            "x": 10,
+            "y": 20
+          }
+        },
+        {
+          "entity": "Placement",
+          "id": "urn:example:stray",
+          "fields": {
+            "nodeType": "TaskBlock",
+            "x": 90,
+            "y": 90
+          }
+        }
+      ],
+      "operation": "placeCard",
+      "args": {
+        "canvas": "urn:example:canvas",
+        "node": "urn:example:card",
+        "fields": {
+          "x": 300,
+          "y": 400
+        },
+        "placement": "urn:example:drawn",
+        "duplicates": ["urn:example:stray"]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000012",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "Placement",
+          "fields": ["nodeType", "x", "y"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": {
+          "from": {
+            "x": 10,
+            "y": 20
+          },
+          "to": {
+            "x": 300,
+            "y": 400
+          }
+        }
+      },
+      "records": {
+        "Placement": [
+          {
+            "id": "urn:example:drawn",
+            "nodeType": "TaskBlock",
+            "x": 300,
+            "y": 400
+          }
+        ]
+      }
     }
   ]
 }

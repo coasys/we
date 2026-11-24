@@ -312,6 +312,92 @@ const CASES: OperationCase[] = [
       { entity: 'TextBlock', fields: ['text'], relations: [] },
     ],
   },
+  /*
+    A board and a canvas: a drop that moves a card and takes its column's state, a column removed
+    without losing its cards, and a card's placement written once with a duplicate cleared.
+  */
+  {
+    id: 'core-move-card',
+    note: 'core.moveCard leaves one column, joins the other where it was dropped, and takes a bound column’s state',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'TaskBlock', id: 'urn:example:a', fields: { title: 'A', status: 'todo' } },
+      { entity: 'TaskBlock', id: 'urn:example:b', fields: { title: 'B', status: 'done' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:todo',
+        fields: { kind: 'column', slug: 'todo' },
+        relations: { arranges: ['urn:example:a'] },
+      },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:done',
+        fields: { kind: 'column', slug: 'done' },
+        relations: { arranges: ['urn:example:b'] },
+      },
+    ],
+    operation: 'moveCard',
+    args: {
+      from: 'urn:example:todo',
+      to: 'urn:example:done',
+      card: 'urn:example:a',
+      ids: ['urn:example:a', 'urn:example:b'],
+    },
+    invocationId: '00000000-0000-4000-8000-000000000010',
+    invokedAt: AT,
+    observe: [
+      { entity: 'CollectionBlock', fields: ['kind', 'slug'], relations: ['arranges'] },
+      { entity: 'TaskBlock', fields: ['title', 'status'], relations: [] },
+    ],
+  },
+  {
+    id: 'core-remove-board-column',
+    note: 'core.removeBoardColumn hands the column’s cards to the board and deletes the column, never a card',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'TaskBlock', id: 'urn:example:a', fields: { title: 'A', status: 'todo' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:lane',
+        fields: { kind: 'column', title: 'Thursday' },
+        relations: { arranges: ['urn:example:a'] },
+      },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:board',
+        fields: { kind: 'board', title: 'Week' },
+        relations: { children: ['urn:example:lane'] },
+      },
+    ],
+    operation: 'removeBoardColumn',
+    args: { board: 'urn:example:board', column: 'urn:example:lane' },
+    invocationId: '00000000-0000-4000-8000-000000000011',
+    invokedAt: AT,
+    observe: [
+      { entity: 'CollectionBlock', fields: ['kind', 'title'], relations: ['children', 'arranges'] },
+      { entity: 'TaskBlock', fields: ['title'], relations: [] },
+    ],
+  },
+  {
+    id: 'core-place-card',
+    note: 'core.placeCard edits the placement a canvas draws, removes the duplicate it outranks, and answers with what it held',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'Placement', id: 'urn:example:drawn', fields: { nodeType: 'TaskBlock', x: 10, y: 20 } },
+      { entity: 'Placement', id: 'urn:example:stray', fields: { nodeType: 'TaskBlock', x: 90, y: 90 } },
+    ],
+    operation: 'placeCard',
+    args: {
+      canvas: 'urn:example:canvas',
+      node: 'urn:example:card',
+      fields: { x: 300, y: 400 },
+      placement: 'urn:example:drawn',
+      duplicates: ['urn:example:stray'],
+    },
+    invocationId: '00000000-0000-4000-8000-000000000012',
+    invokedAt: AT,
+    observe: [{ entity: 'Placement', fields: ['nodeType', 'x', 'y'], relations: [] }],
+  },
 ];
 
 /** Each case carries only the operation it runs, so its vector reads on its own. */

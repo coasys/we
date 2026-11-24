@@ -1019,8 +1019,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
               : Object.values(dataset.tables)
                   .flatMap((rows) => rows as AnyRow[])
                   .find((r) => r.id === relatedId);
+            // Only while the key still points here: a record since listed by another row keeps that one.
             if (targetRow) {
-              delete targetRow[relation.foreignKey];
+              if (targetRow[relation.foreignKey] === this.id) delete targetRow[relation.foreignKey];
               linkReverse(relation.name, targetRow, this.id as string, false);
             }
             const current = Array.isArray(this[relation.name]) ? (this[relation.name] as unknown[]) : [];
@@ -1061,7 +1062,7 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
               if (next.includes(id)) continue;
               const targetRow = rowsOf(id);
               if (targetRow) {
-                delete targetRow[relation.foreignKey];
+                if (targetRow[relation.foreignKey] === this.id) delete targetRow[relation.foreignKey];
                 linkReverse(relation.name, targetRow, this.id as string, false);
               }
             }
