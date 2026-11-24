@@ -4259,6 +4259,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         No page of versions reached `policyRows`: the watch failed to open, or the newest page could
         not be turned into versions. An empty list is the open policy, which would judge every write,
         so read the stored versions instead, and mark the policy loaded only once that read is in.
+        `readPolicyVersions` turns a failed `findAll` into `[]`, as on `dev`, so a failed read still
+        counts as in: the open policy applies.
       */
       if (
         held ||
