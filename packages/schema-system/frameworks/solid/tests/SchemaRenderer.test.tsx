@@ -66,7 +66,8 @@ describe('SchemaRenderer', () => {
     // runtime, so nothing is lost at dev time.
     const node: SchemaNode = { type: 'UnknownComponent' };
     const { container } = renderSchema(node);
-    expect(container.querySelector('[data-we-missing-component="UnknownComponent"]')).toBeTruthy();
+    const marker = container.querySelector('[data-we-missing-component="UnknownComponent"]');
+    expect(marker?.getAttribute('data-we-missing-reason')).toBe('unknown-component');
   });
 
   // --- An undefined we-* element ---

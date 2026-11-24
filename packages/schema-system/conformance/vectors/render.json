@@ -5455,7 +5455,8 @@
               "type": "Column",
               "children": [
                 {
-                  "missing": "$slot"
+                  "missing": "$slot",
+                  "reason": "unknown-component"
                 }
               ]
             }
@@ -5503,7 +5504,8 @@
                   "children": ["before"]
                 },
                 {
-                  "missing": "NoSuchWidget"
+                  "missing": "NoSuchWidget",
+                  "reason": "unknown-component"
                 },
                 {
                   "type": "we-text",

@@ -18,9 +18,9 @@
  *   went into a web component's named slot.
  * - A named slot a component received: `{ slot: name, children }` inside that component.
  * - Text: a string. Adjacent text is joined; empty text is dropped.
- * - The missing marker: `{ missing: type }` for an unknown component, and `{ missing: type, reason }`
- *   for the other things that cannot be drawn — `unknown-element` (a `we-*` element nobody defined),
- *   `missing-definition` and `cyclic-definition` (a `$ref` with no shape to stand for).
+ * - The missing marker: `{ missing: type, reason }`, the reason one of `unknown-component`,
+ *   `unknown-element` (a `we-*` element nobody defined), `missing-definition` and
+ *   `cyclic-definition` (a `$ref` with no shape to stand for).
  * - A `$surface` boundary: `{ type: '$surface', children }` — the box, without its measuring element.
  *
  * The renderer's own wrappers (one box-less `div` around every node) are not part of the tree.
@@ -45,7 +45,7 @@ import { type EncodedValue, encodeValue } from '../../src/encode.ts';
 
 export type RenderedNode =
   | string
-  | { missing: string; reason?: string }
+  | { missing: string; reason: string }
   | { slot: string; children: RenderedNode[] }
   | { type: string; props?: Record<string, EncodedValue>; slot?: string; children?: RenderedNode[] };
 
@@ -134,7 +134,7 @@ function describe(el: Element): RenderedNode {
   const missing = el.getAttribute('data-we-missing-component');
   if (missing !== null) {
     const reason = el.getAttribute('data-we-missing-reason');
-    return reason ? { missing, reason } : { missing };
+    return { missing, reason: reason ?? '' };
   }
   // A responsive boundary is a box of its own; the element it measures its tier with is not content.
   if (el.hasAttribute('data-we-surface')) {

@@ -86,12 +86,19 @@ node.
 
 ### The missing marker
 
-A box drawn in the node's place that says what could not be drawn and why: the type, and the reason
-where there is more than one (an undefined element, a missing shape, a cycle, a part no module
-publishes). It takes no state and opens no subscription. Its look is the host's; that it is visible,
-says why, and leaves its siblings drawn is normative.
+A box drawn in the node's place that says what could not be drawn and why: the type, and the reason.
+It takes no state and opens no subscription. Its look is the host's; that it is visible, says why,
+and leaves its siblings drawn is normative.
 
-In the render vectors it is `{ "missing": "<type>" }` ([Conformance](conformance.md#render-trees)).
+| Reason               | What could not be drawn                                                            |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| `unknown-component`  | A type the host has nothing for: a component, a `$`-type, a `$slot` in a template. |
+| `unknown-element`    | A `we-` custom element nothing defines.                                            |
+| `missing-definition` | A `$ref` whose `def` names no shape in `$defs`.                                    |
+| `cyclic-definition`  | A `$ref` to a shape already being drawn above it.                                  |
+
+In the render vectors it is `{ "missing": "<type>", "reason": "<reason>" }`
+([Conformance](conformance.md#render-trees)).
 
 > **Why never blank.** An unmatched read that looks exactly like an empty one is this format's most
 > expensive failure: it is not reported, so it is not fixed. The marker is what makes "a module is

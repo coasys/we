@@ -623,9 +623,11 @@ function isStaticValue(value: unknown): boolean {
  * One look for every cause — an unknown component, an element nobody defined, a shape the template
  * names but does not hold — so a reader learns it once, and so nothing that cannot be drawn is ever
  * drawn as a blank. `reason` names the cause for anything reading the page rather than looking at
- * it; an unknown component, the first cause there was, carries none.
+ * it, and every marker carries one.
  */
-function MissingMarker(props: { type: string; message: string; reason?: string }): JSX.Element {
+type MissingReason = 'unknown-component' | 'unknown-element' | 'missing-definition' | 'cyclic-definition';
+
+function MissingMarker(props: { type: string; message: string; reason: MissingReason }): JSX.Element {
   return (
     <div
       data-we-missing-component={props.type}
@@ -1312,7 +1314,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   if (!untrack(component)) {
     const message = `Unknown component "${node.type}"`;
     console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
-    return <MissingMarker type={node.type ?? ''} message={message} />;
+    return <MissingMarker type={node.type ?? ''} reason="unknown-component" message={message} />;
   }
 
   // Prepare the slot elements in a reactive store

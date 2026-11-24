@@ -133,7 +133,8 @@ them. Let every promise settle before reading an entry.
   out, since their effect is in `actions`), `children` what it drew inside;
 - a named slot a component received is `{ "slot", "children" }`;
 - text is a string;
-- the [missing marker](degradation-and-versioning.md#the-missing-marker) is `{ "missing": "<type>" }`;
+- the [missing marker](degradation-and-versioning.md#the-missing-marker) is
+  `{ "missing": "<type>", "reason": "<reason>" }`;
 - a responsive boundary is `{ "type": "$surface", "children" }`.
 
 Block types other than `$surface` leave no entry of their own: what they draw stands in their place.
