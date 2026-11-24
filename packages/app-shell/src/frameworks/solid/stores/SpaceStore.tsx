@@ -488,11 +488,6 @@ export interface SpaceStore {
    */
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
-  /**
-   * Move a child between two collections — a card between kanban columns. A relink of the two
-   * `we://child` edges; the child itself is untouched.
-   */
-  moveChild: (childId: string, fromId: string, toId: string) => Promise<void>;
   /** Make a board — a collection whose ordered children are its columns, seeded from the vocabulary. */
   createBoard: (title: string, parentId?: string, options?: CreateBoardOptions) => Promise<string>;
   /** The board for a container, or the space's own, making it if nobody has yet. Returns its id. */
@@ -2231,39 +2226,6 @@ export function SpaceStoreProvider(props: ParentProps) {
         'This post was changed by someone else while you were editing. Your version of anything you both changed was kept.',
         8000,
       );
-    }
-  }
-
-  /**
-   * Move a child from one collection to another — a kanban card between columns, a post between
-   * channels.
-   *
-   * A relink, not an edit: the child is untouched and only the two `we://child` edges change.
-   * That is what makes containment a usable way to express status (see the `kanbanBoard`
-   * fragment) — the card carries no column field that could disagree with where it actually is.
-   *
-   * Add before remove, deliberately. Both writes are separate round trips, so a failure between
-   * them leaves the card in **two** columns rather than in none — visible and fixable by moving it
-   * again, where the other order loses it somewhere no view lists. Not atomic: `Ad4mModel`'s batch
-   * covers a transaction on one model's own writes, and this touches two.
-   *
-   * A no-op when the source and target are the same, so a menu listing every column including the
-   * current one cannot remove a card by "moving" it where it already is.
-   */
-  async function moveChild(childId: string, fromId: string, toId: string): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p || !childId || !fromId || !toId || fromId === toId) return;
-    try {
-      const [from, to] = await Promise.all([
-        CollectionBlock.findOne(p, { where: { id: fromId } }),
-        CollectionBlock.findOne(p, { where: { id: toId } }),
-      ]);
-      if (!from || !to) return;
-      await to.addChildren(childId);
-      await from.removeChildren(childId);
-    } catch (error) {
-      console.error('SpaceStore: could not move child between collections', error);
-      toastService.error('Could not move that item');
     }
   }
 
@@ -6279,7 +6241,6 @@ export function SpaceStoreProvider(props: ParentProps) {
     removeSpace,
     createPost,
     updatePost,
-    moveChild,
     ...boards,
     setAttending,
     mutedDids,

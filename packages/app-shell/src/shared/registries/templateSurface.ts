@@ -538,7 +538,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     members: state('identity'),
     createPost: action('content'),
     updatePost: action('content'),
-    moveChild: action('content'),
     deleteCollection: destructive('content'),
     setAttending: action('content'),
     readMarkers: state('content'),
