@@ -24,13 +24,22 @@ import { themeRegistry } from '../src/shared/registries/themeRegistry';
 const PRESETS = { ...THEME_PRESETS, ...SHOWCASE_THEME_PRESETS };
 const builtIns = Object.fromEntries(Object.entries(themeRegistry).filter(([id]) => !(id in seedBundleThemes)));
 
+/*
+  The registry also carries themes that are not presets: a template's own look, authored beside
+  the template it suggests (`acorn`). Named here so the catalogue stays closed — a theme added
+  to the registry without being named fails the same way a forgotten preset does.
+*/
+const TEMPLATE_THEMES = ['acorn'];
+
 describe('themeRegistry', () => {
   it('carries every preset the design system defines, and the showcase pair with developer features', () => {
-    expect(Object.keys(builtIns).sort()).toEqual(Object.keys(PRESETS).sort());
+    expect(Object.keys(builtIns).sort()).toEqual([...Object.keys(PRESETS), ...TEMPLATE_THEMES].sort());
   });
 
   it('takes each theme’s parameters from the preset rather than restating them', () => {
     for (const [id, entry] of Object.entries(builtIns)) {
+      // A template theme's parameters are its own — nothing to restate them against.
+      if (!(id in PRESETS)) continue;
       expect(entry.overrides, id).toBe(PRESETS[id as keyof typeof PRESETS].parameters);
       expect(entry.name, id).toBe(PRESETS[id as keyof typeof PRESETS].name);
     }

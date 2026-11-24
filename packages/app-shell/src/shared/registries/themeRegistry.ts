@@ -1,5 +1,6 @@
 import { DEV_FEATURES } from '@we/module-shared';
 import type { ThemeOverrides } from '@we/schema-shared';
+import { acornTheme } from '@we/template-acorn';
 import blackCss from '@we/themes/black?raw';
 import cyberpunkCss from '@we/themes/cyberpunk?raw';
 import darkCss from '@we/themes/dark?raw';
@@ -32,6 +33,18 @@ export const themeRegistry: Record<string, ThemeRegistryEntry> = {
     ...THEME_PRESETS.cyberpunk,
     css: cyberpunkCss || null,
     overrides: THEME_PRESETS.cyberpunk.parameters,
+  },
+  /*
+    The Acorn template's own theme — the real app's palette and type, not a preset of WE's. In
+    the registry rather than the seed's bundles because the template that suggests it ships
+    with every build, and a suggestion that resolves nowhere is the bug this registry exists
+    to answer. It is a full look, so it also shows in the theme picker like the presets do.
+  */
+  acorn: {
+    name: acornTheme.name,
+    icon: acornTheme.icon ?? 'acorn',
+    css: null,
+    overrides: acornTheme.overrides,
   },
   /*
     The showcase templates' themes, named after the products those templates imitate, so only in a
