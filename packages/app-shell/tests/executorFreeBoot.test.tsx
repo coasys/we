@@ -3119,6 +3119,44 @@ describe('following a space from the rows its live queries push', () => {
     failing.mockRestore();
   }, 15000);
 
+  it('refuses writes while the space’s policy cannot be read at all', async () => {
+    const { stores, handle } = await openSpace('Policy Unreadable');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Policy Unreadable Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Unreadable Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Unreadable Elsewhere'));
+
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingWatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    // Not the open policy standing in for rules nobody could read.
+    expect(stores.spaces.policy().loaded).toBe(false);
+    // Past the few seconds a successful read of a space's rules is kept for.
+    const later = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => later);
+    await expect(CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never)).rejects.toMatchObject({
+      refusal: { reason: 'unreadable' },
+    });
+
+    // Once the rules can be read, writes are judged by them again.
+    failingRead.mockRestore();
+    await expect(CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never)).resolves.toBeTruthy();
+    clock.mockRestore();
+    failingWatch.mockRestore();
+  }, 15000);
+
   /** Leaves the open space and comes back, with `entity`'s watch (when `only` accepts the query) failing to open. */
   async function reenterWithFailingWatch(
     stores: Awaited<ReturnType<typeof openSpace>>['stores'],
