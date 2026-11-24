@@ -63,6 +63,7 @@ function attachControl(label: string): SchemaNode {
   return {
     type: 'we-file-upload',
     props: {
+      label,
       multiple: true,
       hideList: true,
       maxSize: ATTACH_MAX_BYTES,

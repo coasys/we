@@ -36,6 +36,13 @@ describe('we-file-upload files', () => {
     expect(names(el)).toEqual([]);
   });
 
+  it('names its file input with its label', async () => {
+    const el = (await mount()) as UploadEl & { label: string };
+    el.label = 'Attach files';
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector('input[type=file]')?.getAttribute('aria-label')).toBe('Attach files');
+  });
+
   it('draws no list when the host shows the files itself', async () => {
     const el = await mount();
     (el as unknown as { hideList: boolean }).hideList = true;

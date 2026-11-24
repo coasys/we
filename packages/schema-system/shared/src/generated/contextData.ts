@@ -211,6 +211,7 @@ export const contextData: ContextData = {
         { name: 'files', type: 'File[] | undefined', optional: true },
         { name: 'maxSize', type: 'number', optional: false, default: '0' },
         { name: 'hideList', type: 'boolean', optional: false, default: 'false' },
+        { name: 'label', type: 'string', optional: false, default: "''" },
       ],
     },
     {

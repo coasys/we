@@ -104,6 +104,18 @@ describe('one line, the Feed’s own actions', () => {
       expect(sent.match(/"\$invoke":"modules\.feed\.(reply|sendToFeed|sendToCallFeed)"/g)).toHaveLength(2);
       expect(sent.match(/"onSuccess":\[/g)).toHaveLength(2);
       expect(sent).toContain('"$setLocal":"attachments"');
+      // The attachments are the reply's fourth argument and the send's third.
+      const invokes = (node: unknown): { $invoke: string; args: unknown[] }[] =>
+        !node || typeof node !== 'object'
+          ? []
+          : [
+              ...('$invoke' in node ? [node as { $invoke: string; args: unknown[] }] : []),
+              ...Object.values(node).flatMap(invokes),
+            ];
+      const attached = { $: 'local.attachments' };
+      const calls = invokes(composer.props?.onSubmit);
+      expect(calls.find((c) => c.$invoke === 'modules.feed.reply')?.args[3]).toEqual(attached);
+      expect(calls.find((c) => /^modules\.feed\.sendTo(Call)?Feed$/.test(c.$invoke))?.args[2]).toEqual(attached);
     }
   });
 

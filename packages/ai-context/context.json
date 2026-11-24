@@ -610,6 +610,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "optional": false,
+          "default": "''"
         }
       ]
     },

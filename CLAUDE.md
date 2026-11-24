@@ -1446,7 +1446,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false, label: string = ''
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.

@@ -94,6 +94,8 @@ export default class FileUpload extends DesignSystemElement {
   @property({ type: Number, attribute: 'max-size' }) maxSize = 0;
   /** Draw no list of the files held: the host shows them itself, as chips beside a one-button drop zone. */
   @property({ type: Boolean, attribute: 'hide-list' }) hideList = false;
+  /** The file input's accessible name, for a page that holds more than one drop zone. */
+  @property({ type: String }) label = '';
 
   @state() private _files: File[] = [];
   @state() private _dragover = false;
@@ -177,6 +179,7 @@ export default class FileUpload extends DesignSystemElement {
           part="native"
           type="file"
           accept=${this.accept || nothing}
+          aria-label=${this.label || nothing}
           ?multiple=${this.multiple}
           @change=${this._onFileSelect}
         />

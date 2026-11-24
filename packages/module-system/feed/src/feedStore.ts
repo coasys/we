@@ -131,7 +131,7 @@ export function createFeed(deps: FeedDeps) {
   */
   const [sent, setSent] = signal<SentLine[]>([]);
   /** The files read for the window, by `FileBlock` id — see `readAttachments`. */
-  const readFiles = new Map<string, FeedAttachment>();
+  let readFiles = new Map<string, FeedAttachment>();
   let sentKeys = 0;
   let lastSentAt = 0;
   /*
@@ -174,8 +174,9 @@ export function createFeed(deps: FeedDeps) {
     // A root that reads other signals (the calls drawn) can re-run this for the same collection.
     if (ds === datasetWas && now === rootWas) return;
     datasetWas = ds;
-    // A file's id means a file in one dataset only.
-    readFiles.clear();
+    // A file's id means a file in one dataset only. A new map, not a cleared one: a read of the last
+    // dataset still in flight writes into the map it started with.
+    readFiles = new Map<string, FeedAttachment>();
     setRows([]);
     setSent([]);
     setLoaded(false);
