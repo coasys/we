@@ -447,6 +447,173 @@ export interface EntityManifest {
   version: string;
   /** Entities keyed by name (the key IS the entity name). */
   entities: Record<string, EntitySchema>;
+  /**
+   * Declared operations: named compound writes over these entities (and any the host already has),
+   * keyed by bare name. The host assigns the namespace from whoever declared the manifest — `core`
+   * for WE's own, a module's id, a bundle's id — so a manifest cannot claim another's names.
+   *
+   * Only their structure is checked here. Whether every name an operation reads is bound, every
+   * entity and field it writes is known and every call resolves is judged by `validateOperations` in
+   * `@we/entities`, which has the expression language this package cannot depend on.
+   */
+  operations?: Record<string, OperationDefinition>;
+}
+
+// ─── Declared operations (the format) ──────────────────────────────────────────
+
+/**
+ * A value in an operation: a plain JSON value is a literal, `{ $: '<expression>' }` an expression
+ * over the operation's bound names, and an object or list may nest either.
+ */
+export type OperationValue = unknown;
+
+/** `{ $: '<expression>' }` — the only spelling of an expression, as in templates. */
+export interface OperationExpression {
+  $: string;
+}
+
+export type OperationParamType = 'string' | 'number' | 'boolean' | 'list' | 'object' | 'json';
+
+export interface OperationParam {
+  /** `json` is anything. */
+  type: OperationParamType;
+  /** Defaults to false. A missing optional param is absent, and an absent value matches no comparison. */
+  required?: boolean;
+  description?: string;
+}
+
+/** Records under one, by the parent's relation — the `$query` scope with a single anchor. */
+export interface OperationScope {
+  anchor: string;
+  via: string;
+  anchorId: OperationValue;
+}
+
+export interface FindStep {
+  as: string;
+  entity: string;
+  /** The `$query` where-object, with values in value positions. */
+  where?: Record<string, OperationValue>;
+  order?: Record<string, 'asc' | 'desc'>;
+  limit?: OperationValue;
+  scope?: OperationScope;
+  /** Exactly one record, or the precondition error `notFound` / `ambiguous`. Otherwise a list. */
+  one?: boolean;
+  /** Read again at the end of the operation; `expectChanged` if the ids differ. */
+  expect?: boolean;
+}
+
+export interface CreateStep {
+  as?: string;
+  /** A literal name, or an expression whose value must be one of `oneOf`. */
+  entity: string | OperationExpression;
+  oneOf?: string[];
+  /** The fields, or one expression giving them all — for a record whose entity is chosen at run time. */
+  fields: Record<string, OperationValue> | OperationExpression;
+  parent?: { id: OperationValue; relation: string; entity?: string };
+}
+
+export interface UpdateStep {
+  entity: string;
+  id: OperationValue;
+  fields?: Record<string, OperationValue> | OperationExpression;
+  /** Fields to clear. */
+  unset?: string[];
+}
+
+export interface DeleteStep {
+  entity: string;
+  id: OperationValue;
+}
+
+export interface LinkStep {
+  entity: string;
+  id: OperationValue;
+  relation: string;
+  target: OperationValue;
+  /** Strict link fails with `alreadyLinked` when present; strict unlink with `notLinked` when absent. */
+  strict?: boolean;
+}
+
+export interface SetRelationStep {
+  entity: string;
+  id: OperationValue;
+  relation: string;
+  /** The whole ordered list. */
+  targets: OperationValue;
+}
+
+export interface ForEachStep {
+  in: OperationValue;
+  as: string;
+  /** The item's stable identity. Default `item.id`, else `item.key`. */
+  key?: OperationExpression;
+  steps: OperationStep[];
+}
+
+export interface CheckStep {
+  condition: OperationValue;
+  /** A name in the operation's `errors`. */
+  error: string;
+}
+
+export interface CallStep {
+  as?: string;
+  /** `<namespace>.<name>`. */
+  operation: string;
+  args?: Record<string, OperationValue>;
+}
+
+/** What every step may carry beside its verb: a guard, skipping the step when falsy. */
+interface StepGuard {
+  when?: OperationValue;
+}
+
+/** A step: exactly one verb key, plus an optional `when`. A closed union — an unknown verb is refused. */
+export type OperationStep = StepGuard &
+  (
+    | { find: FindStep }
+    | { create: CreateStep }
+    | { update: UpdateStep }
+    | { delete: DeleteStep }
+    | { link: LinkStep }
+    | { unlink: LinkStep }
+    | { setRelation: SetRelationStep }
+    | { forEach: ForEachStep }
+    | { check: CheckStep }
+    | { call: CallStep }
+  );
+
+export type OperationVerb =
+  'find' | 'create' | 'update' | 'delete' | 'link' | 'unlink' | 'setRelation' | 'forEach' | 'check' | 'call';
+
+export const OPERATION_VERBS: readonly OperationVerb[] = [
+  'find',
+  'create',
+  'update',
+  'delete',
+  'link',
+  'unlink',
+  'setRelation',
+  'forEach',
+  'check',
+  'call',
+];
+
+/** The verb of a step, read off its one verb key. */
+export function stepVerb(step: OperationStep): OperationVerb {
+  return OPERATION_VERBS.find((verb) => verb in step)!;
+}
+
+export interface OperationDefinition {
+  /** One sentence, for the AI context and the install screen. */
+  description: string;
+  params?: Record<string, OperationParam>;
+  /** Named precondition errors a `check` may raise, each with a person-readable message. */
+  errors?: Record<string, string>;
+  steps: OperationStep[];
+  /** Evaluated after the last step and handed to the caller. */
+  returns?: OperationValue;
 }
 
 // ─── Zod schema (structural validation) ────────────────────────────────────────
@@ -498,9 +665,110 @@ const entitySchema = z.object({
     .optional(),
 });
 
+// Steps are strict objects: a key the format does not have is refused rather than dropped, because
+// an implementation that silently ignored one (a misspelt `when`) would run a different operation
+// from the one written.
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const name = z.string().regex(IDENTIFIER, 'must be a name: letters, digits and _, not starting with a digit');
+const expressionToken = z.strictObject({ $: z.string() });
+const value = z.unknown();
+// `z.unknown()` admits a missing key, so a value the step cannot run without says it is required.
+const present = z.unknown().refine((v) => v !== undefined, 'is required');
+const valueMap = z.record(z.string(), value);
+const guard = { when: value.optional() };
+const linkBody = z.strictObject({
+  entity: z.string(),
+  id: present,
+  relation: z.string(),
+  target: present,
+  strict: z.boolean().optional(),
+});
+
+const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
+  z.union([
+    z.strictObject({
+      ...guard,
+      find: z.strictObject({
+        as: name,
+        entity: z.string(),
+        where: valueMap.optional(),
+        order: z.record(z.string(), z.enum(['asc', 'desc'])).optional(),
+        limit: value.optional(),
+        scope: z.strictObject({ anchor: z.string(), via: z.string(), anchorId: present }).optional(),
+        one: z.boolean().optional(),
+        expect: z.boolean().optional(),
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      create: z.strictObject({
+        as: name.optional(),
+        entity: z.union([z.string(), expressionToken]),
+        oneOf: z.array(z.string()).optional(),
+        fields: z.union([expressionToken, valueMap]),
+        parent: z.strictObject({ id: present, relation: z.string(), entity: z.string().optional() }).optional(),
+      }),
+    }),
+    z.strictObject({
+      ...guard,
+      update: z.strictObject({
+        entity: z.string(),
+        id: present,
+        fields: z.union([expressionToken, valueMap]).optional(),
+        unset: z.array(z.string()).optional(),
+      }),
+    }),
+    z.strictObject({ ...guard, delete: z.strictObject({ entity: z.string(), id: present }) }),
+    z.strictObject({ ...guard, link: linkBody }),
+    z.strictObject({ ...guard, unlink: linkBody }),
+    z.strictObject({
+      ...guard,
+      setRelation: z.strictObject({ entity: z.string(), id: present, relation: z.string(), targets: present }),
+    }),
+    z.strictObject({
+      ...guard,
+      forEach: z.strictObject({
+        in: present,
+        as: name,
+        key: expressionToken.optional(),
+        steps: z.array(operationStepSchema),
+      }),
+    }),
+    z.strictObject({ ...guard, check: z.strictObject({ condition: present, error: name }) }),
+    z.strictObject({
+      ...guard,
+      call: z.strictObject({
+        as: name.optional(),
+        operation: z.string().regex(/^[a-z][a-z0-9-]*\.[A-Za-z_][A-Za-z0-9_]*$/, 'must be "<namespace>.<name>"'),
+        args: valueMap.optional(),
+      }),
+    }),
+  ]),
+);
+
+export const operationDefinitionSchema = z.strictObject({
+  description: z.string(),
+  params: z
+    .record(
+      name,
+      z.strictObject({
+        type: z.enum(['string', 'number', 'boolean', 'list', 'object', 'json']),
+        required: z.boolean().optional(),
+        description: z.string().optional(),
+      }),
+    )
+    .optional(),
+  errors: z.record(name, z.string()).optional(),
+  steps: z.array(operationStepSchema),
+  returns: value.optional(),
+});
+
+export const operationsSchema = z.record(name, operationDefinitionSchema);
+
 export const modelManifestSchema = z.object({
   version: z.string(),
   entities: z.record(z.string(), entitySchema),
+  operations: operationsSchema.optional(),
 });
 
 // ─── Validation (structure + referential integrity) ────────────────────────────

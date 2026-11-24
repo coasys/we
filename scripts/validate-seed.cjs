@@ -504,8 +504,9 @@ function validateSpaceStarter(seed) {
 
 /*
   The bundles a deployment builds in: each id names `bundles/<id>.bundle.json`, which must be a bundle
-  of the format this build reads, under the id the seed gave it. What is inside — whether its templates
-  draw, whether its record types are valid — is checked by the app's tests, not here.
+  of a format this build reads (1, or 2 once it declares operations), under the id the seed gave it.
+  What is inside — whether its templates draw, whether its record types and operations are valid — is
+  checked by the app's tests, not here.
 */
 function validateBundles(seed) {
   if (seed.bundles === undefined) return;
@@ -527,8 +528,8 @@ function validateBundles(seed) {
       error(`bundles/${id}.bundle.json is not valid JSON: ${err.message}`);
       continue;
     }
-    if (bundle.format !== 'we-bundle' || bundle.formatVersion !== 1)
-      error(`bundles/${id}.bundle.json is not a we-bundle 1`);
+    if (bundle.format !== 'we-bundle' || ![1, 2].includes(bundle.formatVersion))
+      error(`bundles/${id}.bundle.json is not a we-bundle 1 or 2`);
     else if (bundle.id !== id) error(`bundles/${id}.bundle.json says its id is "${bundle.id}"`);
     else success(`bundle ${id} ${bundle.version}`);
   }

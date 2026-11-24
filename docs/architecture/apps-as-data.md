@@ -15,7 +15,7 @@ data the host already understands.
 
 | Field                                   | What it is                                                                                                  |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `format`, `formatVersion`               | `we-bundle`, `1`. Checked before anything else.                                                             |
+| `format`, `formatVersion`               | `we-bundle`, `1` or `2`. Checked before anything else. See "Format versions".                               |
 | `id`, `version`                         | The app's own. Lowercase with single dashes; an install is recognised by the id.                            |
 | `name`, `description`, `icon`, `author` | `author` is a claim — a file attests nothing.                                                               |
 | `app`                                   | A template with `meta.role: 'app'`: the chrome around every space (see `chrome-and-panels.md`).             |
@@ -26,13 +26,21 @@ data the host already understands.
 | `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".          |
 | `bootScreen`                            | A node: the app's own sign-in screen, placing WE's sign-in form or the host's `CredentialField`. See below. |
 | `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.                  |
+| `operations`                            | Declared operations by bare name, installed as `<bundle id>.<name>`. Format 2 only. See `space-policy.md`.  |
 | `workflows`                             | `WorkflowDefinition`s, as `WorkflowPort.install` takes them: what the app's records move through.           |
 | `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                                |
 | `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below.       |
 
+**Format versions.** A reader refuses a `formatVersion` it does not know rather than reading the
+parts it recognises, so a host that predates a field refuses a bundle using it instead of installing
+the app without it. Format 2 is format 1 plus `operations`: a host that reads only 1 refuses an app
+that brings its own compound writes, and this build reads both. A writer stamps the lowest format that
+holds what it carries (`bundleFormatVersionFor`), so a bundle without operations stays a format-1 file
+and the older host still reads it; a file claiming format 1 and carrying operations is refused.
+
 **What a bundle needs and what it can do are not in it.** `judgeBundle`
 (`app-shell/src/shared/bundles/judgeBundle.ts`) works both out from its templates — the app at the
-chrome tier it is drawn with, and its pages with it, everything else at the space tier — and validates its record types. A
+chrome tier it is drawn with, and its pages with it, everything else at the space tier — and validates its record types and its operations (against WE's vocabulary and those record types). A
 list an author writes is a claim; an install prompt shows only what the walk found.
 
 `bundles/` at the repository root holds the two checked in, the field guide and the tool library,
