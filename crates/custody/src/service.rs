@@ -6003,6 +6003,10 @@ mod tests {
             self.block.enter();
             self.inner.delete(n)
         }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.block.enter();
+            self.inner.claim_public(n, b)
+        }
         fn claim_secret(
             &self,
             n: &str,
@@ -6098,7 +6102,7 @@ mod tests {
                             .finish(
                                 &executor,
                                 &vault.unlocking(None),
-                                this_computer(None, true, Some(0)),
+                                this_computer(None, true, Some((0, VaultId([1; 16])))),
                                 &CLOCK,
                                 &RANDOM,
                             )
