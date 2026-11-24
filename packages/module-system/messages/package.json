@@ -15,11 +15,13 @@
     }
   },
   "peerDependencies": {
+    "@we/block-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
+    "@we/block-shared": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/schema-shared": "workspace:*",
     "typescript": "^6.0.3",

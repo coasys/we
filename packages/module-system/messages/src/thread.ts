@@ -16,6 +16,7 @@
  * A thread holds every response, and a call held about a line is one; it is a conversation of its
  * own, not a line of this one, so it is left out.
  */
+import { parseMarks, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
 
 /** What a reply's quote needs of the line it answers. */
@@ -28,20 +29,37 @@ export interface ReplyQuote {
 type Row = Record<string, unknown>;
 
 /**
- * A line with marks, as the one block a renderer draws it from — `[{ _type: 'block', text, marks }]`
- * — or `null` for plain text, which is most lines and is drawn as text. Marks are stored as JSON on
- * the record; one that does not parse is drawn as plain text rather than not at all.
+ * A line as the blocks a renderer draws it from — `[{ _type: 'block', text, marks }]` — or `null`
+ * for a line with no words.
+ *
+ * ## Every line, not only a marked one
+ *
+ * This used to answer `null` for a line without marks, which was drawn as plain text instead. That
+ * looked like the cheap path and was a second look: plain text folds a line break into a space, so a
+ * bot's message with paragraphs and a list read as one block of prose — while the same bot's next
+ * message, which happened to mention somebody and so carried a mark, kept every break. One path now.
+ *
+ * ## URLs nobody marked
+ *
+ * A line drawn here is linked where its writer left a URL bare (`withFoundLinks`). A bot writing
+ * through its own tools never passes through WE's composer, so nothing marked its links. Drawn,
+ * never written back: what the writer marked always wins.
+ *
+ * ## Fresh every time, and that is fine
+ *
+ * The Feed reads its window again as lines arrive, and the transcript reruns `threadLines` on every
+ * change, so this answers a new array for an unchanged line each time. Nothing is redrawn for it: a
+ * `$each` keeps a list's rows by id and writes a changed row into the one already drawn, field by
+ * field, so content equal to what is on screen never reaches the renderer. The browser harness's
+ * `perfFeedLines` case holds that — a message arriving draws the new line and nothing else.
+ *
+ * Marks are stored as JSON on the record; marks that do not parse are drawn as if there were none
+ * rather than not drawing the line at all.
  */
 export function lineContent(row: Row): Row[] | null {
-  const stored = row.marks;
-  if (typeof stored !== 'string' || !stored || stored === '[]') return null;
-  try {
-    const marks: unknown = JSON.parse(stored);
-    if (!Array.isArray(marks) || !marks.length) return null;
-    return [{ _type: 'block', text: typeof row.text === 'string' ? row.text : '', marks }];
-  } catch {
-    return null;
-  }
+  const text = typeof row.text === 'string' ? row.text : '';
+  if (!text) return null;
+  return [{ _type: 'block', text, marks: withFoundLinks(text, parseMarks(row.marks)) }];
 }
 
 const timeOf = (row: Row): number => {

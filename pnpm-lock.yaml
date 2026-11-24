@@ -1672,6 +1672,9 @@ importers:
 
   packages/module-system/feed:
     dependencies:
+      '@we/block-shared':
+        specifier: workspace:*
+        version: link:../../block-system/shared
       '@we/messages':
         specifier: workspace:*
         version: link:../messages
@@ -1936,6 +1939,9 @@ importers:
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6
+      '@we/block-shared':
+        specifier: workspace:*
+        version: link:../../block-system/shared
       '@we/module-shared':
         specifier: workspace:*
         version: link:../shared
@@ -2094,6 +2100,9 @@ importers:
 
   packages/module-system/transcribe:
     dependencies:
+      '@we/block-shared':
+        specifier: workspace:*
+        version: link:../../block-system/shared
       '@we/messages':
         specifier: workspace:*
         version: link:../messages
