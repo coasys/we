@@ -256,7 +256,7 @@ const weDomain: Record<string, SchemaNode> = {
 };
 
 /** The offered types, as `signalTypes.ts` spells them — repeated here so a drift shows up as a test. */
-const OFFERED = 'filter(local.signalTypes, { retired: { not: true } })';
+const OFFERED = 'local.signalTypes.filter(t, !t.retired)';
 
 /**
  * The condition on the `$if` guarding whatever opens the reactions sheet, or undefined for none.
@@ -467,7 +467,7 @@ describe('contracts call sites depend on', () => {
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition) conditions.push(condition);
     });
-    expect(conditions).toContain('count(filter(local.signalTypes, { retired: { not: true } }))');
+    expect(conditions).toContain('count(local.signalTypes.filter(t, !t.retired))');
 
     const guards = guardsAround(weDomain['signalDisplay (full)'], (n) => n.type === 'SignalControl');
     expect(guards, 'a control is gated on somebody having already used the type').toEqual(

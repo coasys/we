@@ -52,11 +52,6 @@ const DELIBERATE: { file?: RegExp; field?: string; kind?: Kind; why: string }[] 
     why: 'leaving out what muted members wrote — every record carries its author, stamped when it is written',
   },
   {
-    field: 'retired',
-    kind: 'not',
-    why: 'the signal types still offered — retired is declared with a default of false, written when a type is made',
-  },
-  {
     field: 'startDate',
     kind: 'text',
     why: 'the events of a calendar day — the operand is a day of the grid, never empty',

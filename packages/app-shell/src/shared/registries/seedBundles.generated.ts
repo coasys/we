@@ -6189,9 +6189,7 @@ export const seedBundles: Bundle[] = [
                                           then: {
                                             type: '$if',
                                             props: {
-                                              condition: {
-                                                $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
-                                              },
+                                              condition: { $: 'count(local.signalTypes.filter(t, !t.retired))' },
                                               else: {
                                                 type: 'we-text',
                                                 props: { variant: 'footnote', color: 'text-muted', italic: true },
@@ -6216,7 +6214,7 @@ export const seedBundles: Bundle[] = [
                                                         type: '$each',
                                                         props: {
                                                           items: {
-                                                            $: 'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })',
+                                                            $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids })',
                                                           },
                                                           as: 'sig',
                                                         },
@@ -6673,7 +6671,7 @@ export const seedBundles: Bundle[] = [
                                                             type: '$if',
                                                             props: {
                                                               condition: {
-                                                                $: 'count(filter(local.signalTypes, { retired: { not: true } }).filter(t, count(filter(row.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(row.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
                                                               },
                                                               then: {
                                                                 type: 'we-input',
@@ -6697,7 +6695,7 @@ export const seedBundles: Bundle[] = [
                                                                 type: '$each',
                                                                 props: {
                                                                   items: {
-                                                                    $: 'signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })',
+                                                                    $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids })',
                                                                   },
                                                                   as: 'sig',
                                                                 },
@@ -8023,7 +8021,7 @@ export const seedBundles: Bundle[] = [
                                                                                             type: '$if',
                                                                                             props: {
                                                                                               condition: {
-                                                                                                $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                               },
                                                                                               then: {
                                                                                                 type: 'Column',
@@ -8059,7 +8057,7 @@ export const seedBundles: Bundle[] = [
                                                                                                         type: '$each',
                                                                                                         props: {
                                                                                                           items: {
-                                                                                                            $: 'signalTypesByUse({ of: focused.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: focused.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                            $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: spaceStore.mutedDids, limit: 4 })',
                                                                                                           },
                                                                                                           as: 'focusedSig',
                                                                                                         },
@@ -8749,7 +8747,7 @@ export const seedBundles: Bundle[] = [
                                                                                                         type: '$if',
                                                                                                         props: {
                                                                                                           condition: {
-                                                                                                            $: 'count(filter(local.signalTypes, { retired: { not: true } })) - count(filter(filter(local.signalTypes, { retired: { not: true } }), {}, 4)) > 0',
+                                                                                                            $: 'count(local.signalTypes.filter(t, !t.retired)) - count(filter(local.signalTypes.filter(t, !t.retired), {}, 4)) > 0',
                                                                                                           },
                                                                                                           then: {
                                                                                                             type: 'we-button',
@@ -8784,14 +8782,14 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   condition:
                                                                                                                     {
-                                                                                                                      $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4 > 0',
+                                                                                                                      $: 'count(local.signalTypes.filter(t, !t.retired)) - 4 > 0',
                                                                                                                     },
                                                                                                                   then: {
                                                                                                                     type: 'we-text',
                                                                                                                     children:
                                                                                                                       [
                                                                                                                         {
-                                                                                                                          $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4',
+                                                                                                                          $: 'count(local.signalTypes.filter(t, !t.retired)) - 4',
                                                                                                                         },
                                                                                                                       ],
                                                                                                                   },
@@ -8836,7 +8834,7 @@ export const seedBundles: Bundle[] = [
                                                                                                             props: {
                                                                                                               condition:
                                                                                                                 {
-                                                                                                                  $: 'count(filter(local.signalTypes, { retired: { not: true } }).filter(t, count(filter(focused.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(focused.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
                                                                                                                 },
                                                                                                               then: {
                                                                                                                 type: 'we-input',
@@ -8876,7 +8874,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   items:
                                                                                                                     {
-                                                                                                                      $: 'signalTypesByUse({ of: focused.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: focused.signals, muted: spaceStore.mutedDids })',
+                                                                                                                      $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: spaceStore.mutedDids })',
                                                                                                                     },
                                                                                                                   as: 'focusedSig',
                                                                                                                 },
@@ -9486,7 +9484,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                             {
                                                                                                                               condition:
                                                                                                                                 {
-                                                                                                                                  $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                 },
                                                                                                                               then: {
                                                                                                                                 type: 'we-divider',
@@ -11018,7 +11016,7 @@ export const seedBundles: Bundle[] = [
                                                                                                     type: '$if',
                                                                                                     props: {
                                                                                                       condition: {
-                                                                                                        $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                        $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                       },
                                                                                                       then: {
                                                                                                         type: 'Column',
@@ -11061,7 +11059,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   items:
                                                                                                                     {
-                                                                                                                      $: 'signalTypesByUse({ of: reply.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                      $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: spaceStore.mutedDids, limit: 4 })',
                                                                                                                     },
                                                                                                                   as: 'replySig',
                                                                                                                 },
@@ -11755,7 +11753,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   condition:
                                                                                                                     {
-                                                                                                                      $: 'count(filter(local.signalTypes, { retired: { not: true } })) - count(filter(filter(local.signalTypes, { retired: { not: true } }), {}, 4)) > 0',
+                                                                                                                      $: 'count(local.signalTypes.filter(t, !t.retired)) - count(filter(local.signalTypes.filter(t, !t.retired), {}, 4)) > 0',
                                                                                                                     },
                                                                                                                   then: {
                                                                                                                     type: 'we-button',
@@ -11795,14 +11793,14 @@ export const seedBundles: Bundle[] = [
                                                                                                                             {
                                                                                                                               condition:
                                                                                                                                 {
-                                                                                                                                  $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4 > 0',
+                                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired)) - 4 > 0',
                                                                                                                                 },
                                                                                                                               then: {
                                                                                                                                 type: 'we-text',
                                                                                                                                 children:
                                                                                                                                   [
                                                                                                                                     {
-                                                                                                                                      $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4',
+                                                                                                                                      $: 'count(local.signalTypes.filter(t, !t.retired)) - 4',
                                                                                                                                     },
                                                                                                                                   ],
                                                                                                                               },
@@ -11853,7 +11851,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                         {
                                                                                                                           condition:
                                                                                                                             {
-                                                                                                                              $: 'count(filter(local.signalTypes, { retired: { not: true } }).filter(t, count(filter(reply.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                              $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
                                                                                                                             },
                                                                                                                           then: {
                                                                                                                             type: 'we-input',
@@ -11897,7 +11895,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               {
                                                                                                                                 items:
                                                                                                                                   {
-                                                                                                                                    $: 'signalTypesByUse({ of: reply.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                    $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: spaceStore.mutedDids })',
                                                                                                                                   },
                                                                                                                                 as: 'replySig',
                                                                                                                               },
@@ -12508,7 +12506,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                           {
                                                                                                                                             condition:
                                                                                                                                               {
-                                                                                                                                                $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                                $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                               },
                                                                                                                                             then: {
                                                                                                                                               type: 'we-divider',
@@ -14344,7 +14342,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'Column',
@@ -14393,7 +14391,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                               {
                                                                                                                                                                                 items:
                                                                                                                                                                                   {
-                                                                                                                                                                                    $: 'signalTypesByUse({ of: reply2.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply2.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                                                                                    $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: spaceStore.mutedDids, limit: 4 })',
                                                                                                                                                                                   },
                                                                                                                                                                                 as: 'reply2Sig',
                                                                                                                                                                               },
@@ -15088,7 +15086,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                               {
                                                                                                                                                                                 condition:
                                                                                                                                                                                   {
-                                                                                                                                                                                    $: 'count(filter(local.signalTypes, { retired: { not: true } })) - count(filter(filter(local.signalTypes, { retired: { not: true } }), {}, 4)) > 0',
+                                                                                                                                                                                    $: 'count(local.signalTypes.filter(t, !t.retired)) - count(filter(local.signalTypes.filter(t, !t.retired), {}, 4)) > 0',
                                                                                                                                                                                   },
                                                                                                                                                                                 then: {
                                                                                                                                                                                   type: 'we-button',
@@ -15128,14 +15126,14 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                           {
                                                                                                                                                                                             condition:
                                                                                                                                                                                               {
-                                                                                                                                                                                                $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4 > 0',
+                                                                                                                                                                                                $: 'count(local.signalTypes.filter(t, !t.retired)) - 4 > 0',
                                                                                                                                                                                               },
                                                                                                                                                                                             then: {
                                                                                                                                                                                               type: 'we-text',
                                                                                                                                                                                               children:
                                                                                                                                                                                                 [
                                                                                                                                                                                                   {
-                                                                                                                                                                                                    $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4',
+                                                                                                                                                                                                    $: 'count(local.signalTypes.filter(t, !t.retired)) - 4',
                                                                                                                                                                                                   },
                                                                                                                                                                                                 ],
                                                                                                                                                                                             },
@@ -15188,7 +15186,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                     {
                                                                                                                                                                                       condition:
                                                                                                                                                                                         {
-                                                                                                                                                                                          $: 'count(filter(local.signalTypes, { retired: { not: true } }).filter(t, count(filter(reply2.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                                                                                          $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply2.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
                                                                                                                                                                                         },
                                                                                                                                                                                       then: {
                                                                                                                                                                                         type: 'we-input',
@@ -15232,7 +15230,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                           {
                                                                                                                                                                                             items:
                                                                                                                                                                                               {
-                                                                                                                                                                                                $: 'signalTypesByUse({ of: reply2.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply2.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                                                                                $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: spaceStore.mutedDids })',
                                                                                                                                                                                               },
                                                                                                                                                                                             as: 'reply2Sig',
                                                                                                                                                                                           },
@@ -15843,7 +15841,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                       {
                                                                                                                                                                                                         condition:
                                                                                                                                                                                                           {
-                                                                                                                                                                                                            $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                                                                                            $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                                                                                           },
                                                                                                                                                                                                         then: {
                                                                                                                                                                                                           type: 'we-divider',
@@ -17781,7 +17779,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                       {
                                                                                                                                                                                                                         condition:
                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                            $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                                                                                                            $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                                                                                                           },
                                                                                                                                                                                                                         then: {
                                                                                                                                                                                                                           type: 'Column',
@@ -17830,7 +17828,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                         {
                                                                                                                                                                                                                                           items:
                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                              $: 'signalTypesByUse({ of: reply3.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply3.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                                                                                                                                              $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: spaceStore.mutedDids, limit: 4 })',
                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                           as: 'reply3Sig',
                                                                                                                                                                                                                                         },
@@ -18525,7 +18523,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                         {
                                                                                                                                                                                                                                           condition:
                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                              $: 'count(filter(local.signalTypes, { retired: { not: true } })) - count(filter(filter(local.signalTypes, { retired: { not: true } }), {}, 4)) > 0',
+                                                                                                                                                                                                                                              $: 'count(local.signalTypes.filter(t, !t.retired)) - count(filter(local.signalTypes.filter(t, !t.retired), {}, 4)) > 0',
                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                           then: {
                                                                                                                                                                                                                                             type: 'we-button',
@@ -18565,14 +18563,14 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                                       condition:
                                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                                          $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4 > 0',
+                                                                                                                                                                                                                                                          $: 'count(local.signalTypes.filter(t, !t.retired)) - 4 > 0',
                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                       then: {
                                                                                                                                                                                                                                                         type: 'we-text',
                                                                                                                                                                                                                                                         children:
                                                                                                                                                                                                                                                           [
                                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                                              $: 'count(filter(local.signalTypes, { retired: { not: true } })) - 4',
+                                                                                                                                                                                                                                                              $: 'count(local.signalTypes.filter(t, !t.retired)) - 4',
                                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                                           ],
                                                                                                                                                                                                                                                       },
@@ -18625,7 +18623,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                 condition:
                                                                                                                                                                                                                                                   {
-                                                                                                                                                                                                                                                    $: 'count(filter(local.signalTypes, { retired: { not: true } }).filter(t, count(filter(reply3.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                                                                                                                                                    $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply3.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
                                                                                                                                                                                                                                                   },
                                                                                                                                                                                                                                                 then: {
                                                                                                                                                                                                                                                   type: 'we-input',
@@ -18669,7 +18667,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                                       items:
                                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                                          $: 'signalTypesByUse({ of: reply3.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: reply3.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                                                                                                                                          $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: spaceStore.mutedDids })',
                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                       as: 'reply3Sig',
                                                                                                                                                                                                                                                     },
@@ -19280,7 +19278,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                 {
                                                                                                                                                                                                                                                                   condition:
                                                                                                                                                                                                                                                                     {
-                                                                                                                                                                                                                                                                      $: 'count(filter(local.signalTypes, { retired: { not: true } }))',
+                                                                                                                                                                                                                                                                      $: 'count(local.signalTypes.filter(t, !t.retired))',
                                                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                                                   then: {
                                                                                                                                                                                                                                                                     type: 'we-divider',
