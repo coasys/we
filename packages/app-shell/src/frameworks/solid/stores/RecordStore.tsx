@@ -2759,7 +2759,7 @@ export function RecordStoreProvider(props: ParentProps) {
         connection?: string;
         sourceAnchor?: string;
         targetAnchor?: string;
-        points?: string;
+        points?: unknown;
       }[];
       const already = existing.find((row) => row.connection === event.recordId);
       // The rule itself lives in `routeWrite`, where it can be tested — every branch of it is a
@@ -2897,7 +2897,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !event.recordId || !Array.isArray(event.points)) return;
     const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
-    const points = JSON.stringify(event.points);
+    const points = event.points;
 
     try {
       const existing = (await EdgeRoute.findAll(dataset.handle, { parent })) as {
@@ -2917,9 +2917,8 @@ export function RecordStoreProvider(props: ParentProps) {
         await EdgeRoute.delete(dataset.handle, already.id);
         return;
       }
-      // `[]` rather than `''`: an update skips an empty string, so a straightened route would keep
-      // its old bends. A two-character JSON array is a value, and `waypointsOf` reads it as none.
-      await EdgeRoute.update(dataset.handle, already.id, { points });
+      // A straightened route still pinned at an end keeps the record and clears its bends.
+      await EdgeRoute.update(dataset.handle, already.id, { points: points.length ? points : '' });
     } catch (error) {
       console.error('RecordStore: rerouting a connection on a canvas failed', error);
       toastService.error('Could not save that.');

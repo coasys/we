@@ -2935,14 +2935,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
   async function writeMessage(
     holder: { id: string; relation: string; entity?: string },
     text: string,
-    marks?: string,
+    marks?: unknown,
     dataset?: string,
   ): Promise<string | null> {
     const words = String(text ?? '').trim();
     if (!words || !createEntity) return null;
     return createEntity(
       'TextBlock',
-      { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+      { text: words, source: TYPED, ...(Array.isArray(marks) && marks.length ? { marks } : {}) },
       { parent: holder, ...(dataset ? { dataset } : {}) },
     );
   }
@@ -3895,7 +3895,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * second, since a message does not need somebody to have spoken first and `collectionId` is
      * null until they have.
      */
-    addMessage: action(async (collection: string, text: string, marks?: string) => {
+    addMessage: action(async (collection: string, text: string, marks?: unknown) => {
       const words = String(text ?? '').trim();
       if (!words || !createEntity) return;
       const target = collection || targetCollection();
@@ -3938,7 +3938,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * draw it inline, after what it answers, quoting it. `inCall` writes into the call's space, for
      * a reply made from a transcript of a call running somewhere else.
      */
-    reply: action(async (parentId: string, text: string, marks?: string, inCall?: boolean) => {
+    reply: action(async (parentId: string, text: string, marks?: unknown, inCall?: boolean) => {
       // Said rather than swallowed: a reply with nothing to answer must not resolve as though sent.
       if (!parentId) {
         console.warn('[transcribe] a reply has no line to answer, so it was not sent');

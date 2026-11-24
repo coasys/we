@@ -8,7 +8,6 @@ import {
   getRegisteredBlockEntities,
   registerCoreBlocks,
   resolveExpressionAddresses,
-  serializeMarks,
 } from '@we/block-shared';
 import type { ColumnProps } from '@we/components/solid';
 import { Column } from '@we/components/solid';
@@ -186,7 +185,7 @@ export function BlockComposer(props: Props) {
     if (!v) return true;
     const line = contentToLine(docToContent(v.state.doc));
     if (!line.text.trim()) return true;
-    props.onSubmit?.({ text: line.text, marks: line.marks.length ? serializeMarks(line.marks) : '' });
+    props.onSubmit?.({ text: line.text, marks: line.marks });
     const schema = v.state.schema;
     v.updateState(EditorState.create({ schema, doc: contentToDoc(schema, emptyContent()), plugins: v.state.plugins }));
     setVersion((n) => n + 1);

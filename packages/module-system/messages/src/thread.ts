@@ -29,19 +29,13 @@ type Row = Record<string, unknown>;
 
 /**
  * A line with marks, as the one block a renderer draws it from — `[{ _type: 'block', text, marks }]`
- * — or `null` for plain text, which is most lines and is drawn as text. Marks are stored as JSON on
- * the record; one that does not parse is drawn as plain text rather than not at all.
+ * — or `null` for plain text, which is most lines and is drawn as text. The renderer leaves out
+ * anything in the list that is not a mark.
  */
 export function lineContent(row: Row): Row[] | null {
-  const stored = row.marks;
-  if (typeof stored !== 'string' || !stored || stored === '[]') return null;
-  try {
-    const marks: unknown = JSON.parse(stored);
-    if (!Array.isArray(marks) || !marks.length) return null;
-    return [{ _type: 'block', text: typeof row.text === 'string' ? row.text : '', marks }];
-  } catch {
-    return null;
-  }
+  const marks = row.marks;
+  if (!Array.isArray(marks) || !marks.length) return null;
+  return [{ _type: 'block', text: typeof row.text === 'string' ? row.text : '', marks }];
 }
 
 const timeOf = (row: Row): number => {

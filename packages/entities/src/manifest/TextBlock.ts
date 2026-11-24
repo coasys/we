@@ -5,7 +5,7 @@ import type { CoreEntityDef } from './defs';
  *
  * `text` is canonical — the one string search, transcripts, the notes module and the AI read.
  * Inline structure lives beside it in `marks`, as standoff annotations (see `@we/block-shared`'s
- * `marks.ts`): a JSON array of `{ start, end, type, ...data }` ranges over the text, offsets in
+ * `marks.ts`): a list of `{ start, end, type, ...data }` ranges over the text, offsets in
  * Unicode code points. **A block with `text` and no `marks` is one unmarked span**, so a writer
  * that knows nothing about marks — a transcriber, a plain textarea — produces a well-formed block.
  * The same holds for the structural fields: a block with only `text` is a paragraph.
@@ -43,10 +43,10 @@ export const TextBlock: CoreEntityDef = {
       /** The block's words, and the one string search, transcripts, notes and the AI all read. */
       text: { type: 'string', predicate: 'we://text', default: '', control: 'textarea' },
       /**
-       * Inline structure over `text`, as standoff annotations — a JSON array of
-       * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, empty string for
-       * none. Types are `strong`, `em`, `underline`, `strike`, `code`, `link` (with `href`),
-       * `nodeLink` and `mention` (with `did`).
+       * Inline structure over `text`, as standoff annotations — a list of
+       * `{ start, end, type, ...data }` ranges, offsets in Unicode **code points**, absent for none.
+       * Types are `strong`, `em`, `underline`, `strike`, `code`, `link` (with `href`), `nodeLink` and
+       * `mention` (with `did`).
        *
        * A block with `text` and no `marks` is one unmarked span, which is what makes a writer that
        * knows nothing about marks — a transcriber, a plain textarea — produce a well-formed block.
@@ -55,7 +55,7 @@ export const TextBlock: CoreEntityDef = {
        * relation beside it: a mention is also a `we://mention` link on the root, which is where
        * "who is named in this post" is answered.
        */
-      marks: { type: 'json', predicate: 'we://marks', default: '' },
+      marks: { type: 'json', predicate: 'we://marks' },
       /**
        * How this text came to be — empty for an ordinary block, and one of three words inside a
        * transcript.

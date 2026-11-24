@@ -113,7 +113,7 @@ export interface DividerBlockRecord extends WeNodeRecord {
 export interface EdgeRouteRecord extends RecordInstance {
   sourceAnchor: string;
   targetAnchor: string;
-  points: string;
+  points?: unknown;
   connection?: string;
 }
 
@@ -397,7 +397,7 @@ export interface TextBlockRecord extends WeNodeRecord {
   align: string;
   direction: string;
   text: string;
-  marks: string;
+  marks?: unknown;
   source: string;
   version: number;
 }

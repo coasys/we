@@ -41,7 +41,7 @@ import {
   WakerSubscriptionManager,
 } from '@coasys/ad4m';
 import type { BackendPorts } from '@we/backend-shared';
-import { type ContentDocument, createBlocks, registerCoreBlocks, serializeMarks } from '@we/block-shared';
+import { type ContentDocument, createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { CollectionBlock, TextBlock } from '@we/entities';
 import { afterAll, describe, expect, inject, it } from 'vitest';
 
@@ -263,7 +263,7 @@ async function lineMentioning(handle: unknown, channelId: string, name: string, 
   const text = `${mention} can you look at this?`;
   expect(text).not.toContain(did);
   const marks = [{ start: 0, end: Array.from(mention).length, type: 'mention' as const, did }];
-  const line = (await TextBlock.create(handle as never, { text, marks: serializeMarks(marks) } as never, {
+  const line = (await TextBlock.create(handle as never, { text, marks } as never, {
     parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
   })) as { id: string };
   expect(line?.id).toBeTruthy();

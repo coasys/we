@@ -188,10 +188,10 @@ describe('text block ⇄ record', () => {
     });
   });
 
-  it('serialises marks as JSON and reads them back', () => {
+  it('writes marks as a list and reads them back', () => {
     const block = paragraph('hi', { marks: [{ start: 0, end: 2, type: 'strong' }] });
     const record = textBlockToRecord(block);
-    expect(record.marks).toBe('[{"start":0,"end":2,"type":"strong"}]');
+    expect(record.marks).toEqual([{ start: 0, end: 2, type: 'strong' }]);
     expect(recordToTextBlock({ ...record, id: 'x' })).toEqual({ ...block, _key: 'x' });
   });
 
@@ -290,7 +290,7 @@ describe('refreshComposition', () => {
     const body = await FakeText.create(perspective, {
       style: 'normal',
       text: 'Say hello to Ann',
-      marks: JSON.stringify([{ start: 13, end: 16, type: 'mention', did: 'did:ann' }]),
+      marks: [{ start: 13, end: 16, type: 'mention', did: 'did:ann' }],
     });
     await root.addChildren(heading.id);
     await root.addChildren(body.id);

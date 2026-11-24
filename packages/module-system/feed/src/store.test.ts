@@ -168,11 +168,11 @@ describe('messages written from the Feed', () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
-    await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
+    await h.store.sendToFeed('see you all on Friday', [{ start: 0, end: 3, type: 'strong' }]);
     expect(h.created).toEqual([
       {
         entity: 'TextBlock',
-        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        fields: { text: 'see you all on Friday', source: 'typed', marks: [{ start: 0, end: 3, type: 'strong' }] },
         options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' } },
       },
     ]);

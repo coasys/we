@@ -773,10 +773,9 @@ export function canvasSeed(): SeedSource {
         // the other free is the ordinary case, and passing `''` on would be a side nobody named.
         if (typeof row.sourceAnchor === 'string' && row.sourceAnchor) anchors.sourceAnchor = row.sourceAnchor;
         if (typeof row.targetAnchor === 'string' && row.targetAnchor) anchors.targetAnchor = row.targetAnchor;
-        // The waypoints travel as the stored blob. A data bag holds scalars, and parsing here to
-        // re-serialise for the edge would be work done twice — `waypointsOf` does it once, where the
-        // router needs them.
-        if (typeof row.points === 'string' && row.points) anchors.waypoints = row.points;
+        // A data bag holds scalars, so the stored list travels in it as JSON text, which
+        // `waypointsOf` reads where the router needs it.
+        if (Array.isArray(row.points) && row.points.length) anchors.waypoints = JSON.stringify(row.points);
         if (Object.keys(anchors).length) routeFor.set(connection, anchors);
       }
 

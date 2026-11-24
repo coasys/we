@@ -40,10 +40,14 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
   /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
-  async function writeMessage(holder: FeedHolder, text: string, marks?: string) {
+  async function writeMessage(holder: FeedHolder, text: string, marks?: unknown) {
     const words = String(text ?? '').trim();
     if (!words || !createEntity) return null;
-    return createEntity('TextBlock', { text: words, source: TYPED, ...(marks ? { marks } : {}) }, { parent: holder });
+    return createEntity(
+      'TextBlock',
+      { text: words, source: TYPED, ...(Array.isArray(marks) && marks.length ? { marks } : {}) },
+      { parent: holder },
+    );
   }
 
   const {
@@ -226,7 +230,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       { ambient: true },
     ),
     cancelReply: action(() => setReply(null), 'Puts a reply down without sending it.', { ambient: true }),
-    reply: action(async (parentId: string, text: string, marks?: string) => {
+    reply: action(async (parentId: string, text: string, marks?: unknown) => {
       if (!parentId) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;

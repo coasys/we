@@ -20,7 +20,7 @@ const TS_TYPE = {
   boolean: 'boolean',
   date: 'string',
   datetime: 'string',
-  json: 'string',
+  json: 'unknown',
 };
 
 /** The interface field for one property — same optional/default rules the class emission uses. */

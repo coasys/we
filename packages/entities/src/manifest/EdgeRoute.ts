@@ -52,7 +52,7 @@ export const EdgeRoute: CoreEntityDef = {
       /** Side of the target card the line arrives on. Empty is unset. See {@link sourceAnchor}. */
       targetAnchor: { type: 'string', predicate: 'we://target_anchor', default: '' },
       /**
-       * Points the line is bent through, as JSON: `[{ along, across }, …]`, in order.
+       * Points the line is bent through, as a list: `[{ along, across }, …]`, in order.
        *
        * **In the edge's own frame, not the world.** `along` runs from the source (0) to the target
        * (1) and `across` is perpendicular in the same units, so a bend keeps its proportions when
@@ -68,7 +68,7 @@ export const EdgeRoute: CoreEntityDef = {
        * derived from the neighbours, which is what the spline does today — so that is an addition
        * rather than a migration.
        */
-      points: { type: 'json', predicate: 'we://route_points', default: '' },
+      points: { type: 'json', predicate: 'we://route_points' },
     },
     relations: {
       /**

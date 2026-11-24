@@ -12,7 +12,7 @@ import {
   toPortableText,
   walkBlocks,
 } from './content';
-import { mentionChanges, mentionedDids, parseMarks, serializeMarks } from './marks';
+import { marksField, marksOf, mentionChanges, mentionedDids } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
 import { getBlockRegistration, getRegisteredBlockEntities } from './registry';
@@ -84,7 +84,7 @@ export function textBlockToRecord(block: TextContentBlock): Record<string, unkno
     align: block.align ?? '',
     direction: block.direction ?? '',
     text: block.text ?? '',
-    marks: serializeMarks(block.marks),
+    marks: marksField(block.marks),
     version: 1,
   };
 }
@@ -105,7 +105,7 @@ export function recordToTextBlock(record: Record<string, unknown>): TextContentB
   if (record.checked === true) block.checked = true;
   if (typeof record.align === 'string' && record.align && record.align !== 'left') block.align = record.align;
   if (record.direction === 'rtl') block.direction = 'rtl';
-  const marks = parseMarks(record.marks);
+  const marks = marksOf(record.marks);
   if (marks.length) block.marks = marks;
   return block;
 }
