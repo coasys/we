@@ -3,12 +3,12 @@
  *
  * A store built from this port rather than from a framework's own primitives runs under any host
  * that implements it: Solid's implementation is `@we/reactivity-solid`, and `@we/reactivity/testing`
- * holds the suite every implementation passes.
+ * holds a second, small one that tests run under so a store is shown to depend on nothing more.
  *
  * What a store may assume about timing is exactly three things, stated on {@link ReactivityPort} and
  * in the README. Anything else one implementation happens to do — the order sibling effects run in,
  * whether writing an equal value wakes anyone, when an effect first runs inside a root — is not part
- * of the port.
+ * of the port, and the second implementation differs from Solid on the last of those on purpose.
  */
 
 /** Read a reactive value. Read inside a memo or an effect, it makes that computation depend on it. */

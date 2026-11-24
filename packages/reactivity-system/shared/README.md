@@ -19,11 +19,11 @@ A setter takes a value, never an updater: a function written to a signal is stor
 `root` owns the memos and effects created inside it until the function it returns is called;
 `onCleanup` registers teardown with the running effect or memo, else the root.
 
-| Package                  | Where                                | What                                             |
-| ------------------------ | ------------------------------------ | ------------------------------------------------ |
-| `@we/reactivity`         | `reactivity-system/shared`           | The port, and nothing framework-bound            |
-| `@we/reactivity/testing` | the same package                     | The guarantee suite every implementation runs    |
-| `@we/reactivity-solid`   | `reactivity-system/frameworks/solid` | `solidReactivity`: the port implemented by Solid |
+| Package                  | Where                                | What                                                       |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------- |
+| `@we/reactivity`         | `reactivity-system/shared`           | The port, and nothing framework-bound                      |
+| `@we/reactivity/testing` | the same package                     | A second implementation for tests, and the guarantee suite |
+| `@we/reactivity-solid`   | `reactivity-system/frameworks/solid` | `solidReactivity`: the port implemented by Solid           |
 
 ## The three guarantees
 
@@ -46,7 +46,9 @@ composition root does.
 
 Things the port does **not** promise, which a store must not lean on: the order sibling effects run
 in; whether writing an equal value wakes anything; how many times an effect runs for one update; an
-effect's first run happening at any particular point before the end of its update.
+effect's first run happening at any particular point before the end of its update. The test
+implementation differs from Solid on the last on purpose — it runs an effect created outside a batch
+straight away — so a store that only works because Solid deferred something fails its tests there.
 
 ## Implementations, and the suite they pass
 
@@ -56,9 +58,13 @@ root at module scope, a root made while another is being built, a root made insi
 root made after an `await`. `@we/reactivity-solid` adds a mounted component tree. An implementation
 passes the whole suite or it is not one.
 
+`createTestReactivity()` is the second implementation: push-pull, versioned, a fresh independent
+graph per call, and no dependencies. A store's tests run under it and under Solid; a store that passes
+both is neutral in fact, not just in its imports.
+
 ## What belongs here and what doesn't
 
-**Here:** the port's types and the guarantee suite. Nothing that imports a
+**Here:** the port's types, the test implementation, and the guarantee suite. Nothing that imports a
 framework — the package is marked `"we": { "neutral": true }`, and `pnpm check:neutral-stores` fails
 if it, or any neutral package, imports or depends on Solid.
 
