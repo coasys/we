@@ -114,9 +114,10 @@ The suite treats the watch in two ways:
   `executor.cpu_seconds.ui_phase` and `executor.idle_cpu_percent.after_ui` are the numbers that
   move when the watch's cost changes — and they are published only when the space's watch is
   actually registered afterwards (`detail.watch.afterUi`); a load that ran with no watch must not
-  set them. `idle_cpu_percent.after_ui` is also left out when a load did not draw or a call was
+  set them. `idle_cpu_percent.after_ui` is also left out when a load did not draw or a model query was
   still unanswered when the reader closed: closing the socket does not stop the executor's work on
-  it, so the spell would not be idle. `idle_cpu_percent.after_seed` is the same executor and store
+  it, so the spell would not be idle. The page's profile and peer lookups (`agent.byDIDs`,
+  `neighbourhood.otherAgents`) are often still open at that point and do not count. `idle_cpu_percent.after_seed` is the same executor and store
   with no watch, for comparison.
 
 ## How the space is filled

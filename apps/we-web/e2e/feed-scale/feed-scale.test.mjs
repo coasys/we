@@ -382,15 +382,26 @@ describe('results', () => {
     expect(max([])).toBe(null);
   });
 
-  it('reads the idle CPU after the loads only when every load drew and every call was answered', () => {
-    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: [] }, 0)).toBe(null);
-    expect(idleAfterLoadsSkipped({}, 0)).toBe(null);
-    expect(idleAfterLoadsSkipped({ newestFailures: ['timeout'], olderFailures: [] }, 0)).toBe('a load did not draw');
-    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: ['page-closed'] }, 2)).toBe(
+  it('reads the idle CPU after the loads only when every load drew and every model query was answered', () => {
+    const feedCall = { type: 'perspective.modelQuery', className: 'we://TextBlock' };
+    const spaceCall = { type: 'perspective.modelQuery', className: 'we://Space' };
+    const lookups = [
+      { type: 'agent.byDIDs', className: null },
+      { type: 'neighbourhood.otherAgents', className: null },
+    ];
+    const drew = { newestFailures: [], olderFailures: [] };
+    expect(idleAfterLoadsSkipped(drew, [])).toBe(null);
+    expect(idleAfterLoadsSkipped({}, [])).toBe(null);
+    expect(idleAfterLoadsSkipped(drew, lookups)).toBe(null);
+    expect(idleAfterLoadsSkipped({ newestFailures: ['timeout'], olderFailures: [] }, [])).toBe('a load did not draw');
+    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: ['page-closed'] }, [feedCall])).toBe(
       'a load did not draw',
     );
-    expect(idleAfterLoadsSkipped({ newestFailures: [], olderFailures: [] }, 3)).toBe(
-      '3 call(s) unanswered when the reader closed',
+    expect(idleAfterLoadsSkipped(drew, [feedCall, ...lookups])).toBe(
+      '1 model query unanswered when the reader closed: we://TextBlock',
+    );
+    expect(idleAfterLoadsSkipped(drew, [feedCall, spaceCall])).toBe(
+      '2 model queries unanswered when the reader closed: we://TextBlock, we://Space',
     );
   });
 
@@ -585,9 +596,9 @@ describe('results', () => {
 
   it('splits a load into where its time went', () => {
     const calls = [
-      { type: 'perspective.modelQuery', className: 'Space', feed: false, sentAfterMs: 500, ms: 300 },
-      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, sentAfterMs: 900, ms: 400 },
-      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, sentAfterMs: 5000, ms: 900 },
+      { type: 'perspective.modelQuery', className: 'we://Space', feed: false, sentAfterMs: 500, ms: 300 },
+      { type: 'perspective.modelQuery', className: 'we://TextBlock', feed: true, sentAfterMs: 900, ms: 400 },
+      { type: 'perspective.modelQuery', className: 'we://TextBlock', feed: true, sentAfterMs: 5000, ms: 900 },
       { type: 'agent.byDid', className: null, feed: false, sentAfterMs: 1400, ms: 100 },
       { type: 'agent.byDid', className: null, feed: false, sentAfterMs: 1400, ms: 2600 },
       // After the draw: not something the newest page waited for.
@@ -611,8 +622,15 @@ describe('results', () => {
   it("takes the Feed's ask and answer from the same call", () => {
     // The newest window from 100 to 500 ms; an overlapping older window answered first, at 300.
     const calls = [
-      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, limit: 50, sentAfterMs: 100, ms: 400 },
-      { type: 'perspective.modelQuery', className: 'TextBlock', feed: true, limit: 150, sentAfterMs: 200, ms: 100 },
+      { type: 'perspective.modelQuery', className: 'we://TextBlock', feed: true, limit: 50, sentAfterMs: 100, ms: 400 },
+      {
+        type: 'perspective.modelQuery',
+        className: 'we://TextBlock',
+        feed: true,
+        limit: 150,
+        sentAfterMs: 200,
+        ms: 100,
+      },
     ];
     expect(loadPhases(calls)).toMatchObject({ feedAsked: 100, feedAnswered: 500 });
   });

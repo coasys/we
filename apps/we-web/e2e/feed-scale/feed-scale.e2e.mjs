@@ -55,7 +55,16 @@ import { LinkQuery } from '@coasys/ad4m';
 import * as h from '@we/e2e';
 
 import { createSpace, dismissNamePrompt, openSpace } from '../steps/space.mjs';
-import { JOB, cpuSeconds, idleAfterLoadsSkipped, loadPhases, memory, metrics, summaryLine } from './results.mjs';
+import {
+  JOB,
+  MESSAGE_CLASS,
+  cpuSeconds,
+  idleAfterLoadsSkipped,
+  loadPhases,
+  memory,
+  metrics,
+  summaryLine,
+} from './results.mjs';
 import { PROCESSOR_ID, messageShape, processorIds, seedMessages } from './seed.mjs';
 
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
@@ -355,7 +364,11 @@ async function waitForRow(page, queries, load, { shown, timeout, pollMs = 250, l
     if (page.isClosed()) return { drawn: false, kind: 'page-closed' };
     const refused = queries.find(
       (q) =>
-        q.load === load && q.feed && q.className === 'TextBlock' && q.error && (q.limit === null || q.limit === limit),
+        q.load === load &&
+        q.feed &&
+        q.className === MESSAGE_CLASS &&
+        q.error &&
+        (q.limit === null || q.limit === limit),
     );
     if (refused) return { drawn: false, kind: 'feed-call-refused', error: errText(refused.error) };
     if (await shown().catch(() => false)) return { drawn: true };
@@ -410,11 +423,19 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       await send.click();
       await page.getByText('the line every seeded message copies').first().waitFor({ timeout: 60_000 });
       perspective = (await account.client.perspective.all()).find((p) => p.sharedUrl === spaceUrl);
-      const links = await perspective.get(new LinkQuery({}));
-      const text = links.find((l) => l.data.predicate === 'we://text' && l.data.target.includes('every%20seeded'));
-      assert.ok(text, 'the typed line is not in the space');
-      const placed = links.find((l) => l.data.predicate === 'ad4m://has_child' && l.data.target === text.data.source);
-      assert.ok(placed, 'the typed line is in no collection');
+      // The Feed draws a sent line before its write lands: wait for the line and its place in a
+      // collection to be stored.
+      const { links, text, placed } = await h.until(
+        async () => {
+          const links = await perspective.get(new LinkQuery({}));
+          const text = links.find((l) => l.data.predicate === 'we://text' && l.data.target.includes('every%20seeded'));
+          const placed =
+            text && links.find((l) => l.data.predicate === 'ad4m://has_child' && l.data.target === text.data.source);
+          return { links, text, placed };
+        },
+        (stored) => stored.placed,
+        { what: 'the typed line and its place in a collection to be stored' },
+      );
       shape = messageShape(links, text.data.source, placed.data.source);
       const properties = shape.properties.map((p) => p.predicate).join(', ');
       log(`one message is ${shape.links} links: the flag, ${properties}, has_child`);
@@ -577,7 +598,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
           run.failedFeedCalls = (run.failedFeedCalls ?? 0) + 1;
           continue;
         }
-        (q.className === 'TextBlock' ? run.queries : run.otherQueries).push(q.ms);
+        (q.className === MESSAGE_CLASS ? run.queries : run.otherQueries).push(q.ms);
       }
     };
     // The calls already in the numbers, as `watchFeedQueries` keeps them.
@@ -799,7 +820,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
             `locators noticed ${at(noticed)}`,
         );
         assert.ok(
-          mine.some((q) => q.className === 'TextBlock' && !q.error),
+          mine.some((q) => q.className === MESSAGE_CLASS && !q.error),
           'the page made no Feed query this run',
         );
       }
@@ -832,7 +853,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     const cpuAfter = cpuOf(executor.pid);
     // Closing the reader's socket does not stop the queries the executor is still answering for it:
     // count them before it closes (a closed socket's calls leave `unanswered`).
-    const stillAnswering = queries.unanswered().length;
+    const unanswered = queries.unanswered();
     await closing(reader, false);
     tallyLate();
     const afterUi = rssOf(executor.pid);
@@ -845,7 +866,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
     const watchOn = detail.watch.afterUi.length > 0;
     if (watchOn) {
       if (cpuBefore !== null && cpuAfter !== null) run.cpu.uiPhase = cpuAfter - cpuBefore;
-      const skipped = idleAfterLoadsSkipped(run, stillAnswering);
+      const skipped = idleAfterLoadsSkipped(run, unanswered);
       if (skipped) log(`executor idle after the loads not measured: ${skipped}`);
       else run.cpu.idleAfterUi = await idleCpuPercent(executor.pid, IDLE_SECONDS);
     }

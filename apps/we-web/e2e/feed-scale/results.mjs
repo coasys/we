@@ -10,6 +10,10 @@
 
 export const JOB = 'feed-scale';
 
+/** The classes the page's `perspective.modelQuery` calls name, as it sends them (by IRI). */
+export const MESSAGE_CLASS = 'we://TextBlock';
+export const SPACE_CLASS = 'we://Space';
+
 /** The middle value; the mean of the two middle ones for an even count. `null` for none. */
 export function median(values) {
   if (!values.length) return null;
@@ -22,13 +26,19 @@ export const max = (values) => (values.length ? Math.max(...values) : null);
 
 /**
  * Why the executor's idle CPU after the loads must not be read, or `null` when it may: like the read
- * after the seeding, it needs nothing from the loads still running — every load drew
- * (`run.newestFailures` and `run.olderFailures` empty), and `stillAnswering`, the calls unanswered
- * when the reader closed, is 0.
+ * after the seeding, it needs no query of the loads still running — every load drew
+ * (`run.newestFailures` and `run.olderFailures` empty), and no `perspective.modelQuery` was
+ * unanswered when the reader closed (`unanswered`, as `watchFeedQueries` keeps them; the reason names
+ * each). Other calls do not count: the page's profile and peer lookups (`agent.byDIDs`,
+ * `neighbourhood.otherAgents`) are often still open when it closes, and are no query work.
  */
-export function idleAfterLoadsSkipped(run, stillAnswering) {
+export function idleAfterLoadsSkipped(run, unanswered) {
   if ((run.newestFailures?.length ?? 0) + (run.olderFailures?.length ?? 0) > 0) return 'a load did not draw';
-  if (stillAnswering > 0) return `${stillAnswering} call(s) unanswered when the reader closed`;
+  const queries = unanswered.filter((q) => q.type === 'perspective.modelQuery');
+  if (queries.length > 0) {
+    const names = queries.map((q) => q.className).join(', ');
+    return `${queries.length} model quer${queries.length === 1 ? 'y' : 'ies'} unanswered when the reader closed: ${names}`;
+  }
   return null;
 }
 
@@ -171,10 +181,10 @@ export function loadPhases(calls, marks = {}) {
   const done = (q) => q.sentAfterMs + q.ms;
   const first = (list, at) => (list.length ? Math.min(...list.map(at)) : null);
   const last = (list, at) => (list.length ? Math.max(...list.map(at)) : null);
-  const feed = calls.filter((q) => q.feed && q.className === 'TextBlock');
+  const feed = calls.filter((q) => q.feed && q.className === MESSAGE_CLASS);
   // The newest window's call is the Feed's first: its ask and its answer, not another call's answer.
   const newestCall = feed.length ? feed.reduce((a, b) => (b.sentAfterMs < a.sentAfterMs ? b : a)) : null;
-  const space = calls.filter((q) => q.className === 'Space');
+  const space = calls.filter((q) => q.className === SPACE_CLASS);
   const drawn = [marks.newestVisible, marks.lastAttached].filter((n) => typeof n === 'number');
   // Only the profiles asked before the page drew: what it could have been waiting on.
   const before = drawn.length ? Math.max(...drawn) : Infinity;
