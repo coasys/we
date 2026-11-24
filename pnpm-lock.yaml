@@ -2159,6 +2159,64 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/schema-system/conformance:
+    dependencies:
+      '@we/design-utils':
+        specifier: workspace:*
+        version: link:../../design-system/utils
+      '@we/expressions':
+        specifier: workspace:*
+        version: link:../expressions
+      '@we/schema-shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@solidjs/router':
+        specifier: ^0.16.3
+        version: 0.16.3(solid-js@1.9.18)
+      '@solidjs/testing-library':
+        specifier: ^0.8.10
+        version: 0.8.10(@solidjs/router@0.16.3(solid-js@1.9.18))(solid-js@1.9.18)
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      '@we/app-shell':
+        specifier: workspace:*
+        version: link:../../app-shell
+      '@we/themes':
+        specifier: workspace:*
+        version: link:../../design-system/2-themes
+      '@we/tokens':
+        specifier: workspace:*
+        version: link:../../design-system/1-tokens
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+      esbuild-plugin-solid:
+        specifier: ^0.6.0
+        version: 0.6.0(esbuild@0.28.2)(solid-js@1.9.18)
+      jsdom:
+        specifier: ~30.0.1
+        version: 30.0.1(@noble/hashes@2.3.0)
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
+      sass:
+        specifier: ^1.107.1
+        version: 1.107.1
+      solid-js:
+        specifier: ^1.9.10
+        version: 1.9.18
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      vite-plugin-solid:
+        specifier: ^2.11.15
+        version: 2.11.15(solid-js@1.9.18)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/schema-system/expressions:
     dependencies:
       '@we/backend-shared':

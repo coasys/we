@@ -85,7 +85,7 @@ export {
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
-export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
+export { buildEnvironment, DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
 export * from '@we/expressions';
 export { hasToken } from './predicates';
 export { isTemplateElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
@@ -181,6 +181,17 @@ export {
   svgProblem,
 } from './bundle';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export {
+  decodeLocalParam,
+  encodeLocalParam,
+  localParamText,
+  localPersistKey,
+  localSyncSpec,
+  type LocalSyncSpec,
+  localWriteMirror,
+  type LocalWriteMirror,
+  resolveLocalInitial,
+} from './localStateSync';
 export { isTemplatePage } from './routeMatching';
 export {
   applyStarterRecords,
