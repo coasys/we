@@ -4324,10 +4324,15 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: nothing
   Writes: adds to Space.typeStyles; creates a TypeStyle; deletes a TypeStyle; edits a TypeStyle (may write many records in one call, destructive)
 
-- ops.core.connectRecords — Connect two records with a Relationship — of a community-named kind where one is given — and answer with its id.
-  Params: source: string (required) — The record the connection runs from.; sourceType: string — Its entity.; target: string (required) — The record it runs to.; targetType: string — Its entity.; key: string — The connection’s dedup key, from both ends’ titles and its label.; kind: string — The RelationshipType it is one of.; fields: object — Anything else it says — a label, a description.; home: string — A collection to make it inside.
+- ops.core.composeCard — Compose a card onto a canvas: the post, kept wherever the canvas’s content lives, and its placement on the canvas where a point is given.
+  Params: root: object (required) — The post’s own fields, as core.createPost takes them.; blocks: list (required) — Its blocks, as core.createPost takes them.; mentions: list — The DIDs it mentions.; home: string (required) — The collection the card is kept in.; canvas: string (required) — The canvas it is placed on.; at: object — Where on the canvas, { x, y }. Without one it is unplaced, in the tray.
   Returns: a value, read in onSuccess as result
-  Writes: adds to CollectionBlock.children; creates a Relationship
+  Writes: adds to its parent.responses; adds to CollectionBlock.children; creates a CollectionBlock; creates a Placement; adds to Relationship.thread; adds to Topic.thread; adds to thread on any block type; creates any block type (may write many records in one call)
+
+- ops.core.connectRecords — Connect two records with a Relationship — of a community-named kind where one is given — and answer with its id.
+  Params: source: string (required) — The record the connection runs from.; sourceType: string — Its entity.; target: string (required) — The record it runs to.; targetType: string — Its entity.; key: string — The connection’s dedup key, from both ends’ titles and its label.; kind: string — The RelationshipType it is one of.; fields: object — Anything else it says — a label, a description.; home: string — A collection to make it inside.; inline: list — Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates a Relationship; creates any record type (may write many records in one call)
 
 - ops.core.createBoard — Make a board with a column for each state given, in that order; optionally inside a collection and gathering from a record.
   Params: title: string (required) — What the board is called.; states: list (required) — The slugs of the states to make a column for, in order, each once.; parent: string — A collection to put the board in. Left loose when the collection is not there.; gathers: string — The record the board draws its work from. Omit for a board showing only what is put on it.
@@ -4344,6 +4349,16 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: a value, read in onSuccess as result
   Writes: adds to its parent.responses; adds to CollectionBlock.children; creates a CollectionBlock; adds to Relationship.thread; adds to Topic.thread; adds to thread on any block type; creates any block type (may write many records in one call)
 
+- ops.core.createRecord — Make one record of any type, with its relations and any records made inline for them, inside a collection where one is named — and answer with its id.
+  Params: inline: list — Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.; entity: string (required) — Its entity.; fields: object (required) — Its fields, relations among them as lists of ids (a to-one as a one-element list).; home: string — The collection it is made inside.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to CollectionBlock.children; creates any record type (may write many records in one call)
+
+- ops.core.createRecords — Make several records of any type at once, each keyed so its id is known before it is written.
+  Params: records: list (required) — Each { key, entity, fields }.
+  Returns: nothing
+  Writes: creates any record type (may write many records in one call)
+
 - ops.core.createRelationshipType — Name a kind of connection between two records, refused when the space already has one by that name.
   Params: name: string (required) — What the connection is called.; slug: string — The identifier everything holding it stores. Derived from the name when not given.; description: string; icon: string; color: string; inverseName: string — What it is called read from the other end.; directed: boolean
   Returns: a value, read in onSuccess as result
@@ -4359,10 +4374,20 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: a value, read in onSuccess as result
   Writes: creates a TaskState
 
+- ops.core.deleteRecords — Delete several records of any type, for everyone, as one act. Not undoable.
+  Params: records: list (required) — Each { entity, id }.
+  Returns: nothing
+  Writes: deletes any record type (may write many records in one call, destructive)
+
 - ops.core.detachConnection — Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.
   Params: connection: string (required) — The Relationship.
   Returns: nothing
   Writes: deletes a Relationship (destructive)
+
+- ops.core.editRecord — Change the named fields of one record of any type, leaving the rest — a relation among them as a list of ids, a to-one as one, and a field cleared by giving it no value.
+  Params: entity: string (required) — Its entity.; id: string (required) — The record.; fields: object (required) — The fields to write.
+  Returns: nothing
+  Writes: edits any record type
 
 - ops.core.ensureBoardFor — Give a collection a board once it holds a task, and not before; answers with the board’s id, or nothing while it holds no task.
   Params: collection: string (required) — The collection — a call, usually.; states: list (required) — The slugs a new board gets a column for, in order.
@@ -4388,6 +4413,11 @@ An app installed at runtime brings its own, which this list does not show.
   Params: to: string (required) — The column it joins.; from: string — The column it leaves.; card: string (required) — The card.; ids: list — The joined column’s order with the card where it was dropped. Omit to append.
   Returns: nothing
   Writes: adds to CollectionBlock.arranges; removes from CollectionBlock.arranges; edits a TaskBlock (destructive)
+
+- ops.core.moveUnder — Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.
+  Params: holder: string (required) — The holders’ entity.; relation: string (required) — The relation holding it.; record: string (required) — The record moved.; from: string — The holder it leaves.; to: string — The holder it joins; absent to take it off and put it nowhere.
+  Returns: nothing
+  Writes: adds to any relation of any record type; removes from any relation of any record type (destructive)
 
 - ops.core.openBoardFor — The board a collection points at, made — gathering from the collection, inside it — when it has none yet. Answers with its id, or nothing when the collection is not there.
   Params: anchor: string (required) — The collection whose board this is.; title: string — What a board made here is called; "This call" when omitted.; states: list (required) — The slugs a new board gets a column for, in order.
@@ -4524,6 +4554,11 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: a value, read in onSuccess as result
   Writes: edits a Space
 
+- ops.core.thread — Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.
+  Params: record: string (required) — The response.; thread: string (required) — The subject of the thread it joins — what it answers, or the first record above that is not itself a response.; threadEntity: string (required) — The subject’s entity.
+  Returns: nothing
+  Writes: adds to Relationship.thread; adds to Topic.thread; adds to thread on any block type
+
 - ops.core.updateInvolvementType — Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.
   Params: slug: string (required) — The kind’s slug.; name: string — A new name; empty or absent keeps the old one.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.; semantic: string — One of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; anything else is ignored.; appliesTo: string — The entities it is offered on, comma-separated; empty for all.
   Returns: nothing
@@ -4554,6 +4589,11 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: nothing
   Writes: adds to CollectionBlock.children; creates a EdgeRoute; deletes a EdgeRoute; edits a EdgeRoute (destructive)
 
+- ops.feed.reply — Answer one line with a typed line of its own: a response to it, threaded under the subject of the thread it is in, mentioning whoever its marks name.
+  Params: line: string (required) — The line answered.; text: string (required) — What the reply says.; marks: list — Its marks, as the composer gave them; absent when it has none.; thread: string — The subject of the thread it joins.; threadEntity: string — The subject’s entity.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to its parent.responses; adds to Relationship.thread; creates a TextBlock; adds to Topic.thread; adds to thread on any block type
+
 - ops.pocket.gather — Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.
   Params: ref: string (required) — The record URI — we:<datasetKey>/<Entity>/<id>.; entity: string — The reference’s entity, written out beside it.; datasetKey: string — Its dataset key.; recordId: string — Its record id.; withinEntity: string — The record it sits inside, where it is a block.; withinId: string — That record’s id.; label: string — How it read when it was gathered.; icon: string — Its icon.; thumbnail: string — Its picture.; sourceName: string — The space it came from, by name.; sourceAuthor: string — Whoever wrote it.; into: string — The folder to keep it in; the root when omitted.; origin: object — Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.
   Returns: a value, read in onSuccess as result
@@ -4564,8 +4604,8 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: a value, read in onSuccess as result
   Writes: adds to PocketFolder.items; removes from PocketFolder.items (destructive)
 
-- ops.pocket.removeFolders — Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.
-  Params: folders: list (required) — The folders’ ids, a folder after everything under it.
+- ops.pocket.removeFolder — Delete a folder, every folder under it at any depth, and everything kept in any of them — the deepest first, so a parent outlives its children.
+  Params: folder: string (required) — The folder.
   Returns: nothing
   Writes: deletes a PocketFolder; deletes a PocketItem (may write many records in one call, destructive)
 

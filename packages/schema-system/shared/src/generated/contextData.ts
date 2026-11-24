@@ -4705,7 +4705,7 @@ export const contextData: ContextData = {
       icon: 'chats-circle',
       scope: 'space',
       requires: { kernels: ['records', 'interpretation'] },
-      capabilities: ['kernel:records', 'kernel:interpretation', 'dock'],
+      capabilities: ['kernel:records', 'kernel:interpretation', 'storage:space', 'dock'],
       members: [
         {
           name: 'botAuthors',
@@ -5378,6 +5378,32 @@ export const contextData: ContextData = {
       },
     },
     {
+      name: 'core.composeCard',
+      description:
+        'Compose a card onto a canvas: the post, kept wherever the canvas’s content lives, and its placement on the canvas where a point is given.',
+      params: {
+        root: { type: 'object', required: true, description: 'The post’s own fields, as core.createPost takes them.' },
+        blocks: { type: 'list', required: true, description: 'Its blocks, as core.createPost takes them.' },
+        mentions: { type: 'list', description: 'The DIDs it mentions.' },
+        home: { type: 'string', required: true, description: 'The collection the card is kept in.' },
+        canvas: { type: 'string', required: true, description: 'The canvas it is placed on.' },
+        at: { type: 'object', description: 'Where on the canvas, { x, y }. Without one it is unplaced, in the tray.' },
+      },
+      returns: true,
+      effects: {
+        entities: {
+          '*': ['add:responses'],
+          CollectionBlock: ['add:children', 'create'],
+          Placement: ['create'],
+          Relationship: ['add:thread'],
+          Topic: ['add:thread'],
+        },
+        categories: { blockable: ['add:thread', 'create'] },
+        bulk: true,
+        destructive: false,
+      },
+    },
+    {
       name: 'core.connectRecords',
       description:
         'Connect two records with a Relationship — of a community-named kind where one is given — and answer with its id.',
@@ -5390,12 +5416,17 @@ export const contextData: ContextData = {
         kind: { type: 'string', description: 'The RelationshipType it is one of.' },
         fields: { type: 'object', description: 'Anything else it says — a label, a description.' },
         home: { type: 'string', description: 'A collection to make it inside.' },
+        inline: {
+          type: 'list',
+          description:
+            'Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.',
+        },
       },
       returns: true,
       effects: {
         entities: { CollectionBlock: ['add:children'], Relationship: ['create'] },
-        categories: {},
-        bulk: false,
+        categories: { any: ['create'] },
+        bulk: true,
         destructive: false,
       },
     },
@@ -5491,6 +5522,39 @@ export const contextData: ContextData = {
       },
     },
     {
+      name: 'core.createRecord',
+      description:
+        'Make one record of any type, with its relations and any records made inline for them, inside a collection where one is named — and answer with its id.',
+      params: {
+        inline: {
+          type: 'list',
+          description:
+            'Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.',
+        },
+        entity: { type: 'string', required: true, description: 'Its entity.' },
+        fields: {
+          type: 'object',
+          required: true,
+          description: 'Its fields, relations among them as lists of ids (a to-one as a one-element list).',
+        },
+        home: { type: 'string', description: 'The collection it is made inside.' },
+      },
+      returns: true,
+      effects: {
+        entities: { CollectionBlock: ['add:children'] },
+        categories: { any: ['create'] },
+        bulk: true,
+        destructive: false,
+      },
+    },
+    {
+      name: 'core.createRecords',
+      description: 'Make several records of any type at once, each keyed so its id is known before it is written.',
+      params: { records: { type: 'list', required: true, description: 'Each { key, entity, fields }.' } },
+      returns: false,
+      effects: { entities: {}, categories: { any: ['create'] }, bulk: true, destructive: false },
+    },
+    {
       name: 'core.createRelationshipType',
       description:
         'Name a kind of connection between two records, refused when the space already has one by that name.',
@@ -5551,12 +5615,31 @@ export const contextData: ContextData = {
       effects: { entities: { TaskState: ['create'] }, categories: {}, bulk: false, destructive: false },
     },
     {
+      name: 'core.deleteRecords',
+      description: 'Delete several records of any type, for everyone, as one act. Not undoable.',
+      params: { records: { type: 'list', required: true, description: 'Each { entity, id }.' } },
+      returns: false,
+      effects: { entities: {}, categories: { any: ['delete'] }, bulk: true, destructive: true },
+    },
+    {
       name: 'core.detachConnection',
       description:
         'Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.',
       params: { connection: { type: 'string', required: true, description: 'The Relationship.' } },
       returns: false,
       effects: { entities: { Relationship: ['delete'] }, categories: {}, bulk: false, destructive: true },
+    },
+    {
+      name: 'core.editRecord',
+      description:
+        'Change the named fields of one record of any type, leaving the rest — a relation among them as a list of ids, a to-one as one, and a field cleared by giving it no value.',
+      params: {
+        entity: { type: 'string', required: true, description: 'Its entity.' },
+        id: { type: 'string', required: true, description: 'The record.' },
+        fields: { type: 'object', required: true, description: 'The fields to write.' },
+      },
+      returns: false,
+      effects: { entities: {}, categories: { any: ['edit'] }, bulk: false, destructive: false },
     },
     {
       name: 'core.ensureBoardFor',
@@ -5644,6 +5727,20 @@ export const contextData: ContextData = {
         bulk: false,
         destructive: true,
       },
+    },
+    {
+      name: 'core.moveUnder',
+      description:
+        'Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.',
+      params: {
+        holder: { type: 'string', required: true, description: 'The holders’ entity.' },
+        relation: { type: 'string', required: true, description: 'The relation holding it.' },
+        record: { type: 'string', required: true, description: 'The record moved.' },
+        from: { type: 'string', description: 'The holder it leaves.' },
+        to: { type: 'string', description: 'The holder it joins; absent to take it off and put it nowhere.' },
+      },
+      returns: false,
+      effects: { entities: {}, categories: { any: ['add:*', 'remove:*'] }, bulk: false, destructive: true },
     },
     {
       name: 'core.openBoardFor',
@@ -6044,6 +6141,28 @@ export const contextData: ContextData = {
       effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
+      name: 'core.thread',
+      description:
+        'Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.',
+      params: {
+        record: { type: 'string', required: true, description: 'The response.' },
+        thread: {
+          type: 'string',
+          required: true,
+          description:
+            'The subject of the thread it joins — what it answers, or the first record above that is not itself a response.',
+        },
+        threadEntity: { type: 'string', required: true, description: 'The subject’s entity.' },
+      },
+      returns: false,
+      effects: {
+        entities: { Relationship: ['add:thread'], Topic: ['add:thread'] },
+        categories: { blockable: ['add:thread'] },
+        bulk: false,
+        destructive: false,
+      },
+    },
+    {
       name: 'core.updateInvolvementType',
       description:
         'Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.',
@@ -6161,6 +6280,30 @@ export const contextData: ContextData = {
       },
     },
     {
+      name: 'feed.reply',
+      description:
+        'Answer one line with a typed line of its own: a response to it, threaded under the subject of the thread it is in, mentioning whoever its marks name.',
+      params: {
+        line: { type: 'string', required: true, description: 'The line answered.' },
+        text: { type: 'string', required: true, description: 'What the reply says.' },
+        marks: { type: 'list', description: 'Its marks, as the composer gave them; absent when it has none.' },
+        thread: { type: 'string', description: 'The subject of the thread it joins.' },
+        threadEntity: { type: 'string', description: 'The subject’s entity.' },
+      },
+      returns: true,
+      effects: {
+        entities: {
+          '*': ['add:responses'],
+          Relationship: ['add:thread'],
+          TextBlock: ['create'],
+          Topic: ['add:thread'],
+        },
+        categories: { blockable: ['add:thread'] },
+        bulk: false,
+        destructive: false,
+      },
+    },
+    {
       name: 'pocket.gather',
       description:
         'Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.',
@@ -6209,12 +6352,10 @@ export const contextData: ContextData = {
       },
     },
     {
-      name: 'pocket.removeFolders',
+      name: 'pocket.removeFolder',
       description:
-        'Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.',
-      params: {
-        folders: { type: 'list', required: true, description: 'The folders’ ids, a folder after everything under it.' },
-      },
+        'Delete a folder, every folder under it at any depth, and everything kept in any of them — the deepest first, so a parent outlives its children.',
+      params: { folder: { type: 'string', required: true, description: 'The folder.' } },
       returns: false,
       effects: {
         entities: { PocketFolder: ['delete'], PocketItem: ['delete'] },
