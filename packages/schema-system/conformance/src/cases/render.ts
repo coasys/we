@@ -1210,7 +1210,7 @@ export const RENDER_CASES: RenderCase[] = [
           { $setLocal: 'a', value: 'a1' },
           { $setLocal: 'b', value: 9 },
         ]),
-        button('reset', { $resetLocal: 'a' } as unknown as { $resetLocal: '$scope' }),
+        button('reset', { $resetLocal: 'a' }),
         text({ $: '`${local.a} ${local.b}`' }),
       ],
     },
