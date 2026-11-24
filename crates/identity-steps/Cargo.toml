@@ -18,8 +18,8 @@ description = "Make, restore and rotate-with-words: the identity steps the deskt
 publish = false
 
 [dependencies]
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "1da23e73f3547bee37b86bfff1cd24613d61536d" }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "1da23e73f3547bee37b86bfff1cd24613d61536d", features = ["build", "words"] }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "a35c2ede1d7e793854fba2a15b277a6a6a1b61bf" }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "a35c2ede1d7e793854fba2a15b277a6a6a1b61bf", features = ["build", "words"] }
 serde = { version = "1", features = ["derive"] }
 zeroize = "1.8"
 log = "0.4"
