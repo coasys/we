@@ -4,8 +4,8 @@ version = 4
 
 [[package]]
 name = "ad4m-client"
-version = "0.13.1-staging.16"
-source = "git+https://github.com/coasys/ad4m?rev=1da23e73f3547bee37b86bfff1cd24613d61536d#1da23e73f3547bee37b86bfff1cd24613d61536d"
+version = "0.13.1-staging.19"
+source = "git+https://github.com/coasys/ad4m?rev=851025067f7131af45fb58cd477d159e33a4c5a1#851025067f7131af45fb58cd477d159e33a4c5a1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=1da23e73f3547bee37b86bfff1cd24613d61536d#1da23e73f3547bee37b86bfff1cd24613d61536d"
+source = "git+https://github.com/coasys/ad4m?rev=851025067f7131af45fb58cd477d159e33a4c5a1#851025067f7131af45fb58cd477d159e33a4c5a1"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=1da23e73f3547bee37b86bfff1cd24613d61536d#1da23e73f3547bee37b86bfff1cd24613d61536d"
+source = "git+https://github.com/coasys/ad4m?rev=851025067f7131af45fb58cd477d159e33a4c5a1#851025067f7131af45fb58cd477d159e33a4c5a1"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -62,7 +62,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=1da23e73f3547bee37b86bfff1cd24613d61536d#1da23e73f3547bee37b86bfff1cd24613d61536d"
+source = "git+https://github.com/coasys/ad4m?rev=851025067f7131af45fb58cd477d159e33a4c5a1#851025067f7131af45fb58cd477d159e33a4c5a1"
 dependencies = [
  "ad4m-hash-chain",
  "base64 0.22.1",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=1da23e73f3547bee37b86bfff1cd24613d61536d#1da23e73f3547bee37b86bfff1cd24613d61536d"
+source = "git+https://github.com/coasys/ad4m?rev=851025067f7131af45fb58cd477d159e33a4c5a1#851025067f7131af45fb58cd477d159e33a4c5a1"
 dependencies = [
  "futures",
  "js-sys",
@@ -2734,7 +2734,6 @@ dependencies = [
  "chacha20poly1305",
  "core-foundation 0.10.1",
  "dirs",
- "futures-util",
  "log",
  "qrcode",
  "rand_core",
@@ -2747,7 +2746,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-tungstenite",
  "unicode-normalization",
  "zeroize",
 ]
