@@ -1,64 +1,41 @@
 /**
- * One vote per person per poll, as a query rather than a constraint.
+ * The store's part of a vote: the operation it runs, and the vote it holds on screen meanwhile. What
+ * the operation writes — one vote per person per poll, a duplicate healed — is tested where it runs,
+ * against a backend (app-shell's `pollsVote.test.ts`).
  */
-import { fakeDeps, fakeRecords } from '@we/module-testing';
+import { fakeDeps, fakeOperations } from '@we/module-testing';
 import { describe, expect, it } from 'vitest';
 
 import { createPollsStore } from './store';
 
-function deps(records = fakeRecords({ author: 'did:me' }), settings: Record<string, boolean> = {}) {
-  const bag = fakeDeps({
-    selfId: () => 'did:me',
-    settings: () => settings,
-    kernels: { records: records.kernel },
-  });
-  return { bag, records };
+function deps(ops = fakeOperations({ 'polls.vote': () => undefined }), settings: Record<string, boolean> = {}) {
+  const bag = fakeDeps({ selfId: () => 'did:me', settings: () => settings, operations: ops.access });
+  return { bag, ops };
 }
 
-/** What was written, as a sentence per write — the order is the assertion. */
-const writesOf = (records: ReturnType<typeof fakeRecords>) =>
-  records.writes.map((write) => `${write.op} ${write.entity}${write.op === 'create' ? '' : ` ${write.id}`}`);
+const failing = (message: string) =>
+  fakeOperations({
+    'polls.vote': () => {
+      throw new Error(message);
+    },
+  });
 
 describe('voting', () => {
-  it('creates a vote the first time, and changes it the second', async () => {
-    const { bag, records } = deps();
+  it('runs polls.vote with the poll and the choice', async () => {
+    const { bag, ops } = deps();
     const store = createPollsStore(bag);
     await store.vote('poll-1', 'tea');
-    await store.vote('poll-1', 'coffee');
-    expect(records.rows).toEqual([
-      { id: 'Vote-1', author: 'did:me', __entity: 'Vote', pollId: 'poll-1', option: 'coffee' },
-    ]);
-    expect(writesOf(records)).toEqual(['create Vote', 'update Vote Vote-1']);
+    expect(ops.calls).toEqual([{ name: 'polls.vote', args: { poll: 'poll-1', option: 'tea' } }]);
   });
 
-  it('does nothing when the same choice is pressed again', async () => {
-    const { bag, records } = deps();
-    const store = createPollsStore(bag);
-    await store.vote('poll-1', 'tea');
-    await store.vote('poll-1', 'tea');
-    expect(writesOf(records)).toEqual(['create Vote']);
-  });
-
-  it('keeps votes on different polls apart', async () => {
-    const { bag, records } = deps();
-    const store = createPollsStore(bag);
-    await store.vote('poll-1', 'tea');
-    await store.vote('poll-2', 'tea');
-    expect(records.rows).toHaveLength(2);
-  });
-
-  it('degrades to nothing without the records kernel', async () => {
+  it('degrades to nothing on a host that runs no operations', async () => {
     const { bag } = deps();
-    const store = createPollsStore({ ...bag, kernels: {} });
+    const store = createPollsStore({ ...bag, operations: undefined });
     await expect(store.vote('poll-1', 'tea')).resolves.toBeUndefined();
   });
 
   it('reports a failed write rather than throwing', async () => {
-    const records = fakeRecords({ author: 'did:me' });
-    records.kernel.create = async () => {
-      throw new Error('offline');
-    };
-    const { bag } = deps(records);
+    const { bag } = deps(failing('offline'));
     const notified: string[] = [];
     const store = createPollsStore({ ...bag, notify: (_tone, message) => void notified.push(message) });
     await store.vote('poll-1', 'tea');
@@ -71,7 +48,7 @@ describe('voting', () => {
 describe('the setting', () => {
   it('reveals counts before voting unless the community said otherwise', () => {
     expect(createPollsStore(deps().bag).revealBeforeVoting()).toBe(true);
-    expect(createPollsStore(deps(fakeRecords(), { revealBeforeVoting: false }).bag).revealBeforeVoting()).toBe(false);
+    expect(createPollsStore(deps(undefined, { revealBeforeVoting: false }).bag).revealBeforeVoting()).toBe(false);
   });
 });
 
@@ -97,11 +74,7 @@ describe('a vote drawn before it is stored', () => {
   });
 
   it('is withdrawn when the write is refused', async () => {
-    const records = fakeRecords({ author: 'did:me' });
-    records.kernel.create = async () => {
-      throw new Error('nope');
-    };
-    const { bag } = deps(records);
+    const { bag } = deps(failing('nope'));
     const store = createPollsStore(bag);
     await store.vote('poll-1', 'tea');
 

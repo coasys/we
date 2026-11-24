@@ -149,6 +149,7 @@ import {
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
   resolveSpaceInterpretationTargets,
+  runOperation,
 } from '@we/entities';
 import { completeResponse } from '@we/entities';
 import {
@@ -170,7 +171,6 @@ import {
   RelationshipType,
   Role,
   RoleGrant,
-  Signal,
   SignalType,
   Space,
   SpaceLandmark,
@@ -2851,42 +2851,16 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     await queueSignalWrite(`${nodeId}|${signalTypeId}`, async () => {
       /*
-        EVERY reaction of mine on this type, not the first one.
-
-        `findOne` was the obvious spelling and it is the one that cannot recover: where two records
-        already exist, it reaches one of them, leaves the other, and no amount of changing the
-        reaction afterwards will ever remove it — a person listed twice under one type for good.
-        At most one reaction per person per type is what "upsert" means here, so the write enforces
-        it rather than assuming it.
-      */
-      const mine = await Signal.findAll(p, {
-        parent: { id: nodeId, relation: 'signals' },
-        where: { signalTypeId, author: myDid },
-      });
-
-      /*
-        Withdrawing a reaction removes the record; changing one edits it in place.
-
-        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
-        same reaction differently weighted, and in one write: a subscription follows what its query includes, so the edit is heard
-        without a remove-and-add flicker through "nobody has rated this".
-
-        Any further reactions of mine on this type are removed, so a pair that was written twice
-        heals on the next change rather than staying doubled for good.
-
-        A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
-        withdrawn reaction absent everywhere instead of being a row every count has to remember to
-        exclude. A zero is an ordinary value and is stored like any other.
+        The writes are `core.upsertSignal` and `core.withdrawSignal`: every reaction of mine on this
+        type is found, one is kept and edited in place, and the rest are removed, so a pair written
+        twice heals on the next change. A withdrawal — `null` — removes the record rather than storing
+        anything, which keeps a withdrawn reaction absent everywhere instead of being a row every count
+        has to remember to exclude. A zero is an ordinary value and is stored like any other.
       */
       try {
-        const kept = value === null ? undefined : mine[0];
-        for (const signal of mine) if (signal !== kept) await signal.delete();
-        if (kept) {
-          kept.value = value as number;
-          await kept.save();
-        } else if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
-        }
+        const args = { node: nodeId, signalType: signalTypeId };
+        if (value === null) await runOperation('core.withdrawSignal', args, { dataset: p, invoker: myDid });
+        else await runOperation('core.upsertSignal', { ...args, value }, { dataset: p, invoker: myDid });
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
         signalOptimism.done(nodeId, signalTypeId);

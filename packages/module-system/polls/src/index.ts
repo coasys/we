@@ -6,8 +6,9 @@
  * It is the proof the contract asked for: the smallest module that uses every kind of contribution
  * a third party is likely to want. It declares **entities**, ships a **block** (a poll composes into
  * a post), a **view** (a section a space can enable), a **part** any template can place, a
- * **function** expressions can call, a **setting** a community decides, and a **store** that does the
- * one thing a template cannot — a write that depends on a read — through the `records` kernel.
+ * **function** expressions can call, a **setting** a community decides, a declared **operation** for
+ * the one write that depends on a read (`polls.vote`), and a **store** that draws a vote before it is
+ * stored.
  *
  * It was written against the contract rather than alongside it, which is what makes it a test of
  * the seams: nothing here was in anybody's mind when the contract was drawn.
@@ -15,10 +16,10 @@
  * ## What is data and what is code
  *
  * Almost everything is data. The poll and the vote are declared entities; the card, the composer and
- * the section are fragments; counting is a pure function. The store is thirty lines, and every line
- * is there because casting a vote means *finding the one you cast before* — a read a schema cannot
- * make from a click handler. That is the shape a module should aspire to: declare what you can, and
- * write only what a declaration cannot say.
+ * the section are fragments; counting is a pure function; casting a vote — *find the one you cast
+ * before, then change it or make one* — is a declared operation. The store holds only what a
+ * declaration cannot say: the vote on screen before the write lands. That is the shape a module should
+ * aspire to: declare what you can, and write only what a declaration cannot say.
  *
  * ## Own the container, never the content
  *
@@ -53,9 +54,8 @@ export const pollsModule: ModuleDefinition = defineModule({
     name: 'Polls',
     description: 'Ask the space a question and watch the answer arrive.',
     icon: 'chart-bar',
-    // No `frameworks` — every piece of UI is a fragment. One kernel: the store reads a vote before it
-    // writes one, which is the only reason it is a store at all.
-    requires: { kernels: ['records'] },
+    // No `frameworks` — every piece of UI is a fragment — and no kernel: the vote's read and write are
+    // the declared operation, run through `deps.operations`.
   },
 
   contributes: {

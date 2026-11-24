@@ -60,4 +60,45 @@ export const POLLS_MANIFEST: EntityManifest = {
       relations: {},
     },
   },
+  operations: {
+    vote: {
+      description:
+        'Cast the invoker’s vote on a poll, or change it — one vote per person per poll, any duplicates removed.',
+      params: {
+        poll: { type: 'string', required: true, description: 'The Poll’s id.' },
+        option: { type: 'string', required: true, description: 'The choice, as it is written in the poll’s options.' },
+      },
+      steps: [
+        /*
+          Every vote of the invoker's on this poll, oldest first. Reading one (`limit: 1`) is the
+          spelling that cannot recover: where two exist — two presses that both read before either
+          wrote, two devices — it changes one and leaves the other counted for good.
+        */
+        {
+          find: {
+            as: 'mine',
+            entity: 'Vote',
+            where: { pollId: { $: 'poll' }, author: { $: 'invoker' } },
+            order: { createdAt: 'asc' },
+          },
+        },
+        {
+          create: { entity: 'Vote', fields: { pollId: { $: 'poll' }, option: { $: 'option' } } },
+          when: { $: 'count(mine) == 0' },
+        },
+        // Pressing the same choice again writes nothing: withdrawing is a different act.
+        {
+          update: { entity: 'Vote', id: { $: 'first(mine)' }, fields: { option: { $: 'option' } } },
+          when: { $: 'count(mine) > 0 && first(mine).option != option' },
+        },
+        {
+          forEach: {
+            in: { $: 'slice(mine, 1)' },
+            as: 'extra',
+            steps: [{ delete: { entity: 'Vote', id: { $: 'extra' } } }],
+          },
+        },
+      ],
+    },
+  },
 };

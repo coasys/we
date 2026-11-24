@@ -325,8 +325,14 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     dataset: DatasetEntry,
     parent: ParentRef,
   ): { entity: string; relation: string; row: AnyRow } | null => {
+    // An abstract entity names no table of its own: `WeNode` as the parent means any record that
+    // carries the relation, which is every entity built on it.
+    const named = parent.entity
+      ? (manifest.entities[parent.entity] ?? CORE_MANIFEST.entities[parent.entity])
+      : undefined;
+    const byName = parent.entity && !named?.abstract;
     for (const entityName of Object.keys(classes)) {
-      if (parent.entity && parent.entity !== entityName) continue;
+      if (byName && parent.entity !== entityName) continue;
       const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
       if (!row) continue;
       const spec = resolved(entityName).relations[parent.relation];

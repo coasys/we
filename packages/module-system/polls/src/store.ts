@@ -1,14 +1,11 @@
 /**
- * What the polls store does that a template could not: cast a vote that replaces this agent's last.
+ * What the polls store adds to a vote: drawing it before it is stored.
  *
  * Everything else about a poll is data. Making one is `record.create`; listing them and their votes
- * is `$query`; counting is the `tally` function. The one thing that needs code is the write that
- * depends on a read — *find my vote, then change it or make one* — because `record.create` from a
- * button would add a second vote every time somebody changed their mind, and a schema has no way to
- * say "the one I already wrote".
- *
- * That read is why this module asks for the `records` kernel rather than only writing through the
- * template's `record.create`: the read half is what a module observing records had no way to do.
+ * is `$query`; counting is the `tally` function. Casting a vote is the write that depends on a read —
+ * *find my vote, then change it or make one* — and that is the module's declared operation,
+ * `polls.vote`, in its manifest. What is left here is host work an operation cannot do: holding the
+ * choice on screen while the write travels, and saying so when it fails.
  */
 import type { ModuleStoreDeps } from '@we/module-shared';
 import { createOptimism, sameValue } from '@we/optimism';
@@ -18,7 +15,6 @@ import type { PendingVote } from './functions';
 
 export function createPollsStore(deps: ModuleStoreDeps) {
   const { signal, state, action, selfId } = deps;
-  const records = deps.kernels.records;
 
   /** The poll a vote is being written for, so its card can show the press landed. */
   const [voting, setVoting] = signal('');
@@ -39,29 +35,24 @@ export function createPollsStore(deps: ModuleStoreDeps) {
   const votes = createOptimism<string>(signal, { same: sameValue });
 
   /**
-   * Cast, or change, this agent's vote on one poll.
+   * Cast, or change, this agent's vote on one poll — `polls.vote`.
    *
-   * One vote per agent per poll is a *query*, not a constraint the backend enforces: the vote this
-   * agent already wrote is found by `author`, which every record carries, and updated in place.
+   * One vote per agent per poll is a *query*, not a constraint the backend enforces: the operation
+   * finds every vote this agent wrote on the poll by `author`, keeps one and removes the rest.
    * Pressing the same choice again is a no-op rather than a withdrawal — withdrawing is a different
    * act, and a button that sometimes removes what it usually sets is the kind that gets pressed twice.
    */
   async function vote(pollId: string, option: string): Promise<void> {
-    if (!records || !pollId || !option) return;
+    const operations = deps.operations;
+    if (!operations || !pollId || !option) return;
     const me = selfId?.() ?? null;
     setVoting(pollId);
     setLastError('');
-    // Before the read, not after it: the point is that the choice is selected on the press rather
+    // Before the write, not after it: the point is that the choice is selected on the press rather
     // than on the round trip. Withdrawn below if the write turns out not to be possible.
     if (me) votes.hold(pollId, option);
     try {
-      const mine = me ? await records.find('Vote', { where: { pollId, author: me }, limit: 1 }) : [];
-      const existing = mine[0] as { id?: string; option?: string } | undefined;
-      if (existing?.id) {
-        if (existing.option !== option) await records.update('Vote', existing.id, { option });
-      } else {
-        await records.create('Vote', { pollId, option });
-      }
+      await operations.run('polls.vote', { poll: pollId, option });
       // The write is back. Not a release — what retires a hold is the rows moving — but it ends the
       // hold's exemption from what the next draw says.
       if (me) votes.done(pollId);
