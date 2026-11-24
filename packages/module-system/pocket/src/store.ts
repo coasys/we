@@ -343,37 +343,6 @@ export function createPocketStore(deps: ModuleStoreDeps) {
   }
 
   /**
-   * How deep a folder tree may be walked when deleting one.
-   *
-   * The parent relation is written by this agent alone, so a cycle takes a corrupt record rather
-   * than two writers racing — but "cannot happen" is not a reason to recurse without a bound when
-   * the consequence is an unrecoverable hang in the middle of a delete.
-   */
-  const MAX_FOLDER_DEPTH = 32;
-
-  /**
-   * A folder and everything under it, as `pocket.removeFolders` takes them: the deepest first, so a
-   * parent outlives its children. Walked from each folder's own `folders` list, with a seen set and
-   * a depth bound, since a corrupt record could make the parent relation a loop.
-   */
-  async function folderTree(data: NonNullable<ReturnType<typeof agentData>>, id: string): Promise<string[]> {
-    const rows = (await data.find('PocketFolder', {})) as unknown as (PocketFolderRow & { folders?: unknown })[];
-    const childrenOf = new Map(
-      rows.map((row) => [row.id, Array.isArray(row.folders) ? (row.folders as unknown[]).map(String) : []]),
-    );
-    const order: string[] = [];
-    const seen = new Set<string>();
-    const walk = (folder: string, depth: number) => {
-      if (seen.has(folder) || depth > MAX_FOLDER_DEPTH) return;
-      seen.add(folder);
-      for (const child of childrenOf.get(folder) ?? []) walk(child, depth + 1);
-      order.push(folder);
-    };
-    walk(id, 0);
-    return order;
-  }
-
-  /**
    * Gather everything a drop carried, into a folder or into the one being looked at.
    *
    * Several items at once because a drag can carry several, and each is gathered independently, so
@@ -551,7 +520,7 @@ export function createPocketStore(deps: ModuleStoreDeps) {
       setBusy(true);
       setLastError('');
       try {
-        await data.run('pocket.removeFolders', { folders: await folderTree(data, id) });
+        await data.run('pocket.removeFolder', { folder: id });
         await reload();
       } catch (error) {
         setLastError(error instanceof Error ? error.message : 'Could not remove that folder.');

@@ -80,11 +80,16 @@ function fakeAgentData() {
             { parent: { id: folder } },
           );
         }
-        if (name === 'pocket.removeFolders') {
-          for (const folder of args.folders as string[]) {
-            rows.PocketItem = rows.PocketItem.filter((row) => parents[row.id as string] !== folder);
-            rows.PocketFolder = rows.PocketFolder.filter((row) => row.id !== folder);
+        if (name === 'pocket.removeFolder') {
+          const gone = new Set([args.folder as string]);
+          for (let grew = true; grew;) {
+            grew = false;
+            for (const row of rows.PocketFolder)
+              if (!gone.has(row.id as string) && gone.has(parents[row.id as string]))
+                grew = gone.add(row.id as string) !== null;
           }
+          rows.PocketItem = rows.PocketItem.filter((row) => !gone.has(parents[row.id as string]));
+          rows.PocketFolder = rows.PocketFolder.filter((row) => !gone.has(row.id as string));
           return undefined;
         }
         throw new Error(`no stand-in for ${name}`);

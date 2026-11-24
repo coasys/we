@@ -209,24 +209,31 @@ export const POCKET_MANIFEST: EntityManifest = {
       returns: { $: 'item' },
     },
 
-    removeFolders: {
+    removeFolder: {
       description:
-        'Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.',
-      params: {
-        folders: { type: 'list', required: true, description: 'The folders’ ids, a folder after everything under it.' },
-      },
+        'Delete a folder, every folder under it at any depth, and everything kept in any of them — the deepest first, so a parent outlives its children.',
+      params: { folder: { type: 'string', required: true, description: 'The folder.' } },
       steps: [
         {
+          find: {
+            as: 'below',
+            entity: 'PocketFolder',
+            scope: { anchor: 'PocketFolder', via: 'folders', anchorId: { $: 'folder' }, transitive: true },
+          },
+        },
+        {
           forEach: {
-            in: { $: 'folders' },
-            as: 'folder',
-            key: { $: 'folder' },
+            // The walk answers breadth first, so turned round it is the deepest first; the folder goes
+            // last, and once, even where a corrupt record made the relation loop back to it.
+            in: { $: 'concat(without(reverse(below.map(f, f.id)), folder), [folder])' },
+            as: 'each',
+            key: { $: 'each' },
             steps: [
               {
                 find: {
                   as: 'kept',
                   entity: 'PocketItem',
-                  scope: { anchor: 'PocketFolder', via: 'items', anchorId: { $: 'folder' } },
+                  scope: { anchor: 'PocketFolder', via: 'items', anchorId: { $: 'each' } },
                 },
               },
               {
@@ -236,7 +243,7 @@ export const POCKET_MANIFEST: EntityManifest = {
                   steps: [{ delete: { entity: 'PocketItem', id: { $: 'item' } } }],
                 },
               },
-              { delete: { entity: 'PocketFolder', id: { $: 'folder' } } },
+              { delete: { entity: 'PocketFolder', id: { $: 'each' } } },
             ],
           },
         },
