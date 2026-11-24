@@ -6445,8 +6445,17 @@ mod tests {
         let unknown = public_state_on::<FakeExecutor>(None, &vault).await;
         assert_eq!(unknown.pending, None);
 
-        // Once the store takes it, the state asking finishes it: published, nothing pending.
-        let public = public_state_on(Some(&executor), &vault).await;
+        // Once the store takes it, the state asking finishes it: published, nothing pending. A read
+        // that finds `FINISHING` held skips the publish and the main window's next read makes it;
+        // the lock is the process's, so a test running beside this one can hold it: ask again.
+        let mut public = public_state_on(Some(&executor), &vault).await;
+        for _ in 0..100 {
+            if public.did.is_some() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            public = public_state_on(Some(&executor), &vault).await;
+        }
         assert_eq!(public.did.as_deref(), Some(did_of(&scid).as_str()));
         assert_eq!(public.pending, None);
     }
