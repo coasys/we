@@ -50,6 +50,8 @@ export {
   shiftMarks,
   utf16ToCp,
 } from './marks';
+export type { FoundUrl } from './links';
+export { findUrls, isUrl, withFoundLinks } from './links';
 export type { BlockEntityStatic, BlockRegistration } from './registry';
 export {
   getBlockRecord,
