@@ -73,7 +73,9 @@ const result = await runAgentConversation({
   the entity proxies and so through the app's own write path, the space's policy included. Beside
   them, WE's conventions: `write_post` writes a composition, and a reply as a response threaded under
   its subject; `in` puts a record in a collection. `define_model` is offered when the host can define
-  one.
+  one. Given `invoker` (the person's id), it also offers the declared operations: `list_operations`
+  reads them from the registry with their params and what each may write, and `run_operation` runs
+  one through `runOperation` as that person, asking first when it deletes.
 - **`bindRecordToolset`** runs a record toolset in the same conversation: each tool gains an `id`,
   and the host's `read`, `write` and `create` stand where a backend's host would.
 - **The loop's guards** hold whatever the model asks for: a tool that writes is neither offered nor

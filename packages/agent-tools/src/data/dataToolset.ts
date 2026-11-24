@@ -15,12 +15,27 @@
  *   record into a collection in the order it keeps. A backend's generic tools can make each link
  *   these make, but not know which links a reply needs.
  *
+ * - **Declared operations** — `list_operations` and `run_operation`: the writes WE (or a module, or
+ *   an installed app) has declared as one transaction, with what each may write worked out from its
+ *   definition. What a vote or a board takes is WE's convention, and the definition is where it is
+ *   written down, so an agent runs it rather than reassembling it from single records.
+ *
  * App configuration is left out on purpose: the person's settings, templates and themes (which have
  * tools of their own), and who may do what in the space.
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
 import { type ContentBlock, createBlocks, type TextContentBlock } from '@we/block-shared';
-import { completeResponse, getEntityForDataset, withInterpretationDefaults } from '@we/entities';
+import {
+  completeResponse,
+  describeEffects,
+  describeOperation,
+  getEntityForDataset,
+  isOperationError,
+  operationCatalog,
+  type OperationCatalogEntry,
+  runOperation,
+  withInterpretationDefaults,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { SessionAnswer, SessionTool, SessionToolset } from '../core/conversation';
@@ -80,6 +95,12 @@ export interface DataToolsetOptions {
    * `Amendment` naming it, so a record a model wrote or changed says so. Absent: nothing is marked.
    */
   run?: string;
+  /**
+   * The agent the conversation acts as — the person, by their id. Declared operations run as them,
+   * through the same runner a template's press reaches, so the space's write check judges every write
+   * an operation makes as it would theirs. Absent: the operation tools are not offered.
+   */
+  invoker?: string;
 }
 
 const coreEntries = (() => {
@@ -397,6 +418,59 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     return { text: `Defined ${defined}. Records of it can be made once the space has taken it in.` };
   };
 
+  /** One operation as the model reads it: what it does, what it takes, what it may write. */
+  const operationLines = (entry: OperationCatalogEntry): string[] => {
+    const params = Object.entries(entry.params);
+    return [
+      `- ${entry.name} — ${entry.description}`,
+      `  params: ${
+        params.length
+          ? params
+              .map(
+                ([name, p]) =>
+                  `${name} (${p.type}${p.required ? ', required' : ''})${p.description ? ` ${p.description}` : ''}`,
+              )
+              .join('; ')
+          : 'none'
+      }`,
+      `  writes: ${describeEffects(entry.effects)}${entry.returns ? '; answers with a value' : ''}`,
+    ];
+  };
+
+  const listOperations = (): Promise<SessionAnswer> => {
+    const catalog = operationCatalog();
+    if (!catalog.length) return Promise.resolve({ text: 'No operations are declared here. Use the record tools.' });
+    return Promise.resolve({
+      text: [
+        'Declared operations: each runs as one write — all of it lands or none of it does. Prefer one to several record calls that do the same.',
+        ...catalog.flatMap(operationLines),
+      ].join('\n'),
+    });
+  };
+
+  const runDeclared = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
+    const name = str(args.name) ?? '';
+    if (!describeOperation(name))
+      return {
+        text: `Error: There is no operation called "${name}". list_operations lists them, by their full name (namespace.name).`,
+      };
+    if (args.args !== undefined && !isObject(args.args))
+      return { text: 'Error: `args` is an object of the operation’s params.' };
+    try {
+      const returned = await runOperation(name, isObject(args.args) ? args.args : {}, {
+        dataset,
+        invoker: options.invoker!,
+      });
+      return {
+        text: returned === undefined ? `Ran ${name}.` : `Ran ${name}. It answered: ${JSON.stringify(returned)}`,
+      };
+    } catch (error) {
+      if (isOperationError(error))
+        return { text: `Error: ${name} did not run (${error.class} ${error.code}): ${error.message}` };
+      throw error;
+    }
+  };
+
   const entityParam = { type: 'string', description: 'The kind of record, e.g. "TaskBlock".' };
   const placeParams = {
     in: { type: 'string', description: 'A collection to put it in, by id.' },
@@ -494,6 +568,40 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       writes: true,
       run: writePost,
     },
+    ...(options.invoker
+      ? [
+          {
+            name: 'list_operations',
+            description:
+              'The declared operations here — named writes of several records, run as one — with their params and what each may write.',
+            parameters: { type: 'object', properties: {} },
+            writes: false,
+            run: listOperations,
+          },
+          {
+            name: 'run_operation',
+            description:
+              'Run a declared operation by its full name, with its params in `args`. Everything it writes lands together, or nothing does. One that deletes asks the person first.',
+            parameters: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'namespace.name, as list_operations gives it.' },
+                args: { type: 'object', description: 'Its params.' },
+              },
+              required: ['name'],
+            },
+            writes: true,
+            // Worded from the definition's effects, never from the model's account of what it is doing.
+            confirm: (args: Record<string, unknown>) => {
+              const entry = describeOperation(typeof args.name === 'string' ? args.name : '');
+              return entry?.effects.destructive
+                ? `${entry.description.replace(/\.$/, '')}? It ${describeEffects(entry.effects)}.`
+                : undefined;
+            },
+            run: runDeclared,
+          },
+        ]
+      : []),
     ...(options.defineModel
       ? [
           {

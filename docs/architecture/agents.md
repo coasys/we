@@ -72,6 +72,14 @@ subject); and the record toolsets, bound to the place the person is working in b
 offered to a request that only reads, a delete or anything put in a space asks the person first, and
 what a read answers reaches the model fenced as other people's writing.
 
+Declared operations are WE's in the same sense. A vote, a board with its columns, a post with its
+blocks: which records such a write makes and how they link is a WE convention, and an operation is
+that convention written down as data ([capabilities-and-surfaces.md](capabilities-and-surfaces.md)).
+So the data toolset offers them as `list_operations` and `run_operation`, and runs them through the
+same runner a template's press reaches, with the person as invoker. The tool lists what each
+operation may write from its definition, and asks the person before one that deletes, in words
+worked out from its effects rather than the model's account of them.
+
 Which side is decided by what the backend provides. A backend that runs agents provides the `agents`
 port; one built before it could answers `AgentUnavailableError`, and the request falls back to WE's
 own conversation. The same choice is what lets a backend that runs no agents at all still offer them.
