@@ -5252,7 +5252,12 @@ export const contextData: ContextData = {
         },
       },
       returns: false,
-      effects: { entities: { CollectionBlock: ['add:children', 'create'] }, bulk: false, destructive: false },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'create'] },
+        categories: {},
+        bulk: false,
+        destructive: false,
+      },
     },
     {
       name: 'core.addStateColumn',
@@ -5269,7 +5274,26 @@ export const contextData: ContextData = {
         },
       },
       returns: false,
-      effects: { entities: { CollectionBlock: ['add:children', 'create'] }, bulk: false, destructive: false },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'create'] },
+        categories: {},
+        bulk: false,
+        destructive: false,
+      },
+    },
+    {
+      name: 'core.addTaskStateEvidence',
+      description: 'Add one requirement to what a state asks to be there before work moves into it.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The state’s slug.' },
+        requirement: {
+          type: 'object',
+          required: true,
+          description: 'One requirement as the state stores it: { entity, where?, via?, min? }.',
+        },
+      },
+      returns: false,
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.addTaskToColumn',
@@ -5288,6 +5312,7 @@ export const contextData: ContextData = {
       returns: true,
       effects: {
         entities: { CollectionBlock: ['add:arranges', 'add:children'], TaskBlock: ['create'] },
+        categories: {},
         bulk: false,
         destructive: false,
       },
@@ -5305,14 +5330,19 @@ export const contextData: ContextData = {
         ids: { type: 'list', required: true, description: 'Card ids, in the order wanted.' },
       },
       returns: true,
-      effects: { entities: { CollectionBlock: ['add:arranges', 'remove:arranges'] }, bulk: false, destructive: true },
+      effects: {
+        entities: { CollectionBlock: ['add:arranges', 'remove:arranges'] },
+        categories: {},
+        bulk: false,
+        destructive: true,
+      },
     },
     {
       name: 'core.clearPlacements',
       description: 'Take a card off a canvas: every placement it has there, so no duplicate puts it back.',
       params: { placements: { type: 'list', required: true, description: 'The placements’ ids.' } },
       returns: false,
-      effects: { entities: { Placement: ['delete'] }, bulk: true, destructive: true },
+      effects: { entities: { Placement: ['delete'] }, categories: {}, bulk: true, destructive: true },
     },
     {
       name: 'core.colorCanvasType',
@@ -5327,6 +5357,7 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { CollectionBlock: ['add:children'], TypeStyle: ['create', 'edit'] },
+        categories: {},
         bulk: false,
         destructive: false,
       },
@@ -5343,6 +5374,7 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { Space: ['add:typeStyles'], TypeStyle: ['create', 'delete', 'edit'] },
+        categories: {},
         bulk: true,
         destructive: true,
       },
@@ -5364,6 +5396,7 @@ export const contextData: ContextData = {
       returns: true,
       effects: {
         entities: { CollectionBlock: ['add:children'], Relationship: ['create'] },
+        categories: {},
         bulk: false,
         destructive: false,
       },
@@ -5389,7 +5422,34 @@ export const contextData: ContextData = {
         },
       },
       returns: true,
-      effects: { entities: { CollectionBlock: ['add:children', 'create'] }, bulk: true, destructive: false },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'create'] },
+        categories: {},
+        bulk: true,
+        destructive: false,
+      },
+    },
+    {
+      name: 'core.createInvolvementType',
+      description:
+        'Name a kind of part somebody can have in a record — “Shepherd”, “Second pair of eyes” — refused when the space already has one by that name. Whether it is somebody’s own answer is fixed here.',
+      params: {
+        name: { type: 'string', required: true, description: 'What the part is called.' },
+        semantic: {
+          type: 'string',
+          description:
+            "What it means, one of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; responsible otherwise.",
+        },
+        reflexive: {
+          type: 'boolean',
+          description: 'An answer only its own agent gives, rather than something said about them.',
+        },
+        appliesTo: { type: 'string', description: 'The entities it is offered on, comma-separated; empty for all.' },
+        icon: { type: 'string', description: 'A glyph; empty clears it.' },
+        color: { type: 'string', description: 'A colour; empty clears it.' },
+      },
+      returns: true,
+      effects: { entities: { InvolvementType: ['create'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.createPost',
@@ -5423,27 +5483,74 @@ export const contextData: ContextData = {
       effects: {
         entities: {
           '*': ['add:responses'],
-          AudioBlock: ['add:thread', 'create'],
-          CalloutBlock: ['add:thread', 'create'],
-          CodeBlock: ['add:thread', 'create'],
-          CollectionBlock: ['add:children', 'add:thread', 'create'],
-          DividerBlock: ['add:thread', 'create'],
-          EmbedBlock: ['add:thread', 'create'],
-          EventBlock: ['add:thread', 'create'],
-          FileBlock: ['add:thread', 'create'],
-          ImageBlock: ['add:thread', 'create'],
-          LinkBlock: ['add:thread', 'create'],
-          LocationBlock: ['add:thread', 'create'],
+          CollectionBlock: ['add:children', 'create'],
           Relationship: ['add:thread'],
-          TagBlock: ['add:thread', 'create'],
-          TaskBlock: ['add:thread', 'create'],
-          TextBlock: ['add:thread', 'create'],
           Topic: ['add:thread'],
-          VideoBlock: ['add:thread', 'create'],
         },
+        categories: { blockable: ['add:thread', 'create'] },
         bulk: true,
         destructive: false,
       },
+    },
+    {
+      name: 'core.createRelationshipType',
+      description:
+        'Name a kind of connection between two records, refused when the space already has one by that name.',
+      params: {
+        name: { type: 'string', required: true, description: 'What the connection is called.' },
+        slug: {
+          type: 'string',
+          description: 'The identifier everything holding it stores. Derived from the name when not given.',
+        },
+        description: { type: 'string' },
+        icon: { type: 'string' },
+        color: { type: 'string' },
+        inverseName: { type: 'string', description: 'What it is called read from the other end.' },
+        directed: { type: 'boolean' },
+      },
+      returns: true,
+      effects: { entities: { RelationshipType: ['create'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.createSignalType',
+      description:
+        'Name a kind of reaction members can give. A toggle runs 0 to 1 and a vote −1 to 1 whatever is asked, and each mode is read as one number its own way unless told otherwise.',
+      params: {
+        name: { type: 'string', required: true, description: 'What the reaction is called.' },
+        slug: {
+          type: 'string',
+          description: 'The identifier everything holding it stores. Derived from the name when not given.',
+        },
+        description: { type: 'string' },
+        icon: { type: 'string' },
+        iconSecondary: { type: 'string', description: 'The glyph for the other end of a vote or a range.' },
+        mode: { type: 'string', description: 'toggle, vote, rating or slider.' },
+        rangeMin: { type: 'number' },
+        rangeMax: { type: 'number' },
+        step: { type: 'number' },
+        aggregate: { type: 'string', description: 'count, mean, sum or median; the mode’s own when not given.' },
+        semantic: { type: 'string' },
+        allowChange: { type: 'boolean' },
+      },
+      returns: true,
+      effects: { entities: { SignalType: ['create'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.createTaskState',
+      description:
+        'Name a state this community’s work moves through, refused when the space already has one by that name.',
+      params: {
+        name: { type: 'string', required: true, description: 'What the state is called.' },
+        semantic: {
+          type: 'string',
+          description:
+            "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given.",
+        },
+        icon: { type: 'string', description: 'A glyph; empty clears it.' },
+        color: { type: 'string', description: 'A colour; empty clears it.' },
+      },
+      returns: true,
+      effects: { entities: { TaskState: ['create'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.detachConnection',
@@ -5451,7 +5558,7 @@ export const contextData: ContextData = {
         'Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.',
       params: { connection: { type: 'string', required: true, description: 'The Relationship.' } },
       returns: false,
-      effects: { entities: { Relationship: ['delete'] }, bulk: false, destructive: true },
+      effects: { entities: { Relationship: ['delete'] }, categories: {}, bulk: false, destructive: true },
     },
     {
       name: 'core.ensureBoardFor',
@@ -5462,7 +5569,12 @@ export const contextData: ContextData = {
         states: { type: 'list', required: true, description: 'The slugs a new board gets a column for, in order.' },
       },
       returns: true,
-      effects: { entities: { CollectionBlock: ['add:children', 'create', 'edit'] }, bulk: true, destructive: false },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'create', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: false,
+      },
     },
     {
       name: 'core.makeSpaceBoard',
@@ -5477,8 +5589,41 @@ export const contextData: ContextData = {
       returns: true,
       effects: {
         entities: { CollectionBlock: ['add:children', 'create'], Space: ['add:landmarks'], SpaceLandmark: ['create'] },
+        categories: {},
         bulk: true,
         destructive: false,
+      },
+    },
+    {
+      name: 'core.makeSpaceCollection',
+      description:
+        'Make the one collection everything top-level in a new space hangs off, and name it the space’s own. A space that has one keeps it.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        autoExtract: { type: 'boolean', description: 'Whether it is interpreted as it grows.' },
+        extractionTargets: { type: 'list', description: 'What it is interpreted for.' },
+      },
+      returns: true,
+      effects: {
+        entities: { CollectionBlock: ['create'], Space: ['edit'] },
+        categories: {},
+        bulk: false,
+        destructive: false,
+      },
+    },
+    {
+      name: 'core.markRead',
+      description: 'Say the invoker has read a record as of now: one marker per record, moved forward.',
+      params: {
+        node: { type: 'string', required: true, description: 'The record read.' },
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+      },
+      returns: true,
+      effects: {
+        entities: { ReadMarker: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
       },
     },
     {
@@ -5497,6 +5642,7 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { CollectionBlock: ['add:arranges', 'remove:arranges'], TaskBlock: ['edit'] },
+        categories: {},
         bulk: false,
         destructive: true,
       },
@@ -5511,7 +5657,12 @@ export const contextData: ContextData = {
         states: { type: 'list', required: true, description: 'The slugs a new board gets a column for, in order.' },
       },
       returns: true,
-      effects: { entities: { CollectionBlock: ['add:children', 'create', 'edit'] }, bulk: true, destructive: false },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'create', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: false,
+      },
     },
     {
       name: 'core.placeCard',
@@ -5536,6 +5687,7 @@ export const contextData: ContextData = {
       returns: true,
       effects: {
         entities: { CollectionBlock: ['add:children'], Placement: ['create', 'delete', 'edit'] },
+        categories: {},
         bulk: true,
         destructive: true,
       },
@@ -5552,7 +5704,7 @@ export const contextData: ContextData = {
         },
       },
       returns: false,
-      effects: { entities: { Placement: ['edit'] }, bulk: true, destructive: false },
+      effects: { entities: { Placement: ['edit'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.rekeyConnection',
@@ -5562,7 +5714,7 @@ export const contextData: ContextData = {
         key: { type: 'string', required: true, description: 'The key as it should read.' },
       },
       returns: false,
-      effects: { entities: { Relationship: ['edit'] }, bulk: false, destructive: false },
+      effects: { entities: { Relationship: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.removeBoardColumn',
@@ -5575,9 +5727,20 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { CollectionBlock: ['add:arranges', 'add:children', 'delete', 'remove:arranges', 'remove:children'] },
+        categories: {},
         bulk: false,
         destructive: true,
       },
+    },
+    {
+      name: 'core.removeTaskStateEvidence',
+      description: 'Take one requirement, by its position, out of what a state asks to be there first.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The state’s slug.' },
+        index: { type: 'number', required: true, description: 'Its position in the list, from 0.' },
+      },
+      returns: false,
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.renameBoardColumn',
@@ -5593,7 +5756,7 @@ export const contextData: ContextData = {
         },
       },
       returns: false,
-      effects: { entities: { CollectionBlock: ['edit'] }, bulk: false, destructive: false },
+      effects: { entities: { CollectionBlock: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.reorderBoardColumns',
@@ -5604,7 +5767,42 @@ export const contextData: ContextData = {
         ids: { type: 'list', required: true, description: 'Column ids, in the order wanted.' },
       },
       returns: true,
-      effects: { entities: { CollectionBlock: ['add:children', 'remove:children'] }, bulk: false, destructive: true },
+      effects: {
+        entities: { CollectionBlock: ['add:children', 'remove:children'] },
+        categories: {},
+        bulk: false,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.reorderTaskStates',
+      description: 'Set the order the community reads its states in, by slug. A slug with no record is left out.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        slugs: { type: 'list', required: true, description: 'The states’ slugs, in the order wanted.' },
+      },
+      returns: true,
+      effects: {
+        entities: { Space: ['add:taskStates', 'remove:taskStates'] },
+        categories: {},
+        bulk: false,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.reorderViews',
+      description: 'Put the space’s sections in a new order. Only reorders: a section not already on is left off.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        order: { type: 'list', required: true, description: 'The section ids, in the order wanted.' },
+        fallback: {
+          type: 'list',
+          description:
+            'What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.',
+        },
+      },
+      returns: true,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.respond',
@@ -5615,7 +5813,7 @@ export const contextData: ContextData = {
         kind: { type: 'string', description: 'A reflexive InvolvementType’s slug; absent withdraws the answer.' },
       },
       returns: false,
-      effects: { entities: { Involvement: ['create', 'delete'] }, bulk: true, destructive: true },
+      effects: { entities: { Involvement: ['create', 'delete'] }, categories: {}, bulk: true, destructive: true },
     },
     {
       name: 'core.restyleSpaceType',
@@ -5629,6 +5827,7 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { Space: ['add:typeStyles'], TypeStyle: ['create', 'delete'] },
+        categories: {},
         bulk: true,
         destructive: true,
       },
@@ -5645,7 +5844,33 @@ export const contextData: ContextData = {
         key: { type: 'string', description: 'The connection’s key with the end moved.' },
       },
       returns: false,
-      effects: { entities: { Relationship: ['edit'] }, bulk: false, destructive: false },
+      effects: { entities: { Relationship: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setAgentMuted',
+      description:
+        'Mute an account for the invoker everywhere, or unmute it: one record per account while muted, none after.',
+      params: {
+        did: { type: 'string', required: true, description: 'The account.' },
+        muted: { type: 'boolean', required: true, description: 'The state wanted.' },
+        description: { type: 'string', description: 'Why, for the invoker’s own list.' },
+      },
+      returns: false,
+      effects: { entities: { MutedAgent: ['create', 'delete'] }, categories: {}, bulk: true, destructive: true },
+    },
+    {
+      name: 'core.setCollectionInterpretation',
+      description:
+        'Change what one collection is interpreted for, for everyone in it: whether as it grows, and one model in or out of what it looks for.',
+      params: {
+        collection: { type: 'string', required: true, description: 'The collection.' },
+        autoExtract: { type: 'boolean', description: 'Interpreted as it grows, or not; absent leaves it.' },
+        entity: { type: 'string', description: 'A model to add or remove; absent leaves the list.' },
+        on: { type: 'boolean', description: 'Whether the model is wanted.' },
+        fallback: { type: 'list', description: 'What the collection looks for while it holds no list of its own.' },
+      },
+      returns: false,
+      effects: { entities: { CollectionBlock: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.setInvolvement',
@@ -5658,7 +5883,233 @@ export const contextData: ContextData = {
         on: { type: 'boolean', required: true, description: 'The state wanted, so pressing twice cannot undo itself.' },
       },
       returns: false,
-      effects: { entities: { Involvement: ['create', 'delete'] }, bulk: true, destructive: true },
+      effects: { entities: { Involvement: ['create', 'delete'] }, categories: {}, bulk: true, destructive: true },
+    },
+    {
+      name: 'core.setInvolvementTypeRetired',
+      description:
+        'Withdraw a kind of involvement from use, or bring it back, leaving everybody already holding it as they are.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The kind’s slug.' },
+        retired: { type: 'boolean', required: true, description: 'Withdrawn from use, or brought back.' },
+      },
+      returns: false,
+      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: true, destructive: false },
+    },
+    {
+      name: 'core.setModuleEnabled',
+      description: 'Turn a module on or off for the whole space.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        module: { type: 'string', required: true, description: 'The module id.' },
+        on: { type: 'boolean', required: true, description: 'The state wanted.' },
+        fallback: {
+          type: 'list',
+          description:
+            'What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.',
+        },
+      },
+      returns: true,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setModuleVisible',
+      description: 'Show or hide a module for the invoker only, in one space.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+        module: { type: 'string', required: true, description: 'The module id.' },
+        visible: { type: 'boolean', required: true, description: 'The state wanted.' },
+      },
+      returns: true,
+      effects: {
+        entities: { SpacePreference: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.setMyModuleSetting',
+      description: 'Write, or withdraw, the invoker’s own answer to one setting in one space.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+        group: { type: 'string', required: true, description: 'The module or capability the setting belongs to.' },
+        key: { type: 'string', required: true, description: 'The setting.' },
+        value: { type: 'json', description: 'The answer; absent withdraws it, so the level has no opinion again.' },
+      },
+      returns: true,
+      effects: {
+        entities: { SpacePreference: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.setSpaceModuleSetting',
+      description: 'Write, or withdraw, the community’s answer to one setting.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        group: { type: 'string', required: true, description: 'The module or capability the setting belongs to.' },
+        key: { type: 'string', required: true, description: 'The setting.' },
+        value: { type: 'json', description: 'The answer; absent withdraws it, so the level has no opinion again.' },
+      },
+      returns: true,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setSpaceTemplateOverride',
+      description: 'Choose the template the invoker sees in one space, over the space’s default.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+        template: {
+          type: 'string',
+          required: true,
+          description: 'A template id, or the value that follows the space.',
+        },
+      },
+      returns: true,
+      effects: {
+        entities: { SpacePreference: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.setSpaceThemeOverride',
+      description: 'Choose the theme the invoker sees in one space, over the space’s default.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+        theme: { type: 'string', required: true, description: 'A theme id, or the value that follows the space.' },
+      },
+      returns: true,
+      effects: {
+        entities: { SpacePreference: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.setTaskStateRetired',
+      description: 'Withdraw a state from use, or bring it back, leaving the work in it as it is.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The state’s slug.' },
+        retired: { type: 'boolean', required: true, description: 'Withdrawn from use, or brought back.' },
+      },
+      returns: false,
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
+    },
+    {
+      name: 'core.setViewEnabled',
+      description:
+        'Add a section to the space, at the end, or take it out — for every member. Sections this host does not know stay where they are.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        view: { type: 'string', required: true, description: 'The view id.' },
+        on: { type: 'boolean', required: true, description: 'The state wanted.' },
+        fallback: {
+          type: 'list',
+          description:
+            'What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.',
+        },
+      },
+      returns: true,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setViewVisible',
+      description: 'Show or hide one of a space’s sections for the invoker only.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space’s dataset id.' },
+        view: { type: 'string', required: true, description: 'The view id.' },
+        visible: { type: 'boolean', required: true, description: 'The state wanted.' },
+      },
+      returns: true,
+      effects: {
+        entities: { SpacePreference: ['create', 'delete', 'edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.setWorkflowArchived',
+      description: 'Put a workflow away, or bring it back: the records in it still show and can still finish.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        workflow: { type: 'string', required: true, description: 'The workflow’s name.' },
+        archived: { type: 'boolean', required: true, description: 'The state wanted.' },
+      },
+      returns: true,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.updateInvolvementType',
+      description:
+        'Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The kind’s slug.' },
+        name: { type: 'string', description: 'A new name; empty or absent keeps the old one.' },
+        icon: { type: 'string', description: 'A glyph; empty clears it.' },
+        color: { type: 'string', description: 'A colour; empty clears it.' },
+        semantic: {
+          type: 'string',
+          description:
+            "One of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; anything else is ignored.",
+        },
+        appliesTo: { type: 'string', description: 'The entities it is offered on, comma-separated; empty for all.' },
+      },
+      returns: false,
+      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: true, destructive: false },
+    },
+    {
+      name: 'core.updateSpaceMeta',
+      description:
+        'Change what a space is called and says about itself, whether it is listed, and where it is — a new place replaces the old, and none takes it away.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        name: { type: 'string' },
+        description: { type: 'string' },
+        discovery: { type: 'string', description: 'listed or hidden.' },
+        location: {
+          type: 'object',
+          description: '{ latitude, longitude, name?, city?, country?, countryCode? }, to set the place.',
+        },
+        clearLocation: { type: 'boolean', description: 'Take the place away.' },
+      },
+      returns: false,
+      effects: {
+        entities: { LocationBlock: ['create', 'delete'], Space: ['edit'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'core.updateTaskState',
+      description:
+        'Change a state the community has — its name, glyph, colour, what it counts as, and what moving into it asks for. The slug stays: it is what every task stores.',
+      params: {
+        slug: { type: 'string', required: true, description: 'The state’s slug.' },
+        name: { type: 'string', description: 'A new name; empty or absent keeps the old one.' },
+        icon: { type: 'string', description: 'A glyph; empty clears it.' },
+        color: { type: 'string', description: 'A colour; empty clears it.' },
+        semantic: {
+          type: 'string',
+          description:
+            "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; anything else is ignored.",
+        },
+        approvals: { type: 'number', description: 'How many must agree to a move into it.' },
+        approverKind: {
+          type: 'string',
+          description: 'The involvement kind whose holders’ approval counts; empty for anybody’s.',
+        },
+        evidence: { type: 'json', description: 'What must be there first, as the state stores it; empty clears it.' },
+      },
+      returns: false,
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.upsertSignal',
@@ -5676,6 +6127,7 @@ export const contextData: ContextData = {
       returns: true,
       effects: {
         entities: { '*': ['add:signals'], Signal: ['create', 'delete', 'edit'] },
+        categories: {},
         bulk: true,
         destructive: true,
       },
@@ -5689,7 +6141,7 @@ export const contextData: ContextData = {
         signalType: { type: 'string', required: true, description: 'The SignalType’s id.' },
       },
       returns: false,
-      effects: { entities: { Signal: ['delete'] }, bulk: true, destructive: true },
+      effects: { entities: { Signal: ['delete'] }, categories: {}, bulk: true, destructive: true },
     },
     {
       name: 'core.writeEdgeRoute',
@@ -5705,9 +6157,81 @@ export const contextData: ContextData = {
       returns: false,
       effects: {
         entities: { CollectionBlock: ['add:children'], EdgeRoute: ['create', 'delete', 'edit'] },
+        categories: {},
         bulk: false,
         destructive: true,
       },
+    },
+    {
+      name: 'pocket.gather',
+      description:
+        'Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.',
+      params: {
+        ref: { type: 'string', required: true, description: 'The record URI — we:<datasetKey>/<Entity>/<id>.' },
+        entity: { type: 'string', description: 'The reference’s entity, written out beside it.' },
+        datasetKey: { type: 'string', description: 'Its dataset key.' },
+        recordId: { type: 'string', description: 'Its record id.' },
+        withinEntity: { type: 'string', description: 'The record it sits inside, where it is a block.' },
+        withinId: { type: 'string', description: 'That record’s id.' },
+        label: { type: 'string', description: 'How it read when it was gathered.' },
+        icon: { type: 'string', description: 'Its icon.' },
+        thumbnail: { type: 'string', description: 'Its picture.' },
+        sourceName: { type: 'string', description: 'The space it came from, by name.' },
+        sourceAuthor: { type: 'string', description: 'Whoever wrote it.' },
+        into: { type: 'string', description: 'The folder to keep it in; the root when omitted.' },
+        origin: {
+          type: 'object',
+          description:
+            'Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.',
+        },
+      },
+      returns: true,
+      effects: {
+        entities: { PocketFolder: ['add:items', 'create', 'remove:items'], PocketItem: ['create'] },
+        categories: {},
+        bulk: false,
+        destructive: true,
+      },
+    },
+    {
+      name: 'pocket.refile',
+      description:
+        'Move an item from one folder to another. The item keeps its id and everything it says, gatheredAt included.',
+      params: {
+        item: { type: 'string', required: true, description: 'The PocketItem.' },
+        from: { type: 'string', required: true, description: 'The folder it is in.' },
+        into: { type: 'string', required: true, description: 'The folder it moves to.' },
+      },
+      returns: true,
+      effects: {
+        entities: { PocketFolder: ['add:items', 'remove:items'] },
+        categories: {},
+        bulk: false,
+        destructive: true,
+      },
+    },
+    {
+      name: 'pocket.removeFolders',
+      description:
+        'Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.',
+      params: {
+        folders: { type: 'list', required: true, description: 'The folders’ ids, a folder after everything under it.' },
+      },
+      returns: false,
+      effects: {
+        entities: { PocketFolder: ['delete'], PocketItem: ['delete'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
+    },
+    {
+      name: 'pocket.rootFolder',
+      description:
+        'The Pocket’s root folder — the one everything else hangs off — made the first time it is asked for.',
+      params: {},
+      returns: true,
+      effects: { entities: { PocketFolder: ['create'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'polls.vote',
@@ -5718,7 +6242,7 @@ export const contextData: ContextData = {
         option: { type: 'string', required: true, description: 'The choice, as it is written in the poll’s options.' },
       },
       returns: false,
-      effects: { entities: { Vote: ['create', 'delete', 'edit'] }, bulk: true, destructive: true },
+      effects: { entities: { Vote: ['create', 'delete', 'edit'] }, categories: {}, bulk: true, destructive: true },
     },
   ],
   pluginCatalogs: [

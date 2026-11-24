@@ -4295,6 +4295,11 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: nothing
   Writes: adds to CollectionBlock.children; creates a CollectionBlock
 
+- ops.core.addTaskStateEvidence — Add one requirement to what a state asks to be there before work moves into it.
+  Params: slug: string (required) — The state’s slug.; requirement: object (required) — One requirement as the state stores it: { entity, where?, via?, min? }.
+  Returns: nothing
+  Writes: edits a TaskState (may write many records in one call)
+
 - ops.core.addTaskToColumn — Make a task in a column: parented to the collection the board gathers from where there is one, arranged into the column, in the state given.
   Params: column: string (required) — The column.; title: string (required) — The task’s title.; status: string — The state it starts in.; anchor: string — The collection it belongs to — the call the board gathers from.; arrange: boolean — Whether to arrange it into the column. False where its state is still to be agreed.
   Returns: a value, read in onSuccess as result
@@ -4330,10 +4335,30 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: a value, read in onSuccess as result
   Writes: adds to CollectionBlock.children; creates a CollectionBlock (may write many records in one call)
 
+- ops.core.createInvolvementType — Name a kind of part somebody can have in a record — “Shepherd”, “Second pair of eyes” — refused when the space already has one by that name. Whether it is somebody’s own answer is fixed here.
+  Params: name: string (required) — What the part is called.; semantic: string — What it means, one of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; responsible otherwise.; reflexive: boolean — An answer only its own agent gives, rather than something said about them.; appliesTo: string — The entities it is offered on, comma-separated; empty for all.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a InvolvementType
+
 - ops.core.createPost — Write a composed document — a post, a message or a reply — with its blocks, in a collection or in response to a record, threaded under its subject.
   Params: root: object (required) — The root’s own fields: kind, mode, and what it stores about its blocks (editorState, textContent), plus where a copy came from.; blocks: list (required) — The blocks in document order, each { key, entity, fields, parent } — parent the planned id of the collection block it is in, absent at the top level.; mentions: list — The DIDs the document mentions.; container: string — The collection it is a child of.; respondsTo: string — The record it answers.; thread: string — The subject of the thread it joins — respondsTo, or the first record above it that is not itself a response.; threadEntity: string — The thread subject’s entity.; generatedBy: string — The ModelRun that wrote it, when a model did.
   Returns: a value, read in onSuccess as result
-  Writes: adds to its parent.responses; adds to AudioBlock.thread; creates a AudioBlock; adds to CalloutBlock.thread; creates a CalloutBlock; adds to CodeBlock.thread; creates a CodeBlock; adds to CollectionBlock.children; adds to CollectionBlock.thread; creates a CollectionBlock; adds to DividerBlock.thread; creates a DividerBlock; adds to EmbedBlock.thread; creates a EmbedBlock; adds to EventBlock.thread; creates a EventBlock; adds to FileBlock.thread; creates a FileBlock; adds to ImageBlock.thread; creates a ImageBlock; adds to LinkBlock.thread; creates a LinkBlock; adds to LocationBlock.thread; creates a LocationBlock; adds to Relationship.thread; adds to TagBlock.thread; creates a TagBlock; adds to TaskBlock.thread; creates a TaskBlock; adds to TextBlock.thread; creates a TextBlock; adds to Topic.thread; adds to VideoBlock.thread; creates a VideoBlock (may write many records in one call)
+  Writes: adds to its parent.responses; adds to CollectionBlock.children; creates a CollectionBlock; adds to Relationship.thread; adds to Topic.thread; adds to thread on any block type; creates any block type (may write many records in one call)
+
+- ops.core.createRelationshipType — Name a kind of connection between two records, refused when the space already has one by that name.
+  Params: name: string (required) — What the connection is called.; slug: string — The identifier everything holding it stores. Derived from the name when not given.; description: string; icon: string; color: string; inverseName: string — What it is called read from the other end.; directed: boolean
+  Returns: a value, read in onSuccess as result
+  Writes: creates a RelationshipType
+
+- ops.core.createSignalType — Name a kind of reaction members can give. A toggle runs 0 to 1 and a vote −1 to 1 whatever is asked, and each mode is read as one number its own way unless told otherwise.
+  Params: name: string (required) — What the reaction is called.; slug: string — The identifier everything holding it stores. Derived from the name when not given.; description: string; icon: string; iconSecondary: string — The glyph for the other end of a vote or a range.; mode: string — toggle, vote, rating or slider.; rangeMin: number; rangeMax: number; step: number; aggregate: string — count, mean, sum or median; the mode’s own when not given.; semantic: string; allowChange: boolean
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SignalType
+
+- ops.core.createTaskState — Name a state this community’s work moves through, refused when the space already has one by that name.
+  Params: name: string (required) — What the state is called.; semantic: string — What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a TaskState
 
 - ops.core.detachConnection — Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.
   Params: connection: string (required) — The Relationship.
@@ -4349,6 +4374,16 @@ An app installed at runtime brings its own, which this list does not show.
   Params: space: string (required) — The Space record’s id.; root: string — The space collection’s id, where the space has one.; title: string — What the board is called; "Everything" when omitted.; states: list (required) — The slugs to make a column for, in order.
   Returns: a value, read in onSuccess as result
   Writes: adds to CollectionBlock.children; creates a CollectionBlock; adds to Space.landmarks; creates a SpaceLandmark (may write many records in one call)
+
+- ops.core.makeSpaceCollection — Make the one collection everything top-level in a new space hangs off, and name it the space’s own. A space that has one keeps it.
+  Params: space: string (required) — The space record’s id.; autoExtract: boolean — Whether it is interpreted as it grows.; extractionTargets: list — What it is interpreted for.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a CollectionBlock; edits a Space
+
+- ops.core.markRead — Say the invoker has read a record as of now: one marker per record, moved forward.
+  Params: node: string (required) — The record read.; space: string (required) — The space’s dataset id.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a ReadMarker; deletes a ReadMarker; edits a ReadMarker (may write many records in one call, destructive)
 
 - ops.core.moveCard — Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.
   Params: to: string (required) — The column it joins.; from: string — The column it leaves.; card: string (required) — The card.; ids: list — The joined column’s order with the card where it was dropped. Omit to append.
@@ -4380,6 +4415,11 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: nothing
   Writes: adds to CollectionBlock.arranges; adds to CollectionBlock.children; deletes a CollectionBlock; removes from CollectionBlock.arranges; removes from CollectionBlock.children (destructive)
 
+- ops.core.removeTaskStateEvidence — Take one requirement, by its position, out of what a state asks to be there first.
+  Params: slug: string (required) — The state’s slug.; index: number (required) — Its position in the list, from 0.
+  Returns: nothing
+  Writes: edits a TaskState (may write many records in one call)
+
 - ops.core.renameBoardColumn — Rename a column on its board. The state it stands for is untouched; renamed back to the state’s own name, it follows the vocabulary again.
   Params: column: string (required) — The column.; name: string (required) — Its new heading.; states: list (required) — The states the community offers, in its own order, each { slug, name }.
   Returns: nothing
@@ -4389,6 +4429,16 @@ An app installed at runtime brings its own, which this list does not show.
   Params: board: string (required) — The board.; ids: list (required) — Column ids, in the order wanted.
   Returns: a value, read in onSuccess as result
   Writes: adds to CollectionBlock.children; removes from CollectionBlock.children (destructive)
+
+- ops.core.reorderTaskStates — Set the order the community reads its states in, by slug. A slug with no record is left out.
+  Params: space: string (required) — The space record’s id.; slugs: list (required) — The states’ slugs, in the order wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to Space.taskStates; removes from Space.taskStates (destructive)
+
+- ops.core.reorderViews — Put the space’s sections in a new order. Only reorders: a section not already on is left off.
+  Params: space: string (required) — The space record’s id.; order: list (required) — The section ids, in the order wanted.; fallback: list — What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.
+  Returns: a value, read in onSuccess as result
+  Writes: edits a Space
 
 - ops.core.respond — Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.
   Params: node: string (required) — The record answered.; kind: string — A reflexive InvolvementType’s slug; absent withdraws the answer.
@@ -4405,10 +4455,90 @@ An app installed at runtime brings its own, which this list does not show.
   Returns: nothing
   Writes: edits a Relationship
 
+- ops.core.setAgentMuted — Mute an account for the invoker everywhere, or unmute it: one record per account while muted, none after.
+  Params: did: string (required) — The account.; muted: boolean (required) — The state wanted.; description: string — Why, for the invoker’s own list.
+  Returns: nothing
+  Writes: creates a MutedAgent; deletes a MutedAgent (may write many records in one call, destructive)
+
+- ops.core.setCollectionInterpretation — Change what one collection is interpreted for, for everyone in it: whether as it grows, and one model in or out of what it looks for.
+  Params: collection: string (required) — The collection.; autoExtract: boolean — Interpreted as it grows, or not; absent leaves it.; entity: string — A model to add or remove; absent leaves the list.; on: boolean — Whether the model is wanted.; fallback: list — What the collection looks for while it holds no list of its own.
+  Returns: nothing
+  Writes: edits a CollectionBlock
+
 - ops.core.setInvolvement — Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.
   Params: node: string (required) — The record they are on.; agent: string (required) — Who, as a DID.; kind: string (required) — The InvolvementType’s slug.; on: boolean (required) — The state wanted, so pressing twice cannot undo itself.
   Returns: nothing
   Writes: creates a Involvement; deletes a Involvement (may write many records in one call, destructive)
+
+- ops.core.setInvolvementTypeRetired — Withdraw a kind of involvement from use, or bring it back, leaving everybody already holding it as they are.
+  Params: slug: string (required) — The kind’s slug.; retired: boolean (required) — Withdrawn from use, or brought back.
+  Returns: nothing
+  Writes: edits a InvolvementType (may write many records in one call)
+
+- ops.core.setModuleEnabled — Turn a module on or off for the whole space.
+  Params: space: string (required) — The space record’s id.; module: string (required) — The module id.; on: boolean (required) — The state wanted.; fallback: list — What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.
+  Returns: a value, read in onSuccess as result
+  Writes: edits a Space
+
+- ops.core.setModuleVisible — Show or hide a module for the invoker only, in one space.
+  Params: space: string (required) — The space’s dataset id.; module: string (required) — The module id.; visible: boolean (required) — The state wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setMyModuleSetting — Write, or withdraw, the invoker’s own answer to one setting in one space.
+  Params: space: string (required) — The space’s dataset id.; group: string (required) — The module or capability the setting belongs to.; key: string (required) — The setting.; value: json — The answer; absent withdraws it, so the level has no opinion again.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setSpaceModuleSetting — Write, or withdraw, the community’s answer to one setting.
+  Params: space: string (required) — The space record’s id.; group: string (required) — The module or capability the setting belongs to.; key: string (required) — The setting.; value: json — The answer; absent withdraws it, so the level has no opinion again.
+  Returns: a value, read in onSuccess as result
+  Writes: edits a Space
+
+- ops.core.setSpaceTemplateOverride — Choose the template the invoker sees in one space, over the space’s default.
+  Params: space: string (required) — The space’s dataset id.; template: string (required) — A template id, or the value that follows the space.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setSpaceThemeOverride — Choose the theme the invoker sees in one space, over the space’s default.
+  Params: space: string (required) — The space’s dataset id.; theme: string (required) — A theme id, or the value that follows the space.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setTaskStateRetired — Withdraw a state from use, or bring it back, leaving the work in it as it is.
+  Params: slug: string (required) — The state’s slug.; retired: boolean (required) — Withdrawn from use, or brought back.
+  Returns: nothing
+  Writes: edits a TaskState (may write many records in one call)
+
+- ops.core.setViewEnabled — Add a section to the space, at the end, or take it out — for every member. Sections this host does not know stay where they are.
+  Params: space: string (required) — The space record’s id.; view: string (required) — The view id.; on: boolean (required) — The state wanted.; fallback: list — What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.
+  Returns: a value, read in onSuccess as result
+  Writes: edits a Space
+
+- ops.core.setViewVisible — Show or hide one of a space’s sections for the invoker only.
+  Params: space: string (required) — The space’s dataset id.; view: string (required) — The view id.; visible: boolean (required) — The state wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setWorkflowArchived — Put a workflow away, or bring it back: the records in it still show and can still finish.
+  Params: space: string (required) — The space record’s id.; workflow: string (required) — The workflow’s name.; archived: boolean (required) — The state wanted.
+  Returns: a value, read in onSuccess as result
+  Writes: edits a Space
+
+- ops.core.updateInvolvementType — Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.
+  Params: slug: string (required) — The kind’s slug.; name: string — A new name; empty or absent keeps the old one.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.; semantic: string — One of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; anything else is ignored.; appliesTo: string — The entities it is offered on, comma-separated; empty for all.
+  Returns: nothing
+  Writes: edits a InvolvementType (may write many records in one call)
+
+- ops.core.updateSpaceMeta — Change what a space is called and says about itself, whether it is listed, and where it is — a new place replaces the old, and none takes it away.
+  Params: space: string (required) — The space record’s id.; name: string; description: string; discovery: string — listed or hidden.; location: object — { latitude, longitude, name?, city?, country?, countryCode? }, to set the place.; clearLocation: boolean — Take the place away.
+  Returns: nothing
+  Writes: creates a LocationBlock; deletes a LocationBlock; edits a Space (may write many records in one call, destructive)
+
+- ops.core.updateTaskState — Change a state the community has — its name, glyph, colour, what it counts as, and what moving into it asks for. The slug stays: it is what every task stores.
+  Params: slug: string (required) — The state’s slug.; name: string — A new name; empty or absent keeps the old one.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.; semantic: string — What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; anything else is ignored.; approvals: number — How many must agree to a move into it.; approverKind: string — The involvement kind whose holders’ approval counts; empty for anybody’s.; evidence: json — What must be there first, as the state stores it; empty clears it.
+  Returns: nothing
+  Writes: edits a TaskState (may write many records in one call)
 
 - ops.core.upsertSignal — Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.
   Params: node: string (required) — The record reacted to.; signalType: string (required) — The SignalType’s id.; value: number (required) — What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal.
@@ -4424,6 +4554,26 @@ An app installed at runtime brings its own, which this list does not show.
   Params: canvas: string (required) — The canvas.; connection: string (required) — The Relationship.; route: string — The connection’s route on this canvas, where it has one.; action: string (required) — update, replace, create or delete.; fields: object — sourceAnchor, targetAnchor, points — what the route says.
   Returns: nothing
   Writes: adds to CollectionBlock.children; creates a EdgeRoute; deletes a EdgeRoute; edits a EdgeRoute (destructive)
+
+- ops.pocket.gather — Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.
+  Params: ref: string (required) — The record URI — we:<datasetKey>/<Entity>/<id>.; entity: string — The reference’s entity, written out beside it.; datasetKey: string — Its dataset key.; recordId: string — Its record id.; withinEntity: string — The record it sits inside, where it is a block.; withinId: string — That record’s id.; label: string — How it read when it was gathered.; icon: string — Its icon.; thumbnail: string — Its picture.; sourceName: string — The space it came from, by name.; sourceAuthor: string — Whoever wrote it.; into: string — The folder to keep it in; the root when omitted.; origin: object — Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to PocketFolder.items; creates a PocketFolder; removes from PocketFolder.items; creates a PocketItem (destructive)
+
+- ops.pocket.refile — Move an item from one folder to another. The item keeps its id and everything it says, gatheredAt included.
+  Params: item: string (required) — The PocketItem.; from: string (required) — The folder it is in.; into: string (required) — The folder it moves to.
+  Returns: a value, read in onSuccess as result
+  Writes: adds to PocketFolder.items; removes from PocketFolder.items (destructive)
+
+- ops.pocket.removeFolders — Delete folders and everything kept in them, in the order given — the deepest first, so a parent outlives its children.
+  Params: folders: list (required) — The folders’ ids, a folder after everything under it.
+  Returns: nothing
+  Writes: deletes a PocketFolder; deletes a PocketItem (may write many records in one call, destructive)
+
+- ops.pocket.rootFolder — The Pocket’s root folder — the one everything else hangs off — made the first time it is asked for.
+  Params: none
+  Returns: a value, read in onSuccess as result
+  Writes: creates a PocketFolder
 
 - ops.polls.vote — Cast the invoker’s vote on a poll, or change it — one vote per person per poll, any duplicates removed.
   Params: poll: string (required) — The Poll’s id.; option: string (required) — The choice, as it is written in the poll’s options.
