@@ -611,7 +611,7 @@ export function messageLine(opts: {
                         type: 'Row',
                         props: { gap: '200', ay: 'center' },
                         children: [
-                          { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted' } },
+                          { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted', size: 'sm' } },
                           { type: 'we-text', props: { truncate: true }, children: [{ $: 'file.name' }] },
                           {
                             type: 'we-text',
