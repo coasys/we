@@ -49,6 +49,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
       */
       {
         create: {
+          as: 'made',
           entity: 'Signal',
           fields: { signalTypeId: { $: 'signalType' }, value: { $: 'value' } },
           parent: { id: { $: 'node' }, relation: 'signals' },
@@ -67,6 +68,8 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         },
       },
     ],
+    // The reaction as it now stands: the one kept, or the one made.
+    returns: { $: 'count(mine) ? first(mine).id : made.id' },
   },
   withdrawSignal: {
     description:

@@ -266,13 +266,17 @@ async function runStep(
       const fields = fieldsOf(value('fields'), step);
       const id = await deriveRecordId(run.invocationId, segments);
       const parentSpec = body.parent as { id: unknown; relation: string; entity?: string } | undefined;
-      const parent = parentSpec
-        ? {
-            id: idOf(resolve(parentSpec.id, scope, `${step}.parent.id`), `${step}.parent.id`),
-            relation: parentSpec.relation,
-            ...(parentSpec.entity ? { entity: parentSpec.entity } : {}),
-          }
-        : undefined;
+      // A parent whose id is absent is no parent, as an absent field is not written: one create
+      // serves a record that is sometimes under something and sometimes not.
+      const parentId = parentSpec ? resolve(parentSpec.id, scope, `${step}.parent.id`) : undefined;
+      const parent =
+        parentSpec && parentId !== undefined && parentId !== null
+          ? {
+              id: idOf(parentId, `${step}.parent.id`),
+              relation: parentSpec.relation,
+              ...(parentSpec.entity ? { entity: parentSpec.entity } : {}),
+            }
+          : undefined;
       run.created.set(id, step);
       const instance = await Model.create(run.dataset, fields, {
         id,
@@ -313,7 +317,7 @@ async function runStep(
 
     case 'link':
     case 'unlink': {
-      const entity = writable(body.entity as string, step);
+      const entity = chosenEntity(body, scope, step);
       const Model = statics(entity, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = body.relation as string;

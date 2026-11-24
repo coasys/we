@@ -60,11 +60,13 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
           add(entity, 'delete', inLoop);
           break;
         case 'link':
-          add(entity, `add:${body.relation as string}`, inLoop);
+        case 'unlink': {
+          const oneOf = body.oneOf as string[] | undefined;
+          const change = verb === 'link' ? 'add' : 'remove';
+          for (const name of typeof body.entity === 'string' ? [body.entity] : (oneOf ?? []))
+            add(name, `${change}:${body.relation as string}`, inLoop);
           break;
-        case 'unlink':
-          add(entity, `remove:${body.relation as string}`, inLoop);
-          break;
+        }
         case 'setRelation':
           add(entity, `add:${body.relation as string}`, inLoop);
           add(entity, `remove:${body.relation as string}`, inLoop);

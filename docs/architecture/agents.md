@@ -66,8 +66,9 @@ and two descriptions of the same graph, and nobody reading the outcome could say
 
 When WE runs it, the conversation has what a backend's agent would: the space's records, through
 `createDataToolset`, over the same entity proxies and write path everything else in the app uses,
-with WE's conventions beside them as tools of their own (`write_post` threads a reply under its
-subject); and the record toolsets, bound to the place the person is working in by
+with WE's conventions beside them as tools of their own (`write_post` writes a post through
+`core.createPost`, the composer's own operation, so a reply is threaded under its subject exactly as
+a person's is); and the record toolsets, bound to the place the person is working in by
 `bindRecordToolset`. The loop (`runAgentConversation`) holds the guards: nothing that writes is
 offered to a request that only reads, a delete or anything put in a space asks the person first, and
 what a read answers reaches the model fenced as other people's writing.
@@ -76,7 +77,10 @@ Declared operations are WE's in the same sense. A vote, a board with its columns
 blocks: which records such a write makes and how they link is a WE convention, and an operation is
 that convention written down as data ([capabilities-and-surfaces.md](capabilities-and-surfaces.md)).
 So the data toolset offers them as `list_operations` and `run_operation`, and runs them through the
-same runner a template's press reaches, with the person as invoker. The tool lists what each
+same runner a template's press reaches, with the person as invoker. `create_record` does too, for an
+entity whose creation has rules: a reaction goes through `core.upsertSignal` (one per person per
+type) and an involvement through `core.setInvolvement`, by a table in the toolset mapping each such
+entity to its operation, so an agent's record meets the rules a person's press does. The tool lists what each
 operation may write from its definition, and asks the person before one that deletes, in words
 worked out from its effects rather than the model's account of them.
 

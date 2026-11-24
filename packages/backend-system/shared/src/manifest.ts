@@ -527,7 +527,12 @@ export interface DeleteStep {
 }
 
 export interface LinkStep {
-  entity: string;
+  /**
+   * A literal name, or an expression whose value must be one of `oneOf` — for a record whose entity
+   * the caller knows and the definition cannot, such as the subject of a thread.
+   */
+  entity: string | OperationExpression;
+  oneOf?: string[];
   id: OperationValue;
   relation: string;
   target: OperationValue;
@@ -677,7 +682,8 @@ const present = z.unknown().refine((v) => v !== undefined, 'is required');
 const valueMap = z.record(z.string(), value);
 const guard = { when: value.optional() };
 const linkBody = z.strictObject({
-  entity: z.string(),
+  entity: z.union([z.string(), expressionToken]),
+  oneOf: z.array(z.string()).optional(),
   id: present,
   relation: z.string(),
   target: present,

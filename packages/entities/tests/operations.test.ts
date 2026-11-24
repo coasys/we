@@ -7,6 +7,7 @@ import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import { CORE_MANIFEST, CORE_OPERATIONS } from '../src/manifest';
+import { postBlockId, THREAD_SUBJECT_ENTITIES } from '../src/manifest/operations/content';
 import {
   deriveRecordId,
   describeEffects,
@@ -65,6 +66,20 @@ describe('static checks', () => {
       },
     );
     expect(issues(good)).toEqual([]);
+  });
+
+  it('check a link whose entity is chosen by expression against every name it may be', () => {
+    const link = (extra: Record<string, unknown>) =>
+      op([{ link: { id: 'b', relation: 'columns', target: 'c', ...extra } }], {
+        params: { which: { type: 'string' } },
+      });
+    expect(issues(link({ entity: { $: 'which' }, oneOf: ['Board'] }))).toEqual([]);
+    expect(issues(link({ entity: { $: 'which' } }))).toEqual([
+      'operations.t.steps.0.link.oneOf: an entity chosen by expression must list what it may be in "oneOf"',
+    ]);
+    expect(issues(link({ entity: { $: 'which' }, oneOf: ['Board', 'Column'] }))).toEqual([
+      'operations.t.steps.0.link.relation: Column has no relation "columns"',
+    ]);
   });
 
   it('refuse a name read before it is bound, and the template names an operation has no use for', () => {
@@ -261,6 +276,19 @@ describe('the core operations', () => {
 
   it('pass the static checks against the core vocabulary', () => {
     expect(validateOperations(CORE_MANIFEST, { namespace: 'core', operations: getOperation })).toEqual([]);
+  });
+
+  it('give createPost the block ids the host plans for its stored document', async () => {
+    // The step path postBlockId derives from is the forEach that creates the blocks.
+    const steps = CORE_OPERATIONS.createPost.steps;
+    const loop = steps[3] as { forEach?: { steps: { create?: unknown }[] } };
+    expect(loop.forEach?.steps[0]?.create).toBeDefined();
+    expect(await postBlockId('inv', 'a')).toBe(await deriveRecordId('inv', ['3', 'k=a', '0']));
+  });
+
+  it('list only entities built on WeNode as what a thread’s subject may be', () => {
+    for (const name of THREAD_SUBJECT_ENTITIES)
+      expect(CORE_MANIFEST.entities[name]?.relations.thread, name).toBeDefined();
   });
 
   it('are registered under core', () => {

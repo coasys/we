@@ -24,7 +24,7 @@
  * tools of their own), and who may do what in the space.
  */
 import { type EntityManifestEntry, type EntityManifestProperty, manifestEntries } from '@we/backend-shared';
-import { type ContentBlock, createBlocks, type TextContentBlock } from '@we/block-shared';
+import { type ContentBlock, type TextContentBlock, writePost as writePostAs } from '@we/block-shared';
 import {
   completeResponse,
   describeEffects,
@@ -96,12 +96,44 @@ export interface DataToolsetOptions {
    */
   run?: string;
   /**
-   * The agent the conversation acts as — the person, by their id. Declared operations run as them,
-   * through the same runner a template's press reaches, so the space's write check judges every write
-   * an operation makes as it would theirs. Absent: the operation tools are not offered.
+   * The agent the conversation acts as — the person, by their id. Declared operations run as them —
+   * `run_operation`, a post, and a record whose creation has rules — through the same runner a
+   * template's press reaches, so the space's write check judges every write as it would theirs.
    */
-  invoker?: string;
+  invoker: string;
 }
+
+/**
+ * Entities whose creation has rules a bare create would skip, and the declared operation that holds
+ * them — so `create_record` for one of these runs the operation, and an agent's record meets the rules
+ * a person's press does (one reaction per person per type; a kind of involvement the space has, and
+ * an answer only its own agent gives). Each row says how the tool's `fields` and `on` become the
+ * operation's params, or what is missing.
+ *
+ * Add a row when an entity's creation gains an operation; an entity with none is created directly.
+ */
+const CREATED_THROUGH: Record<
+  string,
+  {
+    operation: string;
+    args: (fields: Record<string, unknown>, on: string | undefined) => Record<string, unknown> | string;
+  }
+> = {
+  Signal: {
+    operation: 'core.upsertSignal',
+    args: (fields, on) =>
+      on && str(fields.signalTypeId) && typeof fields.value === 'number'
+        ? { node: on, signalType: fields.signalTypeId, value: fields.value }
+        : 'Error: A Signal needs `on` (the record reacted to) and `fields` { signalTypeId, value }.',
+  },
+  Involvement: {
+    operation: 'core.setInvolvement',
+    args: (fields, on) =>
+      on && str(fields.agent) && str(fields.kind)
+        ? { node: on, agent: fields.agent, kind: fields.kind, on: true }
+        : 'Error: An Involvement needs `on` (the record they are on) and `fields` { agent, kind }.',
+  },
+};
 
 const coreEntries = (() => {
   let entries: EntityManifestEntry[] | undefined;
@@ -327,6 +359,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const fields = isObject(args.fields) ? args.fields : {};
     const problem = fieldsProblem(entry, fields);
     if (problem) return { text: problem };
+    const through = CREATED_THROUGH[name];
+    if (through) return createThrough(name, through, fields, str(args.on));
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
     // A new feed starts with its space's interpretation defaults, as the app's own `record.create` writes it.
@@ -343,6 +377,26 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       text: `Made a ${name}: ${created.id}.`,
       wrote: [{ entity: name, id: created.id, change: 'created' }],
     };
+  };
+
+  /** A record whose creation has rules, made by the operation that holds them. */
+  const createThrough = async (
+    name: string,
+    through: (typeof CREATED_THROUGH)[string],
+    fields: Record<string, unknown>,
+    on: string | undefined,
+  ): Promise<SessionAnswer> => {
+    const params = through.args(fields, on);
+    if (typeof params === 'string') return { text: params };
+    try {
+      const id = await runOperation(through.operation, params, { dataset, invoker: options.invoker });
+      return typeof id === 'string'
+        ? { text: `Made a ${name}: ${id}.`, wrote: [{ entity: name, id, change: 'created' }] }
+        : { text: `Made a ${name}.` };
+    } catch (error) {
+      if (isOperationError(error)) return { text: `Error: The ${name} was not made: ${error.message}` };
+      throw error;
+    }
   };
 
   const updateRecord = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
@@ -382,23 +436,23 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     const kind = str(args.kind) ?? (args.respondsTo ? 'reply' : 'post');
     const placed = placement(args);
     if (placed.error) return { text: placed.error };
+    const respondsTo = str(args.respondsTo);
     // With nowhere named, a post goes in the space's top-level collection, as the app's own does.
-    const anchor =
-      placed.parent ??
-      (await spaceRoot().then((root) =>
-        root.id ? { id: root.id, relation: 'children', entity: 'CollectionBlock' } : undefined,
-      ));
-    const root = await createBlocks(dataset, textToBlocks(text), {
-      kind,
-      ...(anchor ? { anchor: anchor as never } : {}),
-      ...(options.run ? { relations: { generatedBy: [options.run] } } : {}),
-    });
-    if (!root?.id) return { text: 'Error: The post could not be written.' };
-    if (anchor?.relation === 'responses') await completeResponse(dataset, root.id, String(anchor.id));
-    return {
-      text: `Wrote a ${kind}: ${root.id}.`,
-      wrote: [{ entity: 'CollectionBlock', id: root.id, change: 'created' }],
-    };
+    const container = respondsTo ? undefined : (str(args.in) ?? ((await spaceRoot()).id || undefined));
+    try {
+      // The composer's own write: `core.createPost`, a reply threaded in the same write.
+      const id = await writePostAs(dataset, textToBlocks(text), {
+        invoker: options.invoker,
+        kind,
+        ...(container ? { container } : {}),
+        ...(respondsTo ? { respondsTo } : {}),
+        ...(options.run ? { generatedBy: options.run } : {}),
+      });
+      return { text: `Wrote a ${kind}: ${id}.`, wrote: [{ entity: 'CollectionBlock', id, change: 'created' }] };
+    } catch (error) {
+      if (isOperationError(error)) return { text: `Error: The post could not be written: ${error.message}` };
+      throw error;
+    }
   };
 
   const defineModel = async (args: Record<string, unknown>): Promise<SessionAnswer> => {
@@ -459,7 +513,7 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     try {
       const returned = await runOperation(name, isObject(args.args) ? args.args : {}, {
         dataset,
-        invoker: options.invoker!,
+        invoker: options.invoker,
       });
       return {
         text: returned === undefined ? `Ran ${name}.` : `Ran ${name}. It answered: ${JSON.stringify(returned)}`,
@@ -519,10 +573,15 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
     {
       name: 'create_record',
       description:
-        'Make a record. `fields` are its own fields (describe_space lists them). Put it in a collection with `in`, or make it a response with `respondsTo`. For a post or a reply, use write_post.',
+        'Make a record. `fields` are its own fields (describe_space lists them). Put it in a collection with `in`, or make it a response with `respondsTo`. A reaction (Signal) or an involvement names the record it is on with `on`, and keeps the space’s rules: one reaction per person per type, replaced rather than added. For a post or a reply, use write_post.',
       parameters: {
         type: 'object',
-        properties: { entity: entityParam, fields: { type: 'object' }, ...placeParams },
+        properties: {
+          entity: entityParam,
+          fields: { type: 'object' },
+          ...placeParams,
+          on: { type: 'string', description: 'For a Signal or an Involvement: the record it is on, by id.' },
+        },
         required: ['entity', 'fields'],
       },
       writes: true,
@@ -568,40 +627,36 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       writes: true,
       run: writePost,
     },
-    ...(options.invoker
-      ? [
-          {
-            name: 'list_operations',
-            description:
-              'The declared operations here — named writes of several records, run as one — with their params and what each may write.',
-            parameters: { type: 'object', properties: {} },
-            writes: false,
-            run: listOperations,
-          },
-          {
-            name: 'run_operation',
-            description:
-              'Run a declared operation by its full name, with its params in `args`. Everything it writes lands together, or nothing does. One that deletes asks the person first.',
-            parameters: {
-              type: 'object',
-              properties: {
-                name: { type: 'string', description: 'namespace.name, as list_operations gives it.' },
-                args: { type: 'object', description: 'Its params.' },
-              },
-              required: ['name'],
-            },
-            writes: true,
-            // Worded from the definition's effects, never from the model's account of what it is doing.
-            confirm: (args: Record<string, unknown>) => {
-              const entry = describeOperation(typeof args.name === 'string' ? args.name : '');
-              return entry?.effects.destructive
-                ? `${entry.description.replace(/\.$/, '')}? It ${describeEffects(entry.effects)}.`
-                : undefined;
-            },
-            run: runDeclared,
-          },
-        ]
-      : []),
+    {
+      name: 'list_operations',
+      description:
+        'The declared operations here — named writes of several records, run as one — with their params and what each may write.',
+      parameters: { type: 'object', properties: {} },
+      writes: false,
+      run: listOperations,
+    },
+    {
+      name: 'run_operation',
+      description:
+        'Run a declared operation by its full name, with its params in `args`. Everything it writes lands together, or nothing does. One that deletes asks the person first.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'namespace.name, as list_operations gives it.' },
+          args: { type: 'object', description: 'Its params.' },
+        },
+        required: ['name'],
+      },
+      writes: true,
+      // Worded from the definition's effects, never from the model's account of what it is doing.
+      confirm: (args: Record<string, unknown>) => {
+        const entry = describeOperation(typeof args.name === 'string' ? args.name : '');
+        return entry?.effects.destructive
+          ? `${entry.description.replace(/\.$/, '')}? It ${describeEffects(entry.effects)}.`
+          : undefined;
+      },
+      run: runDeclared,
+    },
     ...(options.defineModel
       ? [
           {

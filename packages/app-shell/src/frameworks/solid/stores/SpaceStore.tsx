@@ -134,12 +134,12 @@ import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } 
 import type { ContentInput } from '@we/block-shared';
 import {
   contentHash,
-  createBlocks,
   decodeEditorState,
   deleteBlocks,
   isContentDocument,
   reconcileBlocks,
   refreshComposition,
+  writePost,
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
@@ -151,7 +151,6 @@ import {
   resolveSpaceInterpretationTargets,
   runOperation,
 } from '@we/entities';
-import { completeResponse } from '@we/entities';
 import {
   AGENT_DEFAULT,
   CollectionBlock,
@@ -484,8 +483,8 @@ export interface SpaceStore {
    *
    * The id is what makes "and then do something with it" possible from a schema — placing a new card
    * where somebody double-clicked, scrolling to it, selecting it — since `$invoke`'s `onSuccess`
-   * reads the resolved value as `$result`. `createBlocks` has always returned the model; this simply
-   * stopped throwing the id away.
+   * reads the resolved value as `$result`. Written by `core.createPost`, which answers with the post's
+   * id; a reply is threaded in the same write.
    */
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
@@ -2186,7 +2185,8 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
     const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
+    const me = session.me()?.did;
+    if (!p || !me) return;
 
     // The anchor is what makes one action serve every composed artifact. A post has none — it sits
     // in the space. A message names its channel through `children`; a reply names whatever it
@@ -2198,18 +2198,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const { kind = 'post', relation = 'children' } = options;
     const parentId = options.parentId ?? (spaceRoot() || undefined);
 
-    // The action arrives from a schema as unknown; the composer produced it, so it is a content document.
-    const root = await createBlocks(p, json as ContentInput, {
+    // The action arrives from a schema as unknown; the composer produced it, so it is a content
+    // document. The writes, threading a reply included, are `core.createPost`'s, as an agent's are.
+    return writePost(p, json as ContentInput, {
+      invoker: me,
       kind,
-      // A message's parent is a collection; a reply's may be any record, and `responses` is the
-      // same relation on every one of them, so it needs no entity to say which.
-      ...(parentId && {
-        anchor: { id: parentId, relation, ...(relation === 'children' && { entity: 'CollectionBlock' }) },
-      }),
+      ...(parentId && (relation === 'responses' ? { respondsTo: parentId } : { container: parentId })),
     });
-    // A reply is linked into its thread, and is a child of nothing — see `completeResponse` in `@we/entities`.
-    if (root?.id && parentId && relation === 'responses') void completeResponse(p, root.id, parentId);
-    return root?.id;
   }
 
   async function updatePost(postId: string, json: unknown): Promise<void> {

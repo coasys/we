@@ -78,8 +78,36 @@ async function readNode(
 }
 
 /**
- * Thread a response that has just been written: link it from its thread's subject. `subjectEntity`
- * is a hint, for a caller that knows what it answered.
+ * The subject of the thread a response to `subjectId` joins, and its entity: the subject's own
+ * subject when it is itself a response, else the subject. Null when neither can be read — the
+ * response is then left unthreaded, which its subject's `responses` still holds. `subjectEntity` is
+ * a hint, for a caller that knows what it answered.
+ *
+ * What `core.createPost` is told to link from, and what `completeResponse` links from: the one place
+ * the rule is worked out.
+ */
+export async function threadSubject(
+  dataset: DatasetProxy,
+  subjectId: string,
+  subjectEntity?: string,
+): Promise<{ id: string; entity: string } | null> {
+  if (!dataset || !subjectId) return null;
+  try {
+    const subject = await readNode(dataset, subjectId, subjectEntity);
+    if (!subject) return null;
+    const rootId = idOf(subject.row.inThread) || subjectId;
+    const root = rootId === subjectId ? subject : await readNode(dataset, rootId);
+    return root ? { id: rootId, entity: root.entity } : null;
+  } catch (error) {
+    console.warn('responses: could not read the subject of a thread', error);
+    return null;
+  }
+}
+
+/**
+ * Thread a response that has just been written: link it from its thread's subject. For a record
+ * made one write at a time, through the generic create; a composed post is threaded inside
+ * `core.createPost`, in the same write as the post.
  */
 export async function completeResponse(
   dataset: DatasetProxy,
@@ -89,14 +117,10 @@ export async function completeResponse(
 ): Promise<void> {
   if (!dataset || !responseId || !subjectId) return;
   try {
-    const subject = await readNode(dataset, subjectId, subjectEntity);
-    if (!subject) return;
-    const rootId = idOf(subject.row.inThread) || subjectId;
-    const root = rootId === subjectId ? subject : await readNode(dataset, rootId);
+    const root = await threadSubject(dataset, subjectId, subjectEntity);
     if (!root) return;
-
     const Root = getEntityForDataset(root.entity, dataset) as NodeStatics | undefined;
-    await Root?.addRelation(dataset, rootId, 'thread', responseId);
+    await Root?.addRelation(dataset, root.id, 'thread', responseId);
   } catch (error) {
     console.warn('responses: could not link a response into its thread', error);
   }

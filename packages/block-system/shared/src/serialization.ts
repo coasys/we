@@ -1,6 +1,14 @@
 import type { ParentRef, RecordInstance } from '@we/backend-shared';
 import type { FileData } from '@we/entities';
-import { asFileField, dataURIToFileData, getFileStore, runEntityTransaction } from '@we/entities';
+import {
+  asFileField,
+  dataURIToFileData,
+  getFileStore,
+  postBlockId,
+  runEntityTransaction,
+  runOperation,
+  threadSubject,
+} from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 import type { CollectionContentBlock, ContentBlock, ContentDocument, TextContentBlock } from './content';
@@ -638,6 +646,126 @@ export async function createBlocks(
     },
     { batchId },
   );
+}
+
+// ── A post, as a declared operation ─────────────────────────────────────────────
+
+export interface WritePostOptions {
+  /** The agent writing it — the operation runs as them. */
+  invoker: string;
+  /** What the root is for — see `CreateBlocksOptions.kind`. */
+  kind?: string;
+  /** Who owns the root's children; `'document'` when a `kind` is given, as `createBlocks` has it. */
+  mode?: CollectionMode;
+  /** Scalars beside `kind` and `mode` — where a copied post came from. Only the root's own fields are written. */
+  fields?: Record<string, string>;
+  /** The collection it is a child of. */
+  container?: string;
+  /** The record it answers, making it a response threaded under that record's thread subject. */
+  respondsTo?: string;
+  /** The `ModelRun` that wrote it, when a model did. */
+  generatedBy?: string;
+  /** The invocation's id — a replay supplies the original; otherwise a fresh one. */
+  invocationId?: string;
+}
+
+/** One block as `core.createPost` takes it. */
+interface PlannedBlock {
+  key: string;
+  entity: string;
+  fields: Record<string, unknown>;
+  parent?: string;
+}
+
+/**
+ * A composer's document as `core.createPost`'s args: what the host works out before the operation
+ * runs, because it needs a file store and the block registry, which an operation has neither of.
+ *
+ * Files are uploaded first; each block gets the id the operation will give it (`postBlockId`), so the
+ * root's stored document can name every block before any is written; the blocks are listed in
+ * document order with the planned id of the collection each sits in; and the root's derived fields
+ * — the encoded document, its plain text, who it mentions — are computed from the same blocks. A
+ * reply's thread subject is read here too (`threadSubject`), since which entity it is is something
+ * only a read can say.
+ *
+ * Stamps `_key` onto the blocks handed in, as `createBlocks` does, so a composer holding the document
+ * can reconcile against it later.
+ */
+export async function planPost(
+  perspective: BlockDataset,
+  input: ContentInput,
+  options: Omit<WritePostOptions, 'invoker'> = {},
+): Promise<{ invocationId: string; args: Record<string, unknown> }> {
+  const { kind, mode = kind ? 'document' : undefined, fields, container, respondsTo, generatedBy } = options;
+  const invocationId = options.invocationId ?? crypto.randomUUID();
+  const { blocks } = normalizeInput(input);
+  const uploaded = await preUploadFileAssets(perspective, blocks);
+
+  const planned: PlannedBlock[] = [];
+  const plan = async (
+    authored: readonly ContentBlock[],
+    stored: readonly ContentBlock[],
+    parent: string | undefined,
+    path: string,
+  ) => {
+    for (let i = 0; i < authored.length; i++) {
+      const block = authored[i];
+      const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
+      if (!registration) continue;
+      const key = path ? `${path}.${i}` : String(i);
+      const id = await postBlockId(invocationId, key);
+      block._key = id;
+      if (stored[i]) stored[i]._key = id;
+      planned.push({
+        key,
+        entity: registration.entity,
+        fields: modelData(registration.entity, block),
+        ...(parent ? { parent } : {}),
+      });
+      if (isCollectionBlock(block)) {
+        const inner = stored[i];
+        await plan(block.content ?? [], inner && isCollectionBlock(inner) ? (inner.content ?? []) : [], id, key);
+      }
+    }
+  };
+  await plan(blocks, uploaded, undefined, '');
+
+  const rootFields = new Set(propertyNames('CollectionBlock'));
+  const root: Record<string, unknown> = {
+    ...Object.fromEntries(Object.entries(fields ?? {}).filter(([name, value]) => value && rootFields.has(name))),
+    ...(kind ? { kind } : {}),
+    ...(mode ? { mode } : {}),
+    editorState: asFileField(encodeEditorState(uploaded)),
+    textContent: extractTextContent(uploaded),
+  };
+  const thread = respondsTo ? await threadSubject(perspective, respondsTo) : null;
+  return {
+    invocationId,
+    args: {
+      root,
+      blocks: planned,
+      mentions: extractMentions(blocks),
+      ...(container ? { container } : {}),
+      ...(respondsTo ? { respondsTo } : {}),
+      ...(thread ? { thread: thread.id, threadEntity: thread.entity } : {}),
+      ...(generatedBy ? { generatedBy } : {}),
+    },
+  };
+}
+
+/**
+ * Write a composed document through `core.createPost` — the composer's save and an agent's
+ * `write_post` alike — and answer with the post's id. Fails with the operation's error, and then
+ * nothing of the post has landed.
+ */
+export async function writePost(
+  perspective: BlockDataset,
+  input: ContentInput,
+  options: WritePostOptions,
+): Promise<string> {
+  const { invoker, ...rest } = options;
+  const { invocationId, args } = await planPost(perspective, input, rest);
+  return (await runOperation('core.createPost', args, { dataset: perspective, invoker, invocationId })) as string;
 }
 
 /**

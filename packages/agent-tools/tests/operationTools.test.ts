@@ -60,10 +60,8 @@ afterEach(() => unregisterOperations('demo'));
 const tools = () => createDataToolset({ dataset, invoker: 'did:test:me' });
 
 describe('the operation tools', () => {
-  it('are offered only when the conversation says who it acts as', () => {
-    const names = (toolset: ReturnType<typeof createDataToolset>) => toolset.tools.map((t) => t.name);
-    expect(names(createDataToolset({ dataset }))).not.toContain('run_operation');
-    expect(names(tools())).toEqual(expect.arrayContaining(['list_operations', 'run_operation']));
+  it('are offered beside the record tools', () => {
+    expect(tools().tools.map((t) => t.name)).toEqual(expect.arrayContaining(['list_operations', 'run_operation']));
   });
 
   it('list every registered operation with its params and what it writes', async () => {

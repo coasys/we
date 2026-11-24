@@ -273,11 +273,27 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
           case 'link':
           case 'unlink':
           case 'setRelation': {
-            const entity = body.entity as string;
             for (const key of ['id', 'target', 'targets'])
               if (key in body) checkValue(body[key], scope, `${bp}.${key}`);
-            const target = knownEntity(entity, `${bp}.entity`, true);
-            if (target) checkRelation(entity, target, body.relation as string, `${bp}.relation`);
+            const oneOf = body.oneOf as string[] | undefined;
+            let entities: string[] = [];
+            if (isExpressionToken(body.entity)) {
+              checkValue(body.entity, scope, `${bp}.entity`);
+              if (!oneOf?.length)
+                issue(`${bp}.oneOf`, 'an entity chosen by expression must list what it may be in "oneOf"');
+              else entities = oneOf;
+            } else {
+              if (oneOf) issue(`${bp}.oneOf`, '"oneOf" constrains an entity chosen by expression; this one is named');
+              entities = [body.entity as string];
+            }
+            entities.forEach((entity, i) => {
+              const target = knownEntity(
+                entity,
+                oneOf && entities === oneOf ? `${bp}.oneOf.${i}` : `${bp}.entity`,
+                true,
+              );
+              if (target) checkRelation(entity, target, body.relation as string, `${bp}.relation`);
+            });
             break;
           }
           case 'check': {

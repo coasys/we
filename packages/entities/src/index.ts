@@ -136,7 +136,7 @@ export {
   resolveSpaceInterpretationTargets,
   withInterpretationDefaults,
 } from './utils/collectionInterpretation';
-export { completeResponse, respondsThrough } from './utils/responses';
+export { completeResponse, respondsThrough, threadSubject } from './utils/responses';
 
 /**
  * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"
@@ -159,3 +159,4 @@ export * from './entityRegistry';
 export { defineEntity } from './entityProxy';
 
 export * from './operations';
+export { POST_BLOCK_ENTITIES, postBlockId, THREAD_SUBJECT_ENTITIES } from './manifest/operations/content';
