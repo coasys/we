@@ -5486,10 +5486,6 @@ mod tests {
                     cosign(&mut event, "d1", &self.device).unwrap();
                     Ok(serde_json::to_value(&event).unwrap())
                 }
-                // The store takes any offer, answering its id as it does.
-                "identity.openOffer" => Ok(json!({
-                    "offerId": p["signedOffer"]["offer"]["offerId"].clone(),
-                })),
                 "identity.unwrapRecordKey" if self.keeps_record.borrow().is_some() => {
                     let events = self.keeps_record.borrow().clone().unwrap();
                     let secret =
