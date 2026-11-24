@@ -820,7 +820,7 @@ async fn connect(
     vault: &Arc<DesktopVault>,
 ) -> Result<ViaExecutor<WithEncKey<WsRpcClient>>, String> {
     let (rpc, device_key) = reach(address).await?;
-    with_enc_key(rpc, &device_key, vault)
+    with_enc_key(rpc, &device_key, vault).await
 }
 
 /// What a step says while the executor does not answer.
@@ -843,13 +843,17 @@ async fn reach(address: &ExecutorAddress) -> Result<(WsRpcClient, String), Strin
 }
 
 /// `rpc` behind this computer's enc key for `device_key`, kept in the vault's store; the words of
-/// [`enc_key_unkept`] when the store cannot keep or read it.
-fn with_enc_key<R: ExecutorRpc>(
+/// [`enc_key_unkept`] when the store cannot keep or read it. The key is claimed off the custody
+/// task ([`keychain_call`]): the claim can sit inside the keychain's unlock prompt, and the task
+/// must stay free to answer Cancel and the claim deadline meanwhile.
+async fn with_enc_key<R: ExecutorRpc>(
     rpc: R,
     device_key: &str,
     vault: &Arc<DesktopVault>,
 ) -> Result<ViaExecutor<WithEncKey<R>>, String> {
-    let enc = CustodyEncKey::for_device(vault.shared_store(), device_key)
+    let (store, device_key) = (vault.shared_store(), device_key.to_string());
+    let enc = keychain_call(move || CustodyEncKey::for_device(store, &device_key))
+        .await
         .map_err(|e| enc_key_unkept(&e))?;
     Ok(ViaExecutor::new(WithEncKey::new(
         rpc,
@@ -1254,7 +1258,7 @@ async fn public_state_reached<R: ExecutorRpc>(
     device_key: &str,
     vault: &Arc<DesktopVault>,
 ) -> CustodyPublic {
-    match with_enc_key(rpc, device_key, vault) {
+    match with_enc_key(rpc, device_key, vault).await {
         Ok(executor) => public_state_on(Some(&executor), vault).await,
         Err(message) => {
             log::warn!("custody: {message}");
@@ -3062,24 +3066,40 @@ async fn cancel_claim<R: ExecutorRpc>(
 struct StateReads<'a> {
     vault: &'a Arc<DesktopVault>,
     address: &'a ExecutorAddress,
+    /// Starts one read of the state.
+    read: Box<dyn Fn() -> StateRead<'a> + 'a>,
     /// The read under way and the requests it answers.
     reading: Option<Reading<'a>>,
     /// Requests that came while a read was under way: the next read answers them.
     queued: Vec<PublicReply>,
 }
 
-type Reading<'a> = (
-    std::pin::Pin<Box<dyn std::future::Future<Output = CustodyPublic> + 'a>>,
-    Vec<PublicReply>,
-);
+type StateRead<'a> = std::pin::Pin<Box<dyn std::future::Future<Output = CustodyPublic> + 'a>>;
+
+type Reading<'a> = (StateRead<'a>, Vec<PublicReply>);
 
 impl<'a> StateReads<'a> {
     fn new(vault: &'a Arc<DesktopVault>, address: &'a ExecutorAddress) -> Self {
         StateReads {
             vault,
             address,
+            read: Box::new(move || Box::pin(public_state(vault, address))),
             reading: None,
             queued: Vec::new(),
+        }
+    }
+
+    /// [`StateReads::new`] with `read` standing for the executor that answers, which a test has
+    /// no socket for.
+    #[cfg(test)]
+    fn with_read(
+        vault: &'a Arc<DesktopVault>,
+        address: &'a ExecutorAddress,
+        read: impl Fn() -> StateRead<'a> + 'a,
+    ) -> Self {
+        StateReads {
+            read: Box::new(read),
+            ..StateReads::new(vault, address)
         }
     }
 
@@ -3091,7 +3111,7 @@ impl<'a> StateReads<'a> {
 
     fn start(&mut self) {
         if self.reading.is_none() && !self.queued.is_empty() {
-            let read = Box::pin(public_state(self.vault, self.address));
+            let read = (self.read)();
             self.reading = Some((read, std::mem::take(&mut self.queued)));
         }
     }
@@ -5513,6 +5533,16 @@ mod tests {
         refusals: RefCell<std::collections::HashMap<&'static str, (u16, &'static str)>>,
         /// How long a method takes to answer, by name.
         delays: RefCell<std::collections::HashMap<&'static str, Duration>>,
+        /// Events `identity.publish` took, in order, answered back by `identity.log`.
+        events: RefCell<Vec<Value>>,
+        /// The signed offer `identity.openOffer` took, listed by `identity.offers`.
+        offer: RefCell<Option<Value>>,
+        /// While set, an `identity.offers` call that waits (`wait > 0`) waits until it clears.
+        hold_offers: Arc<std::sync::atomic::AtomicBool>,
+        /// Set while such a wait is in progress.
+        offers_waiting: Arc<std::sync::atomic::AtomicBool>,
+        /// Wakes the waiting `identity.offers` so it rechecks `hold_offers`.
+        offer_release: Arc<tokio::sync::Notify>,
     }
 
     impl FakeExecutor {
@@ -5534,6 +5564,11 @@ mod tests {
                 then: RefCell::new(Default::default()),
                 refusals: RefCell::new(Default::default()),
                 delays: RefCell::new(Default::default()),
+                events: RefCell::new(Vec::new()),
+                offer: RefCell::new(None),
+                hold_offers: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                offers_waiting: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                offer_release: Arc::new(tokio::sync::Notify::new()),
             }
         }
 
@@ -5695,6 +5730,7 @@ mod tests {
                         });
                     }
                     let event = Event::from_json(&p["events"][0]).unwrap();
+                    self.events.borrow_mut().push(p["events"][0].clone());
                     self.publishes.set(self.publishes.get() + 1);
                     if let Some((n, log)) = self.log_from.borrow().clone() {
                         if self.publishes.get() >= n {
@@ -5706,6 +5742,46 @@ mod tests {
                         "scid": event.scid, "seq": 0, "hash": "h", "time": 0,
                         "store": "did:key:zStore", "sig": "s",
                     }))
+                }
+                // The log of what `identity.publish` took; no log before any publish.
+                "identity.log" if !self.events.borrow().is_empty() => {
+                    let events = self.events.borrow().clone();
+                    let scid = events
+                        .first()
+                        .and_then(|e| e["scid"].as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Ok(json!({
+                        "did": p["did"], "events": events, "fork": null,
+                        "head": {
+                            "scid": scid, "seq": 0, "hash": "h", "time": 0,
+                            "store": "did:key:zStore", "sig": "s",
+                        },
+                    }))
+                }
+                "identity.openOffer" => {
+                    let offer = p["signedOffer"].clone();
+                    let id = offer["offer"]["offerId"].as_str().unwrap_or("").to_string();
+                    *self.offer.borrow_mut() = Some(offer);
+                    Ok(json!({ "offerId": id }))
+                }
+                "identity.offers" => {
+                    use std::sync::atomic::Ordering::SeqCst;
+                    if p["wait"].as_u64().unwrap_or(0) > 0 && self.hold_offers.load(SeqCst) {
+                        self.offers_waiting.store(true, SeqCst);
+                        while self.hold_offers.load(SeqCst) {
+                            // A release that lands between the check and the wait is caught by the
+                            // short timeout.
+                            let _ = tokio::time::timeout(
+                                Duration::from_millis(20),
+                                self.offer_release.notified(),
+                            )
+                            .await;
+                        }
+                        self.offers_waiting.store(false, SeqCst);
+                    }
+                    let offer = self.offer.borrow().clone().unwrap_or(Value::Null);
+                    Ok(json!([{ "offer": offer, "state": { "state": "open" } }]))
                 }
                 // Ends the code `identity.prepareDevice` gave, with no claim of it: a test that
                 // sees a claim cancelled by the end answers it.
@@ -5847,6 +5923,323 @@ mod tests {
             .expect("the read ends once the prompt does");
         assert!(public.did.is_some(), "{public:?}");
         watchdog.join().unwrap();
+    }
+
+    /// A keychain whose calls sit until [`Block::release`], once [`Block::arm`]ed: the unlock
+    /// prompt a locked Secret Service opens. The claim of the enc key is where the state read waits.
+    struct BlockingKeychain {
+        inner: crate::store::MemoryStore,
+        block: Arc<Block>,
+    }
+
+    struct Block {
+        state: std::sync::Mutex<BlockState>,
+        changed: std::sync::Condvar,
+    }
+
+    #[derive(Default)]
+    struct BlockState {
+        armed: bool,
+        in_flight: u32,
+        max_in_flight: u32,
+    }
+
+    impl Block {
+        fn new() -> Arc<Self> {
+            Arc::new(Block {
+                state: Default::default(),
+                changed: std::sync::Condvar::new(),
+            })
+        }
+
+        fn enter(&self) {
+            let mut g = self.state.lock().unwrap();
+            if !g.armed {
+                return;
+            }
+            g.in_flight += 1;
+            g.max_in_flight = g.max_in_flight.max(g.in_flight);
+            while g.armed {
+                g = self.changed.wait(g).unwrap();
+            }
+            g.in_flight -= 1;
+        }
+
+        fn arm(&self) {
+            self.state.lock().unwrap().armed = true;
+        }
+
+        fn release(&self) {
+            self.state.lock().unwrap().armed = false;
+            self.changed.notify_all();
+        }
+
+        fn in_flight(&self) -> u32 {
+            self.state.lock().unwrap().in_flight
+        }
+
+        fn max_in_flight(&self) -> u32 {
+            self.state.lock().unwrap().max_in_flight
+        }
+    }
+
+    impl crate::store::SecretStore for BlockingKeychain {
+        fn kind(&self) -> crate::store::StoreKind {
+            crate::store::StoreKind::Keychain
+        }
+        fn kind_of(&self, n: &str) -> Result<crate::store::StoreKind, VaultError> {
+            self.block.enter();
+            self.inner.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.block.enter();
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.block.enter();
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.delete(n)
+        }
+        fn claim_secret(
+            &self,
+            n: &str,
+            b: &[u8],
+        ) -> Result<zeroize::Zeroizing<Vec<u8>>, VaultError> {
+            self.block.enter();
+            self.inner.claim_secret(n, b)
+        }
+        fn put_tagged(
+            &self,
+            n: &str,
+            b: &[u8],
+            tag: &crate::store::ItemTag,
+        ) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.put_tagged(n, b, tag)
+        }
+        fn tag_of(&self, n: &str) -> Result<Option<crate::store::ItemTag>, VaultError> {
+            self.block.enter();
+            self.inner.tag_of(n)
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            self.block.enter();
+            self.inner.rename(from, to)
+        }
+    }
+
+    struct ManualClock(std::sync::atomic::AtomicU64);
+
+    impl Clock for ManualClock {
+        fn now(&self) -> u64 {
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    fn wait_until(timeout: Duration, pred: impl Fn() -> bool) -> bool {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            if pred() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        pred()
+    }
+
+    /// Which answer must arrive while the enc key's claim is still inside its prompt.
+    enum WhileBlocked {
+        Cancel,
+        Deadline,
+    }
+
+    /// One link waiting for its claim, served as the window reaches it ([`beside`] over
+    /// [`StateReads`]), while the window's state read waits in the keychain's unlock prompt for the
+    /// enc key. `mode` is the answer that has to arrive within a second anyway.
+    async fn blocked_enc_key_claim_while_linked(mode: WhileBlocked) -> Result<(), String> {
+        use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+        let block = Block::new();
+        let clock = Arc::new(ManualClock(AtomicU64::new(1_700_000_000)));
+        let (to_service, mut rx) = mpsc::unbounded_channel();
+        let (first_tx, first_rx) = oneshot::channel();
+        let held = FakeExecutor::new();
+        let (hold_offers, offers_waiting, offer_release) = (
+            Arc::clone(&held.hold_offers),
+            Arc::clone(&held.offers_waiting),
+            Arc::clone(&held.offer_release),
+        );
+        hold_offers.store(true, SeqCst);
+
+        let thread = std::thread::Builder::new()
+            .name("custody-link-test".into())
+            .spawn({
+                let (block, clock) = (Arc::clone(&block), Arc::clone(&clock));
+                move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("test runtime");
+                    rt.block_on(async move {
+                        let device_key = Signer::key(&held.device).as_str().to_string();
+                        let executor = ViaExecutor::new(held);
+                        let vault = Arc::new(DesktopVault::with_kdf(
+                            Box::new(BlockingKeychain {
+                                inner: crate::store::MemoryStore::as_kind(
+                                    crate::store::StoreKind::Keychain,
+                                ),
+                                block,
+                            }),
+                            PendingIncepts::memory(),
+                            CHEAP,
+                        ));
+                        confirmed(41)
+                            .finish(
+                                &executor,
+                                &vault.unlocking(None),
+                                this_computer(None, true, Some(0)),
+                                &CLOCK,
+                                &RANDOM,
+                            )
+                            .await
+                            .expect("create");
+                        let (address, _, _, _, _) = opened();
+                        // The window's state read, as the served path makes it: through the enc key.
+                        let mut reads = StateReads::with_read(&vault, &address, || {
+                            Box::pin(public_state_reached(
+                                FakeExecutor::new(),
+                                &device_key,
+                                &vault,
+                            ))
+                        });
+                        let (to_flow, mut flow_rx) = mpsc::unbounded_channel();
+                        let mut reply = Some(first_tx);
+                        let flow = link_on(
+                            &executor,
+                            &vault,
+                            &address,
+                            &mut flow_rx,
+                            &mut reply,
+                            clock.as_ref(),
+                        );
+                        beside(&mut reads, &mut rx, to_flow, flow).await;
+                        reads.finish().await;
+                    });
+                }
+            })
+            .expect("custody test thread");
+
+        // Lets the prompt and the offer poll go if this case returns early, then joins.
+        struct Stop {
+            block: Arc<Block>,
+            hold_offers: Arc<std::sync::atomic::AtomicBool>,
+            offer_release: Arc<tokio::sync::Notify>,
+            thread: Option<std::thread::JoinHandle<()>>,
+        }
+        impl Drop for Stop {
+            fn drop(&mut self) {
+                self.block.release();
+                self.hold_offers.store(false, SeqCst);
+                self.offer_release.notify_waiters();
+                if let Some(thread) = self.thread.take() {
+                    if thread.join().is_err() {
+                        eprintln!("the custody test thread panicked");
+                    }
+                }
+            }
+        }
+        let _stop = Stop {
+            block: Arc::clone(&block),
+            hold_offers: Arc::clone(&hold_offers),
+            offer_release: Arc::clone(&offer_release),
+            thread: Some(thread),
+        };
+
+        let first = match tokio::time::timeout(Duration::from_secs(20), first_rx).await {
+            Ok(Ok(Ok(screen))) => screen,
+            Ok(Ok(Err(e))) => return Err(format!("the link refused the step: {e:?}")),
+            Ok(Err(_)) => return Err("the link ended before a screen".into()),
+            Err(_) => return Err("no screen within 20s".into()),
+        };
+        let Screen::Offer { expires, .. } = first else {
+            return Err(format!("expected the offer, got {first:?}"));
+        };
+
+        let (step_tx, step_rx) = oneshot::channel();
+        to_service
+            .send(Request::Step(StepInput::WaitClaim, step_tx))
+            .map_err(|_| "the link ended before wait-claim".to_string())?;
+        if !wait_until(Duration::from_secs(10), || offers_waiting.load(SeqCst)) {
+            return Err("the claim poll never started".into());
+        }
+
+        block.arm();
+        let (pub_tx, _pub_rx) = oneshot::channel();
+        let (pub2_tx, _pub2_rx) = oneshot::channel();
+        for public in [pub_tx, pub2_tx] {
+            to_service
+                .send(Request::Public(public))
+                .map_err(|_| "the link ended before the state read".to_string())?;
+        }
+        if !wait_until(Duration::from_secs(10), || block.in_flight() >= 1) {
+            return Err("the state read never reached the keychain".into());
+        }
+        // The second read is queued behind the first, so the keychain sees one call.
+        std::thread::sleep(Duration::from_millis(50));
+        let max = block.max_in_flight();
+        if max != 1 {
+            return Err(format!("keychain calls in flight at once: {max}"));
+        }
+
+        let bound = Duration::from_secs(1);
+        match mode {
+            WhileBlocked::Cancel => {
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                to_service
+                    .send(Request::Cancel(cancel_tx))
+                    .map_err(|_| "the link ended before cancel".to_string())?;
+                match tokio::time::timeout(bound, cancel_rx).await {
+                    Ok(Ok(_)) => Ok(()),
+                    Ok(Err(_)) => Err("cancel was dropped".into()),
+                    Err(_) => Err(
+                        "cancel did not answer within 1s while the enc key's claim was blocked"
+                            .into(),
+                    ),
+                }
+            }
+            WhileBlocked::Deadline => {
+                clock.0.store(expires, SeqCst);
+                hold_offers.store(false, SeqCst);
+                offer_release.notify_waiters();
+                match tokio::time::timeout(bound, step_rx).await {
+                    Ok(Ok(Ok(Screen::Failed { message }))) if message.contains("expired") => Ok(()),
+                    Ok(Ok(other)) => Err(format!("the deadline answered {other:?}")),
+                    Ok(Err(_)) => Err("the claim wait was dropped".into()),
+                    Err(_) => Err("the claim deadline did not answer within 1s while the enc \
+                                   key's claim was blocked"
+                        .into()),
+                }
+            }
+        }
+    }
+
+    /// A window's state read, served beside a link waiting for its claim, whose enc key's claim sits
+    /// in the keychain's unlock prompt: Cancel and the claim deadline are answered meanwhile, and a
+    /// second read waits behind the first instead of opening another prompt. With the claim made on
+    /// the custody task, neither is answered until the prompt ends.
+    #[tokio::test]
+    async fn a_blocked_enc_key_claim_during_a_link_lets_cancel_and_the_deadline_fire() {
+        blocked_enc_key_claim_while_linked(WhileBlocked::Cancel)
+            .await
+            .unwrap();
+        blocked_enc_key_claim_while_linked(WhileBlocked::Deadline)
+            .await
+            .unwrap();
     }
 
     /// A flow under `beside` is not shown state requests, and its Cancel is answered while the
@@ -6345,7 +6738,9 @@ mod tests {
         );
         // The step's own refusal is the same words.
         assert_eq!(
-            with_enc_key(FakeExecutor::new(), &device_key, &vault).err(),
+            with_enc_key(FakeExecutor::new(), &device_key, &vault)
+                .await
+                .err(),
             Some(blocked.clone())
         );
         // And it crosses to the main window as the reason, where `NO_STORE` does.
