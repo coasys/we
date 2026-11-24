@@ -266,7 +266,10 @@ function addOperation(
 ): void {
   operations.set(entry.name, entry);
   const path = `ops.${entry.name}`;
-  if (Object.keys(entry.effects.entities).length) gatedActions.add(path);
+  // An entry replacing one of the same name is judged as itself, not as whatever it replaced.
+  for (const set of [gatedActions, argsNeeded, hostConfirmed]) set.delete(path);
+  if (Object.keys(entry.effects.entities).length || Object.keys(entry.effects.categories).length)
+    gatedActions.add(path);
   if (entry.effects.destructive) hostConfirmed.add(path);
   if (Object.values(entry.params).some((param) => param.required)) argsNeeded.add(path);
 }

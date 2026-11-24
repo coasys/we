@@ -11,16 +11,19 @@
  * contract cannot depend on. Whoever validates a manifest that may carry operations calls both: the
  * bundle judge does, and so does this package's own test of its core operations.
  */
-import type {
-  EntityManifest,
-  EntitySchema,
-  ManifestError,
-  OperationDefinition,
-  OperationStep,
-  PropertySchema,
-  RelationSchema,
+import {
+  type EntityManifest,
+  type EntitySchema,
+  inCategory,
+  type ManifestError,
+  OPERATION_CATEGORIES,
+  type OperationCategory,
+  type OperationDefinition,
+  type OperationStep,
+  type PropertySchema,
+  type RelationSchema,
 } from '@we/backend-shared';
-import { checkExpression, parseExpression, referencedRoots } from '@we/expressions';
+import { checkExpression, EXPRESSION_KEYWORDS, parseExpression, referencedRoots } from '@we/expressions';
 
 import {
   expressionsIn,
@@ -94,9 +97,19 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
     const issue = (path: string, message: string) => issues.push({ path, message });
 
     const params = Object.keys(op.params ?? {});
+    /** A word the expression language reads as itself can name nothing an expression reads. */
+    const keyword = (word: string, path: string, what: string) => {
+      if (EXPRESSION_KEYWORDS.has(word))
+        issue(
+          path,
+          `"${word}" is ${word === 'in' ? 'an operator' : 'a literal'} in an expression, so no expression could read ${what} by that name — name it something else`,
+        );
+    };
+
     for (const param of params) {
       if (INVOCATION_NAMES.includes(param))
         issue(`${base}.params.${param}`, `"${param}" is bound for every operation, so a param cannot take the name`);
+      keyword(param, `${base}.params.${param}`, 'a param');
     }
 
     /** Check every expression in a value against the names bound where it sits. */
@@ -182,6 +195,52 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
       }
     };
 
+    /*
+      The entities a create or a link may write, each with the path an issue about it points at. A
+      named entity is itself; one chosen by expression is what its `oneOf` lists, a category there
+      standing for every entity in view that is in it. A module may bring more members later, which
+      the runner admits when it runs; what can be checked here is the ones already known.
+    */
+    const chosenEntities = (
+      body: Record<string, unknown>,
+      scope: ReadonlySet<string>,
+      bp: string,
+    ): { entities: { entity: string; path: string }[]; categories: boolean } => {
+      const oneOf = body.oneOf as unknown[] | undefined;
+      if (!isExpressionToken(body.entity)) {
+        if (oneOf) issue(`${bp}.oneOf`, '"oneOf" constrains an entity chosen by expression; this one is named');
+        return { entities: [{ entity: body.entity as string, path: `${bp}.entity` }], categories: false };
+      }
+      checkValue(body.entity, scope, `${bp}.entity`);
+      if (!oneOf?.length) {
+        issue(`${bp}.oneOf`, 'an entity chosen by expression must list what it may be in "oneOf"');
+        return { entities: [], categories: false };
+      }
+      const entities: { entity: string; path: string }[] = [];
+      let categories = false;
+      oneOf.forEach((entry, i) => {
+        if (typeof entry === 'string') {
+          entities.push({ entity: entry, path: `${bp}.oneOf.${i}` });
+          return;
+        }
+        const category = isPlainObject(entry) ? entry.category : undefined;
+        if (!(OPERATION_CATEGORIES as readonly unknown[]).includes(category)) {
+          issue(
+            `${bp}.oneOf.${i}`,
+            `"${String(category)}" is not a category — an entry is an entity's name or one of ${OPERATION_CATEGORIES.map((c) => `{ "category": "${c}" }`).join(', ')}`,
+          );
+          return;
+        }
+        categories = true;
+        for (const name of entityNames()) {
+          const schema = declared(name);
+          if (schema && inCategory(schema, category as OperationCategory))
+            entities.push({ entity: name, path: `${bp}.oneOf.${i}` });
+        }
+      });
+      return { entities, categories };
+    };
+
     const walk = (steps: OperationStep[], outer: ReadonlySet<string>, path: string, depth: number) => {
       const scope = new Set(outer);
       steps.forEach((step, index) => {
@@ -214,23 +273,14 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
           case 'create': {
             const fields = body.fields;
             checkValue(fields, scope, `${bp}.fields`);
-            const oneOf = body.oneOf as string[] | undefined;
-            let entities: string[] = [];
-            if (isExpressionToken(body.entity)) {
-              checkValue(body.entity, scope, `${bp}.entity`);
-              if (!oneOf?.length)
-                issue(`${bp}.oneOf`, 'an entity chosen by expression must list what it may be in "oneOf"');
-              else entities = oneOf;
-            } else {
-              if (oneOf) issue(`${bp}.oneOf`, '"oneOf" constrains an entity chosen by expression; this one is named');
-              entities = [body.entity as string];
-            }
-            entities.forEach((entity, i) => {
-              const target = knownEntity(
-                entity,
-                oneOf && entities === oneOf ? `${bp}.oneOf.${i}` : `${bp}.entity`,
-                true,
+            const { entities, categories } = chosenEntities(body, scope, bp);
+            if (categories && isPlainObject(fields) && !isExpressionToken(fields))
+              issue(
+                `${bp}.fields`,
+                'a create whose entity may be any of a category takes its fields as one expression — what is in the category is not all known here',
               );
+            entities.forEach(({ entity, path: entityPath }) => {
+              const target = knownEntity(entity, entityPath, true);
               if (!target) return;
               if (target.abstract) issue(`${bp}.entity`, `${entity} is abstract — nothing is ever one`);
               checkFieldNames(entity, target, fields, `${bp}.fields`);
@@ -275,23 +325,8 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
           case 'setRelation': {
             for (const key of ['id', 'target', 'targets'])
               if (key in body) checkValue(body[key], scope, `${bp}.${key}`);
-            const oneOf = body.oneOf as string[] | undefined;
-            let entities: string[] = [];
-            if (isExpressionToken(body.entity)) {
-              checkValue(body.entity, scope, `${bp}.entity`);
-              if (!oneOf?.length)
-                issue(`${bp}.oneOf`, 'an entity chosen by expression must list what it may be in "oneOf"');
-              else entities = oneOf;
-            } else {
-              if (oneOf) issue(`${bp}.oneOf`, '"oneOf" constrains an entity chosen by expression; this one is named');
-              entities = [body.entity as string];
-            }
-            entities.forEach((entity, i) => {
-              const target = knownEntity(
-                entity,
-                oneOf && entities === oneOf ? `${bp}.oneOf.${i}` : `${bp}.entity`,
-                true,
-              );
+            chosenEntities(body, scope, bp).entities.forEach(({ entity, path: entityPath }) => {
+              const target = knownEntity(entity, entityPath, true);
               if (target) checkRelation(entity, target, body.relation as string, `${bp}.relation`);
             });
             break;
@@ -325,6 +360,7 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
               issue(bp, `forEach nests at most ${MAX_FOREACH_DEPTH} deep — pass a tree flattened instead`);
             const as = body.as as string;
             if (scope.has(as)) issue(`${bp}.as`, `"${as}" is already bound here`);
+            keyword(as, `${bp}.as`, 'what a step binds');
             const inner = new Set([...scope, as]);
             if (body.key !== undefined) checkValue(body.key, inner, `${bp}.key`);
             else if (Array.isArray(body.in)) {
@@ -341,6 +377,7 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
         const as = body.as as string | undefined;
         if (as !== undefined && verb !== 'forEach') {
           if (scope.has(as)) issue(`${bp}.as`, `"${as}" is already bound here`);
+          keyword(as, `${bp}.as`, 'what a step binds');
           scope.add(as);
         }
       });

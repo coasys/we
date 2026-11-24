@@ -1,32 +1,20 @@
-import type { OperationDefinition } from '@we/backend-shared';
+import type { OneOfEntry, OperationDefinition } from '@we/backend-shared';
 
 import { deriveRecordId, keySegment } from '../../operations/ids';
 
-/** The entities a composed document's blocks are stored as. */
-export const POST_BLOCK_ENTITIES = [
-  'AudioBlock',
-  'CalloutBlock',
-  'CodeBlock',
-  'CollectionBlock',
-  'DividerBlock',
-  'EmbedBlock',
-  'EventBlock',
-  'FileBlock',
-  'ImageBlock',
-  'LinkBlock',
-  'LocationBlock',
-  'TagBlock',
-  'TaskBlock',
-  'TextBlock',
-  'VideoBlock',
-];
+/**
+ * What a composed document's blocks may be stored as: any block type — WE's own and any a module
+ * brings, which no list written here could name. A category, resolved against the registered
+ * entities when the operation runs.
+ */
+const ANY_BLOCK: OneOfEntry = { category: 'blockable' };
 
 /**
  * What a thread's subject may be: anything somebody says something in response to — a post, a
  * block in one, a line in a call, a topic, a claimed relationship. Every one is a node, and so
  * carries `thread`.
  */
-export const THREAD_SUBJECT_ENTITIES = [...POST_BLOCK_ENTITIES, 'Relationship', 'Topic'];
+export const THREAD_SUBJECTS: OneOfEntry[] = [ANY_BLOCK, 'Relationship', 'Topic'];
 
 /** Where the block create sits in `createPost`'s steps: the forEach's index, then the create's inside it. */
 const BLOCKS_STEP = 3;
@@ -118,7 +106,7 @@ export const CONTENT_OPERATIONS: Record<string, OperationDefinition> = {
             {
               create: {
                 entity: { $: 'block.entity' },
-                oneOf: POST_BLOCK_ENTITIES,
+                oneOf: [ANY_BLOCK],
                 fields: { $: 'block.fields' },
                 parent: { id: { $: 'block.parent ?? post.id' }, relation: 'children', entity: 'CollectionBlock' },
               },
@@ -129,7 +117,7 @@ export const CONTENT_OPERATIONS: Record<string, OperationDefinition> = {
       {
         link: {
           entity: { $: 'threadEntity' },
-          oneOf: THREAD_SUBJECT_ENTITIES,
+          oneOf: THREAD_SUBJECTS,
           id: { $: 'thread' },
           relation: 'thread',
           target: { $: 'post' },

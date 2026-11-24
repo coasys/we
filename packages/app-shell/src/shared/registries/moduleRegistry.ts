@@ -273,6 +273,7 @@ function registerModuleBlocks(definition: ModuleDefinition, compiled: Record<str
       nodeTypes: [moduleBlockNodeType(block)],
       model: model as BlockEntityStatic,
       entity: block.entity,
+      schema: definition.contributes?.entities?.manifest.entities[block.entity],
       ...(input ? { input: input as (props: unknown) => unknown } : {}),
     });
   }
@@ -596,10 +597,15 @@ export const moduleRegistry = {
     /*
       Its declared operations, under its id — the namespace is the host's to give, so a module can
       only bring operations under the name it registered as. `lintModule` ran the static checks above.
+      Its entities go in with them even when it declares no operations: a block type it brings is
+      then one any operation's `{ category: 'blockable' }` admits, so a post can hold it.
     */
-    const operations = contributes?.entities?.manifest.operations;
-    if (operations && Object.keys(operations).length)
-      registerOperations(id, operations, { version: contributes?.entities?.manifest.version });
+    const declaredManifest = contributes?.entities?.manifest;
+    if (declaredManifest)
+      registerOperations(id, declaredManifest.operations, {
+        version: declaredManifest.version,
+        entities: declaredManifest.entities,
+      });
 
     const holds = contributes?.holds;
     for (const [index, slot] of (contributes?.slots ?? []).entries()) {

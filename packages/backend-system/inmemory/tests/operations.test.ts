@@ -3,7 +3,7 @@
  * step verb, the guards, loops and calls, the errors an operation can fail with, and that a failed
  * operation leaves nothing behind.
  */
-import type { OperationDefinition } from '@we/backend-shared';
+import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
 import {
   getEntity,
   isOperationError,
@@ -11,6 +11,7 @@ import {
   registerEntityWriteCheck,
   registerOperations,
   runOperation,
+  unregisterEntity,
   unregisterOperations,
 } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -224,9 +225,10 @@ const OPS: Record<string, OperationDefinition> = {
 };
 
 let dataset: unknown;
+let ports: ReturnType<typeof createInMemoryBackendPorts>;
 
 beforeEach(async () => {
-  const ports = createInMemoryBackendPorts(
+  ports = createInMemoryBackendPorts(
     { selfId: () => AGENT },
     { agent: { id: AGENT, unlocked: true }, datasets: [{ id: 'ds-ops', name: 'Ops' }] },
   );
@@ -378,6 +380,56 @@ describe('running an operation', () => {
   it('binds invoker and invokedAt, and returns an optional param as absent', async () => {
     const result = (await run('echo', {}, { invokedAt: '2026-11-24T10:00:00.000Z' })) as Record<string, unknown>;
     expect(result).toEqual({ got: undefined, who: AGENT, when: '2026-11-24T10:00:00.000Z' });
+  });
+});
+
+describe('a category in oneOf', () => {
+  // An entity of the kind a module brings: a block, so it is in `blockable`, and nothing core names.
+  const STICKERS: EntityManifest = {
+    version: '1',
+    entities: {
+      Sticker: {
+        extends: 'WeNode',
+        blockable: true,
+        properties: { glyph: { type: 'string', default: '' }, version: { type: 'number', default: 0 } },
+        relations: {},
+      },
+    },
+  };
+  const post = (entity: string) =>
+    runOperation(
+      'core.createPost',
+      { root: { kind: 'post' }, blocks: [{ key: '0', entity, fields: { glyph: '*' } }] },
+      { dataset, invoker: AGENT },
+    );
+
+  afterEach(() => {
+    unregisterOperations('stickers');
+    unregisterEntity('Sticker');
+  });
+
+  it('admits a block type a module registered, into a post core declared', async () => {
+    ports.schemas.declare(STICKERS, { moduleId: 'stickers' });
+    registerOperations('stickers', undefined, { entities: STICKERS.entities });
+    const id = (await post('Sticker')) as string;
+    expect(await childrenOf(id)).toHaveLength(1);
+    const [sticker] = await getEntity('Sticker').findAll(dataset, {});
+    expect(sticker).toMatchObject({ glyph: '*' });
+  });
+
+  it('reads the registry when it runs, so a withdrawn module’s block is outside it again', async () => {
+    ports.schemas.declare(STICKERS, { moduleId: 'stickers' });
+    registerOperations('stickers', undefined, { entities: STICKERS.entities });
+    unregisterOperations('stickers');
+    const error = await failure(post('Sticker'));
+    expect([error.class, error.code]).toEqual(['static', 'outsideOneOf']);
+    expect(error.message).toContain('any block type');
+    expect(await ofKind('post')).toEqual([]);
+  });
+
+  it('holds what is not in it out', async () => {
+    const error = await failure(post('Space'));
+    expect([error.class, error.code]).toEqual(['static', 'outsideOneOf']);
   });
 });
 

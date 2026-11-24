@@ -55,7 +55,7 @@ export {
   walkExpr,
   WELL_KNOWN_ROOTS,
 } from './ast';
-export { ExpressionSyntaxError, MAX_EXPRESSION_LENGTH } from './lexer';
+export { EXPRESSION_KEYWORDS, ExpressionSyntaxError, MAX_EXPRESSION_LENGTH } from './lexer';
 export { parseExpression } from './parser';
 export { printExpression, printLiteral, quote } from './printer';
 export type { EvaluationEnv, Namespace } from './evaluate';

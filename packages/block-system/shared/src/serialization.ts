@@ -1,4 +1,4 @@
-import type { ParentRef, RecordInstance } from '@we/backend-shared';
+import type { ParentRef, PropertySchema, RecordInstance } from '@we/backend-shared';
 import type { FileData } from '@we/entities';
 import {
   asFileField,
@@ -40,16 +40,27 @@ type BlockRecord = RecordInstance & Record<string, unknown>;
 /** What a save may hand over — see {@link normalizeInput}. */
 export type ContentInput = ContentBlock[] | ContentDocument;
 
+/**
+ * An entity's own properties: the core vocabulary's, or — for a block type a module brings — the
+ * schema its registration carries. Without the second a module's block was written with none of its
+ * fields: a poll in a post landed with no question.
+ */
+function ownProperties(entity: string): Record<string, PropertySchema> {
+  const core = CORE_MANIFEST.entities[entity];
+  if (core) return core.properties;
+  return getRegisteredBlockEntities().find((reg) => reg.entity === entity)?.schema?.properties ?? {};
+}
+
 /** The manifest's answer to "which of this entity's fields hold file-stored content". */
 function fileFieldNames(entity: string | undefined): string[] {
   if (!entity) return [];
-  const properties = CORE_MANIFEST.entities[entity]?.properties ?? {};
+  const properties = ownProperties(entity);
   return Object.keys(properties).filter((name) => properties[name].format === 'file');
 }
 
 /** The manifest's answer to "which fields does this entity declare at all". */
 function propertyNames(entity: string): string[] {
-  return Object.keys(CORE_MANIFEST.entities[entity]?.properties ?? {});
+  return Object.keys(ownProperties(entity));
 }
 
 /** The registry key a text block persists through. */

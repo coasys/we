@@ -7,7 +7,7 @@ import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import { CORE_MANIFEST, CORE_OPERATIONS } from '../src/manifest';
-import { postBlockId, THREAD_SUBJECT_ENTITIES } from '../src/manifest/operations/content';
+import { postBlockId, THREAD_SUBJECTS } from '../src/manifest/operations/content';
 import {
   deriveRecordId,
   describeEffects,
@@ -160,6 +160,49 @@ describe('static checks', () => {
     ).toEqual(['operations.t.steps.0.create.oneOf.1: unknown entity "Card"']);
   });
 
+  it('expand a category in oneOf to the entities in view that are in it, and refuse an unknown one', () => {
+    const blocks: EntityManifest = {
+      version: '1',
+      entities: {
+        Note: { blockable: true, properties: { version: { type: 'number', default: 0 } }, relations: {} },
+        Pin: {
+          blockable: true,
+          properties: { version: { type: 'number', default: 0 } },
+          relations: { columns: { target: 'Column', cardinality: 'many' } },
+        },
+        Shelf: { abstract: true, blockable: true, properties: {}, relations: {} },
+      },
+    };
+    const linkAny = (oneOf: unknown[]) =>
+      op([{ link: { entity: { $: 'kind' }, oneOf, id: 'b', relation: 'columns', target: 'c' } }], {
+        params: { kind: { type: 'string' } },
+      });
+    // Note is a block without the relation; Board is not a block; the abstract Shelf is in no category.
+    expect(issues(linkAny([{ category: 'blockable' }]), { external: blocks })).toEqual([
+      'operations.t.steps.0.link.relation: Note has no relation "columns"',
+    ]);
+    expect(issues(linkAny([{ category: 'pinnable' }]), { external: blocks })).toEqual([
+      `operations.t.steps.0.link.oneOf.0: "pinnable" is not a category — an entry is an entity's name or one of { "category": "blockable" }`,
+    ]);
+    const createAny = (fields: unknown) =>
+      op([{ create: { entity: { $: 'kind' }, oneOf: [{ category: 'blockable' }], fields } }], {
+        params: { kind: { type: 'string' }, given: { type: 'object' } },
+      });
+    expect(issues(createAny({ $: 'given' }), { external: blocks })).toEqual([]);
+    expect(issues(createAny({}), { external: blocks })).toEqual([
+      'operations.t.steps.0.create.fields: a create whose entity may be any of a category takes its fields as one expression — what is in the category is not all known here',
+    ]);
+  });
+
+  it('refuse a name the expression language reads as one of its own words', () => {
+    expect(issues(op([], { params: { in: { type: 'list' } } }))).toEqual([
+      'operations.t.params.in: "in" is an operator in an expression, so no expression could read a param by that name — name it something else',
+    ]);
+    expect(issues(op([{ find: { as: 'null', entity: 'Board' } }]))).toEqual([
+      'operations.t.steps.0.find.as: "null" is a literal in an expression, so no expression could read what a step binds by that name — name it something else',
+    ]);
+  });
+
   it('refuse a write to the entities that decide who may write', () => {
     const external = CORE_MANIFEST;
     for (const entity of ['Policy', 'Role', 'RoleGrant'])
@@ -234,6 +277,7 @@ describe('the effect summary', () => {
     });
     expect(summary).toEqual({
       entities: { Board: ['add:columns', 'create', 'edit', 'remove:columns'], Column: ['create'] },
+      categories: {},
       bulk: true,
       destructive: true,
     });
@@ -242,9 +286,36 @@ describe('the effect summary', () => {
   it('is not bulk or destructive for one create', () => {
     expect(effectSummary(op([{ create: { entity: 'Column', fields: {} } }]) as OperationDefinition)).toEqual({
       entities: { Column: ['create'] },
+      categories: {},
       bulk: false,
       destructive: false,
     });
+  });
+
+  it('counts a category in oneOf as itself, never as what is in it', () => {
+    const summary = effectSummary(
+      op([
+        { create: { entity: { $: 'kind' }, oneOf: [{ category: 'blockable' }], fields: { $: 'fields' } } },
+        {
+          link: {
+            entity: { $: 'kind' },
+            oneOf: [{ category: 'blockable' }, 'Board'],
+            id: 'b',
+            relation: 'thread',
+            target: 'c',
+          },
+        },
+      ]) as OperationDefinition,
+    );
+    expect(summary).toEqual({
+      entities: { Board: ['add:thread'] },
+      categories: { blockable: ['add:thread', 'create'] },
+      bulk: false,
+      destructive: false,
+    });
+    expect(describeEffects(summary)).toBe(
+      'adds to Board.thread; adds to thread on any block type; creates any block type',
+    );
   });
 });
 
@@ -286,8 +357,11 @@ describe('the core operations', () => {
     expect(await postBlockId('inv', 'a')).toBe(await deriveRecordId('inv', ['3', 'k=a', '0']));
   });
 
-  it('list only entities built on WeNode as what a thread’s subject may be', () => {
-    for (const name of THREAD_SUBJECT_ENTITIES)
+  it('list only entities built on WeNode as what a thread’s subject may be, every core block among them', () => {
+    const named = THREAD_SUBJECTS.filter((entry) => typeof entry === 'string');
+    const blocks = Object.keys(CORE_MANIFEST.entities).filter((name) => CORE_MANIFEST.entities[name].blockable);
+    expect(blocks.length).toBeGreaterThan(10);
+    for (const name of [...named, ...blocks])
       expect(CORE_MANIFEST.entities[name]?.relations.thread, name).toBeDefined();
   });
 
@@ -315,7 +389,7 @@ describe('the catalogue', () => {
         description: 'A test.',
         params: { board: { type: 'string', required: true } },
         returns: false,
-        effects: { entities: { Board: ['delete'] }, bulk: false, destructive: true },
+        effects: { entities: { Board: ['delete'] }, categories: {}, bulk: false, destructive: true },
       });
       expect(describeOperation('demo.peek')?.returns).toBe(true);
       expect(describeOperation('demo.nothing')).toBeUndefined();
@@ -325,10 +399,11 @@ describe('the catalogue', () => {
   });
 
   it('says what an operation writes in words', () => {
-    expect(describeEffects({ entities: {}, bulk: false, destructive: false })).toBe('writes nothing');
+    expect(describeEffects({ entities: {}, categories: {}, bulk: false, destructive: false })).toBe('writes nothing');
     expect(
       describeEffects({
         entities: { Board: ['add:columns', 'create'], Column: ['delete'] },
+        categories: {},
         bulk: true,
         destructive: true,
       }),

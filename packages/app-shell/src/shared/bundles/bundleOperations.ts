@@ -9,7 +9,7 @@
  * install record because the file is gone by the time the app is next opened.
  */
 import type { OperationDefinition } from '@we/backend-shared';
-import { listOperations, registerOperations, unregisterOperations } from '@we/entities';
+import { listNamespaces, registerOperations, unregisterOperations } from '@we/entities';
 
 export interface BundleOperationsSource {
   id: string;
@@ -26,11 +26,8 @@ const held = new Set<string>();
  * warning rather than replaced: a bundle named like a module must not take its operations over.
  */
 export function syncBundleOperations(sources: readonly BundleOperationsSource[]): void {
-  const others = new Set(
-    listOperations()
-      .map((name) => name.slice(0, name.indexOf('.')))
-      .filter((namespace) => !held.has(namespace)),
-  );
+  // Every namespace, not only those holding operations: a module that brings only entities has one.
+  const others = new Set(listNamespaces().filter((namespace) => !held.has(namespace)));
   others.add('core');
   const now = new Set<string>();
   for (const source of sources) {

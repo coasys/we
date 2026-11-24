@@ -482,6 +482,27 @@ export interface OperationParam {
   description?: string;
 }
 
+/**
+ * A closed set of entity categories an operation may name in `oneOf`, each one an entity flag:
+ * `blockable` is every entity whose schema says {@link EntitySchema.blockable}. A category is
+ * resolved against the entities the host has registered when the step runs, so a block type a module
+ * brings is one without the operation naming it.
+ */
+export const OPERATION_CATEGORIES = ['blockable'] as const;
+export type OperationCategory = (typeof OPERATION_CATEGORIES)[number];
+
+/** One entry of a `oneOf`: an entity by name, or every entity in a category. */
+export type OneOfEntry = string | { category: OperationCategory };
+
+/** Whether an entity's schema puts it in a category. Abstract entities are in none: nothing is ever one. */
+export function inCategory(entity: EntitySchema, category: OperationCategory): boolean {
+  if (entity.abstract) return false;
+  switch (category) {
+    case 'blockable':
+      return Boolean(entity.blockable);
+  }
+}
+
 /** Records under one, by the parent's relation — the `$query` scope with a single anchor. */
 export interface OperationScope {
   anchor: string;
@@ -507,7 +528,7 @@ export interface CreateStep {
   as?: string;
   /** A literal name, or an expression whose value must be one of `oneOf`. */
   entity: string | OperationExpression;
-  oneOf?: string[];
+  oneOf?: OneOfEntry[];
   /** The fields, or one expression giving them all — for a record whose entity is chosen at run time. */
   fields: Record<string, OperationValue> | OperationExpression;
   parent?: { id: OperationValue; relation: string; entity?: string };
@@ -532,7 +553,7 @@ export interface LinkStep {
    * the caller knows and the definition cannot, such as the subject of a thread.
    */
   entity: string | OperationExpression;
-  oneOf?: string[];
+  oneOf?: OneOfEntry[];
   id: OperationValue;
   relation: string;
   target: OperationValue;
@@ -681,9 +702,10 @@ const value = z.unknown();
 const present = z.unknown().refine((v) => v !== undefined, 'is required');
 const valueMap = z.record(z.string(), value);
 const guard = { when: value.optional() };
+const oneOf = z.array(z.union([z.string(), z.strictObject({ category: z.enum(OPERATION_CATEGORIES) })])).optional();
 const linkBody = z.strictObject({
   entity: z.union([z.string(), expressionToken]),
-  oneOf: z.array(z.string()).optional(),
+  oneOf,
   id: present,
   relation: z.string(),
   target: present,
@@ -710,7 +732,7 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
       create: z.strictObject({
         as: name.optional(),
         entity: z.union([z.string(), expressionToken]),
-        oneOf: z.array(z.string()).optional(),
+        oneOf,
         fields: z.union([expressionToken, valueMap]),
         parent: z.strictObject({ id: present, relation: z.string(), entity: z.string().optional() }).optional(),
       }),

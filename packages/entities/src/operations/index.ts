@@ -21,7 +21,15 @@ export {
 } from './catalog';
 export { type EffectOptions, effectSummary, type OperationEffects, type OperationEffectVerb } from './effects';
 export { callSegment, deriveRecordId, keySegment } from './ids';
-export { getOperation, listOperations, operationsVersion, registerOperations, unregisterOperations } from './registry';
+export {
+  categoryMembers,
+  getOperation,
+  listNamespaces,
+  listOperations,
+  operationsVersion,
+  registerOperations,
+  unregisterOperations,
+} from './registry';
 export { runOperation, type RunOperationOptions } from './run';
 export {
   callsOf,

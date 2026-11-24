@@ -12,6 +12,7 @@
  * what a space's template exists to do. A community's own record types are content by this rule
  * with nothing to register.
  */
+import type { OperationCategory } from '@we/backend-shared';
 import { describeOperation, listOperations, type OperationEffects, operationWrites } from '@we/entities';
 
 import type { CapabilityGroup } from './templateSurface';
@@ -37,6 +38,14 @@ export const ENTITY_GROUPS: Readonly<Record<string, CapabilityGroup>> = {
 };
 
 /**
+ * The categories an operation's `oneOf` may name. A block is what somebody composes into a post, so
+ * writing any block type is content, whichever module brought it.
+ */
+export const CATEGORY_GROUPS: Readonly<Record<OperationCategory, CapabilityGroup>> = {
+  blockable: 'content',
+};
+
+/**
  * Narrowest first. The space tier's groups before the chrome tier's, so an operation reaching
  * anything a space template is not granted lands in a group only chrome holds.
  */
@@ -54,6 +63,8 @@ export function operationSurface(effects: OperationEffects): OperationSurface {
     const group = ENTITY_GROUPS[entity] ?? 'content';
     widest = Math.max(widest, WIDTH.indexOf(group));
   }
+  for (const category of Object.keys(effects.categories) as OperationCategory[])
+    widest = Math.max(widest, WIDTH.indexOf(CATEGORY_GROUPS[category]));
   return { group: WIDTH[widest], destructive: effects.destructive };
 }
 

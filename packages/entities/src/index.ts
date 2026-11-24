@@ -159,4 +159,4 @@ export * from './entityRegistry';
 export { defineEntity } from './entityProxy';
 
 export * from './operations';
-export { POST_BLOCK_ENTITIES, postBlockId, THREAD_SUBJECT_ENTITIES } from './manifest/operations/content';
+export { postBlockId, THREAD_SUBJECTS } from './manifest/operations/content';

@@ -8,7 +8,13 @@
  *
  * On `globalThis`, as the entity registry is, so two copies of this package in one bundle share it.
  */
-import { type OperationDefinition, operationsSchema } from '@we/backend-shared';
+import {
+  type EntityManifest,
+  inCategory,
+  type OperationCategory,
+  type OperationDefinition,
+  operationsSchema,
+} from '@we/backend-shared';
 
 import { CORE_MANIFEST } from '../manifest';
 import { staticError } from './errors';
@@ -17,6 +23,7 @@ import { splitName } from './validate';
 interface Registered {
   operations: Record<string, OperationDefinition>;
   version?: string;
+  entities?: EntityManifest['entities'];
 }
 
 const REGISTRY_KEY = Symbol.for('we.operations.registry');
@@ -32,11 +39,16 @@ const NAMESPACE = /^[a-z][a-z0-9-]*$/;
  * Register a manifest's operations under `namespace`, replacing what it held. Structure is checked
  * here and a malformed definition refused; the static checks that need the entities in view
  * (`validateOperations`) are the caller's, at the point it validates the manifest itself.
+ *
+ * `entities` are the declaring manifest's own, and are what a category in any operation's `oneOf`
+ * is resolved against (see `categoryMembers`): a module's block entity is a block for `core`'s
+ * operations from the moment the module is registered, and stops being one when it is withdrawn.
+ * So a manifest that declares entities and no operations is registered too.
  */
 export function registerOperations(
   namespace: string,
   operations: Record<string, OperationDefinition> | undefined,
-  opts: { version?: string } = {},
+  opts: { version?: string; entities?: EntityManifest['entities'] } = {},
 ): void {
   if (!NAMESPACE.test(namespace))
     throw staticError('malformed', `"${namespace}" is not a namespace: lowercase letters, digits and dashes`);
@@ -48,7 +60,7 @@ export function registerOperations(
       `The operations for "${namespace}" are not the format: ${first?.path.join('.')} ${first?.message}`,
     );
   }
-  registry.set(namespace, { operations: parsed.data, version: opts.version });
+  registry.set(namespace, { operations: parsed.data, version: opts.version, entities: opts.entities });
 }
 
 export function unregisterOperations(namespace: string): void {
@@ -68,6 +80,19 @@ export function operationsVersion(namespace: string): string | undefined {
   return registry.get(namespace)?.version;
 }
 
+/** Every namespace something is registered under, operations or only entities, sorted. */
+export function listNamespaces(): string[] {
+  return [...registry.keys()].sort();
+}
+
+/** The entities in a category, by the schema of whichever registered manifest declares each. */
+export function categoryMembers(category: OperationCategory): Set<string> {
+  const members = new Set<string>();
+  for (const { entities } of registry.values())
+    for (const [name, schema] of Object.entries(entities ?? {})) if (inCategory(schema, category)) members.add(name);
+  return members;
+}
+
 /** Every registered operation's qualified name, sorted. */
 export function listOperations(): string[] {
   return [...registry.entries()]
@@ -75,4 +100,7 @@ export function listOperations(): string[] {
     .sort();
 }
 
-registerOperations('core', CORE_MANIFEST.operations, { version: CORE_MANIFEST.version });
+registerOperations('core', CORE_MANIFEST.operations, {
+  version: CORE_MANIFEST.version,
+  entities: CORE_MANIFEST.entities,
+});

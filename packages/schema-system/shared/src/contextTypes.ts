@@ -197,8 +197,16 @@ export interface OperationEntry {
   params: Record<string, { type: string; required?: boolean; description?: string }>;
   /** Whether it answers with a value, which `onSuccess` reads as `result`. */
   returns: boolean;
-  /** What it may write: verbs per entity, whether in bulk, whether destructive. */
-  effects: { entities: Record<string, string[]>; bulk: boolean; destructive: boolean };
+  /**
+   * What it may write: verbs per entity, verbs per category its `oneOf` names (`blockable`: any
+   * block type), whether in bulk, whether destructive.
+   */
+  effects: {
+    entities: Record<string, string[]>;
+    categories: Record<string, string[]>;
+    bulk: boolean;
+    destructive: boolean;
+  };
 }
 
 /**

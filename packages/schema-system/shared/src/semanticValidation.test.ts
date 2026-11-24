@@ -610,14 +610,14 @@ describe('invoking a declared operation', () => {
     description: 'Vote on a poll.',
     params: { poll: { type: 'string', required: true }, choice: { type: 'number' } },
     returns: true,
-    effects: { entities: { Vote: ['create'] }, bulk: false, destructive: false },
+    effects: { entities: { Vote: ['create'] }, categories: {}, bulk: false, destructive: false },
   };
   const clear: OperationEntry = {
     name: 'polls.clear',
     description: 'Clear the votes.',
     params: {},
     returns: false,
-    effects: { entities: { Vote: ['delete'] }, bulk: true, destructive: true },
+    effects: { entities: { Vote: ['delete'] }, categories: {}, bulk: true, destructive: true },
   };
   const ctx = withOperations(context, [vote, clear]);
   const all = (node: SchemaNode, c = ctx) => validateSemantic(node, c).errors;

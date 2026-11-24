@@ -1096,21 +1096,9 @@
                           "$": "block.entity"
                         },
                         "oneOf": [
-                          "AudioBlock",
-                          "CalloutBlock",
-                          "CodeBlock",
-                          "CollectionBlock",
-                          "DividerBlock",
-                          "EmbedBlock",
-                          "EventBlock",
-                          "FileBlock",
-                          "ImageBlock",
-                          "LinkBlock",
-                          "LocationBlock",
-                          "TagBlock",
-                          "TaskBlock",
-                          "TextBlock",
-                          "VideoBlock"
+                          {
+                            "category": "blockable"
+                          }
                         ],
                         "fields": {
                           "$": "block.fields"
@@ -1133,21 +1121,9 @@
                     "$": "threadEntity"
                   },
                   "oneOf": [
-                    "AudioBlock",
-                    "CalloutBlock",
-                    "CodeBlock",
-                    "CollectionBlock",
-                    "DividerBlock",
-                    "EmbedBlock",
-                    "EventBlock",
-                    "FileBlock",
-                    "ImageBlock",
-                    "LinkBlock",
-                    "LocationBlock",
-                    "TagBlock",
-                    "TaskBlock",
-                    "TextBlock",
-                    "VideoBlock",
+                    {
+                      "category": "blockable"
+                    },
                     "Relationship",
                     "Topic"
                   ],

@@ -36,7 +36,7 @@ import {
   type Row,
   writtenJsonValue,
 } from '@we/backend-shared';
-import { checkEntityWrite } from '@we/entities';
+import { checkEntityWrite, getEntityForDataset } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
 /** The dataset handle the in-memory lifecycle mints — its `tables` are the store. */
@@ -316,6 +316,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
     whichever table holds it, and the relation by its name on that entity — which is all a table
     needs, and what the contract says.
   */
+  /** Whether this compile can say what an entity declares — its own manifest's, or the core's. */
+  const declaredHere = (name: string) => Boolean(manifest.entities[name] ?? CORE_MANIFEST.entities[name]);
+
   /**
    * The parent named by id and relation, as the entity and relation holding it — what both a write
    * under a parent and a read under one need. Null when no record has that id, or its entity declares
@@ -331,11 +334,12 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
       ? (manifest.entities[parent.entity] ?? CORE_MANIFEST.entities[parent.entity])
       : undefined;
     const byName = parent.entity && !named?.abstract;
-    for (const entityName of Object.keys(classes)) {
-      if (byName && parent.entity !== entityName) continue;
-      const row = tableOf(dataset, entityName).find((r) => r.id === parent.id);
+    // Every table, not only this manifest's: a module's block is made under a core post, whose
+    // entity was compiled from another manifest.
+    for (const entityName of byName ? [parent.entity!] : Object.keys(dataset.tables)) {
+      const row = (dataset.tables[entityName] as AnyRow[] | undefined)?.find((r) => r.id === parent.id);
       if (!row) continue;
-      const spec = resolved(entityName).relations[parent.relation];
+      const spec = declaredHere(entityName) ? resolved(entityName).relations[parent.relation] : undefined;
       return spec && !spec.reverseOf ? { entity: entityName, relation: parent.relation, row } : null;
     }
     return null;
@@ -351,7 +355,9 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
   const linkUnder = async (dataset: DatasetEntry, parent: ParentRef, childId: string) => {
     const under = relationUnder(dataset, parent);
     if (!under) return;
-    const parentClass = classes[under.entity] as unknown as { hydrate(d: DatasetEntry, r: AnyRow): AnyRow };
+    const parentClass = (classes[under.entity] ?? getEntityForDataset(under.entity, dataset)) as unknown as {
+      hydrate(d: DatasetEntry, r: AnyRow): AnyRow;
+    };
     const instance = parentClass.hydrate(dataset, under.row);
     const add = instance[`add${under.relation.charAt(0).toUpperCase()}${under.relation.slice(1)}`];
     if (typeof add !== 'function') return;

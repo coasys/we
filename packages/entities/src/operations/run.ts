@@ -24,6 +24,7 @@
 import {
   isPolicyRefusal,
   isRecordExists,
+  type OneOfEntry,
   type OperationDefinition,
   type OperationParam,
   type OperationStep,
@@ -40,9 +41,16 @@ import {
 import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
 import { isOperationError, preconditionError, staticError } from './errors';
 import { callSegment, deriveRecordId, keySegment } from './ids';
-import { getOperation, operationsVersion } from './registry';
+import { categoryMembers, getOperation, operationsVersion } from './registry';
 import { splitName } from './validate';
-import { isExpressionToken, isPlainObject, MAX_FOREACH_DEPTH, PROTECTED_ENTITIES, stepParts } from './values';
+import {
+  isExpressionToken,
+  isPlainObject,
+  MAX_FOREACH_DEPTH,
+  oneOfLabel,
+  PROTECTED_ENTITIES,
+  stepParts,
+} from './values';
 
 export interface RunOperationOptions {
   /** The dataset every step reads and writes. */
@@ -525,10 +533,15 @@ async function checkExpectations(run: Run): Promise<void> {
 function chosenEntity(body: Record<string, unknown>, scope: Map<string, unknown>, step: string): string {
   if (typeof body.entity === 'string') return writable(body.entity, step);
   const chosen = resolve(body.entity, scope, `${step}.entity`);
-  const oneOf = (body.oneOf as string[] | undefined) ?? [];
-  if (typeof chosen !== 'string' || !oneOf.includes(chosen))
-    throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.join(', ')}`, step);
-  return writable(chosen, step);
+  const oneOf = (body.oneOf as OneOfEntry[] | undefined) ?? [];
+  // A category is read from the registry now, not when the operation was registered: a module's
+  // block type registered since is one of them.
+  const allowed =
+    typeof chosen === 'string' &&
+    oneOf.some((entry) => (typeof entry === 'string' ? entry === chosen : categoryMembers(entry.category).has(chosen)));
+  if (!allowed)
+    throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
+  return writable(chosen as string, step);
 }
 
 function writable(entity: string, step: string): string {

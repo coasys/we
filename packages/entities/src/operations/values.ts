@@ -4,7 +4,7 @@
  * Shared by the validator, the effect summary and the runner, so the three agree about where an
  * expression can be and which steps sit inside which.
  */
-import type { OperationStep, OperationVerb } from '@we/backend-shared';
+import type { OneOfEntry, OperationCategory, OperationStep, OperationVerb } from '@we/backend-shared';
 import { stepVerb } from '@we/backend-shared';
 import { isExpressionToken } from '@we/expressions';
 
@@ -38,3 +38,13 @@ export const INVOCATION_NAMES: readonly string[] = ['invoker', 'invokedAt'];
 
 /** How deep `forEach` may nest inside one operation. */
 export const MAX_FOREACH_DEPTH = 3;
+
+/** A category in words, for an error, the effect summary and the generated reference. */
+export const CATEGORY_LABELS: Readonly<Record<OperationCategory, string>> = {
+  blockable: 'any block type',
+};
+
+/** A `oneOf` entry in words: the name, or the category's label. */
+export function oneOfLabel(entry: OneOfEntry): string {
+  return typeof entry === 'string' ? entry : CATEGORY_LABELS[entry.category];
+}

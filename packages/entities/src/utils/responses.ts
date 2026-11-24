@@ -23,7 +23,7 @@
  * thread it leaves an ordinary response that its subject's `responses` still holds. Logged, never
  * thrown into the press that wrote it.
  */
-import { getEntityForDataset } from '../entityRegistry';
+import { getEntityForDataset, getRegisteredEntityNames } from '../entityRegistry';
 import { CORE_MANIFEST } from '../manifest';
 
 type DatasetProxy = unknown;
@@ -42,11 +42,17 @@ const idOf = (value: unknown): string => {
   return (value as { id?: string } | undefined)?.id ?? '';
 };
 
-/** Entities to try for a node of unknown type, likeliest first — what responses are usually made to. */
+/**
+ * Entities to try for a node of unknown type, likeliest first — what responses are usually made to —
+ * then the rest of the core vocabulary, then whatever else is registered: a module's block, such as
+ * a poll in a post, is a node a reply can answer too.
+ */
 function candidateEntities(hint?: string): string[] {
-  const all = Object.entries(CORE_MANIFEST.entities)
+  const core = Object.entries(CORE_MANIFEST.entities)
     .filter(([, schema]) => !schema.abstract)
     .map(([name]) => name);
+  const registered = getRegisteredEntityNames().filter((name) => !CORE_MANIFEST.entities[name]);
+  const all = [...core, ...registered];
   const first = [hint, 'CollectionBlock', 'TextBlock', 'TaskBlock', 'EventBlock'].filter(
     (name): name is string => !!name && all.includes(name),
   );

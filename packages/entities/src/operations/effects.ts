@@ -10,7 +10,7 @@
  * The capability group an operation needs is the host's to derive from this, through its own table of
  * entities to groups: this package knows entities, not what a host calls a permission.
  */
-import type { OperationDefinition, OperationStep } from '@we/backend-shared';
+import type { OneOfEntry, OperationCategory, OperationDefinition, OperationStep } from '@we/backend-shared';
 
 import { stepParts } from './values';
 
@@ -19,6 +19,12 @@ export type OperationEffectVerb = 'create' | 'edit' | 'delete' | `add:${string}`
 export interface OperationEffects {
   /** Verbs per entity, each list sorted. `*` stands for a parent whose entity the step does not name. */
   entities: Record<string, OperationEffectVerb[]>;
+  /**
+   * Verbs per category a `oneOf` names, each list sorted: `create` on `blockable` is "may create any
+   * block type". Kept as the category rather than its members, which are whatever the host has
+   * registered when it runs, so the summary stays finite and does not change as modules come and go.
+   */
+  categories: Partial<Record<OperationCategory, OperationEffectVerb[]>>;
   bulk: boolean;
   destructive: boolean;
 }
@@ -30,13 +36,29 @@ export interface EffectOptions {
 
 export function effectSummary(op: OperationDefinition, opts: EffectOptions = {}): OperationEffects {
   const verbs = new Map<string, Set<OperationEffectVerb>>();
+  const byCategory = new Map<OperationCategory, Set<OperationEffectVerb>>();
   let bulk = false;
   let destructive = false;
+  const note = (verb: OperationEffectVerb, inLoop: boolean) => {
+    if (inLoop) bulk = true;
+    if (verb === 'delete' || verb.startsWith('remove:')) destructive = true;
+  };
   const add = (entity: string, verb: OperationEffectVerb, inLoop: boolean) => {
     if (!verbs.has(entity)) verbs.set(entity, new Set());
     verbs.get(entity)!.add(verb);
-    if (inLoop) bulk = true;
-    if (verb === 'delete' || verb.startsWith('remove:')) destructive = true;
+    note(verb, inLoop);
+  };
+  /** A named entity, or each entry of its `oneOf`, a category counted as itself. */
+  const addChosen = (body: Record<string, unknown>, verb: OperationEffectVerb, inLoop: boolean) => {
+    if (typeof body.entity === 'string') return add(body.entity, verb, inLoop);
+    for (const entry of (body.oneOf as OneOfEntry[] | undefined) ?? []) {
+      if (typeof entry === 'string') add(entry, verb, inLoop);
+      else {
+        if (!byCategory.has(entry.category)) byCategory.set(entry.category, new Set());
+        byCategory.get(entry.category)!.add(verb);
+        note(verb, inLoop);
+      }
+    }
   };
 
   const visiting = new Set<OperationDefinition>();
@@ -46,9 +68,7 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
       const entity = body.entity as string;
       switch (verb) {
         case 'create': {
-          const oneOf = body.oneOf as string[] | undefined;
-          for (const name of typeof body.entity === 'string' ? [body.entity] : (oneOf ?? []))
-            add(name, 'create', inLoop);
+          addChosen(body, 'create', inLoop);
           const parent = body.parent as { relation: string; entity?: string } | undefined;
           if (parent) add(parent.entity ?? '*', `add:${parent.relation}`, inLoop);
           break;
@@ -61,10 +81,7 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
           break;
         case 'link':
         case 'unlink': {
-          const oneOf = body.oneOf as string[] | undefined;
-          const change = verb === 'link' ? 'add' : 'remove';
-          for (const name of typeof body.entity === 'string' ? [body.entity] : (oneOf ?? []))
-            add(name, `${change}:${body.relation as string}`, inLoop);
+          addChosen(body, `${verb === 'link' ? 'add' : 'remove'}:${body.relation as string}`, inLoop);
           break;
         }
         case 'setRelation':
@@ -93,5 +110,7 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
 
   const entities: Record<string, OperationEffectVerb[]> = {};
   for (const name of [...verbs.keys()].sort()) entities[name] = [...verbs.get(name)!].sort();
-  return { entities, bulk, destructive };
+  const categories: OperationEffects['categories'] = {};
+  for (const name of [...byCategory.keys()].sort()) categories[name] = [...byCategory.get(name)!].sort();
+  return { entities, categories, bulk, destructive };
 }

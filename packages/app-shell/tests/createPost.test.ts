@@ -7,7 +7,11 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { type ContentBlock, decodeEditorState, planPost, registerCoreBlocks, writePost } from '@we/block-shared';
 import { getEntity, isOperationError, runOperation } from '@we/entities';
+import { pollsModule } from '@we/module-polls';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 
 const ME = 'did:test:me';
 
@@ -25,12 +29,13 @@ const read = async (entity: string, id: string) => (await model(entity).findOne(
 const ids = (value: unknown) => (Array.isArray(value) ? value : []).map((v) => (typeof v === 'string' ? v : v.id));
 
 let dataset: unknown;
+let ports: ReturnType<typeof createInMemoryBackendPorts>;
 let channel: Row;
 
 beforeAll(() => registerCoreBlocks());
 
 beforeEach(async () => {
-  const ports = createInMemoryBackendPorts(
+  ports = createInMemoryBackendPorts(
     { selfId: () => ME },
     { agent: { id: ME, unlocked: true }, datasets: [{ id: 'ds-posts', name: 'Posts' }] },
   );
@@ -56,7 +61,7 @@ describe('core.createPost', () => {
     // The composer's blocks were stamped with their records' ids, in order, nested under their collection.
     const [first, nested, last] = blocks;
     expect(ids(post.children)).toEqual([first._key, nested._key, last._key]);
-    const inner = (nested as { content: ContentBlock[] }).content[0];
+    const inner = (nested as unknown as { content: ContentBlock[] }).content[0];
     expect(ids((await read('CollectionBlock', nested._key!)).children)).toEqual([inner._key]);
     expect((await read('TextBlock', inner._key!)).text).toBe('inside');
 
@@ -105,6 +110,33 @@ describe('core.createPost', () => {
     expect(isOperationError(failure) && failure.code).toBe('outsideOneOf');
     expect(await model('CollectionBlock').findAll(dataset, { where: { kind: 'post' } })).toEqual([]);
     expect(await model('TextBlock').findAll(dataset)).toEqual([]);
+  });
+
+  it('writes a module’s block in a post, and threads a reply to it under it', async () => {
+    // The polls module as the host registers it: its entities compiled for the dataset, its block
+    // type registered over them, and its manifest in the operations registry under its id.
+    const signal = <T>(initial: T): [() => T, (next: T) => void] => {
+      let value = initial;
+      return [() => value, (next) => void (value = next)];
+    };
+    const deps = createModuleStoreDeps({ signal, effect: (fn: () => void) => fn() });
+    expect(moduleRegistry.register(pollsModule, { backend: 'ad4m', framework: 'solid' }, deps).problems).toEqual([]);
+    try {
+      moduleRegistry.moduleSchemas(ports.schemas);
+      const blocks = [
+        paragraph('which?'),
+        { _type: 'poll', question: 'Tea or coffee?', options: 'tea,coffee' } as unknown as ContentBlock,
+      ];
+      const id = await writePost(dataset, blocks, { invoker: ME, kind: 'post', container: channel.id });
+      const poll = blocks[1]._key!;
+      expect(ids((await read('CollectionBlock', id)).children)).toEqual([blocks[0]._key, poll]);
+      expect(await read('Poll', poll)).toMatchObject({ question: 'Tea or coffee?', options: 'tea,coffee' });
+
+      const reply = await writePost(dataset, [paragraph('tea')], { invoker: ME, kind: 'reply', respondsTo: poll });
+      expect(ids((await read('Poll', poll)).thread)).toEqual([reply]);
+    } finally {
+      moduleRegistry.unregister('polls');
+    }
   });
 
   it('refuses a post that is both in a collection and a reply', async () => {
