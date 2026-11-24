@@ -6,9 +6,25 @@
  * dialog that said "this record" about seven of them would be the guard misreporting the very thing
  * somebody is about to answer.
  */
+import { destructivePrompt } from '@we/template-shell';
 import { describe, expect, it } from 'vitest';
 
 import { describeDestructive } from '../src/shared/destructiveWording';
+
+describe('deleting a single record', () => {
+  it('asks "Delete this outcome?" — the kind in a person\u2019s words, not the class name', () => {
+    // `AcornOutcome` is a model name, not the word somebody reading the dialog uses.
+    const { title } = describeDestructive('record.delete', ['AcornOutcome', 'o1']);
+    expect(title).toBe('Delete this outcome?');
+  });
+});
+
+describe('the dialog schema', () => {
+  it('does not show the raw action path — no "record.delete" in small print', () => {
+    // The detail line used to bind pendingDestructive.path verbatim.
+    expect(JSON.stringify(destructivePrompt)).not.toContain('pendingDestructive.path');
+  });
+});
 
 describe('deleting a set of records', () => {
   const ask = (records: unknown) => describeDestructive('recordStore.deleteRecords', [records]);

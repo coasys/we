@@ -40,6 +40,11 @@ const CATALOGUE = {
   boards: { module: '@we/template-views', export: 'boardsView' },
   calendar: { module: '@we/template-views', export: 'calendarView' },
   flux: { module: '@we/template-views', export: 'fluxView' },
+  'acorn-outcomes': { module: '@we/template-acorn', export: 'acornOutcomesView' },
+  'acorn-table': { module: '@we/template-acorn', export: 'acornOutcomeTableView' },
+  'acorn-priority': { module: '@we/template-acorn', export: 'acornPriorityView' },
+  'acorn-map': { module: '@we/template-acorn', export: 'acornMapView' },
+  'acorn-settings': { module: '@we/template-acorn', export: 'acornSettingsView' },
 };
 
 const seed = seedFile.readSeed();
@@ -71,11 +76,24 @@ for (const id of ids) {
   byModule.get(entry.module).push({ id, export: entry.export });
 }
 
-const imports = [...byModule.entries()]
-  .map(([module, entries]) => {
-    const names = [...new Set(entries.map((e) => e.export))].sort();
-    return `import { ${names.join(', ')} } from '${module}';`;
-  })
+/*
+  Imports sorted by source, and the names inside each by name, as `simple-import-sort` would sort
+  them — its comparator, an `en` collator with base sensitivity and numeric segments, copied here so
+  the pre-commit hook and this generator agree on the file byte for byte: CI fails a build that
+  leaves the tree dirty. The *map* below keeps the seed's order, which is the one that means
+  something.
+*/
+const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+const compare = (a, b) => collator.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0);
+const imports = [
+  { from: '@we/schema-shared', line: `import type { TemplateSchema } from '@we/schema-shared';` },
+  ...[...byModule.entries()].map(([module, entries]) => {
+    const names = [...new Set(entries.map((e) => e.export))].sort(compare);
+    return { from: module, line: `import { ${names.join(', ')} } from '${module}';` };
+  }),
+]
+  .sort((a, b) => compare(a.from, b.from))
+  .map(({ line }) => line)
   .join('\n');
 
 const members = ids.map((id) => `  ${JSON.stringify(id)}: ${CATALOGUE[id].export},`).join('\n');
@@ -89,7 +107,6 @@ const output = `/**
  *
  * Key order is the seed's order, and it is load-bearing: it is the default order sections appear in.
  */
-import type { TemplateSchema } from '@we/schema-shared';
 ${imports}
 
 export const bundledViews: Record<string, TemplateSchema> = {

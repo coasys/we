@@ -11,6 +11,7 @@
  */
 import { DEV_FEATURES } from '@we/module-shared';
 import type { TemplateSchema } from '@we/schema-shared';
+import { acornTemplate } from '@we/template-acorn';
 import { defaultTemplate } from '@we/template-default';
 import {
   discordTemplate,
@@ -27,6 +28,7 @@ import {
 export const bundledTemplates: Record<string, TemplateSchema> = {
   default: defaultTemplate,
   workshop: workshopTemplate,
+  acorn: acornTemplate,
   ...(DEV_FEATURES && {
     discord: discordTemplate,
     twitter: twitterTemplate,

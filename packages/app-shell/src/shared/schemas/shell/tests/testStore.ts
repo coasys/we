@@ -48,7 +48,7 @@ interface TestModelClass {
   create(dataset: unknown, data: Record<string, unknown>, opts?: Record<string, unknown>): Promise<TestRecord>;
   delete(dataset: unknown, id: string): Promise<void>;
   findAll(dataset: unknown): Promise<TestRecord[]>;
-  register(dataset: unknown): Promise<unknown>;
+  registerAll(dataset: unknown, models: TestModelClass[]): Promise<unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -210,8 +210,7 @@ export function createTestStore(
 
     void (async () => {
       try {
-        await TestItem.register(p);
-        await TestChild.register(p);
+        await TestItem.registerAll(p, [TestItem, TestChild]);
 
         // Ensure seed data exists
         const existing = await TestItem.findAll(p);

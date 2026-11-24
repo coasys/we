@@ -217,6 +217,13 @@ const rail: SchemaNode = railShell({
           items: [
             { id: 'create', label: 'Create a space', icon: 'plus' },
             { id: 'join', label: 'Join a space', icon: 'link' },
+            /*
+              Only where Acorn projects can exist at all — a mount-capable backend, the
+              module that draws its views and the template its spaces render — since an
+              entry that opened nothing would be worse than none. The dialog is host chrome
+              like its two siblings above, reached through the same shell-flag pattern.
+            */
+            { id: 'acorn', label: 'Acorn projects', icon: 'acorn', hidden: { $: '!spaceStore.acornAvailable' } },
           ],
           /*
             One handler over `arg.id`, rather than a handler per item: `DropdownMenu` reports which
@@ -234,6 +241,12 @@ const rail: SchemaNode = railShell({
               $if: {
                 condition: { $: "arg.id == 'join'" },
                 then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+              },
+            },
+            {
+              $if: {
+                condition: { $: "arg.id == 'acorn'" },
+                then: { $invoke: 'shellStore.setAcornProjectsOpen', args: [true] },
               },
             },
           ],

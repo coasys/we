@@ -74,6 +74,7 @@ describe('slotRegistry — faithful generalisation of shellRegistry', () => {
       'core:consentSecret',
       'core:removeAccount',
       'core:createSpace',
+      'core:acornProjects',
       'core:joinSpace',
       'core:templateNameDialog',
       'core:themeNameDialog',

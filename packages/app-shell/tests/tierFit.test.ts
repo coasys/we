@@ -16,6 +16,7 @@
  * app to be unable to sign anybody out.
  */
 import {
+  acornProjectsModalMount,
   consentPrompt,
   consentSecret,
   createSpaceModalMount,
@@ -160,6 +161,7 @@ describe('the chrome the shell renders', () => {
       judged here.
     */
     ['createSpaceModal', createSpaceModalMount],
+    ['acornProjectsModal', acornProjectsModalMount],
     ['consentPrompt', consentPrompt],
     ['consentSecret', consentSecret],
     ['namePrompt', namePrompt],

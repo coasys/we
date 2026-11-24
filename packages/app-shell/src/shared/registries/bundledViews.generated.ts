@@ -8,6 +8,13 @@
  * Key order is the seed's order, and it is load-bearing: it is the default order sections appear in.
  */
 import type { TemplateSchema } from '@we/schema-shared';
+import {
+  acornMapView,
+  acornOutcomesView,
+  acornOutcomeTableView,
+  acornPriorityView,
+  acornSettingsView,
+} from '@we/template-acorn';
 import { aboutView, boardsView, calendarView, cardsView, globeView, graphView } from '@we/template-views';
 
 export const bundledViews: Record<string, TemplateSchema> = {
@@ -17,4 +24,9 @@ export const bundledViews: Record<string, TemplateSchema> = {
   globe: globeView,
   boards: boardsView,
   calendar: calendarView,
+  'acorn-outcomes': acornOutcomesView,
+  'acorn-table': acornOutcomeTableView,
+  'acorn-priority': acornPriorityView,
+  'acorn-map': acornMapView,
+  'acorn-settings': acornSettingsView,
 };

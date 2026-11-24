@@ -26,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
+    "@we/module-acorn": "workspace:*",
     "@we/module-call": "workspace:*",
     "@we/module-feed": "workspace:*",
     "@we/module-globe": "workspace:*",

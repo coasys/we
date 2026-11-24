@@ -28,6 +28,7 @@
 import type { CoreSlotAnchor, SlotAnchor, SlotContribution } from '@we/module-shared';
 import type { SchemaNode } from '@we/schema-shared';
 import {
+  acornProjectsModalMount,
   bootScreen,
   bundlePrompt,
   chromeRail,
@@ -384,6 +385,16 @@ export function registerCoreSlots(): void {
   // `shellStore.joinSpaceOpen`. The two are mutually exclusive in practice (one menu, two items),
   // so the order between them decides nothing; it sits next to the one it belongs with.
   slotRegistry.register({ id: 'core:joinSpace', anchor: 'overlay', node: joinSpaceModalMount, order: 5 });
+  /*
+    The Acorn projects dialog, host chrome for the reason its siblings are: the members it
+    drives — create, join, open — hold the `space-admin` grant that installs a language and
+    writes another dataset's template, so the schema that may name them must render at the
+    tier that carries them. The module draws the space's insides; who may *create* the space
+    is the app's business. `acornProjectsModalMount` also refuses to draw where
+    `spaceStore.acornAvailable` is false, so its one opener's gate and this one's agree. See
+    `shellStore.acornProjectsOpen`.
+  */
+  slotRegistry.register({ id: 'core:acornProjects', anchor: 'overlay', node: acornProjectsModalMount, order: 5 });
   // Naming a fork or a new template. Opened from the template picker, which is in the app's rail, and
   // from the inspector while the app itself is edited — so it is drawn here, outside the app, where
   // editing the app cannot make it inert and an app without the rail cannot leave it out.

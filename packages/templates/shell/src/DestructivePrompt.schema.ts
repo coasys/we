@@ -34,9 +34,6 @@ export const destructivePrompt: SchemaNode = confirmModal({
   close: { $invoke: 'shellStore.cancelDestructive' },
   title: { $: 'shellStore.pendingDestructive.title' },
   body: { $: 'shellStore.pendingDestructive.body' },
-  // The action being confirmed, verbatim. Small print rather than the body, because the body is
-  // what the reader needs and this is what an author or a suspicious reader needs.
-  detail: { $: 'shellStore.pendingDestructive.path' },
   confirmLabel: 'Delete',
   confirm: { $invoke: 'shellStore.confirmDestructive' },
   cancelLabel: 'Cancel',
