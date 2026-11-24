@@ -1,5 +1,5 @@
 /**
- * The Feed's activity read, against a real executor: what a page of extracted records costs, and
+ * The Feed's activity read, against a real executor: what a page of interpreted records costs, and
  * whether a row says where it came from without being asked.
  *
  * The Feed draws "3 tasks, from Monday sync" by reading each kind of record the space can extract,

@@ -225,7 +225,7 @@ const boardDetail: SchemaNode = {
         icon: 'check-square',
         label: 'work',
         message:
-          'Nothing to arrange yet. Add a card to a column, or record a call — extraction writes down what people commit to.',
+          'Nothing to arrange yet. Add a card to a column, or record a call — interpretation writes down what people commit to.',
       }),
     }),
   ],

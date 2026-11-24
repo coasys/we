@@ -13,6 +13,7 @@
  * the renderer depends on.
  */
 import type { EphemeralPort } from './ephemeral';
+import type { LiveQuery, Page } from './liveQuery';
 import type { AdapterCapabilities, QueryPlan } from './queryCapabilities';
 import type { QueryIR } from './queryIR';
 
@@ -49,18 +50,13 @@ export interface QueryOptions {
   [k: string]: unknown;
 }
 
-/** A live query subscription. `subscribe` resolves with the initial page and re-invokes `cb` on change. */
-export interface QuerySubscription<T = unknown> {
-  subscribe(cb: (rows: T[]) => void): Promise<T[]>;
-  dispose(): void;
-}
-
 /**
  * A queryable model handle — what `$getEntity(name)` returns. The two methods are the entire read
  * contract the renderer depends on.
  */
 export interface EntityClass<T = unknown> {
-  query(dataset: DatasetHandle, opts: QueryOptions): QuerySubscription<T>;
+  /** A live query: opens on the first page of rows and follows it. Dispose it when done. */
+  query(dataset: DatasetHandle, opts: QueryOptions): LiveQuery<Page<T>>;
   findAll(dataset: DatasetHandle, opts: QueryOptions, ctl?: { signal?: AbortSignal }): Promise<T[]>;
 }
 
@@ -117,7 +113,7 @@ export interface RendererDataBindings {
   /**
    * Dataset-scoped model resolution, for backends whose model classes are per-dataset (synthesised
    * from a schema the dataset itself carries). Receives the dataset **handle**, not an id
-   * extracted from it — deriving a key is the host's job, since only the host knows the concrete
+   * found in it — deriving a key is the host's job, since only the host knows the concrete
    * type. This is what lets the renderer treat a handle as fully opaque.
    */
   $getEntityForDataset?: (name: string, dataset?: DatasetHandle) => EntityClass | undefined;

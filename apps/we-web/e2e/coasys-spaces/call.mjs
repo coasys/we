@@ -116,11 +116,11 @@ export function untilHeard(perspective, callId, words, timeout) {
 
 /**
  * Stops this agent's microphone feeding the call's transcript, with the call bar's own control, and
- * waits until the control offers to start again. The call, its record and its extraction watch stay:
+ * waits until the control offers to start again. The call, its record and its interpretation watch stay:
  * a record's lifetime is the call's, not the toggle's (transcribe store.ts, `collectionCallId`).
  *
  * The real tier needs this because Chromium's fake microphone plays its recording in a loop: left on,
- * the transcript grows by the recording every few seconds, and so does every extraction prompt.
+ * the transcript grows by the recording every few seconds, and so does every interpretation prompt.
  */
 export async function stopTranscribing(page) {
   await page.getByRole('button', { name: 'Stop transcribing', exact: true }).first().click();
@@ -128,7 +128,7 @@ export async function stopTranscribing(page) {
 }
 
 /**
- * Registers the call's extraction watch, the one the app's `watchConversation` registers (app-shell
+ * Registers the call's interpretation watch, the one the app's `watchConversation` registers (app-shell
  * DatasetStore.tsx): the same id, the call's own targets, filed under the space's collection, with
  * `extracted` and `recognised` back to the call.
  *

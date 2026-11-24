@@ -105,11 +105,11 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
    */
   partOf: { target: '', cardinality: 'one', predicate: CONTAINMENT_PREDICATE, reverseOf: 'children' },
   /**
-   * Where this record was extracted from — the call (or the space collection, for loose messages)
+   * Where this record was interpreted from — the call (or the space collection, for loose messages)
    * whose `extracted` links to it. `CollectionBlock.extracted` read backwards, exactly as
    * `respondsTo` reads `responses`.
    *
-   * Provenance, not containment: an extracted item lives in the space collection and records where
+   * Provenance, not containment: an interpreted item lives in the space collection and records where
    * it came from separately, so moving it or deleting the call changes neither link. What it gives
    * a template is the source without a second query — the Inbox grouping unplaced items by call, a
    * card saying it came from Monday's call, the "this call" lens. Empty on anything made by hand.
@@ -129,7 +129,7 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
   runs: { target: 'ModelRun', cardinality: 'many', predicate: 'we://model_run' },
   /**
    * The run that wrote this record, where a model wrote it on somebody's behalf — a transcribed line,
-   * what an extraction pass made, a record an agent created. Empty on anything a person made. Set
+   * what an interpretation pass made, a record an agent created. Empty on anything a person made. Set
    * by whoever writes the record, in the same write; `generatedRun` in `@we/entities` reads it.
    *
    * The author stays the person: who a record was made for is `author`, and this says that a model

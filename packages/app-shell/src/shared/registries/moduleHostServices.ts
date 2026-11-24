@@ -82,6 +82,11 @@ export interface ModuleHostServices {
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
    */
   showCallOnScreen?: (recordId: string, datasetUri: string | null) => void;
+  /**
+   * Go to the page of the space on screen that draws a module's part, answering whether there was
+   * one — bound by the store that holds the address. Forwarded as `showPart`; see there.
+   */
+  showPart?: (part: string) => boolean;
   selfId?: () => string | null;
   ephemeral?: EphemeralPort;
   presence?: {
@@ -116,10 +121,10 @@ export interface ModuleHostServices {
   /** The suggestions staged on one collection's contents. Absent means a host that cannot narrow. */
   proposalsForCollection?: (dataset: DatasetHandle, collectionId: string) => Promise<InterpretationProposal[]>;
   /** What one call extracts and what else it could. Absent reads as an empty list. */
-  extractionTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
+  interpretationTargets?: (collectionId: string) => { entity: string; selected: boolean }[];
   /** Whether `extractionTargets` is the whole answer yet. Absent reads as true. */
-  extractionTargetsLoaded?: () => boolean;
-  setExtractionTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
+  interpretationTargetsLoaded?: () => boolean;
+  setInterpretationTarget?: (collectionId: string, entity: string, on: boolean) => Promise<void>;
   /** `dataset` absent means the space on screen. */
   watchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
   unwatchCollection?: (collectionId: string, dataset?: DatasetHandle) => Promise<void>;
@@ -134,7 +139,7 @@ export interface ModuleHostServices {
   interpretationActivity?: () => InterpretationActivitySummary[];
   /** Whether the backend can interpret, as the store learned it from the backend itself. Reactive. */
   interpretationAvailable?: () => boolean;
-  /** Whether a call is extracted as it happens — its participants' answer, else the space's. */
+  /** Whether a call is interpreted as it happens — its participants' answer, else the space's. */
   autoInterpretEnabled?: (collectionId?: string) => boolean;
   setAutoInterpret?: (collectionId: string, on: boolean) => Promise<void>;
   interpretationProposalsRevision?: () => number;
@@ -583,14 +588,14 @@ export function createModuleStoreDeps(framework: {
       autoEnabled: (collectionId) => services.autoInterpretEnabled?.(collectionId) ?? false,
       setAuto: async (collectionId, on) => {
         const set = services.setAutoInterpret;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction settings');
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation settings');
         await set(collectionId, on);
       },
-      targets: (collectionId) => services.extractionTargets?.(collectionId) ?? [],
-      targetsLoaded: () => services.extractionTargetsLoaded?.() ?? true,
+      targets: (collectionId) => services.interpretationTargets?.(collectionId) ?? [],
+      targetsLoaded: () => services.interpretationTargetsLoaded?.() ?? true,
       setTarget: async (collectionId, entity, on) => {
-        const set = services.setExtractionTarget;
-        if (!set) throw new Error('interpretation: this host cannot record a call’s extraction targets');
+        const set = services.setInterpretationTarget;
+        if (!set) throw new Error('interpretation: this host cannot record a call’s interpretation targets');
         await set(collectionId, entity, on);
       },
       runOnCollection: async (collectionId) => {
@@ -693,6 +698,7 @@ export function createModuleStoreDeps(framework: {
     spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
+    showPart: (part) => services.showPart?.(part) ?? false,
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
     notify: (tone, message, options) => services.notify?.(tone, message, options),

@@ -12,7 +12,7 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
-import { type EntityManifest, ModuleSchemasRefused } from '@we/backend-shared';
+import { type EntityManifest, type LivePage, type LiveQuery, ModuleSchemasRefused } from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { provideFileSaver } from '@we/design-utils';
@@ -32,6 +32,8 @@ import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // The platform provider supplies the in-memory backend; the template/theme/route stores (not
@@ -256,7 +258,7 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 
 // ── Harness ───────────────────────────────────────────────────────────────────
 import { completeResponse } from '@we/entities';
-import { withExtractionDefaults } from '@we/entities';
+import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { BootController } from '../src/frameworks/solid/providers/BootController';
@@ -315,7 +317,7 @@ function mountShell(): Stores {
             {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
             <RuntimeStoreProvider>
               <DatasetStoreProvider>
-                {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+                {/* SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back
                 an enroller, so the two mount in the order the real StoreProvider uses. */}
                 <ShapeStoreProvider>
                   {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
@@ -1380,7 +1382,9 @@ describe('dataset lifecycle through the real stores', () => {
       // In the starter's own words, with its own glyph and what it writes counted from its records.
       expect(kit).toMatchObject({ app: 'Coasys', name: "Coasys's starter kit", icon: 'dna' });
       expect(kit.description).toContain('Social DNA');
-      expect(kit.includes).toBe('1 reaction · 3 task states · 5 ways to be involved · a canvas · a board');
+      expect(kit.includes).toBe(
+        '1 reaction · 3 task states · 5 ways to be involved · a canvas · a board · 4 record types · 1 workflow',
+      );
       // A template chooses by id; the records stay in the store.
       expect(kit).not.toHaveProperty('starter');
       expect(rest.map((c) => c.id)).toEqual([NO_STARTER]);
@@ -1545,27 +1549,14 @@ describe('dataset lifecycle through the real stores', () => {
     const held = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
     };
     const query = Entity.query.bind(Entity);
     const spy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await held;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, held, () => (toRead = true));
     });
     try {
       await stores.datasets.switchDataset(to);
@@ -1622,28 +1613,15 @@ describe('dataset lifecycle through the real stores', () => {
     const heldRead = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       update: (...a: unknown[]) => Promise<unknown>;
     };
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== to) return builder;
-      return {
-        subscribe: async (cb) => {
-          toRead = true;
-          await heldRead;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, heldRead, () => (toRead = true));
     });
     // The save is held at the store write, so it is still out when To's own template arrives.
     let fail!: () => void;
@@ -2654,11 +2632,17 @@ describe('what the stores actually wrote', () => {
     expect(stores.spaces.policy().roles).toEqual(['admin']);
 
     // An admin may change the rules; choosing what is in force already writes nothing.
+    // Versions are ordered by when they were made, so each is made a moment after the last: two in
+    // the same millisecond would leave which is in force to chance.
+    const later = () => new Promise((resolve) => setTimeout(resolve, 5));
     await stores.spaces.setPolicyPreset('open');
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    await later();
     await stores.spaces.setPolicyPreset('open');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('open'));
+    await later();
     await stores.spaces.setPolicyPreset('community');
     await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
     expect(await Policy.count(handle as never)).toBe(3);
@@ -3024,6 +3008,24 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('reads the landmarks once when their watch fails to open', async () => {
+    // The watch's first result is what answers for the landmarks; without it they stayed loading.
+    let failing!: ReturnType<typeof vi.spyOn>;
+    const { stores } = await openSpace('Landmark Watch Fails', () => {
+      failing = vi
+        .spyOn(getEntity('SpaceLandmark') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+        .mockImplementation(() => ({
+          first: Promise.reject(new Error('executor unreachable')),
+          getSnapshot: () => ({ status: 'error', initial: false }),
+          subscribe: () => () => undefined,
+          dispose: () => undefined,
+        }));
+    });
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 10000);
+
   it('hears a new task state without reading the states again', async () => {
     const { stores, handle } = await openSpace('Pushed States');
     const reads = spyFindAll('TaskState');
@@ -3087,21 +3089,147 @@ describe('following a space from the rows its live queries push', () => {
     reads.mockRestore();
   }, 10000);
 
+  it('keeps the stored policy in force when the policy watch fails to open', async () => {
+    /*
+      The watch's first result is the only read of the versions. When it failed, the policy was marked
+      loaded with no versions, and an empty list is the open policy: writes were judged by it instead
+      of by the policy the space stores.
+    */
+    const { stores, handle } = await openSpace('Policy Watch Fails');
+    const here = stores.datasets.currentDataset()!.id;
+    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+
+    await stores.spaces.createSpace('Policy Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Elsewhere'));
+
+    const failing = vi
+      .spyOn(getEntity('Policy') as unknown as { query: (...a: unknown[]) => unknown }, 'query')
+      .mockImplementation(() => ({
+        first: Promise.reject(new Error('executor unreachable')),
+        getSnapshot: () => ({ status: 'error', initial: false }),
+        subscribe: () => () => undefined,
+        dispose: () => undefined,
+      }));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'community' }));
+    expect(failing).toHaveBeenCalled();
+    failing.mockRestore();
+  }, 15000);
+
+  /** Leaves the open space and comes back, with `entity`'s watch (when `only` accepts the query) failing to open. */
+  async function reenterWithFailingWatch(
+    stores: Awaited<ReturnType<typeof openSpace>>['stores'],
+    entity: string,
+    only: (query: unknown) => boolean = () => true,
+  ) {
+    const here = stores.datasets.currentDataset()!.id;
+    const name = `${entity} Elsewhere`;
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe(name));
+    const model = getEntity(entity) as unknown as { query: (...a: unknown[]) => unknown };
+    const real = model.query.bind(model);
+    const failing = vi.spyOn(model, 'query').mockImplementation((...args: unknown[]) =>
+      only(args[1])
+        ? {
+            first: Promise.reject(new Error('executor unreachable')),
+            getSnapshot: () => ({ status: 'error', initial: false }),
+            subscribe: () => () => undefined,
+            dispose: () => undefined,
+          }
+        : real(...args),
+    );
+    await stores.datasets.switchDataset(here);
+    return failing;
+  }
+
+  it('keeps the task states when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Task State Watch Fails');
+    await getEntity('TaskState').create(handle, { name: 'Blocked', slug: 'blocked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked'));
+    const failing = await reenterWithFailingWatch(stores, 'TaskState');
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked');
+    failing.mockRestore();
+  }, 15000);
+
+  it("does not show the last space's task states when the next space cannot read its own", async () => {
+    const { stores, handle } = await openSpace('Task States Before');
+    await getEntity('TaskState').create(handle, { name: 'Parked', slug: 'parked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('parked'));
+    await stores.spaces.createSpace('Task States Unreadable', 'x', 'personal', 'hidden');
+    const next = (await lifecycle.list()).find((d) => d.name === 'Task States Unreadable')!;
+    const model = getEntity('TaskState') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(next.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Task States Unreadable'));
+    await vi.waitFor(() => expect(failingWatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    expect(stores.spaces.taskStates().map((s) => s.slug)).not.toContain('parked');
+    failingWatch.mockRestore();
+    failingRead.mockRestore();
+  }, 15000);
+
+  it('does not mark the roles loaded without the grants when their watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Grant Watch Fails');
+    await getEntity('Role').create(handle, { slug: 'steward', name: 'Steward' } as never);
+    await getEntity('RoleGrant').create(handle, { role: 'steward', agent: 'did:key:steward' } as never);
+    await vi.waitFor(() =>
+      expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']),
+    );
+    const failing = await reenterWithFailingWatch(stores, 'RoleGrant');
+    await vi.waitFor(() => expect(stores.spaces.rolesLoaded()).toBe(true));
+    expect(failing).toHaveBeenCalled();
+    // Loaded with the grants the space stores, not with that half empty.
+    expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']);
+    failing.mockRestore();
+  }, 15000);
+
+  it('reads what a collection extracts once when the settings watch fails to open', async () => {
+    const { stores, handle } = await openSpace('Settings Watch Fails');
+    const root = stores.spaces.root();
+    // The space's default is on; this collection is stored off.
+    await CollectionBlock.update(handle, root, { autoExtract: false } as never);
+    const isSettings = (query: unknown) => Array.isArray((query as { where?: { id?: unknown } })?.where?.id);
+    const failing = await reenterWithFailingWatch(stores, 'CollectionBlock', isSettings);
+    await vi.waitFor(() => expect(stores.spaces.root()).toBe(root));
+    await vi.waitFor(() => expect(failing.mock.calls.some((call) => isSettings(call[1]))).toBe(true));
+    expect(stores.spaces.autoInterpret()).toBe(true);
+    // Answered from the stored setting, never from the default standing in for it.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
+    failing.mockRestore();
+  }, 15000);
+
   it('hears a collection switched off without reading it again, and never hydrates its contents', async () => {
     // The space's own collection is asked about on entering, so watch from before that.
     let asked!: ReturnType<typeof vi.spyOn>;
     let reads!: FindAllSpy;
     const isSettingsRead = (call: unknown[]) =>
       Array.isArray((call[1] as { where?: { id?: unknown } } | undefined)?.where?.id);
-    const { stores, handle } = await openSpace('Pushed Extraction', () => {
+    const { stores, handle } = await openSpace('Pushed Interpretation', () => {
       asked = vi.spyOn(getEntity('CollectionBlock') as unknown as { query: (...a: unknown[]) => unknown }, 'query');
       reads = spyFindAll('CollectionBlock');
     });
     const root = stores.spaces.root();
     // Ask, and wait for the first answer and the watch behind it.
-    stores.spaces.autoExtractFor(root);
+    stores.spaces.autoInterpretFor(root);
     await vi.waitFor(() => expect(asked.mock.calls.some(isSettingsRead)).toBe(true));
-    const before = stores.spaces.autoExtractFor(root);
+    const before = stores.spaces.autoInterpretFor(root);
     // Only the two fields the settings are made of: a collection's children are the whole space.
     for (const call of [...reads.mock.calls, ...asked.mock.calls].filter(isSettingsRead)) {
       expect((call[1] as { properties?: string[] }).properties).toEqual(['autoExtract', 'extractionTargets']);
@@ -3110,7 +3238,7 @@ describe('following a space from the rows its live queries push', () => {
     const readsBefore = settingsReads();
 
     await CollectionBlock.update(handle, root, { autoExtract: !before } as never);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(root)).toBe(!before));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(root)).toBe(!before));
     expect(settingsReads()).toBe(readsBefore);
     reads.mockRestore();
     asked.mockRestore();
@@ -3146,11 +3274,28 @@ describe('entering a space: its collection and its landmarks', () => {
   */
   type Held<T> = { release: () => void; promise: Promise<T> };
   /** Holds every call to `entity.method` until released, passing it on to the real one then. */
-  function hold(entity: string, method: 'findAll' | 'findOne') {
+  function hold(entity: string, method: 'findAll' | 'findOne' | 'query') {
     const target = getEntity(entity) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const real = target[method].bind(target);
     const held: Held<unknown>[] = [];
     let open = false;
+    if (method === 'query') {
+      // A live query is returned at once; what is held is its first result and its subscribers.
+      const gates: (() => void)[] = [];
+      const spy = vi.spyOn(target, method).mockImplementation(((...args: unknown[]) => {
+        const live = real(...args) as unknown as LiveQuery<unknown>;
+        if (open) return live;
+        const gate = new Promise<void>((resolve) => gates.push(resolve));
+        return heldLive(live, gate);
+      }) as never);
+      return {
+        spy,
+        release: () => {
+          open = true;
+          for (const g of gates.splice(0)) g();
+        },
+      };
+    }
     const spy = vi.spyOn(target, method).mockImplementation((...args: unknown[]) => {
       if (open) return real(...args);
       let release!: () => void;
@@ -3197,7 +3342,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const [space] = await Space.findAll(ref.handle as never);
     const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
     await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
@@ -3240,7 +3385,7 @@ describe('entering a space: its collection and its landmarks', () => {
     const carried = spaceRow.root;
     spaceRow.root = undefined;
     const spaceReads = hold('Space', 'findOne');
-    const landmarks = hold('SpaceLandmark', 'findAll');
+    const landmarks = hold('SpaceLandmark', 'query');
 
     await stores.datasets.switchDataset(ref.id);
     // Both issued while neither has answered.
@@ -3589,9 +3734,9 @@ describe('a card’s presentation, drawn before it is stored', () => {
   }, 10000);
 });
 
-// ── Extraction settings, on the collection ────────────────────────────────────
+// ── Interpretation settings, on the collection ───────────────────────────────
 
-describe('what a collection extracts', () => {
+describe('what a collection interprets', () => {
   /**
    * The interpretation port's standing-watch half, recording what was registered and removed.
    *
@@ -3666,16 +3811,16 @@ describe('what a collection extracts', () => {
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
 
     // Off, for this collection: stored on it, and the watch removed.
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect((await stored(handle, root)).autoExtract).toBe(false);
     await vi.waitFor(() => expect(port.removed).toContain(watchId(root)));
-    expect(stores.spaces.autoExtractFor(root)).toBe(false);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(false);
     // The space's default — what the next collection starts with — is untouched.
     expect(stores.spaces.autoInterpret()).toBe(true);
 
     // And back on.
     port.watched.length = 0;
-    await stores.spaces.setAutoExtractFor(root, true);
+    await stores.spaces.setAutoInterpretFor(root, true);
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
   }, 15000);
 
@@ -3719,16 +3864,16 @@ describe('what a collection extracts', () => {
 
     // Wanted, and not registered: what the space can extract is still being read.
     await vi.waitFor(() => expect(release).toBeDefined());
-    expect(stores.spaces.autoExtractFor(root)).toBe(true);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(mine()).toEqual([]);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
     release!();
     await vi.waitFor(() => expect(mine()).toHaveLength(1));
     // The list as decided once everything was read — the space's class is now a candidate, and this
     // collection's own list (copied from the defaults when it was made) chooses from that.
-    expect(stores.shapes.extractionCandidates()).toContain('Sighting');
+    expect(stores.shapes.interpretationCandidates()).toContain('Sighting');
     const decided = kernel()
       .targets(root)
       .filter((t) => t.selected)
@@ -3739,13 +3884,13 @@ describe('what a collection extracts', () => {
     expect(removed).not.toContain(watchId(root));
 
     // Off still stops it.
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     await vi.waitFor(() => expect(removed).toContain(watchId(root)));
   }, 15000);
 
   it('shows a call’s picker the core classes while the space’s own are read, and says the list is not whole yet', async () => {
     // The reader side of the wait above. Only the registrars wait for the whole list: the picker,
-    // its chips and the Extract button read the list as it arrives, so the panel never says there is
+    // its chips and the Interpret button read the list as it arrives, so the panel never says there is
     // nothing to extract for the few round trips before the space's own classes come.
     let release: (() => void) | undefined;
     let hold = false;
@@ -3832,15 +3977,15 @@ describe('what a collection extracts', () => {
     await enterSpace(stores, 'Earlier');
     const root = stores.spaces.root();
     await vi.waitFor(() => expect(release).toBeDefined());
-    expect(stores.spaces.autoExtractFor(root)).toBe(true);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.spaces.autoInterpretFor(root)).toBe(true);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     await vi.waitFor(() => expect(removed).toContain(watchId(root)));
 
     // And the list arriving afterwards registers nothing: it is off.
     release!();
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(registered).not.toContain(watchId(root));
   }, 15000);
@@ -3937,7 +4082,7 @@ describe('what a collection extracts', () => {
     pending[0]();
     await first;
     expect(stores.shapes.shapesLoaded()).toBe(false);
-    expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+    expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
     pending[1]();
     await second;
@@ -3957,17 +4102,17 @@ describe('what a collection extracts', () => {
     await stores.spaces.revokeRole('admin', stores.session.me()?.did ?? '');
     await vi.waitFor(() => expect(stores.spaces.canAdministerCurrentSpace()).toBe(false));
 
-    expect(stores.spaces.canSetExtractionFor(root)).toBe(false);
-    expect(stores.spaces.canSetExtractionFor(call.id)).toBe(true);
+    expect(stores.spaces.canSetInterpretationFor(root)).toBe(false);
+    expect(stores.spaces.canSetInterpretationFor(call.id)).toBe(true);
 
     const refused = vi.spyOn(toastService, 'error');
-    await stores.spaces.setAutoExtractFor(root, false);
+    await stores.spaces.setAutoInterpretFor(root, false);
     expect(refused).toHaveBeenCalled();
     // Refused before anything was written.
     expect((await stored(handle, root)).autoExtract).toBe(true);
 
     // A call is its participants' to decide.
-    await stores.spaces.setAutoExtractFor(call.id, false);
+    await stores.spaces.setAutoInterpretFor(call.id, false);
     expect((await stored(handle, call.id)).autoExtract).toBe(false);
     refused.mockRestore();
   }, 15000);
@@ -4007,8 +4152,8 @@ describe('what a collection extracts', () => {
     });
 
     const saving = Promise.all([
-      stores.spaces.setExtractionTarget('Decision', true),
-      stores.spaces.setExtractionTarget('Task', true),
+      stores.spaces.setInterpretationTarget('Decision', true),
+      stores.spaces.setInterpretationTarget('Task', true),
     ]).then(
       () => ({}),
       (error: unknown) => ({ error }),
@@ -4049,22 +4194,30 @@ describe('what a collection extracts', () => {
     // Made the way the host makes a new feed: the space's defaults as they stand, copied in.
     const before = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
     await vi.waitFor(() => expect(looksFor(k, before.id, 'TaskBlock')).toBe(true));
 
     // The community changes its defaults.
     await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.autoInterpret).toBe(false));
 
     const after = await CollectionBlock.create(
       handle,
-      withExtractionDefaults('CollectionBlock', { kind: 'call', mode: 'feed' }, stores.spaces.currentSpace()) as never,
+      withInterpretationDefaults(
+        'CollectionBlock',
+        { kind: 'call', mode: 'feed' },
+        stores.spaces.currentSpace(),
+      ) as never,
     );
 
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(before.id)).toBe(true));
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(after.id)).toBe(false));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(before.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(after.id)).toBe(false));
     // The one already made keeps what it started with; the new one starts with the new list.
     await vi.waitFor(() => expect(looksFor(k, after.id, 'TaskBlock')).toBe(false));
     expect(looksFor(k, before.id, 'TaskBlock')).toBe(true);
@@ -4078,7 +4231,7 @@ describe('what a collection extracts', () => {
     const make = () =>
       CollectionBlock.create(
         handle,
-        withExtractionDefaults(
+        withInterpretationDefaults(
           'CollectionBlock',
           { kind: 'call', mode: 'feed' },
           stores.spaces.currentSpace(),
@@ -4095,16 +4248,16 @@ describe('what a collection extracts', () => {
       expect(interpretation.targets(a.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(false),
     );
     expect(interpretation.targets(b.id).find((t) => t.entity === 'TaskBlock')?.selected).toBe(true);
-    expect(stores.spaces.extractionTargets()).toContain('TaskBlock');
+    expect(stores.spaces.interpretationTargets()).toContain('TaskBlock');
 
     // The switch: call A off. Its watch is refused from then on; call B's is still registered.
     await interpretation.setAuto(a.id, false);
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(a.id)).toBe(false));
-    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic extraction is off');
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(a.id)).toBe(false));
+    await expect(interpretation.watchCollection(a.id)).rejects.toThrow('automatic interpretation is off');
     await interpretation.watchCollection(b.id);
     expect(port.watched).toContain(watchId(b.id));
     expect(port.watched).not.toContain(watchId(a.id));
-    expect(stores.spaces.autoExtractFor(b.id)).toBe(true);
+    expect(stores.spaces.autoInterpretFor(b.id)).toBe(true);
   }, 15000);
 
   /*
@@ -4130,7 +4283,7 @@ describe('what a collection extracts', () => {
     // Elsewhere's answers differ on both counts — off for the space, events for the list.
     await enterSpace(stores, 'Elsewhere');
     await stores.spaces.setAutoInterpret(false);
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     provideModuleHostServices({
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
@@ -4165,14 +4318,14 @@ describe('what a collection extracts', () => {
       is the bug. From then on the live gate answers for Elsewhere: on, where Here's call is off.
       A gate that reads the live answers registers this watch instead of refusing it.
     */
-    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(call.id)).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(call.id)).toBe(true));
 
-    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic interpretation is off');
     expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
   }, 15000);
 
   /*
-    A call whose record cannot be read has said nothing about automatic extraction, which is not the
+    A call whose record cannot be read has said nothing about automatic interpretation, which is not the
     same as saying nothing *yet to override*: the space's default must not start a watch the call's
     own stored switch may turn out to forbid, and nothing re-registers it when the record arrives.
   */
@@ -4190,7 +4343,7 @@ describe('what a collection extracts', () => {
     });
 
     await expect(kernel().watchCollection('call-not-yet-synced', { dataset: a })).rejects.toThrow(
-      'automatic extraction is off',
+      'automatic interpretation is off',
     );
     expect(port.registrations.some((r) => r.watchId === watchId('call-not-yet-synced'))).toBe(false);
   }, 15000);
@@ -4352,7 +4505,7 @@ describe('what a collection extracts', () => {
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
 
-    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic extraction is off');
+    await expect(kernel().watchCollection(call.id, { dataset: a })).rejects.toThrow('automatic interpretation is off');
     expect(port.registrations.some((r) => r.watchId === watchId(call.id))).toBe(false);
   }, 15000);
 
@@ -4464,7 +4617,7 @@ describe('what a collection extracts', () => {
 
     // Elsewhere starts calls on events; the pass that follows must still ask for Here's tasks.
     await enterSpace(stores, 'Elsewhere');
-    await stores.spaces.setExtractionTarget('TaskBlock', false);
+    await stores.spaces.setInterpretationTarget('TaskBlock', false);
     const b = stores.datasets.currentDataset()!.id;
     await stores.spaces.navigateToSpace(a);
     await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
@@ -4552,13 +4705,13 @@ describe('what a collection extracts', () => {
       // Elsewhere answers every one of the exported fields differently.
       await enterSpace(stores, 'Moved to');
       await stores.spaces.setAutoInterpret(false);
-      await stores.spaces.setExtractionTarget('TaskBlock', false);
+      await stores.spaces.setInterpretationTarget('TaskBlock', false);
       const b = stores.datasets.currentDataset()!.id;
       await stores.spaces.navigateToSpace(a);
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
 
       // Started in Here; held in the gather while the screen moves to Elsewhere.
-      const exporting = stores.spaces.exportExtractionLog(call.id);
+      const exporting = stores.spaces.exportInterpretationLog(call.id);
       await vi.waitFor(() => expect(proposalsAsked).toBe(true));
       await stores.spaces.navigateToSpace(b);
       await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(b));
@@ -4574,7 +4727,7 @@ describe('what a collection extracts', () => {
     expect(log).toContain('- Looking for, on this call: TaskBlock\n');
     // Candidate order, the way the picker's list reads — the export resolves by the same rule.
     expect(log).toContain('- Space default: EventBlock, TaskBlock');
-    expect(log).toContain('- Extracts automatically as the call happens: yes');
+    expect(log).toContain('- Interprets automatically as the call happens: yes');
   }, 15000);
 
   /*
@@ -4659,7 +4812,7 @@ describe('what a collection extracts', () => {
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
 
       holding = true;
-      const exporting = stores.spaces.exportExtractionLog(call.id);
+      const exporting = stores.spaces.exportInterpretationLog(call.id);
       // The settings read is still out — and the picker is already open, inside the click's window.
       await vi.waitFor(() => expect(metaRead).toBe(true));
       expect(pickerCalls).toHaveLength(1);
@@ -4708,10 +4861,10 @@ describe('what a collection extracts', () => {
         return findAll(handle, q as never);
       });
 
-      await stores.spaces.exportExtractionLog(call.id);
+      await stores.spaces.exportInterpretationLog(call.id);
       // The settings read is still out, and the answer is already given.
       expect(metaRead).toBe(true);
-      expect(warned).toHaveBeenCalledWith('No extraction has run on this call yet.');
+      expect(warned).toHaveBeenCalledWith('No interpretation has run on this call yet.');
       release();
     } finally {
       release();
@@ -4739,7 +4892,7 @@ describe('what a collection extracts', () => {
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidates()).toContain('Sighting'));
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -4747,7 +4900,7 @@ describe('what a collection extracts', () => {
       extractionTargets: '["Sighting"]',
     } as never);
     await enterSpace(stores, 'Elsewhere');
-    expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+    expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
     provideModuleHostServices({
       datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
     });
@@ -4769,7 +4922,7 @@ describe('what a collection extracts', () => {
       await stores.spaces.navigateToSpace(a);
       await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(a));
       await vi.waitFor(() => expect(holdNext).toBe(false));
-      expect(stores.shapes.extractionCandidatesLoaded()).toBe(false);
+      expect(stores.shapes.interpretationCandidatesLoaded()).toBe(false);
 
       await kernel().watchCollection(call.id, { dataset: a });
       expect(port.registrations.find((r) => r.watchId === watchId(call.id))?.classes).toEqual(['Sighting']);
@@ -4784,7 +4937,7 @@ describe('what a collection extracts', () => {
     only the switch registers, and an off-screen ask must not. A call extracting into one is
     resolved by the executor from the class's own shape, so the read must keep it.
   */
-  it('keeps an installed foreign class a call extracts into when its space is off screen', async () => {
+  it('keeps an installed foreign class a call interprets into when its space is off screen', async () => {
     const port = watchPort();
     const withWatch = onPorts!;
     onPorts = (ports) => {
@@ -4861,7 +5014,7 @@ describe('what a collection extracts', () => {
         if (q?.properties) throw new Error('settings unreadable');
         return findAll(handle, q as never);
       });
-      await stores.spaces.exportExtractionLog(call.id);
+      await stores.spaces.exportInterpretationLog(call.id);
     } finally {
       settingsReads?.mockRestore();
       delete (globalThis as { showSaveFilePicker?: unknown }).showSaveFilePicker;
@@ -4898,7 +5051,7 @@ describe('what a collection extracts', () => {
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Ledger', manifest }])).toEqual([]);
     await vi.waitFor(() => expect(stores.shapes.spaceShapes().map((s) => s.name)).toContain('Ledger'));
     // Not a candidate on screen either — the call's stored list is the thing out of step.
-    expect(stores.shapes.extractionCandidates()).not.toContain('Ledger');
+    expect(stores.shapes.interpretationCandidates()).not.toContain('Ledger');
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -4949,7 +5102,7 @@ describe('what a collection extracts', () => {
     const registering = vi.spyOn(schemas, 'foreignSchemas');
     const reading = vi.spyOn(schemas, 'foreignEntries');
 
-    const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+    const { candidates } = await stores.shapes.interpretationCandidatesFor(handleA);
     expect(candidates).toContain('Sighting');
     // The read answered, and nothing was registered for it: the dataset's registry still holds
     // the class its shape compiled to.
@@ -4977,10 +5130,10 @@ describe('what a collection extracts', () => {
     await enterSpace(stores, 'Elsewhere');
 
     const schemas = stores.session.backendPorts()!.schemas;
-    expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).toContain('Sighting');
+    expect((await stores.shapes.interpretationCandidatesFor(handleA)).candidates).toContain('Sighting');
     const core = vi.spyOn(schemas, 'hasCoreSchema').mockResolvedValue(false);
     try {
-      expect((await stores.shapes.extractionCandidatesFor(handleA)).candidates).not.toContain('Sighting');
+      expect((await stores.shapes.interpretationCandidatesFor(handleA)).candidates).not.toContain('Sighting');
     } finally {
       core.mockRestore();
     }
@@ -5014,7 +5167,7 @@ describe('what a collection extracts', () => {
       { name: 'Heron', manifest },
     ] as never);
     try {
-      const { candidates } = await stores.shapes.extractionCandidatesFor(handleA);
+      const { candidates } = await stores.shapes.interpretationCandidatesFor(handleA);
       expect(candidates).not.toContain('Sighting');
       expect(candidates).toContain('Heron');
     } finally {
@@ -5045,7 +5198,7 @@ describe('what a collection extracts', () => {
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
-    await vi.waitFor(() => expect(stores.shapes.extractionCandidates()).toContain('Sighting'));
+    await vi.waitFor(() => expect(stores.shapes.interpretationCandidates()).toContain('Sighting'));
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
@@ -5058,13 +5211,7 @@ describe('what a collection extracts', () => {
     // question to the stored-record read the watch's answer then outlives.
     await enterSpace(stores, 'From');
     const Entity = getEntity('Space') as unknown as {
-      query: (
-        handle: unknown,
-        q?: { where?: { uuid?: string; url?: string } },
-      ) => {
-        subscribe: (cb: (rows: unknown[]) => void) => Promise<unknown[]>;
-        dispose: () => void;
-      };
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
       findAll: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => Promise<Space[]>;
     };
     let releaseRecord!: () => void;
@@ -5072,15 +5219,9 @@ describe('what a collection extracts', () => {
     const query = Entity.query.bind(Entity);
     const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
       const which = q?.where?.uuid ?? q?.where?.url;
-      const builder = query(handle, q);
-      if (which !== a) return builder;
-      return {
-        subscribe: async (cb) => {
-          await heldRecord;
-          return builder.subscribe(cb);
-        },
-        dispose: () => builder.dispose(),
-      };
+      const live = query(handle, q);
+      if (which !== a) return live;
+      return heldLive(live, heldRecord);
     });
     // The stored space read inside the collection's answers, held so the switch lands inside it.
     let releaseSpace!: () => void;
@@ -5097,7 +5238,7 @@ describe('what a collection extracts', () => {
     });
     try {
       await stores.datasets.switchDataset(a);
-      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
+      await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
       expect(stores.spaces.currentSpace()?.uuid).not.toBe(a);
       provideModuleHostServices({
         datasetByUri: (uri) => stores.datasets.datasets().find((d) => d.id === uri || d.sharedUri === uri)?.handle,
@@ -5113,8 +5254,8 @@ describe('what a collection extracts', () => {
         .datasets()
         .find((d) => d.id !== a && !stores.datasets.systemDatasetUuids().includes(d.id))!;
       await stores.datasets.switchDataset(from.id);
-      await vi.waitFor(() => expect(stores.shapes.extractionCandidatesLoaded()).toBe(true));
-      expect(stores.shapes.extractionCandidates()).not.toContain('Sighting');
+      await vi.waitFor(() => expect(stores.shapes.interpretationCandidatesLoaded()).toBe(true));
+      expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
 
       releaseSpace();
       await starting;

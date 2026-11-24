@@ -16,7 +16,7 @@
  * differ.
  */
 
-import type { QuerySubscription } from './dataSource';
+import type { LiveQuery, Page } from './liveQuery';
 
 // ── Instance base ──────────────────────────────────────────────────────────────────────────────
 
@@ -54,11 +54,10 @@ export interface RecordInstance {
  * failure mode if one does not is quiet — records arrive with no type and every consumer falls back
  * to whatever it does for an unknown row, which looks the same as a relation that hydrated nothing.
  *
- * The **key** is the executor's; the **value** is the contract's: an entity name, as a template
- * compares it with `'TaskBlock'`. A backend that names a class some other way maps the value back at
- * its edge — the AD4M executor answers a target class IRI (two apps may each have a class of one
- * name), and `recordTypes.ts` in `@we/backend-ad4m` turns it into the entity name on every row path
- * to the renderer.
+ * The **key** is the production backend's; the **value** is the contract's: an entity name, as a
+ * template compares it with `'TaskBlock'`. A backend that names a class some other way — by a full
+ * class IRI, say, so that two apps can each have a class of one name — maps the value back to the
+ * entity name at its own edge, on every row path to the renderer.
  *
  * Named here rather than in an adapter so that the shared layers reading it — the graph
  * engine, anything picking a display per row — are not reaching into a `__`-prefixed literal they
@@ -368,18 +367,15 @@ export interface EntityStatic<T extends RecordInstance> {
   count(dataset: unknown, query?: TypedEntityQuery<T>): Promise<number>;
 
   /**
-   * A live read: resolves with the result now, and calls `onChange` with the whole result again
-   * whenever it may have changed. `dispose` ends it.
-   *
-   * Treat a push as "here is the result now", never as "something changed": backends differ on
-   * exactly that. The in-memory one re-runs on any write to the dataset and also calls `onChange`
-   * with the first result; AD4M calls it only for later results that differ from the last one.
-   * A caller that needs to know what changed compares rows itself.
+   * A live read: a handle that opens on the result now (`first`) and follows it. Each snapshot
+   * holds the whole page, and a new one is made only when the result differs from the last, so a
+   * write that leaves it as it was is not heard. `snapshot.initial` tells the value the handle
+   * opened on from a change. `dispose` ends it.
    */
   query<Q extends TypedEntityQuery<T>>(
     dataset: unknown,
     query?: Q,
-  ): QuerySubscription<T & IncludeExtras<T, IncludeOf<Q>>>;
+  ): LiveQuery<Page<T & IncludeExtras<T, IncludeOf<Q>>>>;
 
   /**
    * Replace a relation's whole membership, in the order given.

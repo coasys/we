@@ -4088,7 +4088,12 @@ export function GraphView(props: GraphViewProps) {
                   '--node-opacity': String((entry.visual.opacity ?? 1) * entry.foldScale),
                 }}
                 title={entry.visual.label}
+                data-type={entry.node.type || undefined}
               >
+                {/*
+                  The record's class, as `data-type`. The header draws a label, and `modelLabel` turns
+                  `TaskBlock` into "Task", so the words on the card cannot tell the two apart.
+                */}
                 {/*
                 A card carries its text *inside* the box — the post-it, where the content is the node
                 rather than a caption attached to a mark. Everything else keeps the label underneath,

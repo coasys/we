@@ -16,7 +16,6 @@
 export type {
   DatasetHandle,
   QueryOptions,
-  QuerySubscription,
   EntityClass,
   MutationApi,
   DataSource,
@@ -25,6 +24,8 @@ export type {
   RendererStores,
 } from './dataSource';
 export { RENDERER_BINDING_NAMES } from './dataSource';
+export { combineLiveQueries, createLiveQuery, mapLiveQuery } from './liveQuery';
+export type { LiveQuery, Page as LivePage, Snapshot } from './liveQuery';
 
 export { createInMemoryEphemeralPort, InMemoryBus, inMemoryEphemeralCapabilities, planEphemeral } from './ephemeral';
 export type {
@@ -75,7 +76,7 @@ export type { TraceSink } from './trace';
 export {
   blockableEntities,
   CONTAINMENT_PREDICATE,
-  extractableEntities,
+  interpretableEntities,
   getEntity,
   getProperty,
   getRelation,

@@ -1,6 +1,8 @@
 import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
+import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
+import { setUpForApp } from '@shared/bundles/setUpForApp';
 import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
@@ -31,6 +33,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { pageOfPart } from '@shared/partPage';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -119,7 +122,14 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
-import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
+import type {
+  AgentProfileSummary,
+  DatasetHandle,
+  DatasetRef,
+  EntityStatic,
+  RecordInstance,
+  WorkflowView,
+} from '@we/backend-shared';
 import { isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -133,12 +143,12 @@ import {
 } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
-  collectionExtractionDefaults,
-  LEGACY_EXTRACTION_TARGETS,
+  collectionInterpretationDefaults,
+  LEGACY_INTERPRETATION_TARGETS,
   parseEntityList,
-  resolveCollectionAutoExtract,
-  resolveCollectionExtractionTargets,
-  resolveSpaceExtractionTargets,
+  resolveCollectionAutoInterpret,
+  resolveCollectionInterpretationTargets,
+  resolveSpaceInterpretationTargets,
 } from '@we/entities';
 import { completeResponse } from '@we/entities';
 import {
@@ -207,7 +217,7 @@ import { useShapeStore } from './ShapeStore';
 import { useShellStore } from './ShellStore';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
-import { createExtractionRuntime } from './space/extractionRuntime';
+import { createInterpretationRuntime } from './space/interpretationRuntime';
 import {
   datasetAnswersTo,
   JOIN_RECOVERY_FIRST_POLL_MS,
@@ -243,8 +253,8 @@ export type {
 } from './space/types';
 
 /*
-  The extraction-settings resolution — `LEGACY_EXTRACTION_TARGETS`, `parseEntityList` and the
-  per-collection resolvers below — lives in `collectionExtraction` in `@we/entities` so it can be tested
+  The extraction-settings resolution — `LEGACY_INTERPRETATION_TARGETS`, `parseEntityList` and the
+  per-collection resolvers below — lives in `collectionInterpretation` in `@we/entities` so it can be tested
   without mounting this provider. See that module for why a collection holds a copy.
 */
 
@@ -617,8 +627,8 @@ export interface SpaceStore {
   /** The same, for this agent everywhere. */
   setAgentModuleSetting: (group: string, key: string, value?: SettingValue) => Promise<void>;
   /**
-   * Whether a new collection here — a call, a channel — starts out extracted as it grows. A
-   * community default, copied onto each collection when it is made; see `autoExtractFor` for the
+   * Whether a new collection here — a call, a channel — starts out interpreted as it grows. A
+   * community default, copied onto each collection when it is made; see `autoInterpretFor` for the
    * answer that counts.
    */
   autoInterpret: Accessor<boolean>;
@@ -653,32 +663,32 @@ export interface SpaceStore {
    */
   firstScreenOpen: Accessor<boolean>;
   /**
-   * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
+   * Whether one collection — a call, a channel, the space's own — is interpreted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
    */
-  autoExtractFor: (collectionId: string) => boolean;
+  autoInterpretFor: (collectionId: string) => boolean;
   /**
    * Turn it on or off for one collection, for everyone in it. A call's participants decide for their
    * call; the space collection is the community's, so only somebody who administers the space can.
    */
-  setAutoExtractFor: (collectionId: string, on: boolean) => Promise<void>;
-  /** Whether this agent may change what one collection extracts — see `setAutoExtractFor`. */
-  canSetExtractionFor: (collectionId: string) => boolean;
+  setAutoInterpretFor: (collectionId: string, on: boolean) => Promise<void>;
+  /** Whether this agent may change what one collection extracts — see `setAutoInterpretFor`. */
+  canSetInterpretationFor: (collectionId: string) => boolean;
   setAutoInterpret: (enabled: boolean, spaceUuid?: string) => Promise<void>;
   setThreadMode: (mode: string, spaceUuid?: string) => Promise<void>;
   /**
    * Which models a new collection here starts out extracting.
    *
    * The middle of three layers: the codebase says what is a *candidate*
-   * (`shapeStore.extractionCandidates`), this says which of them a new conversation begins with, and
+   * (`shapeStore.interpretationCandidates`), this says which of them a new conversation begins with, and
    * each collection then holds its own list, which its participants change. Always intersected with
    * the candidates, so a model since deleted cannot reach a pass and fail it.
    *
    * A community decision, readable by every member; writing it is space-settings. Unset falls back
    * to the two classes that were hardcoded before the setting existed, so nothing regresses.
    */
-  extractionTargets: Accessor<string[]>;
-  setExtractionTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
+  interpretationTargets: Accessor<string[]>;
+  setInterpretationTarget: (entity: string, on: boolean, spaceUuid?: string) => Promise<void>;
   /** Turn a module on or off for this agent everywhere. */
   setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
   /** Show or hide a module for this agent in one space. Private to this agent. */
@@ -843,12 +853,12 @@ export interface SpaceStore {
    */
   exportCallTranscript: (callId: string) => Promise<void>;
   /**
-   * Write everything extraction did with a call to a Markdown file and download it: the settings it
+   * Write everything interpretation did with a call to a Markdown file and download it: the settings it
    * ran under, the transcript once, every pass (every member's) with its prompt and response verbatim,
    * the records it wrote as they are stored now, and the suggestions still waiting on a decision.
    * Made to be handed to a person or a model investigating why a call extracted what it did.
    */
-  exportExtractionLog: (callId: string) => Promise<void>;
+  exportInterpretationLog: (callId: string) => Promise<void>;
   removeSpaceFromGlobal: (spaceUuid: string) => Promise<void>;
   updateSpaceInCache: (dataset: AppDataset, updates: Partial<Space>) => void;
 
@@ -889,8 +899,34 @@ const SPACE_AVATAR_PX = 512;
  */
 const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
-/** What a collection's extraction settings are read from — see `autoExtractFor`. */
+/** What a collection's extraction settings are read from — see `autoInterpretFor`. */
 const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
+
+/**
+ * The one rule for a live query that cannot open: read the stored rows once and apply them, and let
+ * the caller say the rows are loaded only when this answers `true`.
+ *
+ * A watch that never opened has no first result to stand for the rows, and an empty answer is not
+ * "none": for a policy it is the open policy, for settings it is the space's default. `current`
+ * says the effect is still the one that asked, so a read that lands after leaving the space applies
+ * nothing. A read that fails applies nothing either, leaving whatever the store holds as it is.
+ */
+async function readStoredOnce<T>(
+  what: string,
+  current: () => boolean,
+  read: () => Promise<T>,
+  apply: (value: T) => void,
+): Promise<boolean> {
+  try {
+    const value = await read();
+    if (!current()) return false;
+    apply(value);
+    return true;
+  } catch (error) {
+    console.warn(`SpaceStore: could not read ${what}`, error);
+    return false;
+  }
+}
 
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
@@ -922,13 +958,36 @@ export function SpaceStoreProvider(props: ParentProps) {
   );
   // The starters themselves stay in the store: a template chooses one by id and never handles records.
   const starterChoices = createMemo(() => starterChoiceList().map(({ starter: _starter, ...option }) => option));
-  /** The starter a choice applies — the default for none, and a refusal for one that is not offered. */
-  const chosenStarter = (id: string | undefined) => {
+  /** The choice a create applies — the default for none, and a refusal for one that is not offered. */
+  const chosenStarterChoice = (id: string | undefined) => {
     const choices = starterChoiceList();
     const choice = id ? choices.find((c) => c.id === id) : choices[0];
     if (!choice) throw new Error(`${id} is not something a new space can start with here.`);
-    return choice.starter;
+    return choice;
   };
+
+  /**
+   * A space made from an app's starter is set up for that app, as "Set up a space…" would: its record
+   * types, then the workflows they move through, then its sections. Choosing the app's kit is choosing
+   * the app; an empty space gets none of it. A built-in bundle's sections are built in, so nothing is
+   * copied. What does not go in is reported and leaves the space as it is: the space exists.
+   */
+  async function setUpNewSpaceForApp(bundleId: string, spaceId: string, handle: DatasetHandle): Promise<void> {
+    const pieces = seedBundlePieces.find((bundle) => bundle.bundleId === bundleId);
+    if (!pieces) return;
+    const problems = await setUpForApp({
+      addRecordTypes: async () =>
+        pieces.recordTypes.length ? shapeStore.addRecordTypes(pieces.bundleId, pieces.recordTypes, spaceId) : [],
+      installWorkflows: () => installBundleWorkflows(session.backendPorts()?.workflows, handle, pieces.workflows),
+      finish: async () => {
+        for (const section of pieces.sections) await setViewEnabled(section.id, true, spaceId);
+      },
+    });
+    if (problems.length) {
+      console.warn(`SpaceStore: the new space was not set up for ${pieces.name}`, problems);
+      toastService.add(`The space was made, but not set up for ${pieces.name}: ${problems[0]}`, 'warning', 8000);
+    }
+  }
   const [creatingSpace, setCreatingSpace] = createSignal(false);
   /**
    * Spaces being shared, or whose share failed, by dataset id — with what the share was asked for,
@@ -1416,6 +1475,21 @@ export function SpaceStoreProvider(props: ParentProps) {
         });
         if (value) routeStore.setParam('call', value);
       },
+      /*
+        A module's part, on the page of this space that draws it: the template as written, and the
+        sections this space's navigation lists — see `pageOfPart`. Fresh: `pageOfPart` answers for the
+        page as it draws with nothing in its query, so the address is that page with none. Restoring
+        the query last used there could land on another view of that page — a channel or a canvas
+        named in the query, which draws something else — or, from that view, not move at all.
+      */
+      showPart: (part: string) => {
+        const base = spacePath();
+        if (!base) return false;
+        const page = pageOfPart(templateStore.currentTemplate, spaceViews(), part);
+        if (page === null) return false;
+        routeStore.navigate(page ? `${base}/${page}` : base, { fresh: true });
+        return true;
+      },
       datasets: {
         get: (uri: string) => {
           const id = sharedIdOf(uri);
@@ -1646,10 +1720,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function writeSpaceStructure(dataset: DatasetProxy, space: Space, starter?: SpaceStarter): Promise<void> {
     /*
-      Made with the space's extraction defaults like any new collection, unless the starter says
+      Made with the space's interpretation defaults like any new collection, unless the starter says
       otherwise about the messages typed outside calls (`input`).
     */
-    const defaults = collectionExtractionDefaults(space);
+    const defaults = collectionInterpretationDefaults(space);
     const root = await CollectionBlock.create(dataset, {
       kind: SPACE_COLLECTION_KIND,
       // A feed: every member adds to it, so no one member's editor may ever reconcile it, and a
@@ -1710,7 +1784,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       // Before anything exists, like the server check: a choice that is no longer offered is refused
       // rather than quietly swapped for the default.
-      const starter = chosenStarter(starterId);
+      const choice = chosenStarterChoice(starterId);
+      const starter = choice.starter;
       // Sharing follows in the background, so a server it would refuse is caught here, before a
       // space exists that could then only be left unshared.
       if (access === 'shared' && server && !parseServerUrl(server)) {
@@ -1779,6 +1854,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       // change event (which may lag, or on web may not fire at all).
       await datasetStore.trackDataset(spaceRef);
       setMySpaces((prev) => [...prev, spaceRecord]);
+      // Before sharing, so a member who joins finds the app's record types already there.
+      if (choice.bundleId) await setUpNewSpaceForApp(choice.bundleId, spaceRef.id, spaceHandle);
 
       // Space.create returns relations unhydrated, so the listing is given avatarData,
       // coverImageData and locationData directly rather than reading them back from spaceRecord.
@@ -1902,7 +1979,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
 
     // Nobody chooses here — the dialog that turns a dataset into a space has no starter picker.
-    const starter = chosenStarter(undefined);
+    const starter = chosenStarterChoice(undefined).starter;
     const spaceData: SpaceInput = {
       uuid: ds.id,
       url: ds.sharedId,
@@ -2868,12 +2945,12 @@ export function SpaceStoreProvider(props: ParentProps) {
     await upsertSignal(nodeId, signalTypeId, null);
   }
 
-  // The lambdas are read at export time: the extraction settings they name are declared further down.
+  // The lambdas are read at export time: the interpretation settings they name are declared further down.
   const callExports = createCallExports({
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
-    exportMeta: collectionExtractionFor,
+    exportMeta: collectionInterpretationFor,
   });
 
   const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
@@ -2903,8 +2980,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   // The collection to modules too, so the Feed starts from this answer rather than reading the space
   // record again for it.
   onCleanup(provideModuleHostServices({ spaceRoot: () => spaceRoot() }));
-  /** Read the space collection and the landmarks again — after an action made a record the space's. */
-  async function reloadSpaceStructure(): Promise<void> {
+  /**
+   * Read the space collection and the landmarks again — after an action made a record the space's.
+   * The watch on entering reads the collection only (`landmarks: false`): its first result is the
+   * landmarks.
+   */
+  async function reloadSpaceStructure(landmarks = true): Promise<void> {
     const ds = datasetStore.currentDataset();
     const dataset = ds?.handle;
     if (!ds || !dataset || !datasetStore.isWeSpace()) return;
@@ -2934,14 +3015,16 @@ export function SpaceStoreProvider(props: ParentProps) {
         throw error;
       },
     );
-    const landmarks = readSpaceLandmarks(dataset).then((found) => {
-      if (!here()) return;
-      batch(() => {
-        setSpaceLandmarks(found);
-        setLandmarksLoaded(true);
-      });
-    });
-    const failed = (await Promise.allSettled([root, landmarks])).find((r) => r.status === 'rejected');
+    const landmarkRead = landmarks
+      ? readSpaceLandmarks(dataset).then((found) => {
+          if (!here()) return;
+          batch(() => {
+            setSpaceLandmarks(found);
+            setLandmarksLoaded(true);
+          });
+        })
+      : Promise.resolve();
+    const failed = (await Promise.allSettled([root, landmarkRead])).find((r) => r.status === 'rejected');
     if (failed) console.warn('SpaceStore: could not read the space’s collection and landmarks', failed.reason);
   }
   /*
@@ -2978,17 +3061,31 @@ export function SpaceStoreProvider(props: ParentProps) {
         setLandmarksLoaded(true);
       });
     };
-    void untrack(reloadSpaceStructure).then(() => {
-      if (stopped || !dataset || !weSpace) return;
+    if (dataset && weSpace) {
+      // Its first result is the landmarks as they are now; a change after that is applied as it comes.
       watch = SpaceLandmark.query(dataset, {});
-      watch
-        ?.subscribe((rows) => follow(rows))
-        // What the watch opened on: a landmark written between the first read and now is in it.
-        .then((rows) => follow(rows, true))
-        .catch((error: unknown) => {
-          console.warn('SpaceStore: could not watch the space’s landmarks', error);
-        });
-    });
+      watch.subscribe((s) => {
+        if (s.status === 'ready' && s.data) follow(s.data.results, s.initial);
+      });
+      watch.first.catch((error: unknown) => {
+        console.warn('SpaceStore: could not watch the space’s landmarks', error);
+        // The watch never opened, so nothing else answers for the landmarks: read them once. A handle
+        // disposed on leaving the space rejects too; `stopped` keeps that from starting a read. The
+        // space's collection is read by the `reloadSpaceStructure(false)` below.
+        if (stopped) return;
+        void readStoredOnce(
+          'the space’s landmarks',
+          () => !stopped,
+          () => readSpaceLandmarks(dataset),
+          (found) =>
+            batch(() => {
+              setSpaceLandmarks(found);
+              setLandmarksLoaded(true);
+            }),
+        );
+      });
+    }
+    void untrack(() => reloadSpaceStructure(false));
   });
 
   /**
@@ -3093,13 +3190,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
-    Read on entering the space, then follow it.
+    Followed from entering the space.
 
     Another member's rename, colour or new state has to reach everybody here: a member still holding
     an old rule would be offered Approve on a move their vote no longer counts toward.
 
-    The watch starts after the first read, which is what installs the entity's shape on a space that
-    predates it — a query against a shape the dataset does not hold has nothing to watch.
+    The watch starts after `ensure`, which installs the entity's shape on a space that predates it —
+    a query against a shape the dataset does not hold has nothing to watch.
   */
   createEffect(() => {
     const dataset = datasetStore.currentDataset()?.handle;
@@ -3120,17 +3217,48 @@ export function SpaceStoreProvider(props: ParentProps) {
         console.warn('SpaceStore: could not read task states', error);
       }
     };
-    void loadTaskStates().then(() => {
-      if (stopped || !dataset || !weSpace) return;
+    const ports = session.backendPorts()?.schemas;
+    if (!dataset || !weSpace || !ports) {
+      // Nothing to follow: the list is empty, and answered.
+      void loadTaskStates();
+      return;
+    }
+    setTaskStatesLoaded(false);
+    void (async () => {
+      try {
+        // The shape is installed first — see above. After that the query's first result is the list.
+        await ports.ensure(dataset, TaskState);
+      } catch (error) {
+        console.warn('SpaceStore: could not read task states', error);
+        if (!stopped) {
+          setOwnTaskStates([]);
+          setTaskStatesLoaded(true);
+        }
+        return;
+      }
+      if (stopped) return;
       watch = TaskState.query(dataset, {});
-      watch
-        ?.subscribe(follow)
-        // What the watch opened on: a state written between the first read and now is in it.
-        .then(follow)
-        .catch((error: unknown) => {
-          console.warn('SpaceStore: could not watch task states', error);
-        });
-    });
+      watch.subscribe((s) => {
+        if (s.status !== 'ready' || !s.data) return;
+        follow(s.data.results);
+        if (!stopped) setTaskStatesLoaded(true);
+      });
+      watch.first.catch(async (error: unknown) => {
+        console.warn('SpaceStore: could not watch task states', error);
+        if (stopped) return;
+        // The states held are the previous space's (this effect runs per space), so a failed read
+        // empties the list; either way the list is answered.
+        const read = await readStoredOnce(
+          'task states',
+          () => !stopped,
+          () => TaskState.findAll(dataset),
+          applyTaskStates,
+        );
+        if (stopped) return;
+        if (!read) setOwnTaskStates([]);
+        setTaskStatesLoaded(true);
+      });
+    })();
   });
 
   /**
@@ -3544,7 +3672,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       Reading it as the first column makes it something the community can *see* and change: the
       leftmost column of the board is where new work arrives. `offered` is already in their order.
-      Blocked and cancelled are refused outright — whatever is at the front, an extraction pass has no
+      Blocked and cancelled are refused outright — whatever is at the front, an interpretation pass has no
       business declaring work stuck or dropped before anybody has looked at it.
     */
     const entry = offered.find((state) => state.semantic === 'open' || state.semantic === 'active');
@@ -3559,7 +3687,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     } catch (error) {
       // A space whose shape predates the property, or a peer without write access. The states still
       // work; extraction just keeps using the vocabulary it already had.
-      console.warn('SpaceStore: could not update the extraction hint for task states', error);
+      console.warn('SpaceStore: could not update the interpretation hint for task states', error);
     }
   }
 
@@ -3903,22 +4031,35 @@ export function SpaceStoreProvider(props: ParentProps) {
         // install `loadInvolvementTypes` uses.
         for (const Model of [Role, RoleGrant]) await schemas.ensure(dataset, Model as never).catch(() => undefined);
       }
-      await untrack(reloadRoles);
-      if (stopped || !dataset || !weSpace) return;
+      if (!dataset || !weSpace) {
+        // Nothing to follow: no roles, and answered.
+        await untrack(reloadRoles);
+        return;
+      }
+      if (stopped) return;
       // Each watch pushes its own model's records whole, which is all its half of the roles is made
-      // of — so a change is applied from them, and the other half is left as it is.
-      const followAll = <T,>(watch: LiveRows<T> | undefined, apply: (rows: T[]) => void) => {
-        if (!watch) return;
+      // of — so its first result is the read, and a change is applied from it, the other half left
+      // as it is.
+      // Answers whether the half is in: opened, or read once after its watch failed to open.
+      const followAll = <T,>(watch: LiveRows<T>, read: () => Promise<T[]>, apply: (rows: T[]) => void) => {
         watches.push(watch);
-        const follow = (rows: T[]) => void (!stopped && apply(rows));
-        watch
-          .subscribe(follow)
-          // What the watch opened on: a grant written between the first read and now is in it.
-          .then(follow)
-          .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
+        watch.subscribe((s) => {
+          if (!stopped && s.status === 'ready' && s.data) apply(s.data.results);
+        });
+        return watch.first.then(
+          () => true,
+          (error: unknown) => {
+            console.warn('SpaceStore: could not watch the space’s roles', error);
+            return stopped ? false : readStoredOnce('the space’s roles', () => !stopped, read, apply);
+          },
+        );
       };
-      followAll(Role.query(dataset, {}), applyRoles);
-      followAll(RoleGrant.query(dataset, {}), applyGrants);
+      const halves = await Promise.all([
+        followAll(Role.query(dataset, {}) as LiveRows<Role>, () => Role.findAll(dataset), applyRoles),
+        followAll(RoleGrant.query(dataset, {}) as LiveRows<RoleGrant>, () => RoleGrant.findAll(dataset), applyGrants),
+      ]);
+      // A half that is missing would change who administers the space: roles are not loaded without it.
+      if (!stopped && halves.every(Boolean)) setRolesLoaded(true);
     })();
   });
 
@@ -4073,26 +4214,67 @@ export function SpaceStoreProvider(props: ParentProps) {
     // The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
     // applied from them. A later push supersedes an earlier one still resolving its authors.
     let pushed = 0;
-    const follow = (rows: Policy[]) => {
+    // Whether the newest push is in `policyRows`; false while it resolves, and if it could not be.
+    let applied = Promise.resolve(false);
+    const follow = (rows: Policy[]): void => {
       if (stopped) return;
       const turn = ++pushed;
-      void policyVersionsOf(rows).then(
-        (versions) => void (!stopped && turn === pushed && setPolicyRows(versions)),
-        (error: unknown) => console.warn('SpaceStore: could not read the space’s policy', error),
+      applied = policyVersionsOf(rows).then(
+        (versions) => {
+          if (stopped || turn !== pushed) return false;
+          setPolicyRows(versions);
+          return true;
+        },
+        (error: unknown) => {
+          console.warn('SpaceStore: could not read the space’s policy', error);
+          return false;
+        },
       );
     };
     void (async () => {
       const schemas = session.backendPorts()?.schemas;
+      if (!dataset || !weSpace) {
+        // Nothing to follow: no versions, and answered.
+        await untrack(reloadPolicy);
+        return;
+      }
       // A space made before policies existed has the entity uninstalled; see the roles effect above.
-      if (dataset && weSpace && schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
-      await untrack(reloadPolicy);
-      if (stopped || !dataset || !weSpace) return;
+      if (schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
+      if (stopped) return;
+      // The query's first result is every version, which is what a read would have given.
       watch = Policy.query(dataset, {});
-      watch
-        ?.subscribe(follow)
-        // What the watch opened on: a version written between the first read and now is in it.
-        .then(follow)
-        .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error));
+      watch.subscribe((s) => {
+        if (s.status === 'ready' && s.data) follow(s.data.results);
+      });
+      let held = false;
+      try {
+        await watch.first;
+        // Settled once the newest push is in: a push that lands while an earlier one resolves its
+        // authors replaces it, and loaded must not be told before the rows it carries are applied.
+        let seen: Promise<boolean> | undefined;
+        while (seen !== applied) held = await (seen = applied);
+      } catch (error) {
+        if (stopped) return;
+        console.warn('SpaceStore: could not watch the space’s policy', error);
+      }
+      if (stopped) return;
+      /*
+        No page of versions reached `policyRows`: the watch failed to open, or the newest page could
+        not be turned into versions. An empty list is the open policy, which would judge every write,
+        so read the stored versions instead, and mark the policy loaded only once that read is in.
+        `readPolicyVersions` turns a failed `findAll` into `[]`, as on `dev`, so a failed read still
+        counts as in: the open policy applies.
+      */
+      if (
+        held ||
+        (await readStoredOnce(
+          'the space’s policy',
+          () => !stopped,
+          () => readPolicyVersions(dataset),
+          setPolicyRows,
+        ))
+      )
+        setPolicyLoaded(true);
     })();
   });
 
@@ -4189,7 +4371,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    *
    * Without one nothing is written, and the space reads as `open`: what every space did before it had
    * a policy. `community` is offered in People rather than chosen for everybody, because some shared
-   * work is edited by members who did not make it — a call's extraction switch, a transcript line
+   * work is edited by members who did not make it — a call's interpretation switch, a transcript line
    * from another participant's device, a suggested change to somebody else's record, a board's
    * columns — and `community` keeps editing to a record's author and the space's admins.
    */
@@ -4309,7 +4491,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     A capability could be switched on and off four ways here and could not carry a single *value*,
     which is why `autoInterpret` and `extractionTargets` are columns on the core `Space` entity.
-    Those two stay where they are — they are extraction's configuration, and where that lands is a
+    Those two stay where they are — they are interpretation's configuration, and where that lands is a
     question about wires rather than about settings — but nothing new joins them.
   */
   const settingLevels = createMemo<LevelValues>(() => {
@@ -4410,13 +4592,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /*
-    What a new collection here starts with — whether it is extracted as it grows.
+    What a new collection here starts with — whether it is interpreted as it grows.
 
     Read off the space rather than stored here, so it answers for whichever space is on screen. Absent
     space reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `collectionExtraction` in `@we/entities` for why a copy.
+    made (`CollectionBlock.autoExtract`); see `collectionInterpretation` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
 
@@ -4431,8 +4613,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     Order follows the candidates, so a settings list reads the same way every time rather than in
     whatever order somebody happened to tick things.
   */
-  const extractionTargets = createMemo<string[]>(() =>
-    resolveSpaceExtractionTargets(shapeStore.extractionCandidates(), currentSpace()?.extractionTargets),
+  const interpretationTargets = createMemo<string[]>(() =>
+    resolveSpaceInterpretationTargets(shapeStore.interpretationCandidates(), currentSpace()?.extractionTargets),
   );
 
   /**
@@ -4500,48 +4682,48 @@ export function SpaceStoreProvider(props: ParentProps) {
         return next;
       });
     };
-    const read = async () => {
-      try {
-        const rows = await CollectionBlock.findAll(handle, query as never);
-        if (stopped) return;
-        apply(rows);
-      } catch (error) {
-        console.warn('SpaceStore: could not read what these collections extract', error);
-      } finally {
-        if (!stopped) setLoadedCollections(new Set(ids));
-      }
-    };
-    // The watch asks what the read asked, so what it pushes is the settings, whole.
-    const follow = (rows: CollectionBlock[]) => void (!stopped && apply(rows));
-    void read().then(() => {
+    // The query asks what a read would ask, so its first result is the settings, whole, and a change
+    // after that is applied the same way.
+    watch = CollectionBlock.query(handle, query);
+    watch.subscribe((s) => {
+      if (stopped || s.status !== 'ready' || !s.data) return;
+      apply(s.data.results);
+      if (s.initial) setLoadedCollections(new Set(ids));
+    });
+    watch.first.catch((error: unknown) => {
+      console.warn('SpaceStore: could not watch what these collections extract', error);
       if (stopped) return;
-      watch = CollectionBlock.query(handle, query);
-      watch
-        ?.subscribe(follow)
-        // What the watch opened on: a switch thrown between the first read and now is in it.
-        .then(follow)
-        .catch((error: unknown) => {
-          console.warn('SpaceStore: could not follow what these collections extract', error);
-        });
+      // Loaded only once the stored settings are in: without them `autoInterpretFor` would answer
+      // with the space's default for a collection stored as off. If this read fails too they stay
+      // unloaded, and it answers `false`.
+      void readStoredOnce(
+        'what these collections extract',
+        () => !stopped,
+        () => CollectionBlock.findAll(handle, query as never),
+        (rows) => {
+          apply(rows);
+          setLoadedCollections(new Set(ids));
+        },
+      );
     });
   });
 
   /**
-   * Whether one collection is extracted as it grows: its own answer, or — for a collection made
+   * Whether one collection is interpreted as it grows: its own answer, or — for a collection made
    * without one — the space's default. False until its settings have been read.
    */
-  const autoExtractFor = (collectionId: string): boolean => {
+  const autoInterpretFor = (collectionId: string): boolean => {
     if (!collectionId) return false;
     askCollection(collectionId);
     if (!loadedCollections().has(collectionId)) return false;
-    return resolveCollectionAutoExtract(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+    return resolveCollectionAutoInterpret(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
   };
 
   /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
-  const extractionTargetsFor = (collectionId: string): string[] => {
+  const interpretationTargetsFor = (collectionId: string): string[] => {
     askCollection(collectionId);
-    return resolveCollectionExtractionTargets(
-      shapeStore.extractionCandidates(),
+    return resolveCollectionInterpretationTargets(
+      shapeStore.interpretationCandidates(),
       currentSpace()?.extractionTargets,
       collectionSettings()[collectionId]?.extractionTargets,
     );
@@ -4554,7 +4736,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * collection is the community's — the messages typed outside any call — so it is whoever
    * administers the space, exactly as its defaults are.
    */
-  const canSetExtractionFor = (collectionId: string): boolean =>
+  const canSetInterpretationFor = (collectionId: string): boolean =>
     Boolean(collectionId) && (collectionId !== spaceRoot() || canAdministerCurrentSpace());
 
   async function writeCollectionSettings(
@@ -4564,7 +4746,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !collectionId) return;
-    if (!canSetExtractionFor(collectionId)) {
+    if (!canSetInterpretationFor(collectionId)) {
       toastService.error(`Only someone who administers this space can change ${what} outside calls.`);
       return;
     }
@@ -4583,12 +4765,12 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Turn automatic extraction on or off for one collection, for everyone in it. Leaves the space's
+   * Turn automatic interpretation on or off for one collection, for everyone in it. Leaves the space's
    * default alone — that is where the *next* conversation starts, and this is about this one.
    * Does not stop a pass already running: those tokens are spent.
    */
-  const setAutoExtractFor = (collectionId: string, on: boolean): Promise<void> =>
-    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is extracted as it happens');
+  const setAutoInterpretFor = (collectionId: string, on: boolean): Promise<void> =>
+    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is interpreted as it happens');
 
   /**
    * Add or remove one model from what a collection extracts, for everyone in it.
@@ -4596,11 +4778,15 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Writes the resolved list rather than a diff, so a collection made without a copy pins whatever
    * the space's default was at that moment — the same rule `setModuleEnabled` follows.
    */
-  async function setExtractionTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
-    const next = new Set(extractionTargetsFor(collectionId));
+  async function setInterpretationTargetFor(collectionId: string, entity: string, on: boolean): Promise<void> {
+    const next = new Set(interpretationTargetsFor(collectionId));
     if (on) next.add(entity);
     else next.delete(entity);
-    await writeCollectionSettings(collectionId, { extractionTargets: JSON.stringify([...next]) }, 'what this extracts');
+    await writeCollectionSettings(
+      collectionId,
+      { extractionTargets: JSON.stringify([...next]) },
+      'what this interprets',
+    );
   }
 
   /**
@@ -4613,7 +4799,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the dataset's own registry, since a name it cannot resolve has no shape there and would take
    * the whole pass down.
    */
-  async function collectionExtractionFor(
+  async function collectionInterpretationFor(
     handle: DatasetProxy,
     collectionId: string,
   ): Promise<{ spaceName?: string; spaceTargets: string[]; auto: boolean; classes: string[] }> {
@@ -4630,7 +4816,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       published but whose write has not landed yet — and they follow the stored record the moment
       it changes, so preferring them loses nothing. For a dataset nobody is looking at the live
       reads answer for a different space and the sidebar cache says what the record said when this
-      client last visited — a peer switching automatic extraction off after that would register a
+      client last visited — a peer switching automatic interpretation off after that would register a
       watch the community already turned off — so the space's own record is read where it lives,
       through the handle.
     */
@@ -4648,7 +4834,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       onScreen && loadedCollections().has(collectionId) ? collectionSettings()[collectionId] : undefined;
     // Only once this dataset's own list has published: until then the signal still holds the space just left's.
     const liveCandidates =
-      onScreen && shapeStore.extractionCandidatesLoaded() ? shapeStore.extractionCandidates() : undefined;
+      onScreen && shapeStore.interpretationCandidatesLoaded() ? shapeStore.interpretationCandidates() : undefined;
     const space = shownSpace ?? (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
     const own = liveSettings ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
     /*
@@ -4664,22 +4850,24 @@ export function SpaceStoreProvider(props: ParentProps) {
     */
     const { candidates, installed } = liveCandidates
       ? { candidates: liveCandidates, installed: [] }
-      : await shapeStore.extractionCandidatesFor(handle);
+      : await shapeStore.interpretationCandidatesFor(handle);
     // A class the dataset already had is installed though this session never registered it — only
     // a switch does — and the executor resolves it from its own shape, so it stays.
     const resolvable = (entity: string) =>
       installed.includes(entity) || getEntityForDataset(entity, handle) !== undefined;
     return {
       spaceName: space?.name,
-      spaceTargets: resolveSpaceExtractionTargets(candidates, space?.extractionTargets).filter(resolvable),
+      spaceTargets: resolveSpaceInterpretationTargets(candidates, space?.extractionTargets).filter(resolvable),
       // A record that could not be read has not said it inherits: the space's default must not start
       // a watch the record's own switch may forbid, and nothing re-registers it once the record arrives.
       auto:
         (liveSettings !== undefined || row !== undefined) &&
-        resolveCollectionAutoExtract(space?.autoInterpret === true, own.autoExtract),
-      classes: resolveCollectionExtractionTargets(candidates, space?.extractionTargets, own.extractionTargets).filter(
-        resolvable,
-      ),
+        resolveCollectionAutoInterpret(space?.autoInterpret === true, own.autoExtract),
+      classes: resolveCollectionInterpretationTargets(
+        candidates,
+        space?.extractionTargets,
+        own.extractionTargets,
+      ).filter(resolvable),
     };
   }
 
@@ -4698,26 +4886,26 @@ export function SpaceStoreProvider(props: ParentProps) {
     told apart from items from a call. Its passes batch, by the engine's defaults: a few messages, or
     a quiet spell, or two minutes at the most.
   */
-  const extraction = createExtractionRuntime({
+  const interpretation = createInterpretationRuntime({
     port: () => session.backendPorts()?.interpretation,
     dataset: () => datasetStore.currentDataset()?.handle ?? null,
-    candidates: () => shapeStore.extractionCandidates(),
-    candidatesLoaded: () => shapeStore.extractionCandidatesLoaded(),
-    targetsFor: extractionTargetsFor,
-    setTargetFor: setExtractionTargetFor,
-    setAutoFor: setAutoExtractFor,
-    collectionAnswers: collectionExtractionFor,
+    candidates: () => shapeStore.interpretationCandidates(),
+    candidatesLoaded: () => shapeStore.interpretationCandidatesLoaded(),
+    targetsFor: interpretationTargetsFor,
+    setTargetFor: setInterpretationTargetFor,
+    setAutoFor: setAutoInterpretFor,
+    collectionAnswers: collectionInterpretationFor,
   });
-  onCleanup(provideModuleHostServices(extraction.services));
+  onCleanup(provideModuleHostServices(interpretation.services));
 
   let looseWatchOn: { root: string; handle: unknown } | null = null;
   createEffect(() => {
     const root = spaceRoot();
     const handle = datasetStore.currentDataset()?.handle;
-    const wanted = Boolean(root && handle && autoExtractFor(root));
+    const wanted = Boolean(root && handle && autoInterpretFor(root));
     // Read so a change to what it extracts re-registers: the watch's class list is fixed at
     // registration, and the port replaces it when the list differs.
-    if (root) void extractionTargetsFor(root);
+    if (root) void interpretationTargetsFor(root);
     if (wanted) {
       /*
         Not before the list is whole. Core vocabulary is known at once and the space's own models and
@@ -4730,8 +4918,8 @@ export function SpaceStoreProvider(props: ParentProps) {
         may be there from an earlier visit, so switching off during the wait must still remove it.
       */
       looseWatchOn = { root, handle };
-      if (!shapeStore.extractionCandidatesLoaded()) return;
-      void extraction.watchConversation(root, handle).catch((error: unknown) => {
+      if (!shapeStore.interpretationCandidatesLoaded()) return;
+      void interpretation.watchConversation(root, handle).catch((error: unknown) => {
         console.info('SpaceStore: the space’s loose messages cannot be watched here', error);
       });
       return;
@@ -4741,16 +4929,16 @@ export function SpaceStoreProvider(props: ParentProps) {
     // Only on the way from on to off, and only for the space it was on in: leaving a space is not
     // switching its watch off.
     if (was && was.root === root && was.handle === handle) {
-      void extraction.unwatchConversation(was.root, was.handle).catch(() => {});
+      void interpretation.unwatchConversation(was.root, was.handle).catch(() => {});
     }
   });
 
   /*
     Ticking "let AI create these" in the model wizard is this space saying yes — see
-    `ShapeStore.provideExtractionEnroller`. Handed upward because ShapeStore mounts above this one
+    `ShapeStore.provideInterpretationEnroller`. Handed upward because ShapeStore mounts above this one
     and cannot reach a `Space`.
   */
-  onCleanup(shapeStore.provideExtractionEnroller((entity) => setExtractionTarget(entity, true)));
+  onCleanup(shapeStore.provideInterpretationEnroller((entity) => setInterpretationTarget(entity, true)));
 
   /**
    * What actually renders here, for this agent: the three layers intersected, minus personal mutes.
@@ -5575,7 +5763,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   /**
-   * Whether a new collection in a space starts out extracted as it grows. A default: a conversation
+   * Whether a new collection in a space starts out interpreted as it grows. A default: a conversation
    * already under way keeps its own answer.
    *
    * Takes the value rather than toggling, so a `we-switch` can pass `$event.detail` straight
@@ -5624,14 +5812,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    * the switch just turned on. The queue keeps an older write, whose list does not have the later
    * switch, from finishing last and storing that.
    */
-  async function setExtractionTarget(entity: string, on: boolean, spaceUuid?: string) {
+  async function setInterpretationTarget(entity: string, on: boolean, spaceUuid?: string) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
     const save = defaultSaveFor(ds, 'extractionTargets');
     const isNewest = save.ops.begin();
     const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
-    const current = parseEntityList(base) ?? LEGACY_EXTRACTION_TARGETS;
+    const current = parseEntityList(base) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
@@ -5762,7 +5950,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     }
     // `taskStates` too: the order of the space's states rides on the same record — see the effect
     // beside `loadTaskStateOrder`.
-    const builder: LiveRows<Space> = Space.query(ds.handle, {
+    const live = Space.query(ds.handle, {
       where: spaceSelfWhere(ds),
       include: { location: true, taskStates: true },
     });
@@ -5775,11 +5963,18 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (space) pushedSpaces.add(space);
       setCurrentSpace(space);
     };
-    builder
-      .subscribe(handleResult)
-      .then(handleResult)
-      .catch(() => setCurrentSpace(null));
-    onCleanup(() => builder.dispose());
+    let stopped = false;
+    live.subscribe((snapshot) => {
+      if (snapshot.status === 'ready' && snapshot.data) handleResult(snapshot.data.results);
+    });
+    // Disposing rejects `first`: after a switch, the old effect must not clear the new space.
+    live.first.catch(() => {
+      if (!stopped) setCurrentSpace(null);
+    });
+    onCleanup(() => {
+      stopped = true;
+      live.dispose();
+    });
   });
 
   /*
@@ -5911,8 +6106,8 @@ export function SpaceStoreProvider(props: ParentProps) {
   >();
 
   /**
-   * The newest choice of each default still being saved, and of the extraction list, for a live row
-   * to show over. The extraction list is one of these saves too: a switch merges into the list
+   * The newest choice of each default still being saved, and of the interpretation list, for a live row
+   * to show over. The interpretation list is one of these saves too: a switch merges into the list
    * already published, and a row from before that write must not put the old list back.
    */
   const pendingDefaults = (ds: AppDataset): Partial<Space> => {
@@ -6289,9 +6484,9 @@ export function SpaceStoreProvider(props: ParentProps) {
     rootLoaded,
     firstScreenOpen: () => firstScreen.open(),
     starterChoices,
-    autoExtractFor,
-    setAutoExtractFor,
-    canSetExtractionFor,
+    autoInterpretFor,
+    setAutoInterpretFor,
+    canSetInterpretationFor,
     spaceModuleSettings,
     myModuleSettings,
     agentModuleSettings,
@@ -6300,8 +6495,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     setAgentModuleSetting,
     setAutoInterpret,
     setThreadMode,
-    extractionTargets,
-    setExtractionTarget,
+    interpretationTargets,
+    setInterpretationTarget,
     setModuleInstalled,
     setModuleVisible,
     setViewEnabled,
@@ -6352,7 +6547,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     copyShareLink,
     copyGuestLink,
     exportCallTranscript: callExports.exportCallTranscript,
-    exportExtractionLog: callExports.exportExtractionLog,
+    exportInterpretationLog: callExports.exportInterpretationLog,
     removeSpaceFromGlobal,
     updateSpaceInCache,
 

@@ -30,6 +30,8 @@ import {
   type EntityStatic,
   formatRef,
   HERE,
+  type LivePage as Page,
+  type LiveQuery,
   namePropertyOf,
   type ParentRef,
   type RecordInstance,
@@ -78,7 +80,7 @@ import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
-import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/extractionCandidates';
+import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/interpretationCandidates';
 import {
   presentationFields,
   presentationOf,
@@ -196,7 +198,7 @@ async function createPlacement(
 }
 
 /**
- * A connection's dedup key — the format `Relationship.connection`'s hint asks an extraction pass for.
+ * A connection's dedup key — the format `Relationship.connection`'s hint asks an interpretation pass for.
  *
  * Written on every connection a person makes, not only on what a pass writes, because the executor
  * shows a model only the instances whose identity property is set: a connection drawn by hand
@@ -3071,41 +3073,47 @@ export function RecordStoreProvider(props: ParentProps) {
   createEffect(() => {
     const dataset = datasetStore.currentDataset();
     let stopped = false;
-    let watch: { subscribe(cb: (rows: KeyRow[]) => void): Promise<KeyRow[]>; dispose(): void } | undefined;
+    let watch: LiveQuery<Page<KeyRow>> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setSpacePresentation({});
     if (!dataset) return;
-    void untrack(reloadSpacePresentation).then((spaceId) => {
-      if (stopped) return;
-      // A backend whose records cannot be followed is read once, on entering.
-      const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => typeof watch }).query;
-      if (typeof query !== 'function') return;
-      if (spaceId) {
-        /*
-          The watch asks what the read asked — the space's own styles, not every canvas's — so what it
-          pushes is the layer, whole, and is applied as it arrives rather than read again.
-        */
-        const follow = (rows: KeyRow[]) => void (!stopped && applySpacePresentation(rows));
-        watch = query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) });
-        watch
-          ?.subscribe(follow)
-          // What the watch opened on: a style written between the first read and now is in it.
-          .then(follow)
-          .catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
-        return;
-      }
-      /*
-        No space record to scope to yet — a dataset that becomes a space later. Any style written is
-        the cue to look for the space again, so this one watch still only signals.
-      */
-      watch = query.call(TypeStyle, dataset.handle, {});
-      watch
-        ?.subscribe(() => void (!stopped && reloadSpacePresentation()))
-        .catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
-    });
+    const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => LiveQuery<Page<KeyRow>> }).query;
+    // A backend whose records cannot be followed is read once, on entering.
+    if (typeof query !== 'function') {
+      void untrack(reloadSpacePresentation);
+      return;
+    }
+    void untrack(async () => {
+      const space = (await Space.findOne(dataset.handle)) as { id?: string } | null;
+      return datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
+    })
+      .then((spaceId) => {
+        if (stopped) return;
+        if (spaceId) {
+          /*
+            The watch asks what the layer is — the space's own styles, not every canvas's — and its
+            first result is the layer as it stands, so nothing is read separately before it.
+          */
+          watch = query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) });
+          watch.subscribe((snapshot) => {
+            if (!stopped && snapshot.data) applySpacePresentation(snapshot.data.results);
+          });
+        } else {
+          /*
+            No space record to scope to yet — a dataset that becomes a space later. Any style written is
+            the cue to look for the space again, so this watch only signals, and asks for ids alone.
+          */
+          watch = query.call(TypeStyle, dataset.handle, { properties: ['id'] });
+          watch.subscribe((snapshot) => {
+            if (!stopped && snapshot.status === 'ready' && !snapshot.initial) void reloadSpacePresentation();
+          });
+        }
+        watch.first.catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
+      })
+      .catch((error: unknown) => console.warn("RecordStore: could not read the space's presentation", error));
   });
 
   async function setSpaceTypePresentation(
@@ -3284,7 +3292,7 @@ export function RecordStoreProvider(props: ParentProps) {
     /*
       The keys that quote what just changed. A connection's key carries its label and both ends'
       titles, so relabelling one or renaming a record it joins leaves a key describing a claim nobody
-      is making any more — and the next extraction pass reads the tree from those keys.
+      is making any more — and the next interpretation pass reads the tree from those keys.
     */
     if (entity === RELATIONSHIP && field === 'label') await rekeyConnection(id);
     else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);

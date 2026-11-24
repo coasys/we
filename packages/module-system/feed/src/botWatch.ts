@@ -56,7 +56,7 @@ export interface BotWatchDeps {
   readingLive: (lines: { id: string; call: string }[]) => boolean;
   /** Whether the Feed keeps spoken lines out of view — a hidden line is not unseen activity. */
   spokenHidden: () => boolean;
-  /** Show the Feed at its newest line: the notice's Open. */
+  /** Show the Feed at its newest line — its page where the space has one, else its panel: the notice's Open. */
   open: () => void;
 }
 

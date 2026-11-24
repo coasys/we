@@ -1,7 +1,7 @@
 /**
  * Which call a transcript surface is about, and whether that call is the one being recorded.
  *
- * Its own file because both halves are read by `Panel.schema` and by `ExtractionStatus.schema`, and
+ * Its own file because both halves are read by `Panel.schema` and by `InterpretationStatus.schema`, and
  * the import between those two already runs one way — the panel places the activity readout. A
  * constant defined in either and imported by the other would either be a cycle or would live in
  * whichever file happened not to need it.

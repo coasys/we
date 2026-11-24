@@ -12,6 +12,14 @@ transport or a model is reached through. The reasons the layer exists are in the
 
 - `DataSource` / `EntityClass` / `MutationApi` — the read and write surface
 - `QueryAdapter` + the query layer — `QueryIR`, validation, capability planning, the compute-up engine
+- `LiveQuery` — what `EntityClass.query` returns: one handle with `first` (the first result),
+  `subscribe` (called at once with the current snapshot once the query is no longer loading, then on each change), `getSnapshot`
+  and `dispose`. A snapshot says `initial` for the value the handle opened on. Results
+  come as a `LivePage` (`{ results, totalCount? }`). A backend with no live query of its own builds
+  one with `createLiveQuery` (a read plus a way to hear changes), `combineLiveQueries` (several
+  into one) or `mapLiveQuery` (a result passed through a function). The conformance suite holds every
+  backend to the same behaviour: a first result, `initial` only on that one, a snapshot for a later
+  change, and no updates after `dispose`.
 - `EphemeralPort` — peer-to-peer transport for coordination that isn't stored
 - presence — roster, liveness, activities
 - `EntityManifest` — the neutral description of an entity's shape

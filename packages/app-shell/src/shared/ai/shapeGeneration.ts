@@ -34,7 +34,7 @@ const defineEntityTool = {
       classHint: {
         type: 'string' as const,
         description:
-          'Guidance for AI extraction: when should something in a conversation count as one of these? One to three sentences.',
+          'Guidance for AI interpretation: when should something in a conversation count as one of these? One to three sentences.',
       },
       identityField: {
         type: 'string' as const,
@@ -58,7 +58,7 @@ const defineEntityTool = {
             hint: {
               type: 'string' as const,
               description:
-                'AI-extraction guidance for this field: exact allowed values, formats (dates as YYYY-MM-DD), what to omit.',
+                'AI-interpretation guidance for this field: exact allowed values, formats (dates as YYYY-MM-DD), what to omit.',
             },
             options: {
               type: 'array' as const,
@@ -200,7 +200,7 @@ Design rules:
   attached content: a photo is a relationship to ImageBlock, a place is one to LocationBlock. Only
   when the description calls for it, and only to a target listed as available.
 - Write interpretation hints the way a careful prompt engineer would: exact allowed values, exact
-  formats, what to omit. Hints are prompt payload for AI extraction, not documentation.`;
+  formats, what to omit. Hints are prompt payload for AI interpretation, not documentation.`;
 
 /** One exchange in the repair loop, in provider-neutral form. */
 interface ChatTurn {
