@@ -23,6 +23,8 @@ describe('flexShrinkOf', () => {
     expect(flexShrinkOf('auto')).toBe('1');
     expect(flexShrinkOf('1')).toBe('1');
     expect(flexShrinkOf('1 120px')).toBe('1');
+    // Basis first: the number after it is the grow factor, not the shrink.
+    expect(flexShrinkOf('100px 0')).toBe('1');
   });
 
   it('sets nothing without a flex', () => {

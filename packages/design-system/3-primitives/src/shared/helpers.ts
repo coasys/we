@@ -587,7 +587,8 @@ export function flexShrinkOf(flex: string | undefined): string | undefined {
   if (!flex) return undefined;
   const [first, second] = flex.trim().split(/\s+/);
   if (first === 'none') return '0';
-  return second !== undefined && /^\d*\.?\d+$/.test(second) ? second : '1';
+  const factor = (token: string | undefined) => token !== undefined && /^\d*\.?\d+$/.test(token);
+  return factor(first) && factor(second) ? second : '1';
 }
 
 /**

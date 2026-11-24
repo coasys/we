@@ -21199,7 +21199,7 @@ export const seedBundles: Bundle[] = [
                     { type: 'we-icon', props: { name: 'phone', color: 'text-muted' } },
                     {
                       type: 'Row',
-                      props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                      props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                       children: [
                         {
                           type: 'Row',
@@ -21545,7 +21545,7 @@ export const seedBundles: Bundle[] = [
                           },
                           {
                             type: 'Row',
-                            props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                            props: { flex: '1', minWidth: '18.5rem', gap: '100', ay: 'center' },
                             children: [
                               {
                                 type: '$if',
@@ -25235,7 +25235,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -25659,7 +25659,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'flow-arrow', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -29181,7 +29181,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'dna', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '9.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -30469,7 +30469,7 @@ export const seedBundles: Bundle[] = [
                       { type: 'we-icon', props: { name: 'user', color: 'text-muted' } },
                       {
                         type: 'Row',
-                        props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+                        props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                         children: [
                           {
                             type: 'Row',

@@ -87,11 +87,15 @@ const crumbText = (label: Child, extra: Record<string, unknown> = {}): SchemaNod
   children: [label],
 });
 
+/** The least a step on the way keeps (`crumbStep`), and the least the step somebody is on keeps, in rem. */
+const STEP_FLOOR = 3;
+const TITLE_FLOOR = 3.5;
+
 /** A step on the way here: muted, a button where it goes somewhere, and the caret to the next. */
 const crumbStep = (crumb: Crumb): SchemaNode => ({
   type: 'Row',
   // Shrinks before the step somebody is on, but only so far: each keeps a word or two.
-  props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
+  props: { gap: '100', ay: 'center', minWidth: `${STEP_FLOOR}rem`, maxWidth: '40%', flexShrink: 1 },
   children: [
     crumb.onClick
       ? {
@@ -162,7 +166,9 @@ export const viewBar = (
     {
       type: 'Row',
       // The title gives way with an ellipsis, but only to a few letters: below that the bar wraps instead.
-      props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
+      // The floor counts every step before the title, so the trail never runs past its row. A step that
+      // is only sometimes there (`when`) counts too: the bar then wraps a little early, never late.
+      props: { flex: '1', minWidth: `${TITLE_FLOOR + STEP_FLOOR * (crumbs.length - 1)}rem`, gap: '100', ay: 'center' },
       children: [...trail(crumbs), ...beside],
     },
     ...aside,

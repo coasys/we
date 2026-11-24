@@ -54,6 +54,8 @@ export async function check({ evaluate, screenshot }) {
     const sw = switchText.getBoundingClientRect();
     const canvas = document.createElement('canvas').getContext('2d');
     const narrow = [];
+    // The loop skips a zero-width text; the switch's label must never be one.
+    if (!sw.width) narrow.push('"Show call transcripts" is 0px, its longest word over 0px');
     for (const el of everything(mount)) {
       if (el.localName !== 'we-text') continue;
       const text = (el.textContent ?? '').trim();
