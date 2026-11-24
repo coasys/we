@@ -3,97 +3,36 @@
  *
  * A tree drop writes the structure the layout reads — a connection moved to a new parent, made, or deleted
  * — and the ranks that order a row. None of it went into the canvas's undo history, so Ctrl+Z after a drop
- * into the wrong branch did nothing at all. These are the closures that put it back, run against a stand-in
- * holding the connections and the placements, and the rule they keep is the canvas's: an undo is a new
+ * into the wrong branch did nothing at all. These are the closures that put it back, run against the in-memory
+ * backend holding the connections and the placements, and the rule they keep is the canvas's: an undo is a new
  * forward write, and a card a peer has moved since is left where they put it.
  */
 import { render } from '@solidjs/testing-library';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { getEntity, registerEntityWriteCheck } from '@we/entities';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'kind-1';
 
-interface Link {
-  id: string;
-  relationshipTypeId: string;
-  source?: string;
-  target?: string;
-  sourceType?: string;
-  targetType?: string;
-  connection?: string;
-  label?: string;
-  /** Only on the stand-ins for cards, which share the map so one double answers both reads. */
-  title?: string;
-}
+type Row = Record<string, unknown> & { id: string };
+type Model = {
+  create(p: unknown, data: Record<string, unknown>, options?: Record<string, unknown>): Promise<Row>;
+  findAll(p: unknown, query?: Record<string, unknown>): Promise<Row[]>;
+  findOne(p: unknown, query: Record<string, unknown>): Promise<Row | null>;
+  update(p: unknown, id: string, data: Record<string, unknown>): Promise<unknown>;
+};
+const model = (name: string) => getEntity(name) as unknown as Model;
 
-interface Row {
-  id: string;
-  node: string;
-  rank?: number;
-  parent: string;
-}
-
-const { world, Placement, Relationship } = vi.hoisted(() => {
-  const state = { links: new Map<string, Link>(), rows: new Map<string, Row>(), next: 0 };
-  /** A link as the ORM hands one back: a live instance whose ends move through accessors. */
-  const live = (link: Link) =>
-    Object.assign(link, {
-      setSource: async (value: string) => void (state.links.get(link.id)!.source = value),
-      setTarget: async (value: string) => void (state.links.get(link.id)!.target = value),
-    });
-  return {
-    world: state,
-    Placement: {
-      findAll: async (_p: unknown, query: { parent?: { id: string } }) =>
-        [...state.rows.values()].filter((row) => row.parent === query.parent?.id),
-      update: async (_p: unknown, id: string, patch: Partial<Row>) => void Object.assign(state.rows.get(id)!, patch),
-      delete: async (_p: unknown, id: string) => void state.rows.delete(id),
-      create: async () => ({}),
-    },
-    Relationship: {
-      findAll: async (
-        _p: unknown,
-        query: { where: { relationshipTypeId?: string; OR?: { source?: string; target?: string }[] } },
-      ) =>
-        query.where.OR
-          ? [...state.links.values()].filter((link) =>
-              query.where.OR!.some((one) => link.source === one.source || link.target === one.target),
-            )
-          : [...state.links.values()].filter((link) => link.relationshipTypeId === query.where.relationshipTypeId),
-      findOne: async (_p: unknown, query: { where: { id: string } }) => {
-        const link = state.links.get(query.where.id);
-        return link ? live(link) : null;
-      },
-      create: async (_p: unknown, data: Omit<Link, 'id'>) => {
-        // A relation handed as a one-element array is stored as its one value, as the ORM does.
-        const one = (value: unknown) => (Array.isArray(value) ? value[0] : value);
-        const link: Link = { ...data, source: one(data.source), target: one(data.target), id: `link-${state.next++}` };
-        state.links.set(link.id, link);
-        return live(link);
-      },
-      update: async (_p: unknown, id: string, patch: Partial<Link>) => void Object.assign(state.links.get(id)!, patch),
-      delete: async (_p: unknown, id: string) => void state.links.delete(id),
-    },
-  };
-});
-
-vi.mock('@we/entities', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@we/entities');
-  return {
-    ...actual,
-    Placement,
-    EdgeRoute: { findAll: async () => [], create: async () => ({}), update: async () => ({}), delete: async () => {} },
-    TypeStyle: { findAll: async () => [], create: async () => ({}), update: async () => ({}) },
-    runEntityTransaction: async (_p: unknown, fn: (tx: { batchId: string }) => Promise<unknown>) =>
-      fn({ batchId: 'batch-1' }),
-    getEntity: () => Relationship,
-    getEntityForDataset: () => undefined,
-  };
-});
+/*
+  The in-memory backend holds the connections and the placements: the canvas writes are declared
+  operations run by the real runner.
+*/
+let handle: unknown;
 
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
   useDatasetStore: () => ({
-    currentDataset: () => ({ id: 'ds', handle: {}, name: 'Space' }),
+    currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
     datasets: () => [],
     personalDataset: () => null,
     currentDatasetEntities: () => [],
@@ -133,24 +72,46 @@ function mount(): RecordStore {
 }
 
 const link = (id: string, source: string, target: string) =>
-  world.links.set(id, { id, relationshipTypeId: SPINE, source, target, sourceType: 'Card', targetType: 'Card' });
+  model('Relationship').create(
+    handle,
+    { relationshipTypeId: SPINE, source: [source], target: [target], sourceType: 'Card', targetType: 'Card' },
+    { id },
+  );
 const place = (node: string, rank?: number) =>
-  world.rows.set(`row-${node}`, { id: `row-${node}`, node, parent: CANVAS, ...(rank ? { rank } : {}) });
-const parentOf = (card: string) => [...world.links.values()].find((entry) => entry.target === card)?.source;
-const rankOf = (card: string) => world.rows.get(`row-${card}`)?.rank ?? 0;
+  model('Placement').create(
+    handle,
+    { nodeType: 'Card', node: [node], ...(rank ? { rank } : {}) },
+    { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
+  );
+const links = () => model('Relationship').findAll(handle);
+const linkOf = async (id: string) => (await model('Relationship').findOne(handle, { where: { id } }))!;
+const parentOf = async (card: string) => (await links()).find((entry) => entry.target === card)?.source;
+const rankOf = async (card: string) =>
+  ((await model('Placement').findOne(handle, { where: { id: `row-${card}` } }))?.rank as number | undefined) ?? 0;
+/** A peer's write, straight to the backend — so the store records nothing for it. */
+const peer = async (id: string, fields: Record<string, unknown>) => {
+  const found = (await model('Relationship').findOne(handle, { where: { id } })) as Row & { save(): Promise<void> };
+  Object.assign(found, fields);
+  await found.save();
+};
 
 /** p over a and b; q over x — every card placed, a and b ranked. */
-beforeEach(() => {
-  world.links.clear();
-  world.rows.clear();
-  world.next = 0;
-  link('pa', 'p', 'a');
-  link('pb', 'p', 'b');
-  link('qx', 'q', 'x');
-  for (const card of ['p', 'q', 'x', 'z']) place(card);
-  place('a', 1024);
-  place('b', 2048);
+beforeEach(async () => {
+  const ports = createInMemoryBackendPorts(
+    { selfId: () => 'did:key:z6Mk' },
+    { agent: { id: 'did:key:z6Mk', unlocked: true }, datasets: [{ id: 'ds-tree', name: 'Tree' }] },
+  );
+  handle = (await ports.lifecycle.get('ds-tree'))!.handle;
+  await model('CollectionBlock').create(handle, { kind: 'canvas' }, { id: CANVAS });
+  await link('pa', 'p', 'a');
+  await link('pb', 'p', 'b');
+  await link('qx', 'q', 'x');
+  for (const card of ['p', 'q', 'x', 'z']) await place(card);
+  await place('a', 1024);
+  await place('b', 2048);
 });
+
+afterEach(() => registerEntityWriteCheck(null));
 
 const drop = (store: RecordStore, payload: Record<string, unknown>) =>
   store.arrangeOnTree(CANVAS, SPINE, { recordId: 'b', recordType: 'Card', ...payload });
@@ -159,23 +120,23 @@ describe('undoing a tree drop', () => {
   it('moves a card back to the parent it came from, and its rank back with it', async () => {
     const store = mount();
     await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
-    expect(parentOf('b')).toBe('x');
+    expect(await parentOf('b')).toBe('x');
 
     await store.undoCanvas(CANVAS);
-    expect(parentOf('b')).toBe('p');
-    expect(rankOf('b')).toBe(2048);
+    expect(await parentOf('b')).toBe('p');
+    expect(await rankOf('b')).toBe(2048);
 
     await store.redoCanvas(CANVAS);
-    expect(parentOf('b')).toBe('x');
+    expect(await parentOf('b')).toBe('x');
   });
 
   it('puts a row back in the order it had', async () => {
     const store = mount();
     await drop(store, { into: 'sibling', targetId: 'a', targetType: 'Card', before: true, order: ['b', 'a'] });
-    expect(rankOf('b')).toBeLessThan(rankOf('a'));
+    expect(await rankOf('b')).toBeLessThan(await rankOf('a'));
 
     await store.undoCanvas(CANVAS);
-    expect(rankOf('a')).toBeLessThan(rankOf('b'));
+    expect(await rankOf('a')).toBeLessThan(await rankOf('b'));
   });
 
   it('takes away a connection the drop made, and makes it again on redo', async () => {
@@ -188,34 +149,34 @@ describe('undoing a tree drop', () => {
       targetType: 'Card',
       order: ['z'],
     });
-    expect(parentOf('z')).toBe('x');
+    expect(await parentOf('z')).toBe('x');
 
     await store.undoCanvas(CANVAS);
-    expect(parentOf('z')).toBeUndefined();
+    expect(await parentOf('z')).toBeUndefined();
 
     await store.redoCanvas(CANVAS);
-    expect(parentOf('z')).toBe('x');
+    expect(await parentOf('z')).toBe('x');
   });
 
   it('puts back a card taken out of its tree', async () => {
     const store = mount();
     await drop(store, { into: 'loose' });
-    expect(parentOf('b')).toBeUndefined();
+    expect(await parentOf('b')).toBeUndefined();
 
     await store.undoCanvas(CANVAS);
-    expect(parentOf('b')).toBe('p');
+    expect(await parentOf('b')).toBe('p');
 
     await store.redoCanvas(CANVAS);
-    expect(parentOf('b')).toBeUndefined();
+    expect(await parentOf('b')).toBeUndefined();
   });
 
   it('leaves a card alone when a peer has moved it since', async () => {
     const store = mount();
     await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
-    world.links.get('pb')!.source = 'q';
+    await peer('pb', { source: ['q'] });
 
     await store.undoCanvas(CANVAS);
-    expect(parentOf('b')).toBe('q');
+    expect(await parentOf('b')).toBe('q');
   });
 });
 
@@ -232,11 +193,11 @@ describe('undoing a tree drop', () => {
  */
 describe('a connection’s key', () => {
   /** A card the double can read a title off, as `TaskBlock` names one by its identity property. */
-  const card = (id: string, title: string) => world.links.set(id, { id, relationshipTypeId: '', title });
+  const card = (id: string, title: string) => model('TaskBlock').create(handle, { title }, { id });
 
   it('names both ends by title on a connection a tree drop makes', async () => {
-    card('x', 'Ship the release');
-    card('z', 'Write the notes');
+    await card('x', 'Ship the release');
+    await card('z', 'Write the notes');
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
       recordId: 'z',
@@ -246,7 +207,7 @@ describe('a connection’s key', () => {
       targetType: 'TaskBlock',
       order: ['z'],
     });
-    const made = [...world.links.values()].find((entry) => entry.target === 'z');
+    const made = (await links()).find((entry) => entry.target === 'z');
     expect(made?.connection).toBe('Ship the release \u2192 Write the notes');
   });
 
@@ -260,31 +221,31 @@ describe('a connection’s key', () => {
       targetType: 'Card',
       order: ['z'],
     });
-    expect([...world.links.values()].find((entry) => entry.target === 'z')?.connection).toBe('x \u2192 z');
+    expect((await links()).find((entry) => entry.target === 'z')?.connection).toBe('x \u2192 z');
   });
 
   it('follows the end a tree drop moves, and moves back on undo', async () => {
-    world.links.get('pb')!.label = 'depends on';
+    await peer('pb', { label: 'depends on' });
     const store = mount();
     await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
-    expect(world.links.get('pb')?.connection).toBe('x \u2192 b: depends on');
+    expect((await linkOf('pb')).connection).toBe('x \u2192 b: depends on');
 
     await store.undoCanvas(CANVAS);
-    expect(world.links.get('pb')?.connection).toBe('p \u2192 b: depends on');
+    expect((await linkOf('pb')).connection).toBe('p \u2192 b: depends on');
   });
 
   it('follows a relabel', async () => {
     const store = mount();
     await store.updateRecordField('Relationship', 'pb', 'label', 'blocks');
-    expect(world.links.get('pb')?.connection).toBe('p \u2192 b: blocks');
+    expect((await linkOf('pb')).connection).toBe('p \u2192 b: blocks');
   });
 
   it('follows a record it joins being renamed', async () => {
-    card('q', 'Old name');
-    world.links.get('qx')!.sourceType = 'TaskBlock';
+    await card('q', 'Old name');
+    await peer('qx', { sourceType: 'TaskBlock' });
     const store = mount();
     await store.updateRecordField('TaskBlock', 'q', 'title', 'New name');
-    expect(world.links.get('qx')?.connection).toBe('New name \u2192 x');
+    expect((await linkOf('qx')).connection).toBe('New name \u2192 x');
   });
 
   it('trims, and leaves the label off when there is none', () => {
@@ -296,8 +257,12 @@ describe('a connection’s key', () => {
 
 describe('connections written and not yet seen', () => {
   /** What the graph would report drawing from its own data, in records. */
-  const drawn = () =>
-    [...world.links.values()].map(({ id, source, target }) => ({ id, source: source ?? '', target: target ?? '' }));
+  const drawn = async () =>
+    (await links()).map(({ id, source, target }) => ({
+      id,
+      source: String(source ?? ''),
+      target: String(target ?? ''),
+    }));
 
   it('draws a line somebody drew at once, and stops when the graph draws the real one', async () => {
     const store = mount();
@@ -311,9 +276,9 @@ describe('connections written and not yet seen', () => {
     expect(store.pendingConnections().added).toEqual([expect.objectContaining({ source: 'a', target: 'x' })]);
     const id = await writing;
 
-    store.observeConnections(drawn().filter((line) => line.id !== id));
+    store.observeConnections((await drawn()).filter((line) => line.id !== id));
     expect(store.pendingConnections().added).toHaveLength(1);
-    store.observeConnections(drawn());
+    store.observeConnections(await drawn());
     expect(store.pendingConnections().added).toHaveLength(0);
   });
 
@@ -322,10 +287,10 @@ describe('connections written and not yet seen', () => {
     await store.deleteRecords([{ recordId: 'pa', recordType: 'Relationship' }]);
     expect(store.pendingConnections().removed).toEqual(['pa']);
 
-    store.observeConnections(drawn());
+    // The graph still drawing it from an answer that predates the delete.
+    store.observeConnections([...(await drawn()), { id: 'pa', source: 'p', target: 'a' }]);
     expect(store.pendingConnections().removed).toEqual(['pa']);
-    world.links.delete('pa');
-    store.observeConnections(drawn());
+    store.observeConnections(await drawn());
     expect(store.pendingConnections().removed).toEqual([]);
   });
 
@@ -340,21 +305,17 @@ describe('connections written and not yet seen', () => {
     });
     expect(store.pendingConnections().moved).toEqual([{ id: 'pb', end: 'source', to: 'q' }]);
     await writing;
-    store.observeConnections(drawn());
+    store.observeConnections(await drawn());
     expect(store.pendingConnections().moved).toEqual([]);
   });
 
   it('lets go of a line whose write failed', async () => {
     const store = mount();
-    const create = Relationship.create;
-    Relationship.create = async () => {
-      throw new Error('refused');
-    };
-    try {
-      await store.connectNodesNow({ sourceId: 'a', sourceType: 'Card', targetId: 'x', targetType: 'Card' } as never);
-    } finally {
-      Relationship.create = create;
-    }
+    registerEntityWriteCheck((write) => {
+      if (write.entity === 'Relationship' && write.kind === 'create')
+        throw Object.assign(new Error('refused'), { name: 'PolicyRefusal' });
+    });
+    await store.connectNodesNow({ sourceId: 'a', sourceType: 'Card', targetId: 'x', targetType: 'Card' } as never);
     expect(store.pendingConnections().added).toEqual([]);
   });
 

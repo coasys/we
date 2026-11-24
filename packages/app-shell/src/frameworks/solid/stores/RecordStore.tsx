@@ -43,8 +43,10 @@ import {
   EdgeRoute,
   getEntity,
   getEntityForDataset,
+  isOperationError,
   Placement,
   runEntityTransaction,
+  runOperation,
   Space,
   TypeStyle,
 } from '@we/entities';
@@ -214,27 +216,6 @@ export function connectionKey(source: string, target: string, label?: unknown): 
 }
 
 /**
- * A connection between two records, written as ONE commit — answering with its id.
- *
- * Its ends go in as one-element arrays for the reason `createPlacement` gives: a plain value is
- * skipped, and the generated `setSource`/`setTarget` each commit on their own — three round trips,
- * with a moment in between where a peer could read a connection with one end or none.
- */
-async function createConnection(
-  dataset: unknown,
-  fields: Record<string, unknown>,
-  sourceId: string,
-  targetId: string,
-): Promise<string> {
-  const created = (await entityNamed(RELATIONSHIP).create(dataset, {
-    ...fields,
-    source: [sourceId],
-    target: [targetId],
-  })) as { id?: string } | null;
-  return String(created?.id ?? '');
-}
-
-/**
  * A stored placement, as this file reads one back.
  *
  * Loose beyond the three fields anything here names, because the interesting use is putting a
@@ -246,27 +227,36 @@ async function createConnection(
 type PlacementRow = { id: string; node?: string; tier?: string } & Record<string, unknown>;
 
 /**
- * The placement a canvas draws for one node — the row a write to that card has to land on.
+ * The placement a canvas draws for one node — the row a write to that card has to land on — and the
+ * rows it outranks.
  *
  * Chosen by `resolvePlacement`, the canvas seed's own rule, rather than by `find`. Two people placing
  * the same card before either placement syncs leave two rows, and a writer taking the first while
  * the canvas drew another sent every later drag to a row nobody saw: the card snapped back, for
  * everyone, however often it was moved.
  *
- * The rows it outranks are deleted. They were never drawn, so nothing visible is lost, and the pick
- * is a function of the rows alone — every peer holding the same rows keeps the same one, so two
- * peers tidying at once cannot each delete the other's survivor. Only rows at the survivor's own
- * tier go: a placement for another breakpoint is not a duplicate of it.
+ * The rows it outranks are the write's to delete (`core.placeCard` takes them). They were never
+ * drawn, so nothing visible is lost, and the pick is a function of the rows alone — every peer
+ * holding the same rows keeps the same one, so two peers tidying at once cannot each delete the
+ * other's survivor. Only rows at the survivor's own tier: a placement for another breakpoint is not a
+ * duplicate of it.
  */
-async function drawnPlacement(dataset: unknown, parent: ParentRef, nodeId: string): Promise<PlacementRow | undefined> {
-  const existing = (await Placement.findAll(dataset, { parent })) as unknown as PlacementRow[];
-  const rows = existing.filter((row) => row.node === nodeId);
-  const drawn = resolvePlacement(rows);
-  if (!drawn) return undefined;
-  for (const row of rows) {
-    if (row !== drawn && (row.tier ?? '') === (drawn.tier ?? '')) await Placement.delete(dataset, row.id);
-  }
-  return drawn;
+function drawnAmong(rows: readonly PlacementRow[], nodeId: string): { drawn?: PlacementRow; duplicates: string[] } {
+  const mine = rows.filter((row) => row.node === nodeId);
+  const drawn = resolvePlacement(mine);
+  if (!drawn) return { duplicates: [] };
+  const duplicates = mine
+    .filter((row) => row !== drawn && (row.tier ?? '') === (drawn.tier ?? ''))
+    .map((row) => row.id);
+  return { drawn, duplicates };
+}
+
+async function drawnPlacement(
+  dataset: unknown,
+  parent: ParentRef,
+  nodeId: string,
+): Promise<{ drawn?: PlacementRow; duplicates: string[] }> {
+  return drawnAmong((await Placement.findAll(dataset, { parent })) as unknown as PlacementRow[], nodeId);
 }
 
 /** Connections held ahead of the data — see `RecordStore.pendingConnections`. Record ids throughout. */
@@ -781,6 +771,26 @@ const RecordStoreContext = createContext<RecordStore>();
 export function RecordStoreProvider(props: ParentProps) {
   const datasetStore = useDatasetStore();
   const session = useSessionStore();
+
+  /**
+   * Run one of the canvas operations (`core.placeCard` …) as the signed-in agent. The writes are
+   * declared so every host and an agent make the same ones; what is drawn ahead and the undo stay here.
+   */
+  async function runOp<T = unknown>(name: string, args: Record<string, unknown>, handle: unknown): Promise<T> {
+    const invoker = session.me()?.did;
+    if (!invoker) throw new Error(`${name}: nobody is signed in`);
+    return (await runOperation(name, args, { dataset: handle, invoker })) as T;
+  }
+
+  /** A connection between two records, as one write — answering with its id. */
+  async function connect(
+    handle: unknown,
+    ends: { source: string; sourceType?: string; target: string; targetType?: string },
+    extra: { key?: string; kind?: string; fields?: Record<string, unknown>; home?: string } = {},
+  ): Promise<string> {
+    const id = await runOp<string>('core.connectRecords', { ...ends, ...extra }, handle);
+    return String(id ?? '');
+  }
   const shapeStore = useShapeStore();
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
@@ -1399,19 +1409,16 @@ export function RecordStoreProvider(props: ParentProps) {
     try {
       // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
       const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
-        createConnection(
+        connect(
           dataset.handle,
+          { source: link.sourceId, sourceType: link.sourceType, target: link.targetId, targetType: link.targetType },
           {
-            sourceType: link.sourceType,
-            targetType: link.targetType,
-            connection: await keyFor(
+            key: await keyFor(
               dataset.handle,
               { id: link.sourceId, type: link.sourceType },
               { id: link.targetId, type: link.targetType },
             ),
           },
-          link.sourceId,
-          link.targetId,
         ),
       );
       setLastCreatedId(id);
@@ -1560,20 +1567,25 @@ export function RecordStoreProvider(props: ParentProps) {
     */
     hold(nodeId, { x, y });
     try {
-      const already = await drawnPlacement(dataset.handle, parent, nodeId);
-      const from = already ? { x: Number(already.x) || 0, y: Number(already.y) || 0 } : null;
+      const { drawn: already, duplicates } = await drawnPlacement(dataset.handle, parent, nodeId);
+      const before = already ? { x: Number(already.x) || 0, y: Number(already.y) || 0 } : null;
 
       if (expect !== undefined) {
-        const matches = expect === null ? already === undefined : from !== null && sameSpot(from, expect);
+        const matches = expect === null ? already === undefined : before !== null && sameSpot(before, expect);
         if (!matches) {
           drop(nodeId, { x, y });
           return null;
         }
       }
 
-      if (already) await Placement.update(dataset.handle, already.id, { x, y });
-      else await createPlacement(dataset.handle, parent, nodeId, nodeType, { x, y });
+      // Edited where the canvas draws one, made where it has none, and its duplicates gone, together.
+      const moved = await runOp<{ from: Record<string, unknown> | null }>(
+        'core.placeCard',
+        { canvas, node: nodeId, nodeType, fields: { x, y }, placement: already?.id, duplicates },
+        dataset.handle,
+      );
       done(nodeId, { x, y });
+      const from = moved.from ? { x: Number(moved.from.x) || 0, y: Number(moved.from.y) || 0 } : null;
       return { from, to: { x, y } };
     } catch (error) {
       drop(nodeId, { x, y });
@@ -1685,7 +1697,18 @@ export function RecordStoreProvider(props: ParentProps) {
       toastService.info('People have discussed that connection. Select the line itself to remove it.');
       return false;
     }
-    await withConnectionHold({ kind: 'removed', id: linkId }, () => Model.delete(handle as never, linkId));
+    try {
+      await withConnectionHold({ kind: 'removed', id: linkId }, () =>
+        runOp('core.detachConnection', { connection: linkId }, handle),
+      );
+    } catch (error) {
+      // Discussed between the read above and the write: the operation's own check, said the same way.
+      if (isOperationError(error) && error.code === 'discussed') {
+        toastService.info(error.message);
+        return false;
+      }
+      throw error;
+    }
     return true;
   }
 
@@ -1710,16 +1733,10 @@ export function RecordStoreProvider(props: ParentProps) {
     hold = true,
   ): Promise<string> {
     const write = async () =>
-      createConnection(
+      connect(
         handle,
-        {
-          relationshipTypeId,
-          sourceType: parent.type,
-          targetType: card.type,
-          connection: await keyFor(handle, parent, card),
-        },
-        parent.id,
-        card.id,
+        { source: parent.id, sourceType: parent.type, target: card.id, targetType: card.type },
+        { key: await keyFor(handle, parent, card), kind: relationshipTypeId || undefined },
       );
     if (!hold) return write();
     return withConnectionHold(
@@ -1957,6 +1974,40 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
+   * Write a tree row's new ranks, all in one transaction (`core.rankCards`).
+   *
+   * Every rank is held before any is written and written together, so the tree reads the whole new
+   * order at once: written one by one, a row being renumbered would pass through each half-written
+   * order on its way, and take a round trip per card to get there. Each lands on the placement the
+   * canvas draws for its card, picked from the rows the drop has already read.
+   */
+  async function writeRanks(
+    handle: unknown,
+    placements: readonly PlacementRow[],
+    writes: ReadonlyMap<string, number>,
+  ): Promise<void> {
+    const ranks: { placement: string; rank: number }[] = [];
+    let unplaced = false;
+    for (const [nodeId, rank] of writes) {
+      const { drawn } = drawnAmong(placements, nodeId);
+      if (drawn) ranks.push({ placement: drawn.id, rank });
+      else unplaced = true;
+    }
+    if (unplaced) toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
+    if (!ranks.length) return;
+    const held = [...writes].filter(([nodeId]) => drawnAmong(placements, nodeId).drawn);
+    for (const [nodeId, rank] of held) hold(nodeId, { rank });
+    try {
+      await runOp('core.rankCards', { ranks }, handle);
+      for (const [nodeId, rank] of held) done(nodeId, { rank });
+    } catch (error) {
+      for (const [nodeId, rank] of held) drop(nodeId, { rank });
+      console.error('RecordStore: ordering cards in a tree failed', error);
+      toastService.error('Could not save that.');
+    }
+  }
+
+  /**
    * Drag a card to another place in a tree along a *model relation* — the link a class declares — and
    * write that link.
    *
@@ -2114,7 +2165,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
     const placements = (await Placement.findAll(handle, {
       parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
-    })) as unknown as { node?: string; rank?: number }[];
+    })) as unknown as PlacementRow[];
     const ranks: Record<string, number> = {};
     /*
       Which cards have a placement to hold a rank. A model relation's children are mostly pulled in
@@ -2141,8 +2192,7 @@ export function RecordStoreProvider(props: ParentProps) {
         .filter((write) => placed.has(write.id))
         .map((write) => [write.id, write.rank] as const),
     );
-    for (const [id, rank] of writes) hold(id, { rank });
-    for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+    await writeRanks(handle, placements, writes);
     rememberRelationDrop(
       canvas,
       handle,
@@ -2293,7 +2343,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
       const placements = (await Placement.findAll(handle, {
         parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
-      })) as unknown as { node?: string; rank?: number }[];
+      })) as unknown as PlacementRow[];
       const ranks: Record<string, number> = {};
       for (const row of placements) {
         const rank = Number(row.rank);
@@ -2315,13 +2365,7 @@ export function RecordStoreProvider(props: ParentProps) {
         before: event.before,
       });
       const writes = new Map(seatInRow(row, cardId, index).map((write) => [write.id, write.rank] as const));
-      /*
-        Every rank held before any is written, so the tree reads the whole new order at once. Written one by
-        one, a row being renumbered would pass through each half-written order on its way, and would take a
-        round trip per card to get there.
-      */
-      for (const [id, rank] of writes) hold(id, { rank });
-      for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+      await writeRanks(handle, placements, writes);
       rememberTreeDrop(
         canvas,
         handle,
@@ -2626,7 +2670,7 @@ export function RecordStoreProvider(props: ParentProps) {
     // on the round trip. Dropped again below if the write turns out not to be possible.
     hold(nodeId, patch);
     try {
-      const already = await drawnPlacement(
+      const { drawn: already, duplicates } = await drawnPlacement(
         dataset.handle,
         { id: canvas, relation: 'children', entity: 'CollectionBlock' },
         nodeId,
@@ -2674,7 +2718,11 @@ export function RecordStoreProvider(props: ParentProps) {
         return undefined;
       }
 
-      await Placement.update(dataset.handle, already.id, patch);
+      await runOp(
+        'core.placeCard',
+        { canvas, node: nodeId, fields: patch, placement: already.id, duplicates, create: false },
+        dataset.handle,
+      );
       // The write is back, so the hold stops being exempt from what the next draw says — see
       // `BoardDeps.done` for why that is not the same as releasing it.
       done(nodeId, patch);
@@ -2722,15 +2770,17 @@ export function RecordStoreProvider(props: ParentProps) {
       const write = routeWrite(already, event.end, side);
 
       if (write.action === 'none') return;
-      if (write.action === 'update') {
-        await EdgeRoute.update(dataset.handle, already!.id, write.fields);
-        return;
-      }
-      if (write.action === 'replace' || write.action === 'delete') {
-        await EdgeRoute.delete(dataset.handle, already!.id);
-      }
-      if (write.action === 'delete') return;
-      await EdgeRoute.create(dataset.handle, { ...write.fields, connection: [event.recordId] }, { parent });
+      await runOp(
+        'core.writeEdgeRoute',
+        {
+          canvas,
+          connection: event.recordId,
+          route: already?.id,
+          action: write.action,
+          ...('fields' in write ? { fields: write.fields } : {}),
+        },
+        dataset.handle,
+      );
     } catch (error) {
       console.error('RecordStore: anchoring a connection on a canvas failed', error);
       toastService.error('Could not save that.');
@@ -2809,31 +2859,37 @@ export function RecordStoreProvider(props: ParentProps) {
         type: typeof otherType === 'string' ? otherType : '',
       };
       const to = { id: event.nodeId, type: event.nodeType };
-      await Model.update(dataset.handle, event.recordId, {
-        [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
-        ...(moved && other.id
-          ? {
-              connection:
-                event.end === 'source'
-                  ? await keyFor(dataset.handle, to, other, record.label)
-                  : await keyFor(dataset.handle, other, to, record.label),
-            }
-          : {}),
-      });
-      /*
-        Called, not optional-chained.
+      if (moved) {
+        // The end, its type and the key, as one write — `core.retargetConnection`.
+        const key = other.id
+          ? event.end === 'source'
+            ? await keyFor(dataset.handle, to, other, record.label)
+            : await keyFor(dataset.handle, other, to, record.label)
+          : undefined;
+        await runOp(
+          'core.retargetConnection',
+          { connection: event.recordId, end: event.end, node: event.nodeId, nodeType: event.nodeType, key },
+          dataset.handle,
+        );
+      } else {
+        /*
+          A record shaped like a connection that is not one — a foreign model's — has no declared
+          operation to move it, since an operation names the entity it writes. Its type and its end
+          are written here, through its own accessors.
 
-        `setSource`/`setTarget` are generated from the model's declaration, so their absence means
-        the record did not come back as a live instance — which is a thing to hear about rather than
-        a reason to write nothing. Optional-chained, that case left the type written, the anchor
-        cleared and the endpoint exactly where it was: a gesture that reported success and moved
-        nothing, which is the hardest kind of failure to find.
-      */
-      const move = record[event.end === 'source' ? 'setSource' : 'setTarget'];
-      if (typeof move !== 'function') {
-        throw new Error(`${event.recordType || RELATIONSHIP} has no ${event.end} accessor to move`);
+          Called, not optional-chained: a missing accessor means the record did not come back as a
+          live instance, and an optional chain would leave a gesture that reported success and moved
+          nothing.
+        */
+        await Model.update(dataset.handle, event.recordId, {
+          [event.end === 'source' ? 'sourceType' : 'targetType']: event.nodeType,
+        });
+        const move = record[event.end === 'source' ? 'setSource' : 'setTarget'];
+        if (typeof move !== 'function') {
+          throw new Error(`${event.recordType} has no ${event.end} accessor to move`);
+        }
+        await (move as (value: string) => Promise<unknown>).call(record, event.nodeId);
       }
-      await (move as (value: string) => Promise<unknown>).call(record, event.nodeId);
 
       // The anchor for the end that moved, dropped — see the note above. Reusing the same action a
       // person's own clear goes through, so there is one path that knows how to unset one.
@@ -2862,17 +2918,22 @@ export function RecordStoreProvider(props: ParentProps) {
       }[];
       const already = existing.find((row) => row.connection === event.recordId);
 
+      if (!already && !points.length) return;
+      const route = { canvas, connection: event.recordId, route: already?.id };
       if (!already) {
-        if (!event.points.length) return;
-        await EdgeRoute.create(dataset.handle, { points, connection: [event.recordId] }, { parent });
+        await runOp('core.writeEdgeRoute', { ...route, action: 'create', fields: { points } }, dataset.handle);
         return;
       }
-      if (!event.points.length && !already.sourceAnchor && !already.targetAnchor) {
-        await EdgeRoute.delete(dataset.handle, already.id);
+      if (!points.length && !already.sourceAnchor && !already.targetAnchor) {
+        await runOp('core.writeEdgeRoute', { ...route, action: 'delete' }, dataset.handle);
         return;
       }
       // A straightened route still pinned at an end keeps the record and clears its bends.
-      await EdgeRoute.update(dataset.handle, already.id, { points: points.length ? points : '' });
+      await runOp(
+        'core.writeEdgeRoute',
+        { ...route, action: 'update', fields: { points: points.length ? points : '' } },
+        dataset.handle,
+      );
     } catch (error) {
       console.error('RecordStore: rerouting a connection on a canvas failed', error);
       toastService.error('Could not save that.');
@@ -2962,24 +3023,17 @@ export function RecordStoreProvider(props: ParentProps) {
     // The same sentinel a card's own colour uses, and for the same reason: `''` cannot be stored, so
     // without it a type could be given a colour and never have it taken away.
     const value = typeof raw === 'string' && raw ? raw : PLACEMENT_UNSET;
-    const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
 
     try {
       // An upsert against the canvas's own children, exactly as a placement is: the parent link is
       // what makes a style belong to a canvas, and colouring a type twice must not leave two records
       // disagreeing about it.
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as {
-        id: string;
-        nodeType?: string;
-      }[];
-      const already = existing.find((row) => row.nodeType === nodeType);
-      if (already) {
-        await TypeStyle.update(dataset.handle, already.id, { color: value });
-        return;
-      }
-      // Nothing to clear that was never set.
-      if (value === PLACEMENT_UNSET) return;
-      await TypeStyle.create(dataset.handle, { nodeType, color: value }, { parent });
+      // Nothing to clear that was never set, so a clear makes no style where there is none.
+      await runOp(
+        'core.colorCanvasType',
+        { canvas, nodeType, color: value, create: value !== PLACEMENT_UNSET },
+        dataset.handle,
+      );
     } catch (error) {
       console.error('RecordStore: colouring a type on a canvas failed', error);
       toastService.error('Could not save that colour.');
@@ -3076,11 +3130,8 @@ export function RecordStoreProvider(props: ParentProps) {
       const fields = presentationFields(presentation ?? {});
       // Written whole: a field cannot be emptied in place (the ORM skips `''`), so the row is made
       // again with exactly what it should say — the colour it had, and the presentation given.
-      for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
       const keep = Object.fromEntries(Object.entries({ color, ...fields }).filter(([, v]) => v));
-      if (Object.keys(keep).length) {
-        await TypeStyle.create(dataset.handle, { nodeType, ...keep }, { parent });
-      }
+      await runOp('core.restyleSpaceType', { space: spaceId, nodeType, fields: keep }, dataset.handle);
       await reloadSpacePresentation();
     } catch (error) {
       console.error('RecordStore: saving how the space presents a type failed', error);
@@ -3300,7 +3351,7 @@ export function RecordStoreProvider(props: ParentProps) {
         { id: row.target, type: typeof row.targetType === 'string' ? row.targetType : '' },
         row.label,
       );
-      if (key !== row.connection) await Model.update(dataset.handle, id, { connection: key });
+      if (key !== row.connection) await runOp('core.rekeyConnection', { connection: id, key }, dataset.handle);
     } catch (error) {
       console.warn('RecordStore: could not refresh a connection key', error);
     }
@@ -3345,18 +3396,15 @@ export function RecordStoreProvider(props: ParentProps) {
         // sentinel would leave a row every reader has to know to ignore. A row that also says how
         // the type is laid out is written again with that alone.
         const kept = rows.map(presentationOf).find((p) => Object.keys(p).length);
-        for (const row of rows) await TypeStyle.delete(dataset.handle, row.id);
-        if (kept) await TypeStyle.create(dataset.handle, { nodeType, ...presentationFields(kept) }, { parent });
+        await runOp(
+          'core.restyleSpaceType',
+          { space: spaceId, nodeType, fields: kept ? presentationFields(kept) : {} },
+          dataset.handle,
+        );
         return;
       }
-      const [already, ...duplicates] = rows;
-      // Two people colouring the same kind at once can leave two rows; the second write settles it.
-      for (const row of duplicates) await TypeStyle.delete(dataset.handle, row.id);
-      if (already) {
-        await TypeStyle.update(dataset.handle, already.id, { color: value });
-        return;
-      }
-      await TypeStyle.create(dataset.handle, { nodeType, color: value }, { parent });
+      // Two people colouring the same kind at once can leave two rows; the write settles it.
+      await runOp('core.colorSpaceType', { space: spaceId, nodeType, color: value }, dataset.handle);
     } catch (error) {
       console.error("RecordStore: colouring a type in the space's key failed", error);
       toastService.error('Could not save that colour.');
@@ -3392,7 +3440,7 @@ export function RecordStoreProvider(props: ParentProps) {
 
       // Every placement for this node, not the first: a duplicate should not survive the removal and
       // silently put the thing back on the canvas at the next refresh.
-      for (const row of rows) await Placement.delete(dataset.handle, row.id);
+      await runOp('core.clearPlacements', { placements: rows.map((row) => row.id) }, dataset.handle);
       return drawn;
     } catch (error) {
       console.error('RecordStore: removing a record from a canvas failed', error);
@@ -3413,7 +3461,16 @@ export function RecordStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset();
     if (!dataset) return;
     const parent = { id: canvas, relation: 'children', entity: 'CollectionBlock' };
-    const { id: _id, node: _node, ...fields } = row;
+    // What describes the card, not what identifies the row or records who wrote it when.
+    const {
+      id: _id,
+      node: _node,
+      author: _author,
+      createdAt: _createdAt,
+      updatedAt: _updatedAt,
+      timestamp: _timestamp,
+      ...fields
+    } = row;
     try {
       /*
         Not if somebody has already put it back.
@@ -3423,8 +3480,8 @@ export function RecordStoreProvider(props: ParentProps) {
         dragged the card back on has a position of their own, and a second placement beside it would
         be two rows disagreeing about where the card is.
       */
-      if (await drawnPlacement(dataset.handle, parent, nodeId)) return;
-      await Placement.create(dataset.handle, { ...fields, node: [nodeId] }, { parent });
+      if ((await drawnPlacement(dataset.handle, parent, nodeId)).drawn) return;
+      await runOp('core.placeCard', { canvas, node: nodeId, fields }, dataset.handle);
     } catch (error) {
       console.error('RecordStore: putting a card back on a canvas failed', error);
       toastService.error('Could not put that back.');
@@ -3538,31 +3595,7 @@ export function RecordStoreProvider(props: ParentProps) {
     try {
       const Model = entityClass(draft.entity, dataset.handle);
       const link = pendingLink();
-      /*
-        The endpoint *types* go in with the fields; the endpoints themselves are linked after.
-
-        They are two different kinds of write. `sourceType` is an ordinary property, and the ORM
-        writes those from the create payload. A relation is not: `innerUpdate` explicitly skips a
-        relation field holding a plain value, so `create(p, { source: uri })` typechecks, runs, and
-        writes no link at all — which would leave a relationship record with no ends, drawn nowhere
-        and findable only by looking for it.
-      */
       const fields = recordDraftFields(draft);
-      if (link) {
-        Object.assign(fields, {
-          sourceType: link.sourceType,
-          targetType: link.targetType,
-          connection: await keyFor(
-            dataset.handle,
-            { id: link.sourceId, type: link.sourceType },
-            { id: link.targetId, type: link.targetType },
-            fields.label,
-          ),
-        });
-        // Only when one was chosen: an empty string would write a reference to a kind that does not
-        // exist, and the ORM cannot later clear it — see `recordDraftFields` on blank optionals.
-        if (relationshipKind()) Object.assign(fields, { relationshipTypeId: relationshipKind() });
-      }
 
       /*
         Created *inside* the canvas when there is one, not merely positioned on it.
@@ -3577,20 +3610,41 @@ export function RecordStoreProvider(props: ParentProps) {
       // A space canvas's content lives in the space collection, as does anything made with no canvas
       // at all — see `provideContentHomes`.
       const home = contentHome(canvas || undefined);
-      const created = (await Model.create(
-        dataset.handle,
-        fields,
-        home ? { parent: { id: home, relation: 'children', entity: 'CollectionBlock' } } : undefined,
-      )) as {
-        id?: string;
-        setSource?: (value: string) => Promise<unknown>;
-        setTarget?: (value: string) => Promise<unknown>;
-      };
 
-      if (link) {
-        await created.setSource?.(link.sourceId);
-        await created.setTarget?.(link.targetId);
-      }
+      /*
+        A connection is the declared `core.connectRecords`: its ends, their types and its key in one
+        write. Its kind only when one was chosen — an empty one would name a kind that does not exist.
+        Any other record is made through its own class: which entity is the form's choice, from any
+        model the space has, and an operation names the entities it writes.
+      */
+      const created: { id?: string } & Record<string, unknown> = link
+        ? {
+            id: await connect(
+              dataset.handle,
+              {
+                source: link.sourceId,
+                sourceType: link.sourceType,
+                target: link.targetId,
+                targetType: link.targetType,
+              },
+              {
+                key: await keyFor(
+                  dataset.handle,
+                  { id: link.sourceId, type: link.sourceType },
+                  { id: link.targetId, type: link.targetType },
+                  fields.label,
+                ),
+                kind: relationshipKind() || undefined,
+                fields,
+                home: home || undefined,
+              },
+            ),
+          }
+        : await Model.create(
+            dataset.handle,
+            fields,
+            home ? { parent: { id: home, relation: 'children', entity: 'CollectionBlock' } } : undefined,
+          );
 
       /*
         The relations, once the record exists — and reported separately if they fail, because by then

@@ -114,9 +114,10 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
       /*
         The collection points at its board, rather than the board carrying a marker: a single-valued
         link converges when two members make one at once, and the other is left an ordinary board.
+        A to-one written as a one-element list, as a create writes one.
       */
       {
-        update: { entity: 'CollectionBlock', id: { $: 'anchor' }, fields: { board: { $: 'made' } } },
+        update: { entity: 'CollectionBlock', id: { $: 'anchor' }, fields: { board: [{ $: 'made' }] } },
         when: { $: 'made' },
       },
     ],
