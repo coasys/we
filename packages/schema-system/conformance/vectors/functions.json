@@ -1297,6 +1297,1167 @@
         "$localScopeFields": ["a"]
       },
       "result": true
+    },
+    {
+      "id": "filter.125",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "b"
+          },
+          {}
+        ],
+        {
+          "role": {
+            "not": "a"
+          }
+        }
+      ],
+      "result": [
+        {
+          "role": "b"
+        }
+      ]
+    },
+    {
+      "id": "filter.126",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": ""
+          },
+          {
+            "role": null
+          }
+        ],
+        {
+          "role": {
+            "not": "a"
+          }
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "filter.127",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "c"
+          },
+          {}
+        ],
+        {
+          "role": {
+            "not": ["a", "b"]
+          }
+        }
+      ],
+      "result": [
+        {
+          "role": "c"
+        }
+      ]
+    },
+    {
+      "id": "filter.128",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {}
+        ],
+        {
+          "role": ["a", "b"]
+        }
+      ],
+      "result": [
+        {
+          "role": "a"
+        }
+      ]
+    },
+    {
+      "id": "filter.129",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "n": 1
+          },
+          {
+            "n": 5
+          },
+          {},
+          {
+            "n": ""
+          }
+        ],
+        {
+          "n": {
+            "gt": 0
+          }
+        }
+      ],
+      "result": [
+        {
+          "n": 1
+        },
+        {
+          "n": 5
+        }
+      ]
+    },
+    {
+      "id": "filter.130",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "n": 1
+          },
+          {}
+        ],
+        {
+          "n": {
+            "lt": 9
+          }
+        }
+      ],
+      "result": [
+        {
+          "n": 1
+        }
+      ]
+    },
+    {
+      "id": "filter.131",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "name": "Ada"
+          },
+          {},
+          {
+            "name": ""
+          }
+        ],
+        {
+          "name": {
+            "contains": ""
+          }
+        }
+      ],
+      "result": [
+        {
+          "name": "Ada"
+        }
+      ]
+    },
+    {
+      "id": "filter.132",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {},
+          {
+            "role": ""
+          }
+        ],
+        {
+          "role": ""
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "filter.133",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {},
+          {
+            "role": ""
+          },
+          {
+            "role": null
+          }
+        ],
+        {
+          "role": {
+            "exists": false
+          }
+        }
+      ],
+      "result": [
+        {},
+        {
+          "role": ""
+        },
+        {
+          "role": null
+        }
+      ]
+    },
+    {
+      "id": "filter.134",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {},
+          {
+            "role": ""
+          }
+        ],
+        {
+          "role": {
+            "exists": true
+          }
+        }
+      ],
+      "result": [
+        {
+          "role": "a"
+        }
+      ]
+    },
+    {
+      "id": "filter.135",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "b"
+          },
+          {}
+        ],
+        {
+          "OR": [
+            {
+              "role": {
+                "not": "a"
+              }
+            },
+            {
+              "role": {
+                "exists": false
+              }
+            }
+          ]
+        }
+      ],
+      "result": [
+        {
+          "role": "b"
+        },
+        {}
+      ]
+    },
+    {
+      "id": "filter.136",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "b"
+          },
+          {}
+        ],
+        {
+          "NOT": {
+            "role": "a"
+          }
+        }
+      ],
+      "result": [
+        {
+          "role": "b"
+        },
+        {}
+      ]
+    },
+    {
+      "id": "find.137",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [
+          {
+            "id": 1
+          },
+          {
+            "id": 2,
+            "role": "b"
+          }
+        ],
+        {
+          "role": {
+            "not": "a"
+          }
+        }
+      ],
+      "result": {
+        "id": 2,
+        "role": "b"
+      }
+    },
+    {
+      "id": "find.138",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [
+          {
+            "id": 1,
+            "role": ""
+          }
+        ],
+        {
+          "role": {
+            "not": "a"
+          }
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "concat.139",
+      "note": "the concat built-in",
+      "fn": "concat",
+      "args": [
+        [1, 2],
+        [2, 3]
+      ],
+      "result": [1, 2, 2, 3]
+    },
+    {
+      "id": "concat.140",
+      "note": "the concat built-in",
+      "fn": "concat",
+      "args": [
+        [1],
+        "notalist",
+        [
+          {
+            "id": "x"
+          }
+        ]
+      ],
+      "result": [
+        1,
+        {
+          "id": "x"
+        }
+      ]
+    },
+    {
+      "id": "concat.141",
+      "note": "the concat built-in",
+      "fn": "concat",
+      "args": [
+        {
+          "$undefined": true
+        },
+        [1]
+      ],
+      "result": [1]
+    },
+    {
+      "id": "concat.142",
+      "note": "the concat built-in",
+      "fn": "concat",
+      "args": [],
+      "result": []
+    },
+    {
+      "id": "without.143",
+      "note": "the without built-in",
+      "fn": "without",
+      "args": [[1, 2, 3, 2], 2],
+      "result": [1, 3]
+    },
+    {
+      "id": "without.144",
+      "note": "the without built-in",
+      "fn": "without",
+      "args": [
+        [
+          {
+            "id": "a"
+          },
+          {
+            "id": "b"
+          }
+        ],
+        "a",
+        {
+          "id": "b"
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "without.145",
+      "note": "the without built-in",
+      "fn": "without",
+      "args": [
+        {
+          "$undefined": true
+        },
+        1
+      ],
+      "result": []
+    },
+    {
+      "id": "without.146",
+      "note": "the without built-in",
+      "fn": "without",
+      "args": [[1, 2]],
+      "result": [1, 2]
+    },
+    {
+      "id": "indexOf.147",
+      "note": "the indexOf built-in",
+      "fn": "indexOf",
+      "args": [["a", "b", "a"], "a"],
+      "result": 0
+    },
+    {
+      "id": "indexOf.148",
+      "note": "the indexOf built-in",
+      "fn": "indexOf",
+      "args": [
+        [
+          {
+            "id": "a"
+          },
+          {
+            "id": "b"
+          }
+        ],
+        "b"
+      ],
+      "result": 1
+    },
+    {
+      "id": "indexOf.149",
+      "note": "the indexOf built-in",
+      "fn": "indexOf",
+      "args": [[1, 2], 9],
+      "result": -1
+    },
+    {
+      "id": "indexOf.150",
+      "note": "the indexOf built-in",
+      "fn": "indexOf",
+      "args": [
+        {
+          "$undefined": true
+        },
+        1
+      ],
+      "result": -1
+    },
+    {
+      "id": "insertAt.151",
+      "note": "the insertAt built-in",
+      "fn": "insertAt",
+      "args": [["a", "c"], 1, "b"],
+      "result": ["a", "b", "c"]
+    },
+    {
+      "id": "insertAt.152",
+      "note": "the insertAt built-in",
+      "fn": "insertAt",
+      "args": [["a"], -5, "z"],
+      "result": ["z", "a"]
+    },
+    {
+      "id": "insertAt.153",
+      "note": "the insertAt built-in",
+      "fn": "insertAt",
+      "args": [["a"], 99, "z"],
+      "result": ["a", "z"]
+    },
+    {
+      "id": "insertAt.154",
+      "note": "the insertAt built-in",
+      "fn": "insertAt",
+      "args": [
+        ["a"],
+        0,
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ["a"]
+    },
+    {
+      "id": "insertAt.155",
+      "note": "the insertAt built-in",
+      "fn": "insertAt",
+      "args": [
+        {
+          "$undefined": true
+        },
+        0,
+        "a"
+      ],
+      "result": ["a"]
+    },
+    {
+      "id": "insertAfter.156",
+      "note": "the insertAfter built-in",
+      "fn": "insertAfter",
+      "args": [["a", "c"], "a", "b"],
+      "result": ["a", "b", "c"]
+    },
+    {
+      "id": "insertAfter.157",
+      "note": "the insertAfter built-in",
+      "fn": "insertAfter",
+      "args": [
+        [
+          {
+            "id": "a"
+          },
+          {
+            "id": "c"
+          }
+        ],
+        "a",
+        {
+          "id": "b"
+        }
+      ],
+      "result": [
+        {
+          "id": "a"
+        },
+        {
+          "id": "b"
+        },
+        {
+          "id": "c"
+        }
+      ]
+    },
+    {
+      "id": "insertAfter.158",
+      "note": "the insertAfter built-in",
+      "fn": "insertAfter",
+      "args": [["a"], "missing", "z"],
+      "result": ["a", "z"]
+    },
+    {
+      "id": "insertAfter.159",
+      "note": "the insertAfter built-in",
+      "fn": "insertAfter",
+      "args": [
+        ["a"],
+        "a",
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ["a"]
+    },
+    {
+      "id": "insertAfter.160",
+      "note": "the insertAfter built-in",
+      "fn": "insertAfter",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "a",
+        "b"
+      ],
+      "result": ["b"]
+    },
+    {
+      "id": "slice.161",
+      "note": "the slice built-in",
+      "fn": "slice",
+      "args": [[1, 2, 3, 4, 5], 1, 3],
+      "result": [2, 3]
+    },
+    {
+      "id": "slice.162",
+      "note": "the slice built-in",
+      "fn": "slice",
+      "args": [[1, 2, 3, 4, 5], -2],
+      "result": [4, 5]
+    },
+    {
+      "id": "slice.163",
+      "note": "the slice built-in",
+      "fn": "slice",
+      "args": [[1, 2, 3], "x"],
+      "result": [1, 2, 3]
+    },
+    {
+      "id": "slice.164",
+      "note": "the slice built-in",
+      "fn": "slice",
+      "args": [
+        {
+          "$undefined": true
+        },
+        0,
+        1
+      ],
+      "result": []
+    },
+    {
+      "id": "sortBy.165",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "p": 3
+          },
+          {
+            "p": 1
+          },
+          {
+            "p": 2
+          }
+        ],
+        "p"
+      ],
+      "result": [
+        {
+          "p": 1
+        },
+        {
+          "p": 2
+        },
+        {
+          "p": 3
+        }
+      ]
+    },
+    {
+      "id": "sortBy.166",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "p": 1
+          },
+          {
+            "p": 3
+          },
+          {
+            "p": 2
+          }
+        ],
+        "p",
+        "desc"
+      ],
+      "result": [
+        {
+          "p": 3
+        },
+        {
+          "p": 2
+        },
+        {
+          "p": 1
+        }
+      ]
+    },
+    {
+      "id": "sortBy.167",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "n": "b"
+          },
+          {
+            "n": "B"
+          },
+          {
+            "n": "a"
+          },
+          {
+            "n": 2
+          }
+        ],
+        "n"
+      ],
+      "result": [
+        {
+          "n": 2
+        },
+        {
+          "n": "B"
+        },
+        {
+          "n": "a"
+        },
+        {
+          "n": "b"
+        }
+      ]
+    },
+    {
+      "id": "sortBy.168",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "p": 2
+          },
+          {},
+          {
+            "p": ""
+          },
+          {
+            "p": 1
+          }
+        ],
+        "p",
+        "desc"
+      ],
+      "result": [
+        {
+          "p": 2
+        },
+        {
+          "p": 1
+        },
+        {},
+        {
+          "p": ""
+        }
+      ]
+    },
+    {
+      "id": "sortBy.169",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "a": {
+              "b": 2
+            }
+          },
+          {
+            "a": {
+              "b": 1
+            }
+          }
+        ],
+        "a.b"
+      ],
+      "result": [
+        {
+          "a": {
+            "b": 1
+          }
+        },
+        {
+          "a": {
+            "b": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "sortBy.170",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        [
+          {
+            "p": 2
+          },
+          {
+            "p": 1
+          }
+        ],
+        ""
+      ],
+      "result": [
+        {
+          "p": 2
+        },
+        {
+          "p": 1
+        }
+      ]
+    },
+    {
+      "id": "sortBy.171",
+      "note": "the sortBy built-in",
+      "fn": "sortBy",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "p"
+      ],
+      "result": []
+    },
+    {
+      "id": "slug.172",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": ["Hello  World"],
+      "result": "hello-world"
+    },
+    {
+      "id": "slug.173",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": ["Café au lait!"],
+      "result": "caf-au-lait"
+    },
+    {
+      "id": "slug.174",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": ["  --Mixed-Case  "],
+      "result": "--mixed-case"
+    },
+    {
+      "id": "slug.175",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": [42],
+      "result": "42"
+    },
+    {
+      "id": "slug.176",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": [
+        {
+          "a": 1
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "slug.177",
+      "note": "the slug built-in",
+      "fn": "slug",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "put.178",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        "b",
+        2
+      ],
+      "result": {
+        "a": 1,
+        "b": 2
+      }
+    },
+    {
+      "id": "put.179",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1,
+          "b": 2
+        },
+        "b",
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "put.180",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        "a",
+        ""
+      ],
+      "result": {
+        "a": ""
+      }
+    },
+    {
+      "id": "put.181",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        7,
+        "x"
+      ],
+      "result": {
+        "7": "x",
+        "a": 1
+      }
+    },
+    {
+      "id": "put.182",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "a": 1
+        },
+        {
+          "not": "a key"
+        },
+        "x"
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "put.183",
+      "note": "the put built-in",
+      "fn": "put",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "a",
+        1
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "merge.184",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "a": 1,
+          "b": 2
+        },
+        {
+          "b": 3,
+          "c": 4
+        }
+      ],
+      "result": {
+        "a": 1,
+        "b": 3,
+        "c": 4
+      }
+    },
+    {
+      "id": "merge.185",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "a": {
+            "x": 1
+          }
+        },
+        {
+          "a": {
+            "y": 2
+          }
+        }
+      ],
+      "result": {
+        "a": {
+          "y": 2
+        }
+      }
+    },
+    {
+      "id": "merge.186",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "a": 1
+        },
+        {
+          "a": null
+        },
+        "notanobject"
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "merge.187",
+      "note": "the merge built-in",
+      "fn": "merge",
+      "args": [
+        {
+          "$undefined": true
+        },
+        {
+          "a": 1
+        }
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "keys.188",
+      "note": "the keys built-in",
+      "fn": "keys",
+      "args": [
+        {
+          "b": 1,
+          "a": 2,
+          "B": 3
+        }
+      ],
+      "result": ["B", "a", "b"]
+    },
+    {
+      "id": "keys.189",
+      "note": "the keys built-in",
+      "fn": "keys",
+      "args": [
+        {
+          "a": 1,
+          "gone": null,
+          "empty": ""
+        }
+      ],
+      "result": ["a", "empty"]
+    },
+    {
+      "id": "keys.190",
+      "note": "the keys built-in",
+      "fn": "keys",
+      "args": [[1, 2]],
+      "result": []
+    },
+    {
+      "id": "keys.191",
+      "note": "the keys built-in",
+      "fn": "keys",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "values.192",
+      "note": "the values built-in",
+      "fn": "values",
+      "args": [
+        {
+          "b": 1,
+          "a": 2
+        }
+      ],
+      "result": [2, 1]
+    },
+    {
+      "id": "values.193",
+      "note": "the values built-in",
+      "fn": "values",
+      "args": [
+        {
+          "a": 1,
+          "gone": null
+        }
+      ],
+      "result": [1]
+    },
+    {
+      "id": "values.194",
+      "note": "the values built-in",
+      "fn": "values",
+      "args": ["text"],
+      "result": []
+    },
+    {
+      "id": "values.195",
+      "note": "the values built-in",
+      "fn": "values",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": []
     }
   ]
 }

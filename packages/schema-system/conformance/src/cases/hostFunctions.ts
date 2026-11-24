@@ -214,6 +214,26 @@ const CASES: HostFunctionCase[] = [
   H('generatedRun', { record: { id: 'r:1' } }),
   H('generatedRun', { record: {} }),
   H('generatedRun', U),
+
+  /*
+    Added after the cases above were first recorded, at the end because an id is its position.
+  */
+
+  /* ---- treeSpine: a spine picker's value as the tree reads it ---- */
+  H('treeSpine', { value: '' }),
+  H('treeSpine', { value: 'kind:1' }),
+  H('treeSpine', { value: 'rel:*' }),
+  H('treeSpine', { value: 'rel:TaskBlock.assignedTo' }),
+  H('treeSpine', { value: 'rel:NoDot' }),
+  H('treeSpine', { value: { kind: 'relationship', id: 'kind:2' } }),
+  H('treeSpine', U),
+
+  /* ---- treeSpines: the choices a spine picker offers ---- */
+  H('treeSpines', {
+    kinds: [{ id: 'kind:1', name: 'Depends on', icon: 'arrow-right' }, { id: 'kind:2' }, { name: 'no id' }],
+  }),
+  H('treeSpines', { kinds: [], shapes: [{ name: 'Broken', manifest: null }] }),
+  H('treeSpines', U),
 ];
 
 export const HOST_FUNCTION_CASES: HostFunctionCase[] = numbered(CASES);

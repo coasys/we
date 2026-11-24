@@ -971,6 +971,248 @@
         "$undefined": true
       },
       "result": null
+    },
+    {
+      "id": "treeSpine.47",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": ""
+      },
+      "result": {
+        "kind": "any",
+        "value": "",
+        "selector": {
+          "field": "data.relationshipTypeId",
+          "value": ""
+        },
+        "relations": true
+      }
+    },
+    {
+      "id": "treeSpine.48",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": "kind:1"
+      },
+      "result": {
+        "kind": "relationship",
+        "id": "kind:1",
+        "value": "kind:1",
+        "selector": {
+          "field": "data.relationshipTypeId",
+          "value": "kind:1"
+        },
+        "offSpine": {
+          "data.relationshipTypeId": {
+            "not": "kind:1"
+          }
+        },
+        "relations": false
+      }
+    },
+    {
+      "id": "treeSpine.49",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": "rel:*"
+      },
+      "result": {
+        "kind": "relation",
+        "value": "rel:*",
+        "selector": {
+          "field": "type",
+          "value": "relation"
+        },
+        "offSpine": {
+          "type": {
+            "not": "relation"
+          }
+        },
+        "relations": true
+      }
+    },
+    {
+      "id": "treeSpine.50",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": "rel:TaskBlock.assignedTo"
+      },
+      "result": {
+        "kind": "relation",
+        "class": "TaskBlock",
+        "prop": "assignedTo",
+        "value": "rel:TaskBlock.assignedTo",
+        "selector": {
+          "field": "data.relation",
+          "value": "TaskBlock.assignedTo"
+        },
+        "offSpine": {
+          "data.relation": {
+            "not": "TaskBlock.assignedTo"
+          }
+        },
+        "relations": true
+      }
+    },
+    {
+      "id": "treeSpine.51",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": "rel:NoDot"
+      },
+      "result": {
+        "kind": "any",
+        "value": "",
+        "selector": {
+          "field": "data.relationshipTypeId",
+          "value": ""
+        },
+        "relations": true
+      }
+    },
+    {
+      "id": "treeSpine.52",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "value": {
+          "kind": "relationship",
+          "id": "kind:2"
+        }
+      },
+      "result": {
+        "kind": "relationship",
+        "id": "kind:2",
+        "value": "kind:2",
+        "selector": {
+          "field": "data.relationshipTypeId",
+          "value": "kind:2"
+        },
+        "offSpine": {
+          "data.relationshipTypeId": {
+            "not": "kind:2"
+          }
+        },
+        "relations": false
+      }
+    },
+    {
+      "id": "treeSpine.53",
+      "note": "the treeSpine host source",
+      "fn": "treeSpine",
+      "options": {
+        "$undefined": true
+      },
+      "result": {
+        "kind": "any",
+        "value": "",
+        "selector": {
+          "field": "data.relationshipTypeId",
+          "value": ""
+        },
+        "relations": true
+      }
+    },
+    {
+      "id": "treeSpines.54",
+      "note": "the treeSpines host source",
+      "fn": "treeSpines",
+      "options": {
+        "kinds": [
+          {
+            "id": "kind:1",
+            "name": "Depends on",
+            "icon": "arrow-right"
+          },
+          {
+            "id": "kind:2"
+          },
+          {
+            "name": "no id"
+          }
+        ]
+      },
+      "result": [
+        {
+          "label": "Depends on",
+          "value": "kind:1",
+          "icon": "arrow-right"
+        },
+        {
+          "label": "kind:2",
+          "value": "kind:2",
+          "icon": {
+            "$undefined": true
+          }
+        },
+        {
+          "label": "All model relations",
+          "value": "rel:*",
+          "icon": "tree-structure",
+          "group": "Model relations"
+        },
+        {
+          "label": "EventBlock › location",
+          "value": "rel:EventBlock.location",
+          "icon": "link",
+          "group": "Model relations"
+        }
+      ]
+    },
+    {
+      "id": "treeSpines.55",
+      "note": "the treeSpines host source",
+      "fn": "treeSpines",
+      "options": {
+        "kinds": [],
+        "shapes": [
+          {
+            "name": "Broken",
+            "manifest": null
+          }
+        ]
+      },
+      "result": [
+        {
+          "label": "All model relations",
+          "value": "rel:*",
+          "icon": "tree-structure",
+          "group": "Model relations"
+        },
+        {
+          "label": "EventBlock › location",
+          "value": "rel:EventBlock.location",
+          "icon": "link",
+          "group": "Model relations"
+        }
+      ]
+    },
+    {
+      "id": "treeSpines.56",
+      "note": "the treeSpines host source",
+      "fn": "treeSpines",
+      "options": {
+        "$undefined": true
+      },
+      "result": [
+        {
+          "label": "All model relations",
+          "value": "rel:*",
+          "icon": "tree-structure",
+          "group": "Model relations"
+        },
+        {
+          "label": "EventBlock › location",
+          "value": "rel:EventBlock.location",
+          "icon": "link",
+          "group": "Model relations"
+        }
+      ]
     }
   ]
 }
