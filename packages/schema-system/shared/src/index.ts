@@ -56,6 +56,7 @@ export type {
   ModuleCatalogEntry,
   ForeignElementEntry,
   SourceEntry,
+  OperationEntry,
 } from './contextTypes';
 
 export {
@@ -64,6 +65,7 @@ export {
   validateSchema,
   validateSemantic,
   withEntities,
+  withOperations,
   controlShapedBoxes,
 } from './semanticValidation';
 export type { ValidationContext } from './semanticValidation';

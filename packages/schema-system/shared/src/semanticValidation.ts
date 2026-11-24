@@ -9,7 +9,7 @@ import {
 } from '@we/expressions';
 import { role, semanticValues, space, TONES } from '@we/tokens';
 
-import type { ContextData, StateMemberMeta } from './contextTypes';
+import type { ContextData, OperationEntry, StateMemberMeta } from './contextTypes';
 import { expandDefinitions } from './definitions';
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
@@ -76,6 +76,11 @@ export type ValidationContext = {
    * Only what the context knows: an action it has no classification for is never warned about.
    */
   gatedActions?: Set<string>;
+  /**
+   * The declared operations a template may invoke as `ops.<namespace>.<name>`, by qualified name.
+   * Absent when the context carries none, in which case `ops.*` is admitted unchecked.
+   */
+  operations?: Map<string, OperationEntry>;
   /**
    * Action paths whose first parameter is required, from their documented signatures. Called with no
    * `args` they are called with nothing, which is wrong whatever event the handler sits on. Only what
@@ -246,6 +251,46 @@ export function withEntities(context: ValidationContext, names: Iterable<string>
   return extra.length ? { ...context, entityNames: new Set([...context.entityNames, ...extra]) } : context;
 }
 
+/**
+ * One operation into the context's lists. An operation that writes is a write for the gesture rule,
+ * as any store action that stores something is; a destructive one is confirmed by the host before a
+ * space template's call runs, as `record.delete` is; one with a required param cannot be called with
+ * no `args`.
+ */
+function addOperation(
+  entry: OperationEntry,
+  operations: Map<string, OperationEntry>,
+  gatedActions: Set<string>,
+  argsNeeded: Set<string>,
+  hostConfirmed: Set<string>,
+): void {
+  operations.set(entry.name, entry);
+  const path = `ops.${entry.name}`;
+  if (Object.keys(entry.effects.entities).length) gatedActions.add(path);
+  if (entry.effects.destructive) hostConfirmed.add(path);
+  if (Object.values(entry.params).some((param) => param.required)) argsNeeded.add(path);
+}
+
+/**
+ * The same context, knowing some more declared operations — a bundle's own, judged before it is
+ * installed, or whatever the running host has registered since the context was generated.
+ */
+export function withOperations(context: ValidationContext, entries: Iterable<OperationEntry>): ValidationContext {
+  const operations = new Map(context.operations ?? []);
+  const gatedActions = new Set(context.gatedActions ?? []);
+  const argsNeeded = new Set(context.argsNeeded ?? []);
+  const hostConfirmed = new Set(context.hostConfirmed ?? []);
+  for (const entry of entries) addOperation(entry, operations, gatedActions, argsNeeded, hostConfirmed);
+  return {
+    ...context,
+    operations,
+    gatedActions,
+    argsNeeded,
+    // A context judging chrome asks no host confirmation, and adding operations must not bring it back.
+    hostConfirmed: context.hostConfirmed ? hostConfirmed : undefined,
+  };
+}
+
 export function buildValidationContext(data: ContextData): ValidationContext {
   const componentNames = new Set<string>();
   const componentProps = new Map<string, Set<string>>();
@@ -385,6 +430,8 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   // unvalidatable. Before this they failed on the very first token, so no module fragment could be
   // checked at all, and a typo in one surfaces only as a component that silently renders nothing.
   storeNames.add('modules');
+  // Declared operations, invoked as `ops.<namespace>.<name>` — a namespace too, checked below.
+  storeNames.add('ops');
 
   // Models
   const entityNames = new Set<string>();
@@ -441,6 +488,10 @@ export function buildValidationContext(data: ContextData): ValidationContext {
   for (const store of data.storeEntries)
     for (const action of store.destructive ?? []) hostConfirmed.add(`${store.name}.${action}`);
 
+  const operations = data.operations ? new Map<string, OperationEntry>() : undefined;
+  if (operations)
+    for (const entry of data.operations ?? []) addOperation(entry, operations, gatedActions, argsNeeded, hostConfirmed);
+
   const pluginPlacements: NonNullable<ValidationContext['pluginPlacements']> = new Map();
   for (const catalog of data.pluginCatalogs ?? []) {
     if (!catalog.placements?.length) continue;
@@ -456,6 +507,7 @@ export function buildValidationContext(data: ContextData): ValidationContext {
 
   return {
     gatedActions,
+    ...(operations ? { operations } : {}),
     argsNeeded,
     hostConfirmed,
     pluginPlacements,
@@ -1833,6 +1885,7 @@ function checkTokenValue(
   if ('$invoke' in obj && typeof obj.$invoke === 'string') {
     checkInvokeRef(obj.$invoke, `${path}.$invoke`, ctx, errors);
     if (Array.isArray(obj.args)) checkInvokeArgs(obj.args, `${path}.args`, errors);
+    if (obj.$invoke.startsWith('ops.')) checkOperationArgs(obj.$invoke, obj.args, path, ctx, errors);
     if (obj.$invoke === 'routeStore.navigate' && Array.isArray(obj.args)) {
       checkIdInPath(obj.args[0], `${path}.args[0]`, errors);
       checkRelativeTarget(obj.args[0], `${path}.args[0]`, state, errors);
@@ -2178,6 +2231,21 @@ function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, error
     return;
   }
 
+  // A declared operation: `ops.<namespace>.<name>`, one segment deeper than a store action.
+  if (storeName === 'ops') {
+    if (!ctx.operations) return;
+    if (ctx.operations.has(methodName)) return;
+    const hint = suggest(methodName, ctx.operations.keys());
+    errors.push({
+      path,
+      message:
+        `Unknown operation "${methodName}" in $invoke "${ref}"${hint ? ` — did you mean "ops.${hint}"?` : ''}. ` +
+        `An operation is invoked as ops.<namespace>.<name>; this deployment registers: ${[...ctx.operations.keys()].join(', ') || 'none'}`,
+      severity: 'error',
+    });
+    return;
+  }
+
   // A module's action is one segment deeper: `modules.<id>.<member>`.
   if (storeName === 'modules' && ctx.modules) {
     const at = methodName.indexOf('.');
@@ -2211,6 +2279,70 @@ function checkInvokeRef(ref: string, path: string, ctx: ValidationContext, error
       severity: 'warning',
     });
   }
+}
+
+/**
+ * An operation's params, checked where they are written out: one argument, the params object, with
+ * every required param present and nothing the operation does not declare. Where the argument is an
+ * expression the values are not known until it runs, and the runner refuses bad ones then.
+ */
+function checkOperationArgs(
+  ref: string,
+  args: unknown,
+  path: string,
+  ctx: ValidationContext,
+  errors: ValidationError[],
+): void {
+  const entry = ctx.operations?.get(ref.slice('ops.'.length));
+  if (!entry) return;
+  if (!Array.isArray(args) || args.length === 0) return; // `argsNeeded` speaks for a call with none.
+  if (args.length > 2) {
+    errors.push({
+      path: `${path}.args`,
+      message: `${ref} takes one argument, its params as an object, and optionally { dataset } after it`,
+      severity: 'error',
+    });
+  }
+  const params: unknown = args[0];
+  if (!params || typeof params !== 'object' || Array.isArray(params) || isExpressionToken(params)) return;
+  const given = params as Record<string, unknown>;
+  const declared = Object.keys(entry.params);
+  for (const [name, value] of Object.entries(given)) {
+    const param = entry.params[name];
+    if (param) {
+      const kind = literalKind(value);
+      if (kind && param.type !== 'json' && kind !== param.type)
+        errors.push({
+          path: `${path}.args[0].${name}`,
+          message: `${ref}'s param "${name}" is a ${param.type}, and this call gives a ${kind}`,
+          severity: 'error',
+        });
+      continue;
+    }
+    const hint = suggest(name, declared);
+    errors.push({
+      path: `${path}.args[0].${name}`,
+      message: `${ref} has no param "${name}"${hint ? ` — did you mean "${hint}"` : ''}; its params are ${declared.join(', ') || 'none'}`,
+      severity: 'error',
+    });
+  }
+  for (const [name, param] of Object.entries(entry.params)) {
+    if (param.required && (!(name in given) || given[name] === null))
+      errors.push({
+        path: `${path}.args[0]`,
+        message: `${ref} needs the param "${name}" (${param.type}), and this call does not give it`,
+        severity: 'error',
+      });
+  }
+}
+
+/** What a literal arg is, in the operation format's param types; undefined for an expression or a null. */
+function literalKind(value: unknown): string | undefined {
+  if (value === null || value === undefined || isExpressionToken(value)) return undefined;
+  if (Array.isArray(value)) return 'list';
+  if (typeof value === 'object') return 'object';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return typeof value;
+  return undefined;
 }
 
 /**

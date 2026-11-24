@@ -34,6 +34,7 @@ const ALWAYS_BOUND = new Set([
   'currentDataset',
   'surface',
   'modules',
+  'ops',
   'event',
   'arg',
   'result',

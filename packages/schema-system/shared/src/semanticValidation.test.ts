@@ -3,7 +3,14 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { asHostChrome, buildValidationContext, validateSemantic, withEntities } from './semanticValidation';
+import type { OperationEntry } from './contextTypes';
+import {
+  asHostChrome,
+  buildValidationContext,
+  validateSemantic,
+  withEntities,
+  withOperations,
+} from './semanticValidation';
 import type { SchemaNode } from './types';
 
 // The same generated context the CLI reads, loaded the same way — this package deliberately does
@@ -594,6 +601,69 @@ describe('comparing an included relation as if it were an id', () => {
     expect(
       messages(listOf("count(local.events.filter(e, e.location == 'p1'))", false), 'warning').filter(included),
     ).toEqual([]);
+  });
+});
+
+describe('invoking a declared operation', () => {
+  const vote: OperationEntry = {
+    name: 'polls.vote',
+    description: 'Vote on a poll.',
+    params: { poll: { type: 'string', required: true }, choice: { type: 'number' } },
+    returns: true,
+    effects: { entities: { Vote: ['create'] }, bulk: false, destructive: false },
+  };
+  const clear: OperationEntry = {
+    name: 'polls.clear',
+    description: 'Clear the votes.',
+    params: {},
+    returns: false,
+    effects: { entities: { Vote: ['delete'] }, bulk: true, destructive: true },
+  };
+  const ctx = withOperations(context, [vote, clear]);
+  const all = (node: SchemaNode, c = ctx) => validateSemantic(node, c).errors;
+  const press = (invoke: Record<string, unknown>) =>
+    ({ type: 'we-button', props: { onClick: invoke }, children: ['Vote'] }) as SchemaNode;
+
+  it('accepts a call with its params written out', () => {
+    expect(all(press({ $invoke: 'ops.polls.vote', args: [{ poll: { $: 'local.poll' }, choice: 2 }] }))).toEqual([]);
+  });
+
+  it('refuses an operation nobody registered, with the nearest name', () => {
+    const [error] = all(press({ $invoke: 'ops.polls.vot', args: [{ poll: 'p' }] }));
+    expect(error?.severity).toBe('error');
+    expect(error?.message).toContain('Unknown operation "polls.vot"');
+    expect(error?.message).toContain('did you mean "ops.polls.vote"?');
+  });
+
+  it('refuses a param it does not declare, a missing required one and a literal of the wrong type', () => {
+    const errors = all(press({ $invoke: 'ops.polls.vote', args: [{ pol: 'p', choice: 'two' }] })).map((e) => e.message);
+    expect(errors).toEqual([
+      'ops.polls.vote has no param "pol" — did you mean "poll"; its params are poll, choice',
+      'ops.polls.vote\'s param "choice" is a number, and this call gives a string',
+      'ops.polls.vote needs the param "poll" (string), and this call does not give it',
+    ]);
+  });
+
+  it('leaves params given as one expression to the runner', () => {
+    expect(all(press({ $invoke: 'ops.polls.vote', args: [{ $: 'local.params' }] }))).toEqual([]);
+  });
+
+  it('warns about a call with no args to an operation that needs some', () => {
+    const warnings = all(press({ $invoke: 'ops.polls.vote' })).filter((e) => e.severity === 'warning');
+    expect(warnings.map((e) => e.message).join()).toContain('takes arguments');
+  });
+
+  it('counts an operation that writes as a write on an event nobody causes', () => {
+    const unasked = all({
+      type: 'img',
+      props: { src: 'a.png', onLoad: { $invoke: 'ops.polls.vote', args: [{ poll: 'p' }] } },
+    } as SchemaNode).filter((e) => e.message.includes('fires without anybody'));
+    expect(unasked).toHaveLength(1);
+  });
+
+  it('knows a destructive operation is confirmed by the host', () => {
+    expect(ctx.hostConfirmed?.has('ops.polls.clear')).toBe(true);
+    expect(ctx.hostConfirmed?.has('ops.polls.vote')).toBe(false);
   });
 });
 

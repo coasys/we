@@ -7,7 +7,18 @@ import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 import { CORE_MANIFEST, CORE_OPERATIONS } from '../src/manifest';
-import { deriveRecordId, effectSummary, getOperation, listOperations, validateOperations } from '../src/operations';
+import {
+  deriveRecordId,
+  describeEffects,
+  describeOperation,
+  effectSummary,
+  getOperation,
+  listOperations,
+  operationCatalog,
+  registerOperations,
+  unregisterOperations,
+  validateOperations,
+} from '../src/operations';
 
 const MANIFEST = (operations: Record<string, unknown>): EntityManifest => ({
   version: '1',
@@ -257,6 +268,44 @@ describe('the core operations', () => {
       Object.keys(CORE_OPERATIONS)
         .map((name) => `core.${name}`)
         .sort(),
+    );
+  });
+});
+
+describe('the catalogue', () => {
+  it('describes every registered operation from its definition, effects included', () => {
+    registerOperations('demo', {
+      tidy: op([{ delete: { entity: 'Board', id: { $: 'board' } } }], {
+        params: { board: { type: 'string', required: true } },
+      }),
+      peek: op([{ find: { as: 'all', entity: 'Board' } }], { returns: { $: 'all' } }),
+    } as unknown as Record<string, OperationDefinition>);
+    try {
+      expect(operationCatalog().map((entry) => entry.name)).toEqual(listOperations());
+      expect(describeOperation('demo.tidy')).toEqual({
+        name: 'demo.tidy',
+        description: 'A test.',
+        params: { board: { type: 'string', required: true } },
+        returns: false,
+        effects: { entities: { Board: ['delete'] }, bulk: false, destructive: true },
+      });
+      expect(describeOperation('demo.peek')?.returns).toBe(true);
+      expect(describeOperation('demo.nothing')).toBeUndefined();
+    } finally {
+      unregisterOperations('demo');
+    }
+  });
+
+  it('says what an operation writes in words', () => {
+    expect(describeEffects({ entities: {}, bulk: false, destructive: false })).toBe('writes nothing');
+    expect(
+      describeEffects({
+        entities: { Board: ['add:columns', 'create'], Column: ['delete'] },
+        bulk: true,
+        destructive: true,
+      }),
+    ).toBe(
+      'adds to Board.columns; creates a Board; deletes a Column (may write many records in one call, destructive)',
     );
   });
 });

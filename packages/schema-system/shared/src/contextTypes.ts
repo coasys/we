@@ -178,6 +178,27 @@ export interface ContextData {
    * {@link ForeignElementEntry}. Absent or empty when the seed names none.
    */
   foreignElements?: ForeignElementEntry[];
+  /**
+   * The declared operations this build registers — WE's own and its bundled modules' — which a
+   * template invokes as `ops.<namespace>.<name>`. See {@link OperationEntry}. Absent when the context
+   * was built without them, in which case `ops.*` is admitted unchecked.
+   */
+  operations?: OperationEntry[];
+}
+
+/**
+ * A declared operation, as a template author sees it: what it is called, what it takes, and what it
+ * may write. Derived from the definition by the generator, so it says nothing the definition does not.
+ */
+export interface OperationEntry {
+  /** Qualified — `core.createPost`. Invoked as `ops.core.createPost`. */
+  name: string;
+  description: string;
+  params: Record<string, { type: string; required?: boolean; description?: string }>;
+  /** Whether it answers with a value, which `onSuccess` reads as `result`. */
+  returns: boolean;
+  /** What it may write: verbs per entity, whether in bulk, whether destructive. */
+  effects: { entities: Record<string, string[]>; bulk: boolean; destructive: boolean };
 }
 
 /**
