@@ -42,7 +42,7 @@ const showTree: SchemaNode = {
  */
 const modeSwitch: SchemaNode = {
   type: 'Row',
-  props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+  props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
   children: [
     { icon: 'file-text', label: 'Page', canvas: false },
     { icon: 'squares-four', label: 'Canvas', canvas: true },
@@ -91,7 +91,7 @@ const crumbText = (label: Child, extra: Record<string, unknown> = {}): SchemaNod
 const crumbStep = (crumb: Crumb): SchemaNode => ({
   type: 'Row',
   // Shrinks before the step somebody is on, but only so far: each keeps a word or two.
-  props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+  props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
   children: [
     crumb.onClick
       ? {
@@ -146,13 +146,23 @@ export const viewBar = (
   beside: SchemaNode[] = [],
 ): SchemaNode => ({
   type: 'Row',
-  props: { gap: '300', ay: 'center', px: '500', py: '300', borderBottom: '1px solid border', minHeight: '56px' },
+  // Wraps: when the title keeps its minimum and the switch no longer fits beside it, the switch drops to a line of its own.
+  props: {
+    gap: '300',
+    ay: 'center',
+    wrap: true,
+    px: '500',
+    py: '300',
+    borderBottom: '1px solid border',
+    minHeight: '56px',
+  },
   children: [
     showTree,
     { type: 'we-icon', props: { name: icon, color: 'text-muted' } },
     {
       type: 'Row',
-      props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+      // The title gives way with an ellipsis, but only to a few letters: below that the bar wraps instead.
+      props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
       children: [...trail(crumbs), ...beside],
     },
     ...aside,

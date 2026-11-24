@@ -578,6 +578,14 @@ function applyInlineStyles(el: HTMLElement, styles?: Record<string, string | num
   writtenStyles.set(el, next);
 }
 
+/** The shrink factor a `flex` shorthand sets: 0 for `none`, its second number, else 1. */
+export function flexShrinkOf(flex: string | undefined): string | undefined {
+  if (!flex) return undefined;
+  const [first, second] = flex.trim().split(/\s+/);
+  if (first === 'none') return '0';
+  return second !== undefined && /^\d*\.?\d+$/.test(second) ? second : '1';
+}
+
 /**
  * Set or clear a single `--we-*` custom property.
  *
@@ -713,7 +721,14 @@ function updateCustomVars(
     the offsets above record, one concept along: two hand-written implementations of one job, and a
     prop added to the key list reaches CSS only if somebody remembers both.
   */
-  setProperty(el, `${prefix}flex-shrink`, props.flexShrink === undefined ? undefined : String(props.flexShrink));
+  /*
+    With no `flexShrink`, the shrink half of `flex`. The host rule declares `flex-shrink` after the
+    `flex` shorthand, so an unset `flex-shrink` variable resets the shrink to its initial 1 and undoes
+    every `flex: 'none'` or `'0 0 auto'`: an avatar whose default is `0 0 auto` was squeezed to a
+    sliver in a tight row.
+  */
+  const shrink = props.flexShrink ?? flexShrinkOf(props.flex);
+  setProperty(el, `${prefix}flex-shrink`, shrink === undefined ? undefined : String(shrink));
   setProperty(el, `${prefix}align-self`, props.alignSelf);
 
   // Visual

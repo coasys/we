@@ -65,7 +65,7 @@ const iconButton = (
 const chip = (content: string | { $: string }, tone = 'surface-sunken'): SchemaNode => ({
   type: 'Row',
   props: { px: '200', py: '100', r: 'full', bg: tone, ay: 'center', gap: '100' },
-  children: [text(content, { variant: 'footnote' })],
+  children: [text(content, { variant: 'footnote', whiteSpace: 'nowrap' })],
 });
 
 // ─── Lanes ─────────────────────────────────────────────────────────────────────
@@ -624,7 +624,7 @@ const recordRow: SchemaNode = {
             condition: { $: 'rec.startedAt' },
             then: {
               type: 'Row',
-              props: { gap: '100', ay: 'center' },
+              props: { gap: '100', ay: 'center', flexShrink: 0 },
               children: [
                 text('started', { variant: 'footnote', color: 'text-faint' }),
                 {
@@ -934,7 +934,7 @@ const openWorkflow: SchemaNode = {
     { type: 'we-divider' },
     {
       type: 'Row',
-      props: { gap: '200', ay: 'center' },
+      props: { gap: '200', ay: 'center', wrap: true },
       children: [
         text('Going through it', { variant: 'label' }),
         chip({ $: `count(${OPEN}.records)` }),
@@ -1334,7 +1334,7 @@ const workflowButton: SchemaNode = {
 
 const workflowList: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', width: '240px', flexShrink: '0' },
+  props: { gap: '200', width: '240px', maxWidth: '100%', flexShrink: '0' },
   children: [
     {
       type: 'Row',
@@ -1432,12 +1432,13 @@ export function workflowsPage(band: Record<string, string>): SchemaNode {
           condition: { $: 'workflowStore.available' },
           then: {
             type: 'Row',
-            props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', ...band },
+            // Wraps: when the detail pane would be squeezed under its floor, the list sits above it.
+            props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', wrap: true, ...band },
             children: [
               workflowList,
               {
                 type: 'Column',
-                props: { flex: '1', minWidth: '0', gap: '400' },
+                props: { flex: '1', minWidth: '16rem', gap: '400' },
                 children: [
                   {
                     type: '$if',
