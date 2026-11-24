@@ -1174,7 +1174,7 @@ Block-level structures use "type" starting with "$" for dynamic rendering of sch
 
 Each loop:
 { "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
+Renders all of its children once for each item, in order — a row may be several nodes, and needs no box around them unless the layout wants one. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
 
 Each row also gets two names describing its position in the list:
 - index — the 0-based position.
@@ -1229,9 +1229,9 @@ the first frame reads as a jump, however smooth the size change is.
 A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
 longest effect in the config, so the collapse finishes before the content is removed.
 
-Viewport / mount / condition animation (child always in DOM):
-{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
+Viewport / mount / condition animation (children always in DOM):
+{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>, …] }
+The children are always mounted, and move as one. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
 half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
@@ -1258,7 +1258,7 @@ scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $ani
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.
 Without condition or a scroll trigger, the enterTransition runs once on mount.
-Only one child node is supported.
+Every child is drawn, inside the one animated wrapper.
 Example (condition-driven disclosure — a collapsible group whose rows hold live store bindings and
 must not resubscribe every time it opens):
 {

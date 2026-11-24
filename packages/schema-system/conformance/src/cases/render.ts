@@ -169,7 +169,7 @@ export const RENDER_CASES: RenderCase[] = [
   /* ── $each ──────────────────────────────────────────────────────────────────────────────── */
   C(
     'render.each.items',
-    '$each renders its first child once per item, the item bound under `as`',
+    '$each renders its children once per item, the item bound under `as`',
     {
       type: 'Column',
       children: [
@@ -234,7 +234,7 @@ export const RENDER_CASES: RenderCase[] = [
     },
     { data: { app: { none: [], notAList: 'abc' } } },
   ),
-  C('render.each.only-first-child', "only $each's first child is the row; the rest are not rendered", {
+  C('render.each.only-first-child', 'every child of $each is drawn for each item, in order', {
     type: '$each',
     props: { items: { $: '[1, 2]' } },
     children: [text({ $: 'item' }), text('ignored')],
@@ -1113,4 +1113,64 @@ export const RENDER_CASES: RenderCase[] = [
     },
     children: [{ type: '$ref', props: { def: 'd1' } }],
   }),
+  C(
+    'render.each.several-children-keyed',
+    'a row of several children over records with ids: each drawn per item, and a change redraws them in place',
+    {
+      type: 'Column',
+      children: [
+        {
+          type: '$each',
+          props: { items: { $: 'app.rows' }, as: 'row' },
+          children: [text({ $: 'row.name' }), text({ $: '`#${index}`' }), { type: 'Row', children: [{ $: 'row.id' }] }],
+        },
+      ],
+    },
+    {
+      data: {
+        app: {
+          rows: [
+            { id: 'a', name: 'Ann' },
+            { id: 'b', name: 'Bo' },
+          ],
+        },
+      },
+      steps: [
+        {
+          op: 'data',
+          store: 'app',
+          member: 'rows',
+          value: [
+            { id: 'b', name: 'Bo' },
+            { id: 'a', name: 'Ann' },
+            { id: 'c', name: 'Cy' },
+          ],
+        },
+      ],
+    },
+  ),
+  C('render.each.several-children-plain', 'a row of several children over plain values: each drawn per item', {
+    type: '$each',
+    props: { items: { $: '[1, 2]' }, as: 'n' },
+    children: ['n=', text({ $: 'n' }), { $: 'n * 10' }],
+  }),
+  C('render.animate.several-children', '$animate with no transitions draws every child it holds', {
+    type: 'Column',
+    children: [{ type: '$animate', props: {}, children: [text('one'), text('two')] }],
+  }),
+  C(
+    'render.animate.several-children-reveal',
+    '$animate with a condition and a reveal draws every child inside the one clip',
+    {
+      type: 'Column',
+      children: [
+        {
+          type: '$animate',
+          props: { condition: { $: 'app.open' }, enterTransition: { type: 'reveal', duration: 0 } },
+          children: [text('one'), { type: 'Row', children: [text('two')] }],
+        },
+      ],
+    },
+    { data: { app: { open: true } } },
+  ),
 ];

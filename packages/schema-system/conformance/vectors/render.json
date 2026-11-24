@@ -679,7 +679,7 @@
     },
     {
       "id": "render.each.items",
-      "note": "$each renders its first child once per item, the item bound under `as`",
+      "note": "$each renders its children once per item, the item bound under `as`",
       "template": {
         "type": "Column",
         "children": [
@@ -942,7 +942,7 @@
     },
     {
       "id": "render.each.only-first-child",
-      "note": "only $each's first child is the row; the rest are not rendered",
+      "note": "every child of $each is drawn for each item, in order",
       "template": {
         "type": "$each",
         "props": {
@@ -974,7 +974,15 @@
             },
             {
               "type": "we-text",
+              "children": ["ignored"]
+            },
+            {
+              "type": "we-text",
               "children": ["2"]
+            },
+            {
+              "type": "we-text",
+              "children": ["ignored"]
             }
           ],
           "actions": []
@@ -6293,6 +6301,337 @@
                         {
                           "missing": "$ref",
                           "reason": "cyclic-definition"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.several-children-keyed",
+      "note": "a row of several children over records with ids: each drawn per item, and a change redraws them in place",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.rows"
+              },
+              "as": "row"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "row.name"
+                  }
+                ]
+              },
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`#${index}`"
+                  }
+                ]
+              },
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "$": "row.id"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "b",
+              "name": "Bo"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "rows",
+          "value": [
+            {
+              "id": "b",
+              "name": "Bo"
+            },
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "c",
+              "name": "Cy"
+            }
+          ]
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#0"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Bo"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#1"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["b"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Bo"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#0"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#1"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Cy"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#2"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["c"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.several-children-plain",
+      "note": "a row of several children over plain values: each drawn per item",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "[1, 2]"
+          },
+          "as": "n"
+        },
+        "children": [
+          "n=",
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "n"
+              }
+            ]
+          },
+          {
+            "$": "n * 10"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            "n=",
+            {
+              "type": "we-text",
+              "children": ["1"]
+            },
+            "10n=",
+            {
+              "type": "we-text",
+              "children": ["2"]
+            },
+            "20"
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.animate.several-children",
+      "note": "$animate with no transitions draws every child it holds",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$animate",
+            "props": {},
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "we-text",
+                "children": ["two"]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["one"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["two"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.animate.several-children-reveal",
+      "note": "$animate with a condition and a reveal draws every child inside the one clip",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$animate",
+            "props": {
+              "condition": {
+                "$": "app.open"
+              },
+              "enterTransition": {
+                "type": "reveal",
+                "duration": 0
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": ["two"]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "open": true
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "div",
+                  "props": {
+                    "style": "opacity: 1; display: grid; grid-template-rows: 1fr;"
+                  },
+                  "children": [
+                    {
+                      "type": "div",
+                      "props": {
+                        "style": "min-height: 0px;"
+                      },
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["one"]
+                        },
+                        {
+                          "type": "Row",
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "children": ["two"]
+                            }
+                          ]
                         }
                       ]
                     }

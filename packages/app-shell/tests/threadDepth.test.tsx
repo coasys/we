@@ -184,10 +184,9 @@ describe('a thread in a panel', () => {
     expect(asked[0].levels).toEqual([10, 5, 3]);
 
     /*
-      And it is drawn. `$each` renders its first child and drops the rest, so a row built as a list —
-      the reply, then the thread under it — lost every level below the first without a word. Two
-      gutters is the cheapest proof a nested level mounted: one belongs to the reply that has a
-      reply, the other to the one under it.
+      And it is drawn — every level below the first once went missing without a word. Two gutters is
+      the cheapest proof a nested level mounted: one belongs to the reply that has a reply, the
+      other to the one under it.
     */
     const html = host.innerHTML.replace(/<!--.*?-->/g, '');
     // The rail's column, under the author's face: an `xs` avatar wide, so the line falls under the

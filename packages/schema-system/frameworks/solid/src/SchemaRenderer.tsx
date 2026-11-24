@@ -952,7 +952,10 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
    * screen and every dock frame. The sidebar is a rail that closes on `mouseleave`, and an element
    * removed under the pointer is never sent one: it stayed open until it was hovered again.
    */
-  function renderChildren(nodes: () => SchemaNode['children']): RendererOutput {
+  function renderChildren(
+    nodes: () => SchemaNode['children'],
+    nodeContext: Record<string, unknown> = effectiveContext,
+  ): RendererOutput {
     return (
       <For each={nodes() ?? []} fallback={null}>
         {(child) => {
@@ -971,7 +974,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             // fine-grained dependencies. A `$query` cannot be read from here — children render
             // inside a memo, and a subscription is an effect — so a question for the backend is
             // hoisted into `$queries` and read back through `local`.
-            const resolved = resolveProp(child, stores, effectiveContext, createMemo);
+            const resolved = resolveProp(child, stores, nodeContext, createMemo);
             return (
               <>
                 {() => {
@@ -988,7 +991,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             );
           }
           // Otherwise render the child node
-          return renderNode(child as SchemaNode);
+          return renderNode(child as SchemaNode, nodeContext);
         }}
       </For>
     );
@@ -1052,14 +1055,19 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
 
   // Handle viewport-driven animations (child always mounted)
   if (node.type === '$animate') {
-    return <AnimateRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
+    return (
+      <AnimateRenderer
+        node={node}
+        stores={stores}
+        context={effectiveContext}
+        renderBody={() => renderChildren(() => node.children)}
+      />
+    );
   }
 
   // Handle each loops
   if (node.type === '$each') {
-    // Get the schema used to render each item
-    const itemSchema = node.children?.[0] as SchemaNode | undefined;
-
+    // Every child is drawn for every item, in order: a row is as many nodes as the template wrote.
     // Resolve the items used for iteration — $query needs a reactive subscription,
     // everything else goes through the standard resolveProp path.
     let itemsArray: () => unknown[];
@@ -1111,7 +1119,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         {(item, index) => {
           // Captured when the row renders, like `$prev` — see above.
           const i = untrack(index);
-          return renderNode(itemSchema, {
+          return renderChildren(() => node.children, {
             ...effectiveContext,
             [asKey]: item,
             index: i,
@@ -1126,7 +1134,12 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       <Show when={keyed()} fallback={byReference()}>
         <For each={rows()}>
           {(row) =>
-            renderNode(itemSchema, { ...effectiveContext, [asKey]: row.item, index: row.index, prev: row.prev })
+            renderChildren(() => node.children, {
+              ...effectiveContext,
+              [asKey]: row.item,
+              index: row.index,
+              prev: row.prev,
+            })
           }
         </For>
       </Show>

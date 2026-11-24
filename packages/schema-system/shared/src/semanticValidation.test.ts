@@ -221,49 +221,30 @@ describe('BlockComposer save handshake', () => {
   });
 });
 
-describe('a node type that renders one child, given several', () => {
+describe('a node type that repeats or wraps its children', () => {
   /**
-   * `$each` renders `children[0]` and drops the rest in silence. `commentThread` built each row as
-   * two nodes — the reply, then the thread under it — so every level of every thread below the first
-   * was expanded, validated and never mounted, and the only symptom was a reply to a reply appearing
-   * nowhere at all.
+   * `$each` draws every child once per item and `$animate` wraps every child it holds, so several
+   * children are a row or a subject of several nodes, and nothing about them is a mistake.
    */
-  it('rejects an $each with more than one child', () => {
+  it('accepts an $each whose row is several nodes', () => {
     const node: SchemaNode = {
       type: '$each',
       props: { items: { $: 'local.rows' }, as: 'row' },
       children: [
         { type: 'we-text', children: [{ $: 'row.title' }] },
-        { type: 'we-text', children: ['dropped, silently'] },
+        { type: 'we-text', children: [{ $: 'row.body' }] },
       ],
     } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('rejects an $animate wrapping several', () => {
+  it('accepts an $animate wrapping several', () => {
     const node: SchemaNode = {
       type: '$animate',
       props: { scrollReveal: true },
       children: [
         { type: 'we-text', children: ['a'] },
         { type: 'we-text', children: ['b'] },
-      ],
-    } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
-  });
-
-  it('accepts the row wrapped in one box', () => {
-    const node: SchemaNode = {
-      type: '$each',
-      props: { items: { $: 'local.rows' }, as: 'row' },
-      children: [
-        {
-          type: 'Column',
-          children: [
-            { type: 'we-text', children: [{ $: 'row.title' }] },
-            { type: 'we-text', children: ['and everything under it'] },
-          ],
-        },
       ],
     } as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
