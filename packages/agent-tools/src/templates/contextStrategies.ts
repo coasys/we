@@ -121,6 +121,11 @@ const SECTION_TOOLS: { name: string; summary: string; titles: string[] }[] = [
   { name: 'we_store_patterns', summary: 'Store creation and usage patterns', titles: ['Store Usage Patterns'] },
   { name: 'we_panels', summary: 'Panel types, configuration, and section layout', titles: ['Panels'] },
   {
+    name: 'we_operations',
+    summary: 'Declared operations: the writes a template invokes as ops.<namespace>.<name>',
+    titles: ['Declared Operations'],
+  },
+  {
     name: 'we_feature_modules',
     summary: 'Feature modules, their stores, parts and panels',
     titles: ['Feature Modules'],
@@ -257,6 +262,7 @@ const LOOKUP_SECTIONS: Record<string, string> = {
   panels: 'Panels',
   storePatterns: 'Store Usage Patterns',
   modules: 'Feature Modules',
+  operations: 'Declared Operations',
 };
 
 /**
@@ -468,6 +474,7 @@ const LOOKUP_SUMMARIES: Record<keyof typeof LOOKUP_SECTIONS, string> = {
   panels: 'Panels a template declares in meta.panels, and where they sit',
   storePatterns: 'Reading stores, calling actions, and querying and listing records',
   modules: 'The feature modules this build ships: their stores, parts, panels and functions',
+  operations: 'The declared operations a template can invoke, with their params and what they write',
 };
 
 /**
