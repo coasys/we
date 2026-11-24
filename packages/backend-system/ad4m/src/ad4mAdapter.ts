@@ -53,7 +53,7 @@ import { type EntityClass as Ad4mEntityClass, getEntity, getEntityForDataset } f
 
 import { toAd4mPredicate } from './containment';
 import type { EntityManifestEntry } from './manifestTypes';
-import { nameRecordTypes, namingBuilder } from './recordTypes';
+import { nameRecordTypes, namingLive } from './recordTypes';
 import { linksEndingAt, withUndeclaredReverse } from './undeclaredReverse';
 
 /**
@@ -89,7 +89,7 @@ const reverseHolders = {
  * Guard against a host passing a *described* dataset (a `DatasetRef`, which wraps the handle)
  * where the backend's own handle is required. `DatasetHandle` is `unknown` by contract, so the
  * compiler cannot catch this; without the guard the failure surfaces deep inside the SDK as
- * "modelSubscribe is not a function", pointing nowhere near the mistake.
+ * "perspective.subscribe is not a function", pointing nowhere near the mistake.
  */
 function asPerspective(dataset: DatasetHandle): PerspectiveProxy {
   if (dataset && typeof dataset === 'object' && 'handle' in dataset) {
@@ -116,7 +116,7 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
       // as toRendererUnion below also relies on. Rows are named as `toRendererUnion` names them: a
       // polymorphic member says its class by IRI too.
       query: (dataset, opts) =>
-        namingBuilder(
+        namingLive(
           (Model as unknown as typeof Ad4mModel).query(
             asPerspective(dataset),
             opts as Parameters<typeof Ad4mModel.query>[1],
@@ -163,8 +163,7 @@ export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass 
   const classes = Models as unknown as (typeof Ad4mModel)[];
   return withUndeclaredReverse(
     {
-      query: (dataset, opts) =>
-        namingBuilder(Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query), dataset),
+      query: (dataset, opts) => namingLive(Ad4mModel.queryOf(asPerspective(dataset), classes, opts as Query), dataset),
       findAll: async (dataset, opts, ctl) =>
         nameRecordTypes(await Ad4mModel.findAllOf(asPerspective(dataset), classes, opts as Query, ctl), dataset),
     },
