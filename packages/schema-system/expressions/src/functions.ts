@@ -433,7 +433,7 @@ defineFunction({
   name: 'sortBy',
   category: 'list',
   params: ['items', 'key', 'direction?'],
-  doc: "A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field go last either way, and equal entries keep their order. Anything that is not a list gives [].",
+  doc: "A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field (or holding '') go last either way, and equal entries keep their order. Anything that is not a list gives [].",
   example: "sortBy(local.columns, 'position')",
   impl: ([items, key, direction]) => {
     const list = asList(items);
@@ -441,7 +441,10 @@ defineFunction({
     const sign = direction === 'desc' ? -1 : 1;
     const keyed = list.map((entry) => {
       const value = readPath(entry, key);
-      return { entry, value, absent: isAbsent(value) || (typeof value === 'number' && Number.isNaN(value)) };
+      // A field holding '' has no value, as `filter()` and every backend read it: the contract
+      // stores no empty string, so sorting one as text would order a list no backend could return.
+      const absent = isAbsent(value) || value === '' || (typeof value === 'number' && Number.isNaN(value));
+      return { entry, value, absent };
     });
     // Array.prototype.sort is stable, so entries the comparison calls equal keep their order.
     keyed.sort((a, b) => {
