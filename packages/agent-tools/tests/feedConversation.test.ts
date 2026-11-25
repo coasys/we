@@ -9,13 +9,13 @@
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import type { ConversationReply, ConversationRequest, ConversationTurn } from '@we/backend-shared';
-import { registerCoreBlocks } from '@we/block-shared';
+import { markdownToBlocks, registerCoreBlocks } from '@we/block-shared';
 import { decodeTemplateFile, getEntity } from '@we/entities';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { bindRecordToolset, type RecordHost, runAgentConversation, UNTRUSTED_NOTE } from '../src/core/conversation';
 import type { RecordInput } from '../src/core/toolset';
-import { createDataToolset, textToBlocks } from '../src/data/dataToolset';
+import { createDataToolset } from '../src/data/dataToolset';
 import { templateToolset } from '../src/templates/templateToolset';
 
 type Row = Record<string, unknown> & { id: string };
@@ -316,12 +316,12 @@ describe('a template made from the feed', () => {
 });
 
 describe('writing text as a composition', () => {
-  it('reads paragraphs, headings and lists', () => {
-    expect(textToBlocks('# Plan\n\nFirst we dig.\nThen we plant.\n\n- spade\n- seeds')).toEqual([
-      { _type: 'block', style: 'h1', text: 'Plan' },
-      { _type: 'block', text: 'First we dig.\nThen we plant.' },
-      { _type: 'block', listItem: 'bullet', text: 'spade' },
-      { _type: 'block', listItem: 'bullet', text: 'seeds' },
+  it('reads the markdown write_post is given', () => {
+    expect(markdownToBlocks('# Plan\n\nFirst we dig.\nThen we **plant**.\n\n- spade\n- seeds')).toEqual([
+      { _type: 'block', style: 'h1', text: 'Plan', marks: [] },
+      { _type: 'block', text: 'First we dig.\nThen we plant.', marks: [{ start: 22, end: 27, type: 'strong' }] },
+      { _type: 'block', listItem: 'bullet', text: 'spade', marks: [] },
+      { _type: 'block', listItem: 'bullet', text: 'seeds', marks: [] },
     ]);
   });
 });

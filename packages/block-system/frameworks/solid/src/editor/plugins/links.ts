@@ -3,16 +3,14 @@
  * Mod-click a link to open it. Setting and clearing a link on the current selection is here too,
  * for the toolbar and the Mod-K prompt to call.
  */
+import { isUrl } from '@we/block-shared';
 import { safeHref } from '@we/design-utils';
 import type { MarkType } from 'prosemirror-model';
 import { Plugin } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 
-const URL_ONLY = /^(?:https?:\/\/|www\.)[^\s<>"']+$/i;
-
-export function isUrl(text: string): boolean {
-  return URL_ONLY.test(text.trim());
-}
+// Where a URL ends is `findUrls`'s, the same answer a line drawn from somebody else's text takes.
+export { isUrl };
 
 /**
  * The href to store, or `''` for one that would not be safe to click.
