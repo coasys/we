@@ -111,5 +111,5 @@ export const toastService = {
   success: (message: string, duration?: number, action?: ToastAction, look?: ToastLook) =>
     addToast(message, 'success', duration, action, look),
   warning: (message: string, duration?: number) => addToast(message, 'warning', duration),
-  error: (message: string, duration?: number) => addToast(message, 'danger', duration),
+  error: (message: string, duration?: number, action?: ToastAction) => addToast(message, 'danger', duration, action),
 };
