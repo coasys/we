@@ -353,6 +353,7 @@ export function createOptimism<V>(signal: SignalFactory, rules: Rules<V>): Optim
 export {
   compareWritten,
   keepNewestAcrossDevices,
+  newestPerPerson,
   newestWritten,
   type Removable,
   replaceAcrossDevices,

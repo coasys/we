@@ -4,9 +4,9 @@
   without a document.
 */
 import { tallyEverything, tallySignals } from '@we/components/signals';
-import { newestWritten, type Written } from '@we/optimism';
+import { newestPerPerson, type Written } from '@we/optimism';
 
-import { selfDids } from '../personProfile';
+import { byAnyDid, selfDids } from '../personProfile';
 
 /**
  * What a record's reactions say, as one number.
@@ -73,11 +73,12 @@ export function signalTally(options: unknown): number {
  * Total, like every function an expression can call.
  */
 export function reactions(options: unknown): unknown[] {
-  const { signals, record, type, me, pending } = (options ?? {}) as {
+  const { signals, record, type, me, profiles, pending } = (options ?? {}) as {
     signals?: unknown;
     record?: unknown;
     type?: unknown;
     me?: unknown;
+    profiles?: unknown;
     pending?: unknown;
   };
   const rows: unknown[] = Array.isArray(signals) ? signals : [];
@@ -86,11 +87,20 @@ export function reactions(options: unknown): unknown[] {
   const selves = selfDids(me);
   const self = [...selves][0];
   const isMine = (row: unknown) => selves.has((row as { author?: unknown } | null)?.author as string);
-  // Two of my computers may each have left one, where a removal was refused or both changed at once:
-  // I count once, as my newest — the one `upsertSignal` keeps and the control shows.
-  const own = rows.filter(isMine);
-  const newest = newestWritten(own as Written[]);
-  const settled = own.length > 1 ? rows.filter((row) => !isMine(row) || row === newest) : rows;
+  // One person's two computers may each have left one, where a removal was refused or both changed at
+  // once: each person counts once, as their newest — for everybody, not only me, so every reader
+  // counts the same. `profiles` joins another person's keys; mine are known from `me` before any
+  // profile arrives. A key no profile lists yet is its own person.
+  const known = byAnyDid<{ did?: unknown; devices?: unknown }>(profiles);
+  const personOf = (did: string) => {
+    if (selves.has(did)) return '\u0000me';
+    const person = known.get(did)?.did;
+    return typeof person === 'string' && person ? person : did;
+  };
+  const isStored = (row: unknown): row is Written & { author?: unknown } => !!row && typeof row === 'object';
+  const stored = rows.filter(isStored);
+  const kept = new Set<unknown>(newestPerPerson(stored, personOf).values());
+  const settled = kept.size < stored.length ? rows.filter((row) => !isStored(row) || kept.has(row)) : rows;
   if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || !self) {
     return settled;
   }
@@ -103,7 +113,7 @@ export function reactions(options: unknown): unknown[] {
 
   // This agent's stored reaction of this type goes, whatever it says — the held one stands in for
   // it, so changing a rating does not count twice and withdrawing one does not leave it behind.
-  const others = rows.filter((row) => !isMine(row));
+  const others = settled.filter((row) => !isMine(row));
   // A withdrawal is `null`, not a zero: a zero is an ordinary reaction and is put back like any
   // other. See `upsertSignal` for why the two stopped being the same thing.
   return held.value === null ? others : [...others, { author: self, signalTypeId: type, value: held.value }];

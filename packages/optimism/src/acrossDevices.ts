@@ -26,10 +26,11 @@
  *    through `compareWritten` — extra records may remain, and they agree past them.
  * 3. **A refused removal is left standing** rather than failing the rest or the write before it.
  *
- * A record left standing is not a second answer to anyone reading: every reader of mine keeps my
- * newest (the host's `involvement()` and `reactions()`, a poll's `tally`). One left standing is still
- * counted per device by another person's tally, which has no profiles to join keys to persons with; it
- * heals on the next change that is allowed to remove it. The policy check shows its own refusal to the
+ * A record left standing is not a second answer to anyone reading: every reader keeps each person's
+ * newest ({@link newestPerPerson} — the host's `involvement()` and `reactions()`, a poll's `tally`),
+ * for every voter and not only for themselves, so two readers count the same total. A key whose
+ * person a reader cannot name yet counts as its own until it can; it heals on the next change that is
+ * allowed to remove it. The policy check shows its own refusal to the
  * person; these only report what was removed, for a caller whose act was a withdrawal and so did not
  * happen.
  */
@@ -77,6 +78,28 @@ export function newestWritten<T extends Written>(rows: readonly T[]): T | undefi
   let best: T | undefined;
   for (const row of rows) if (!best || compareWritten(row, best) > 0) best = row;
   return best;
+}
+
+/**
+ * Every person's newest record, keyed by person: what is one per person — a vote, a reaction, an
+ * answer — read from records that name the device that wrote them.
+ *
+ * `personOf` names who an author speaks for; two authors it answers the same for are one person, and
+ * only the newest of their records under {@link compareWritten} is kept. A record with no author is
+ * nobody's but its own, and is kept apiece.
+ */
+export function newestPerPerson<T extends Written & { author?: unknown }>(
+  rows: readonly T[],
+  personOf: (author: string) => string,
+): Map<string, T> {
+  const newest = new Map<string, T>();
+  rows.forEach((row, i) => {
+    const author = row.author;
+    const key = typeof author === 'string' && author ? personOf(author) : `\u0000row:${i}`;
+    const best = newest.get(key);
+    if (!best || compareWritten(row, best) > 0) newest.set(key, row);
+  });
+  return newest;
 }
 
 /** Something that can take itself away — a stored model, or a row with its kernel's remove bound. */

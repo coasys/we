@@ -125,9 +125,9 @@ export const hostSources: readonly HostSource[] = [
   {
     name: 'reactions',
     params: ['options'],
-    doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.dids — every computer the reader writes from, so a held reaction stands in for the one their other device gave; me.did works too).",
+    doc: "A record's reactions, one per person — each person's newest — with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.dids — every computer the reader writes from, so a held reaction stands in for the one their other device gave; me.did works too), profiles (profileStore.profiles — anybody who reacted from two computers counts once, as their newest, so every reader sees the same reactions).",
     example:
-      'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.dids })',
+      'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.dids, profiles: profileStore.profiles })',
     fn: reactions,
   },
   {
