@@ -62,7 +62,11 @@ export interface DeviceStore {
    * no identity.
    */
   canRestore: Accessor<boolean>;
-  /** "Remove master key from this computer?" can be asked on sign out: it keeps one. */
+  /**
+   * "Remove master key from this computer?" can be asked on sign out: it keeps one, and another
+   * active device is recorded as keeping it too. The custody service refuses to remove the only
+   * copy, so where no other device keeps it, sign out does not ask.
+   */
   canRemoveMaster: Accessor<boolean>;
   /**
    * A master key another device sent waits here: "Accept master key". False while `encMismatch`
@@ -211,6 +215,11 @@ export function DeviceStoreProvider(props: ParentProps) {
     !!identity.custody()?.holdsMaster &&
     !rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster !== 'no');
 
+  // Another active device is recorded as keeping the master key, not only being sent it: the custody
+  // service removes this computer's copy only then.
+  const anotherKeepsMaster = () =>
+    rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster === 'yes');
+
   async function unlinkThisComputer(): Promise<UnlinkOutcome> {
     const p = port();
     if (!p) {
@@ -265,7 +274,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       !encMismatch(),
     canReplaceMaster: () => words() && !!identity.did() && !!identity.keyId() && !identity.thisDeviceRevoked(),
     canRestore: () => words() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
-    canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster,
+    canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster && anotherKeepsMaster(),
     masterWaiting,
     encMismatch,
     requests: createMemo(() =>

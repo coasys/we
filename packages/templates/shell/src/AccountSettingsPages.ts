@@ -240,9 +240,10 @@ export const planPage: SchemaNode = {
  * refused: a guest may genuinely want to leave. The flag sits on this node so the button and the
  * dialog share it.
  *
- * Where this computer keeps the master key, log out asks whether to remove it too. The custody
- * service refuses to remove the only copy and says why in its window; log out then waits for the
- * person, rather than going on as if the key were gone.
+ * Where this computer keeps the master key and another device keeps it too, log out asks whether to
+ * remove it here. Where this is the only copy, which the custody service would refuse to remove, it
+ * signs out without asking. A removal refused anyway is said in the custody window ("Nothing was
+ * removed"), and log out still goes ahead, keeping the key; only closing that window stays signed in.
  */
 export const logOutAction: SchemaNode = {
   type: 'Column',
@@ -300,7 +301,7 @@ export const logOutAction: SchemaNode = {
         onSuccess: [
           {
             $if: {
-              condition: { $: "result == 'done'" },
+              condition: { $: "result != 'cancelled'" },
               then: { $invoke: 'sessionStore.logout' },
             },
           },
