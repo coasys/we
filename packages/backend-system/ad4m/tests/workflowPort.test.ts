@@ -5,7 +5,7 @@
  *
  * What the engine then does with the links is the engine's business and is not tested here.
  */
-import { FlowTransitionProposal, SHACLFlow } from '@coasys/ad4m';
+import { type FlowRefusal, FlowTransitionProposal, RpcError, SHACLFlow } from '@coasys/ad4m';
 import type { WorkflowDefinition } from '@we/backend-shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -282,33 +282,64 @@ describe('installing beside a flow of the same name written another way', () => 
 });
 
 describe('moveRefusal', () => {
+  /** What the executor sends for a refused move: status 409 and the typed refusal as `data`. */
+  const refused = (data: FlowRefusal) => new RpcError(409, 'refused', data);
+
   it('reads "not reachable from where you asked to go" as already there', () => {
     // The board showed Done; a rule change had the engine re-judge the run into Doing.
-    const error = new Error('RPC error 500: `doing` is not reachable from `doing` — no proposal written');
+    const error = refused({ kind: 'not-reachable', from: 'doing', to: 'doing' });
     expect(moveRefusal(error, 'doing', 'done')).toEqual({ outcome: 'moved', state: 'doing', moves: [] });
   });
 
   it('reads an unreachable move as not allowed, naming where the record stands — none at the entry', () => {
-    expect(moveRefusal(new Error('`todo` is not reachable from `done`'), 'todo', 'done')).toEqual({
+    expect(moveRefusal(refused({ kind: 'not-reachable', from: 'done', to: 'todo' }), 'todo', 'done')).toEqual({
       outcome: 'refused',
       reason: 'not-allowed',
       state: 'done',
     });
-    expect(moveRefusal(new Error('`todo` is not reachable from `_entry`'), 'todo', null)).toMatchObject({
+    expect(moveRefusal(refused({ kind: 'not-reachable', from: '_entry', to: 'todo' }), 'todo', null)).toMatchObject({
       state: null,
     });
   });
 
-  it('reads an unmet guard, a contested run and a timeout', () => {
-    const unmet = new Error('guard for `shipped` is not satisfied on this replica — proposal not written');
-    expect(moveRefusal(unmet, 'shipped', 'doing')).toEqual({ outcome: 'refused', reason: 'unmet', state: 'doing' });
-    const contested = new Error('ad4m://x is contested in `vote` — two edges out of it already carry quorum');
-    expect(moveRefusal(contested, 'adopted', 'vote')).toEqual({ outcome: 'stalled', state: 'vote' });
+  it('reads an unmet guard as refused, keeping the state the caller knew', () => {
+    const error = refused({ kind: 'guard-unmet', to: 'shipped' });
+    expect(moveRefusal(error, 'shipped', 'doing')).toEqual({ outcome: 'refused', reason: 'unmet', state: 'doing' });
+  });
+
+  it('reads a contested run as stalled', () => {
+    const error = refused({ kind: 'contested', instance: 'ad4m://x', from: 'vote' });
+    expect(moveRefusal(error, 'adopted', 'vote')).toEqual({ outcome: 'stalled', state: 'vote' });
+  });
+
+  it('reads a timeout as pending', () => {
     const slow = new Error("RPC call 'perspective.proposeFlowTransition' timed out after 30000ms");
     expect(moveRefusal(slow, 'done', 'doing')).toEqual({ outcome: 'pending' });
   });
 
-  it('leaves any other error to be thrown', () => {
+  it('leaves every other kind of refusal to be thrown', () => {
+    const others: FlowRefusal[] = [
+      { kind: 'no-instance', instance: 'ad4m://x' },
+      { kind: 'no-proposal', proposal: 'ad4m://p' },
+      { kind: 'not-terminal', to: 'doing' },
+      { kind: 'output-not-instance', output: { className: 'Task', id: 'ad4m://t' }, proposal: null },
+      { kind: 'outputs-uncommitted', proposal: 'ad4m://p' },
+      { kind: 'outputs-mismatch', proposal: 'ad4m://p', committed: 'a', recomputed: 'b' },
+      { kind: 'different-outputs', instance: 'ad4m://x', to: 'done', proposals: ['ad4m://p'] },
+      { kind: 'stale-proposal', proposal: 'ad4m://p', leaves: 'a', instance: 'ad4m://x', current: 'b' },
+      { kind: 'not-engine-visible', proposal: 'ad4m://p', reason: null },
+      { kind: 'evidence-unreproducible', proposal: 'ad4m://p' },
+      { kind: 'not-your-proposal', proposal: 'ad4m://p', agent: 'did:key:z' },
+    ];
+    for (const data of others) expect(moveRefusal(refused(data), 'done', 'doing')).toBeUndefined();
+  });
+
+  it('leaves a real failure to be thrown: status 500, no data', () => {
+    expect(moveRefusal(new RpcError(500, 'store failed'), 'done', 'doing')).toBeUndefined();
+  });
+
+  it('does not read the message: a plain error with the old sentence is not a refusal', () => {
+    expect(moveRefusal(new Error('`todo` is not reachable from `done`'), 'todo', 'done')).toBeUndefined();
     expect(moveRefusal(new Error('socket closed'), 'done', 'doing')).toBeUndefined();
   });
 });
