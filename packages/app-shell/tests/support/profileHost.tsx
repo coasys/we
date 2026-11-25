@@ -29,7 +29,6 @@ import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { clockRegistry } from '../../src/shared/clocks';
@@ -43,6 +42,7 @@ import { createClockStore } from '../../src/shared/stores/ClockStore';
 import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createProfileStore } from '../../src/shared/stores/ProfileStore';
+import { createRecordStore } from '../../src/shared/stores/RecordStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
@@ -497,7 +497,13 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       sessionStore,
       datasetStore,
     });
-    const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+    const recordStore = createRecordStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+      shapeStore,
+    });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,
       firstScreen,

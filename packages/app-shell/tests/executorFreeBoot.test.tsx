@@ -273,7 +273,6 @@ import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { agentDataKernel } from '../src/shared/agentData';
@@ -288,6 +287,7 @@ import { createAppStore } from '../src/shared/stores/AppStore';
 import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
+import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
@@ -359,7 +359,13 @@ function mountShell(): Stores {
       sessionStore,
       datasetStore,
     });
-    const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+    const recordStore = createRecordStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+      shapeStore,
+    });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,
       firstScreen,

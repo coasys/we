@@ -6,7 +6,7 @@ export { type DatasetStore, createDatasetStore } from '../../../shared/stores/Da
 export { type ProfileStore, createProfileStore } from '../../../shared/stores/ProfileStore';
 export { type RuntimeStore, createRuntimeStore } from '../../../shared/stores/RuntimeStore';
 export { type ShapeStore, createShapeStore } from '../../../shared/stores/ShapeStore';
-export { type RecordStore, createRecordStore } from './RecordStore';
+export { type RecordStore, createRecordStore } from '../../../shared/stores/RecordStore';
 export { type SpaceStore, createSpaceStore } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, createThemeStore } from '../../../shared/stores/ThemeStore';
 export { type TemplateStore, createTemplateStore } from '../../../shared/stores/TemplateStore';

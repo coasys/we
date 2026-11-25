@@ -28,6 +28,7 @@ import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createProfileStore } from '@shared/stores/ProfileStore';
+import { createRecordStore } from '@shared/stores/RecordStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
@@ -44,7 +45,6 @@ import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
 import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { createRecordStore } from '../stores/RecordStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
@@ -118,7 +118,13 @@ export function BootController(props: ParentProps) {
     datasetStore,
   });
   // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+  const recordStore = createRecordStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+    shapeStore,
+  });
   const profileStore = createProfileStore({
     reactivity: solidReactivity,
     firstScreen,

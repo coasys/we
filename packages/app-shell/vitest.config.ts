@@ -56,6 +56,10 @@ const SOLID_TESTS = [
   'tests/spaceSettingsTab.test.tsx',
   'tests/templateDrafts.test.ts',
   'tests/editorStore.test.ts',
+  // The record store's canvas, tree and connection writes, each under both ports.
+  'tests/canvasHistory.test.ts',
+  'tests/treeUndo.test.ts',
+  'tests/treeRelation.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',

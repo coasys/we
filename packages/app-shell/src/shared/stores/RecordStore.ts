@@ -22,7 +22,6 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { type AppDataset } from '@shared/stores/DatasetStore';
 import {
   datasetIdOf,
   datasetKey,
@@ -38,7 +37,6 @@ import {
   type RecordInstance,
 } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlock, deleteBlocks, planPost, writePost } from '@we/block-shared';
-import { toastService } from '@we/components/solid';
 import {
   CollectionBlock,
   COMPOSE_CARD_POST,
@@ -65,26 +63,21 @@ import {
 import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
-import { solidReactivity } from '@we/reactivity-solid';
-import { Accessor, batch, createEffect, createMemo, createSignal, untrack } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
-import { routeWrite } from '../../../shared/edgeRoute';
-import { followLive } from '../../../shared/followLive';
-import { toEntityShape } from '../../../shared/graphEntityShape';
-import { hostSlot } from '../../../shared/hostSlot';
-import { connectionKey } from '../../../shared/kernels/connectionKey';
-import { isRank, isUnder, rowFor, seatInRow } from '../../../shared/kernels/treeRanks';
-import { kindHue } from '../../../shared/kindHue';
-import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
-import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/interpretationCandidates';
-import {
-  presentationFields,
-  presentationOf,
-  type TypePresentation,
-  withPresentation,
-} from '../../../shared/shapes/presentation';
-import { displayFor, modelLabel, type RecordDisplay } from '../../../shared/shapes/recordDisplay';
+import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../bringIn';
+import { distinctSignal } from '../distinctSignal';
+import { routeWrite } from '../edgeRoute';
+import { followLive } from '../followLive';
+import { toEntityShape } from '../graphEntityShape';
+import { hostSlot } from '../hostSlot';
+import { connectionKey } from '../kernels/connectionKey';
+import { isRank, isUnder, rowFor, seatInRow } from '../kernels/treeRanks';
+import { kindHue } from '../kindHue';
+import { notifyCopiedIn } from '../registries/moduleHostServices';
+import { WE_PLUMBING_CLASSES } from '../shapes/interpretationCandidates';
+import { presentationFields, presentationOf, type TypePresentation, withPresentation } from '../shapes/presentation';
+import { displayFor, modelLabel, type RecordDisplay } from '../shapes/recordDisplay';
 import {
   asEntityName,
   type CreationPath,
@@ -104,10 +97,13 @@ import {
   withPlace,
   withRelationEntry,
   writeFieldValue,
-} from '../../../shared/shapes/recordDraft';
-import { BLOCK_ICONS } from '../../../shared/shapes/spaceShapes';
-import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import type { StoreRegistry } from './useStore';
+} from '../shapes/recordDraft';
+import { BLOCK_ICONS } from '../shapes/spaceShapes';
+import { modelManifestEntries, parseSpine, type Spine } from '../sources/treeSpines';
+import type { Toasts } from '../toasts';
+import type { AppDataset, DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
 export interface CreatableEntity {
@@ -281,8 +277,8 @@ export interface RecordStore {
    * SpaceStore supplies the lists a *community* owns, for a property whose declaration names one —
    * see `vocabulary` on a property, and `offeredTaskStates`.
    *
-   * Injected rather than read: the answer lives on records in the space, and SpaceStore mounts below
-   * this one. Unset, every display falls back to the declaration's own `options`.
+   * Injected rather than read: the answer lives on records in the space, and SpaceStore is composed
+   * after this one. Unset, every display falls back to the declaration's own `options`.
    */
   provideVocabularies: (resolve: (vocabulary: string) => string[] | undefined) => () => void;
   /**
@@ -521,7 +517,7 @@ export interface RecordStore {
    * that confirmation counts the list — a template looping `record.delete` instead would stack one
    * dialog per card, which is why this exists.
    *
-   * Irreversible, and outside the undo history on purpose: an AD4M delete drops the links, and a
+   * Irreversible, and outside the undo history on purpose: a delete drops the record's links, and a
    * re-create earns a new id that nothing pointing at the old one would follow. That is also why it
    * is safe to bind to the Delete key despite being irreversible — the host's dialog is in front of
    * it, and there is no reversible neighbour to offer instead (see `removeFromCanvas`).
@@ -719,9 +715,21 @@ export interface RecordStore {
   ) => Promise<void>;
 }
 
-export function createRecordStore(
-  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore'>,
-): RecordStore {
+/** What the record store reads of the datasets: the one on screen, the ones held, and the classes it already has. */
+export type RecordDatasets = Pick<DatasetStore, 'currentDataset' | 'currentDatasetEntities' | 'datasets'>;
+
+export interface RecordStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Toasts;
+  /** Who writes — every write runs as the signed-in agent. */
+  sessionStore: Pick<SessionStore, 'me'>;
+  datasetStore: RecordDatasets;
+  /** The space's own models, which it offers forms and displays for beside WE's. */
+  shapeStore: Pick<ShapeStore, 'spaceShapes'>;
+}
+
+export function createRecordStore(deps: RecordStoreDeps): RecordStore {
+  const { reactivity, toasts } = deps;
   const datasetStore = deps.datasetStore;
   const session = deps.sessionStore;
 
@@ -746,8 +754,8 @@ export function createRecordStore(
   }
   const shapeStore = deps.shapeStore;
 
-  const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
-  const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
+  const [recordDraft, setRecordDraft] = distinctSignal<RecordDraft | null>(reactivity, null);
+  const [recordErrors, setRecordErrors] = reactivity.signal<string[]>([]);
   /*
     Counts writes into a draft's fields, for whatever has to notice them.
 
@@ -757,16 +765,17 @@ export function createRecordStore(
     paragraph, so closing or going Back threw the work away without asking, while a location pin, which
     replaces the draft, did ask. Reading this beside the draft is what makes the two agree.
   */
-  const [draftEdits, setDraftEdits] = createSignal(0);
-  const [savingRecord, setSavingRecord] = createSignal(false);
-  const [lastCreatedId, setLastCreatedId] = createSignal('');
-  const [pendingLink, setPendingLink] = createSignal<PendingLink | null>(null);
-  const [pendingBoard, setPendingBoard] = createSignal('');
-  const [relationshipKind, setKind] = createSignal('');
-  const [pendingPoint, setPendingPoint] = createSignal<{ x: number; y: number } | null>(null);
-  const [relationDraft, setRelationDraft] = createSignal<RecordDraft | null>(null);
-  const [relationFieldName, setRelationFieldName] = createSignal('');
-  const [relationErrors, setRelationErrors] = createSignal<string[]>([]);
+  const [draftEdits, setDraftEdits] = reactivity.signal(0);
+  const countDraftEdit = () => setDraftEdits(reactivity.untrack(draftEdits) + 1);
+  const [savingRecord, setSavingRecord] = distinctSignal(reactivity, false);
+  const [lastCreatedId, setLastCreatedId] = distinctSignal(reactivity, '');
+  const [pendingLink, setPendingLink] = distinctSignal<PendingLink | null>(reactivity, null);
+  const [pendingBoard, setPendingBoard] = distinctSignal(reactivity, '');
+  const [relationshipKind, setKind] = distinctSignal(reactivity, '');
+  const [pendingPoint, setPendingPoint] = distinctSignal<{ x: number; y: number } | null>(reactivity, null);
+  const [relationDraft, setRelationDraft] = distinctSignal<RecordDraft | null>(reactivity, null);
+  const [relationFieldName, setRelationFieldName] = distinctSignal(reactivity, '');
+  const [relationErrors, setRelationErrors] = reactivity.signal<string[]>([]);
   let entrySeq = 0;
 
   /**
@@ -778,7 +787,7 @@ export function createRecordStore(
    * written and silently stale afterwards. And by declaration rather than by name: nothing that is not
    * content needs a flag to stay out.
    */
-  const coreEntities = createMemo<CreatableEntity[]>(() =>
+  const coreEntities = reactivity.memo<CreatableEntity[]>(() =>
     Object.entries(CORE_MANIFEST.entities)
       .flatMap(([name, entity]) => {
         const via = creationPath(entity);
@@ -800,7 +809,7 @@ export function createRecordStore(
   );
 
   /** Models this community defined. Healthy ones only — a shape that failed adoption is not queryable. */
-  const shapeEntities = createMemo<CreatableEntity[]>(() =>
+  const shapeEntities = reactivity.memo<CreatableEntity[]>(() =>
     shapeStore
       .spaceShapes()
       .filter((shape) => shape.manifest && !shape.problems.length)
@@ -818,7 +827,7 @@ export function createRecordStore(
 
   // This space's own first: a community that has modelled its vocabulary means those models, and
   // WE's built-ins are the fallback rather than the headline.
-  const creatableEntities = createMemo<CreatableEntity[]>(() => [...shapeEntities(), ...coreEntities()]);
+  const creatableEntities = reactivity.memo<CreatableEntity[]>(() => [...shapeEntities(), ...coreEntities()]);
 
   /**
    * The schema behind a name, and whether every property of it belongs to the author.
@@ -845,7 +854,7 @@ export function createRecordStore(
    * The class a record of `entity` is written through, in the dataset on screen.
    *
    * `getEntity` alone reads the global registry, which holds WE's own models and the modules'. A
-   * model a community defined is registered *per dataset* on AD4M — that is how two spaces can each
+   * model a community defined is registered *per dataset* on some backends — that is how two spaces can each
    * have a `Sighting` — so saving one through this form failed with "Model "UfoSighting" not found in
    * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
    * global class and falls back to the space's own, so every caller here goes through it.
@@ -899,7 +908,7 @@ export function createRecordStore(
    * with its own icon and label, and a display derived from the community's shape is the one that
    * should win.
    */
-  const displayableEntities = createMemo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
+  const displayableEntities = reactivity.memo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
     const named = new Set(creatableEntities().map((entity) => entity.value));
     /*
       Every core block too, including the ones there is no way to make — a divider still appears in a
@@ -928,9 +937,9 @@ export function createRecordStore(
     canvas ? (contentHomes.get()?.forCanvas(canvas) ?? canvas) : contentHomes.get()?.root() || undefined;
 
   /** The space's layer of each type's presentation, by type — filled by `reloadSpacePresentation`. */
-  const [spacePresentation, setSpacePresentation] = createSignal<Record<string, TypePresentation>>({});
+  const [spacePresentation, setSpacePresentation] = reactivity.signal<Record<string, TypePresentation>>({});
 
-  const displays = createMemo<Record<string, RecordDisplay>>(() => {
+  const displays = reactivity.memo<Record<string, RecordDisplay>>(() => {
     const out: Record<string, RecordDisplay> = {};
     for (const entity of displayableEntities()) {
       const found = schemaFor(entity.value);
@@ -946,10 +955,10 @@ export function createRecordStore(
       });
     }
     /*
-      A class the space already had — every one Social DNA lists from other apps, which is also every
+      A class the space already had — every one the dataset's schema lists from other apps, which is also every
       one a call may extract into. No WE model says how to show one, so its scalar properties
-      are listed as its SHACL names them — without this an accepted record of one is an empty card,
-      and opening the class from the DNA lists nothing readable. Display only: `schemaFor` still does
+      are listed as its schema names them — without this an accepted record of one is an empty card,
+      and opening the class from the schema lists nothing readable. Display only: `schemaFor` still does
       not know it, so nothing here makes one creatable or placeable.
     */
     const plumbing = new Set(WE_PLUMBING_CLASSES);
@@ -985,7 +994,7 @@ export function createRecordStore(
   */
   function openRecordForm(entity?: unknown): void {
     const named = asEntityName(entity);
-    batch(() => {
+    reactivity.batch(() => {
       setRecordErrors([]);
       setRecordDraft(null);
       // A form opened from a button is not a connection, and is not aimed at a canvas, whatever the
@@ -1009,16 +1018,16 @@ export function createRecordStore(
     if (!found) {
       // Nothing here can render a form for a model this space does not have, and a modal that opens
       // empty is worse than one that says why.
-      toastService.error(`No model named "${entity}" in this space.`);
+      toasts.error(`No model named "${entity}" in this space.`);
       return;
     }
     // A composed kind has no form to open — a note is written in the composer. Every picker that
     // offers one opens that instead; this is the guard for one that did not.
     if (!found.authorable && creationPath(found.schema) === 'composer') {
-      toastService.error(`A ${found.label.toLowerCase()} is written in the composer, not a form.`);
+      toasts.error(`A ${found.label.toLowerCase()} is written in the composer, not a form.`);
       return;
     }
-    batch(() => {
+    reactivity.batch(() => {
       setRecordErrors([]);
       setRecordDraft(
         emptyRecordDraft({
@@ -1075,7 +1084,7 @@ export function createRecordStore(
     const file: unknown = Array.isArray(value) ? value[0] : value;
     if (typeof File === 'undefined' || !(file instanceof File)) {
       writeFieldValue(draft(), name, value === null || value === undefined ? '' : (value as RecordFieldValue));
-      setDraftEdits((n) => n + 1);
+      countDraftEdit();
       return;
     }
     const opened = draft();
@@ -1083,13 +1092,13 @@ export function createRecordStore(
       .then((payload) => {
         if (draft() !== opened) return;
         writeFieldValue(opened, name, payload);
-        setDraftEdits((n) => n + 1);
+        countDraftEdit();
         const named = opened?.fields.find((field) => field.name === 'name' && field.control === 'text');
         if (named && typeof named.value === 'string' && !named.value.trim()) named.value = file.name;
       })
       .catch((error) => {
         console.error('RecordStore: reading a file failed', error);
-        toastService.error('Could not read that file.');
+        toasts.error('Could not read that file.');
       });
   }
 
@@ -1197,7 +1206,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: reading an image failed', error);
-      toastService.error('Could not read that image.');
+      toasts.error('Could not read that image.');
     }
   }
 
@@ -1209,7 +1218,7 @@ export function createRecordStore(
     const relation = relationFieldOf(field);
     const found = relation ? schemaFor(relation.target) : undefined;
     if (!relation || !found) return;
-    batch(() => {
+    reactivity.batch(() => {
       setRelationErrors([]);
       setRelationFieldName(field);
       // No `relationTarget`: a nested form offers no relations of its own. One level is a form
@@ -1246,7 +1255,7 @@ export function createRecordStore(
       entity: nested.entity,
       fields: recordDraftFields(nested),
     };
-    batch(() => {
+    reactivity.batch(() => {
       setRecordDraft(withRelationEntry(parent, relationFieldName(), entry));
       setRelationDraft(null);
       setRelationErrors([]);
@@ -1254,7 +1263,7 @@ export function createRecordStore(
   }
 
   function cancelRelationForm(): void {
-    batch(() => {
+    reactivity.batch(() => {
       setRelationDraft(null);
       setRelationErrors([]);
     });
@@ -1326,7 +1335,7 @@ export function createRecordStore(
 
   function connectNodes(link: PendingLink): void {
     if (!link.sourceId || !link.targetId) return;
-    batch(() => {
+    reactivity.batch(() => {
       setPendingLink(link);
       setRecordEntity(RELATIONSHIP);
     });
@@ -1371,7 +1380,7 @@ export function createRecordStore(
       // A toast rather than `recordErrors`: there is no form on screen holding what somebody typed,
       // so the only place a failure can be reported is the one that does not need one.
       console.error('RecordStore: connecting two records failed', error);
-      toastService.error('Could not draw that connection.');
+      toasts.error('Could not draw that connection.');
       return '';
     }
   }
@@ -1384,7 +1393,7 @@ export function createRecordStore(
    * model declares and changing it away from that is the author's doing. A boolean is deliberately
    * not counted: a checkbox starts false and toggling it back is not work worth a dialog.
    */
-  const recordDraftDirty = createMemo(() => {
+  const recordDraftDirty = reactivity.memo(() => {
     const draft = recordDraft();
     // Tracked, not used: a field written in place changes nothing the memo would otherwise see.
     draftEdits();
@@ -1404,7 +1413,7 @@ export function createRecordStore(
   });
 
   function cancelRecordForm(): void {
-    batch(() => {
+    reactivity.batch(() => {
       setRecordDraft(null);
       setRelationDraft(null);
       setRelationErrors([]);
@@ -1419,7 +1428,7 @@ export function createRecordStore(
   function createOnCanvas(canvas: string, x?: number, y?: number): void {
     if (!canvas) return;
     openRecordForm();
-    batch(() => {
+    reactivity.batch(() => {
       setPendingBoard(canvas);
       // A point only when somebody chose one — a double-click on the canvas has one, a toolbar
       // button does not. Inventing `(0, 0)` for the second case is what made a new record appear at
@@ -1462,7 +1471,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: creating a card on a canvas failed', error);
-      toastService.error('Could not add that card.');
+      toasts.error('Could not add that card.');
     }
   }
 
@@ -1538,7 +1547,7 @@ export function createRecordStore(
     } catch (error) {
       drop(nodeId, { x, y });
       console.error('RecordStore: placing a record on a canvas failed', error);
-      toastService.error('Could not save that position.');
+      toasts.error('Could not save that position.');
       return null;
     }
   }
@@ -1642,7 +1651,7 @@ export function createRecordStore(
     if (!row) return false;
 
     if (Number(row.$responses ?? 0) > 0 || Number(row.$signals ?? 0) > 0) {
-      toastService.info('People have discussed that connection. Select the line itself to remove it.');
+      toasts.info('People have discussed that connection. Select the line itself to remove it.');
       return false;
     }
     try {
@@ -1652,7 +1661,7 @@ export function createRecordStore(
     } catch (error) {
       // Discussed between the read above and the write: the operation's own check, said the same way.
       if (isOperationError(error) && error.code === 'discussed') {
-        toastService.info(error.message);
+        toasts.info(error.message);
         return false;
       }
       throw error;
@@ -1835,7 +1844,7 @@ export function createRecordStore(
    * clear it, which every backend reads as "remove this field's links". The parent is spelled as the
    * card's model takes it: a one-element list where the field is a relation with accessors of its
    * own, the id itself where it is a plain property holding one — which is how an installed schema's
-   * `max_count: 1` relation arrives on AD4M, and the common case there, not an edge one.
+   * single-valued relation arrives on some backends, and the common case there, not an edge one.
    *
    * A to-many is the parent's list: off the old holder's, onto the new one's, in one write
    * (`core.moveUnder`), so no reader sees the card on neither list or on both.
@@ -1893,7 +1902,7 @@ export function createRecordStore(
       if (target !== leaving && !(await writeLink(handle, relation, cardId, target || null, leaving))) {
         // The card is gone (or the link cannot be written): a silent no-op would read as the undo having
         // landed, so it is said.
-        toastService.info('Could not take that move back — the record cannot be written from here.');
+        toasts.info('Could not take that move back — the record cannot be written from here.');
       }
       // A rank written back, expecting what this entry left there — as `rememberTreeDrop`'s are.
       for (const change of ranks) {
@@ -1935,7 +1944,7 @@ export function createRecordStore(
       if (drawn) ranks.push({ placement: drawn.id, rank });
       else unplaced = true;
     }
-    if (unplaced) toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
+    if (unplaced) toasts.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
     if (!ranks.length) return;
     const held = [...writes].filter(([nodeId]) => drawnAmong(placements, nodeId).drawn);
     for (const [nodeId, rank] of held) hold(nodeId, { rank });
@@ -1945,7 +1954,7 @@ export function createRecordStore(
     } catch (error) {
       for (const [nodeId, rank] of held) drop(nodeId, { rank });
       console.error('RecordStore: ordering cards in a tree failed', error);
-      toastService.error('Could not save that.');
+      toasts.error('Could not save that.');
     }
   }
 
@@ -1989,7 +1998,7 @@ export function createRecordStore(
       it rather than guessing.
     */
     if (event.pending || event.changed) {
-      toastService.info(
+      toasts.info(
         event.pending
           ? 'That card is still a suggestion — accept or discard it before moving it.'
           : 'Save or discard that card’s changes before moving it.',
@@ -2013,7 +2022,7 @@ export function createRecordStore(
         ? event.edge.data.holder
         : undefined;
     if (named && !relation) {
-      toastService.info('The tree does not follow that relation, so a card cannot be moved along it.');
+      toasts.info('The tree does not follow that relation, so a card cannot be moved along it.');
       return;
     }
 
@@ -2023,7 +2032,7 @@ export function createRecordStore(
       // A card dragged around the zone it is already in has nothing to write.
       if (!from) return;
       if (!(await writeLink(handle, relation, cardId, null, from))) {
-        toastService.info('That card could not be taken out of its tree — edit the record itself.');
+        toasts.info('That card could not be taken out of its tree — edit the record itself.');
         return;
       }
       rememberRelationDrop(canvas, handle, relation, cardId, from, '', []);
@@ -2054,7 +2063,7 @@ export function createRecordStore(
         break;
       }
       if (!parentId) {
-        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        toasts.info('Drop a card in the unconnected area to take it out of its tree.');
         return;
       }
     }
@@ -2064,7 +2073,7 @@ export function createRecordStore(
       (candidate) => endsOf(candidate).childType === cardType && endsOf(candidate).parentType === parentType,
     );
     if (!relation || endsOf(relation).childType !== cardType || endsOf(relation).parentType !== parentType) {
-      toastService.info(`${cardType} has no relation that points at ${parentType || 'that record'}.`);
+      toasts.info(`${cardType} has no relation that points at ${parentType || 'that record'}.`);
       return;
     }
 
@@ -2076,7 +2085,7 @@ export function createRecordStore(
       at = await parentThrough(handle, relation, at);
     }
     if (at === cardId) {
-      toastService.info('That would put a card inside itself.');
+      toasts.info('That would put a card inside itself.');
       return;
     }
 
@@ -2246,7 +2255,7 @@ export function createRecordStore(
       const targetId = event.targetId!;
       const parentId = event.into === 'child' ? targetId : (parentOf.get(targetId)?.source ?? '');
       if (!parentId) {
-        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        toasts.info('Drop a card in the unconnected area to take it out of its tree.');
         return;
       }
       if (parentId === cardId) return;
@@ -2256,7 +2265,7 @@ export function createRecordStore(
           .map(([child, link]) => [child, link.source!]),
       );
       if (isUnder(parentId, cardId, parents)) {
-        toastService.info('That would put a card inside itself.');
+        toasts.info('That would put a card inside itself.');
         return;
       }
 
@@ -2318,7 +2327,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: arranging a card in a tree failed', error);
-      toastService.error('Could not move that card.');
+      toasts.error('Could not move that card.');
     }
   }
 
@@ -2333,7 +2342,7 @@ export function createRecordStore(
     each answers for itself. The patch-per-record shape survives only as {@link pendingCardStyle},
     which is what the graph host draws from.
   */
-  const cardStyle = createOptimism<unknown>(solidReactivity.signal, { same: sameValue });
+  const cardStyle = createOptimism<unknown>(reactivity.signal, { same: sameValue });
 
   const hold = (nodeId: string, patch: Record<string, unknown>) => {
     for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
@@ -2363,10 +2372,10 @@ export function createRecordStore(
    * **Arrangement only.** A move, a resize, a colour, a card taken off the canvas: all of these are
    * scalar upserts on a `Placement`, which the write path already reads before it writes, so the
    * value an undo needs is in hand for nothing. Deleting a *record* is not here and will not be —
-   * an AD4M delete drops the links, a re-create earns a new id, and everything pointing at the old
+   * a delete drops the record's links, a re-create earns a new id, and everything pointing at the old
    * one breaks silently. `deleteRecords` says as much in the host's own confirmation.
    */
-  const history = createHistory(solidReactivity.signal);
+  const history = createHistory(reactivity.signal);
 
   /** One card's move, with where it came from — `from` is null for a card that was not on the canvas. */
   type CardMove = {
@@ -2517,7 +2526,7 @@ export function createRecordStore(
     | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
     | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
     | { kind: 'removed'; id: string };
-  const connections = createOptimism<string | number>(solidReactivity.signal, { same: sameValue });
+  const connections = createOptimism<string | number>(reactivity.signal, { same: sameValue });
   const connectionHolds = new Map<string, ConnectionHold>();
   let addedSerial = 0;
 
@@ -2534,7 +2543,7 @@ export function createRecordStore(
     return key;
   }
 
-  const pendingConnections = createMemo((): PendingConnectionWrites => {
+  const pendingConnections = reactivity.memo((): PendingConnectionWrites => {
     const held = connections.holds();
     const out: PendingConnectionWrites = { added: [], moved: [], removed: [] };
     const now = Date.now();
@@ -2619,7 +2628,7 @@ export function createRecordStore(
       );
       if (!already) {
         drop(nodeId, patch);
-        toastService.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
+        toasts.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
         return undefined;
       }
       /*
@@ -2632,7 +2641,7 @@ export function createRecordStore(
 
         A field that held nothing goes back as the value the canvas seed reads as *absent*, because
         undoing "give these cards a colour" has to be able to say "back to no colour of its own" —
-        and an empty string is exactly what `Ad4mModel`'s update skips, so it cannot be stored. For
+        and an empty string is exactly what the model layer's update skips, so it cannot be stored. For
         text that is `PLACEMENT_UNSET`; for a number it is `0`, which `placementStyle` drops the same
         way.
       */
@@ -2672,7 +2681,7 @@ export function createRecordStore(
     } catch (error) {
       drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
-      toastService.error('Could not save that.');
+      toasts.error('Could not save that.');
       return undefined;
     }
   }
@@ -2725,7 +2734,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: anchoring a connection on a canvas failed', error);
-      toastService.error('Could not save that.');
+      toasts.error('Could not save that.');
     }
   }
 
@@ -2838,7 +2847,7 @@ export function createRecordStore(
     } catch (error) {
       connections.release(held);
       console.error('RecordStore: re-attaching a connection failed', error);
-      toastService.error('Could not move that connection.');
+      toasts.error('Could not move that connection.');
     }
   }
 
@@ -2876,7 +2885,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: rerouting a connection on a canvas failed', error);
-      toastService.error('Could not save that.');
+      toasts.error('Could not save that.');
     }
   }
 
@@ -2976,7 +2985,7 @@ export function createRecordStore(
       );
     } catch (error) {
       console.error('RecordStore: colouring a type on a canvas failed', error);
-      toastService.error('Could not save that colour.');
+      toasts.error('Could not save that colour.');
     }
   }
   /*
@@ -3015,21 +3024,21 @@ export function createRecordStore(
     }
     setSpacePresentation(out);
   }
-  createEffect(() => {
+  reactivity.effect(() => {
     const dataset = datasetStore.currentDataset();
     setSpacePresentation({});
     if (!dataset) return;
     const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => LiveQuery<Page<KeyRow>> }).query;
     // A backend whose records cannot be followed is read once, on entering.
     if (typeof query !== 'function') {
-      void untrack(reloadSpacePresentation);
+      void reactivity.untrack(reloadSpacePresentation);
       return;
     }
     let spaceId: string | undefined;
     followLive(
-      solidReactivity,
+      reactivity,
       async (current) => {
-        const space = (await untrack(() => Space.findOne(dataset.handle))) as { id?: string } | null;
+        const space = (await reactivity.untrack(() => Space.findOne(dataset.handle))) as { id?: string } | null;
         if (!current()) return undefined;
         spaceId = datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
         /*
@@ -3075,7 +3084,7 @@ export function createRecordStore(
       await reloadSpacePresentation();
     } catch (error) {
       console.error('RecordStore: saving how the space presents a type failed', error);
-      toastService.error('Could not save how that type is shown.');
+      toasts.error('Could not save how that type is shown.');
     }
   }
 
@@ -3115,7 +3124,7 @@ export function createRecordStore(
       return;
     }
     if (!schemaFor(payload.entity)) {
-      toastService.error('That is not something a canvas can hold.');
+      toasts.error('That is not something a canvas can hold.');
       return;
     }
     // A record that is already in this space is only being *placed*, which is an arrangement act
@@ -3191,14 +3200,14 @@ export function createRecordStore(
       }
       const message =
         result.mode === 'quote' ? 'Quoted here' : result.entity === 'CollectionBlock' ? 'Posted here' : 'Added here';
-      toastService.success(message, 8000, {
+      toasts.success(message, 8000, {
         label: 'Undo',
-        run: () => void deleteBlocks(here.handle, result.id).catch(() => toastService.error('Could not undo that.')),
+        run: () => void deleteBlocks(here.handle, result.id).catch(() => toasts.error('Could not undo that.')),
       });
       return result;
     } catch (error) {
       console.error('RecordStore: bringing something into the space failed', error);
-      toastService.error('Could not add that here.');
+      toasts.error('Could not add that here.');
       return null;
     }
   }
@@ -3225,7 +3234,7 @@ export function createRecordStore(
       await runOp('core.editRecord', { entity, id, fields: { [field]: next } }, dataset.handle);
     } catch (error) {
       console.error('RecordStore: updating a record field failed', error);
-      toastService.error('Could not save that change.');
+      toasts.error('Could not save that change.');
       return;
     }
     /*
@@ -3350,7 +3359,7 @@ export function createRecordStore(
       await runOp('core.colorSpaceType', { space: spaceId, nodeType, color: value }, dataset.handle);
     } catch (error) {
       console.error("RecordStore: colouring a type in the space's key failed", error);
-      toastService.error('Could not save that colour.');
+      toasts.error('Could not save that colour.');
     }
   }
 
@@ -3387,7 +3396,7 @@ export function createRecordStore(
       return drawn;
     } catch (error) {
       console.error('RecordStore: removing a record from a canvas failed', error);
-      toastService.error('Could not remove that.');
+      toasts.error('Could not remove that.');
       return null;
     }
   }
@@ -3427,7 +3436,7 @@ export function createRecordStore(
       await runOp('core.placeCard', { canvas, node: nodeId, fields }, dataset.handle);
     } catch (error) {
       console.error('RecordStore: putting a card back on a canvas failed', error);
-      toastService.error('Could not put that back.');
+      toasts.error('Could not put that back.');
     }
   }
 
@@ -3478,7 +3487,7 @@ export function createRecordStore(
    * `describeDestructive` counts what is in the list, which is the number somebody about to answer
    * it actually needs.
    *
-   * **Not undoable, and deliberately outside the history.** An AD4M delete removes the links; a
+   * **Not undoable, and deliberately outside the history.** A delete removes the record's links; a
    * re-create earns a new id, so every relation pointing at the old record breaks with nothing to
    * say it did. Taking a card *off a canvas* is the reversible neighbour of this and is what the
    * Delete key does; this is the one a person has to ask for.
@@ -3514,7 +3523,7 @@ export function createRecordStore(
     } catch (error) {
       for (const key of held) connections.release(key);
       console.error('RecordStore: deleting records failed', error);
-      toastService.error('Could not delete those.');
+      toasts.error('Could not delete those.');
     }
   }
 
@@ -3599,7 +3608,7 @@ export function createRecordStore(
       // unplacing would leave the new record behind rather than putting anything back.
       if (canvas && at && created?.id) await writePlacement(canvas, created.id, draft.entity, at.x, at.y);
 
-      batch(() => {
+      reactivity.batch(() => {
         setLastCreatedId(created?.id ?? '');
         setRecordDraft(null);
         setRecordErrors([]);
@@ -3608,7 +3617,7 @@ export function createRecordStore(
         setKind('');
         setPendingPoint(null);
       });
-      toastService.success(`${draft.label} created.`);
+      toasts.success(`${draft.label} created.`);
     } catch (error) {
       // Reported into the form rather than only as a toast: the modal stays open holding what was
       // typed, so a failure is something to correct rather than something that loses the work.
@@ -3700,4 +3709,4 @@ export function createRecordStore(
 }
 
 // Re-exported so a consumer needs one import for the store and the shape of what it holds.
-export type { RecordDraft, RecordField } from '../../../shared/shapes/recordDraft';
+export type { RecordDraft, RecordField } from '../shapes/recordDraft';

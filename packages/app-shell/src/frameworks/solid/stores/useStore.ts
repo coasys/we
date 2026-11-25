@@ -23,6 +23,7 @@ import type { IdentityStore } from '@shared/stores/IdentityStore';
 import type { InterpretationStore } from '@shared/stores/InterpretationStore';
 import type { PresenceStore } from '@shared/stores/PresenceStore';
 import type { ProfileStore } from '@shared/stores/ProfileStore';
+import type { RecordStore } from '@shared/stores/RecordStore';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import type { RuntimeStore } from '@shared/stores/RuntimeStore';
 import type { SessionStore } from '@shared/stores/SessionStore';
@@ -32,7 +33,6 @@ import type { ThemeStore } from '@shared/stores/ThemeStore';
 import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
-import type { RecordStore } from './RecordStore';
 import type { ShellStore } from './ShellStore';
 import type { SpaceStore } from './SpaceStore';
 
