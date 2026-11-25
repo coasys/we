@@ -391,7 +391,7 @@ describe('this device, on a phone and on a desktop', () => {
   });
 
   it('a phone is this device, and the computer it reaches is one more device', () => {
-    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app', form: 'phone' }));
     expect(here).toEqual({ keyId: 'd2', label: 'This phone', icon: 'device-mobile' });
     const rows = deviceRows(keys, names, [], null, NOW, here);
     expect(rows.map((r) => [r.keyId, r.label, r.subtitle, r.icon, r.thisDevice, r.canRevoke])).toEqual([
@@ -413,7 +413,7 @@ describe('this device, on a phone and on a desktop', () => {
   });
 
   it('a phone the log does not list yet marks no key as this device', () => {
-    const here = custodyDevice(custody({ keyId: null, kind: 'phone-app' }));
+    const here = custodyDevice(custody({ keyId: null, kind: 'phone-app', form: 'phone' }));
     const rows = deviceRows(keys, names, [], null, NOW, here);
     expect(rows.every((r) => !r.thisDevice)).toBe(true);
     expect(rows.map((r) => r.label)).toEqual(['Laptop', 'Device d2', 'Box']);
@@ -447,7 +447,7 @@ describe('this device, on a phone and on a desktop', () => {
     expect(servingDevice([], [], null).label).toBe('This computer');
 
     // A phone: the backend it signs in to marks d1, the laptop, which the record names.
-    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app', form: 'phone' }));
     expect(servingDevice(keys, names, here)).toEqual({
       label: 'Laptop',
       subtitle: 'Your host · In use',
@@ -473,7 +473,7 @@ describe('this device, on a phone and on a desktop', () => {
       label: 'Linux computer',
       subtitle: 'This computer · d1 · added at #0',
     });
-    const phone = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    const phone = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app', form: 'phone' }));
     expect(servingDevice(keys, unnamed, phone)).toEqual({
       label: 'Linux computer',
       subtitle: 'Your host · In use',

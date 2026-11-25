@@ -224,6 +224,8 @@ export interface CustodyDeviceView {
   keyId: string | null;
   /** `phone-app`, … as the private record's kinds go. */
   kind: string;
+  /** What sort of device it is, for the words about it: "No master key on this phone". */
+  form: 'phone' | 'computer';
 }
 
 /** A device as the private record names it. */

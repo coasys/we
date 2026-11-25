@@ -121,7 +121,7 @@ export interface CustodyDevice {
 export function custodyDevice(custody: IdentityCustodyView | null | undefined): CustodyDevice | null {
   const device = custody?.thisDevice;
   if (!device) return null;
-  const phone = device.kind === 'phone-app';
+  const phone = device.form === 'phone';
   return {
     keyId: device.keyId,
     label: phone ? THIS_PHONE : THIS_COMPUTER,

@@ -461,7 +461,7 @@ describe('deviceStore', () => {
       unlock: 'os',
       devices: [{ keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'no' }],
       requests: [{ id: 'r1', kind: 'confirm-revoke', by: 'd1', keyIds: ['d2'], expires: 99 }],
-      thisDevice: { keyId: 'd2', kind: 'phone-app' },
+      thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' },
     };
     setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
     const { identity, devices: deviceStore } = mount();

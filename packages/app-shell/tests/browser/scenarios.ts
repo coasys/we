@@ -2890,7 +2890,7 @@ const devicesOnPhone = (): Scenario => {
     endedHolders: [],
     requests: [],
     masterWaiting: false,
-    thisDevice: { keyId: 'd2', kind: 'phone-app' },
+    thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' },
     encMismatch: false,
   });
   return {
