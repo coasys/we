@@ -44,6 +44,7 @@ packages/
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory, @we/backend-conformance
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
+├── reactivity-system/ ← @we/reactivity, @we/reactivity-solid
 ├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
 
@@ -154,7 +155,7 @@ directory becomes a grab-bag.
 The cost is one extra `pnpm-workspace.yaml` glob per grouped system. Legibility while reading beats
 brevity while globbing.
 
-**Current state:** `frameworks/` in `schema-system` and `block-system`; flat in `backend-system` and
+**Current state:** `frameworks/` in `schema-system`, `block-system` and `reactivity-system`; flat in `backend-system` and
 `module-system`. If `backend-system` ever needs framework-specific bindings, `frameworks/` appears
 then, beside the flat backends — which is what the rule predicts.
 
@@ -253,6 +254,37 @@ failure this prevents is documented in `docs/guides/writing-a-module.md`: a bund
 reactive runtime gets a _second_ one, and reactivity silently stops crossing the boundary. It is
 also why a module store is built from injected `deps.signal` / `deps.effect` rather than importing a
 framework.
+
+## Neutral stores and neutral packages
+
+**A store, a module store and the prop resolvers take their reactivity from one `ReactivityPort`**
+(`@we/reactivity`: signal, memo, effect, untrack, batch, root, onCleanup), never from a framework.
+The host lends its implementation — `@we/reactivity-solid` under Solid — and tests also run under
+`@we/reactivity/testing`'s second one, so a store that passes both is neutral in fact rather than
+only in its imports. A store may rely on the port's three timing guarantees and nothing else; they
+are in that package's README.
+
+Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
+checks) holds them to it:
+
+- **`packages/app-shell/src/shared/`**, where stores move once they are written against the port.
+  Any import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
+  alias, a relative path into `frameworks/solid/`, or a workspace package that depends on solid-js
+  fails. The files there that still import Solid are listed in
+  `scripts/neutral-stores-allowlist.txt`, which **may only shrink**: a listed file that stops
+  importing Solid fails the check until its line is deleted, so the list is always exactly what is
+  left to convert.
+- **A package marked `"we": { "neutral": true }`** in its package.json — the contract packages a
+  host on another framework installs (`@we/reactivity`, `@we/backend-shared`, `@we/schema-shared`,
+  `@we/module-shared`, …). Its `src/` is held to the same import rule with no allowlist, and it may
+  not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
+  when you add it.
+
+A Pattern B package with a neutral core and a Solid binding says which exports are which with
+`"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its
+`./signals` and `./step-words`. Importing a listed export from a neutral place is fine; any other
+export of a package that depends on solid-js counts as Solid. List an export only when nothing it
+reaches imports a framework.
 
 ## Adding a new package
 

@@ -72,5 +72,11 @@
   },
   "sideEffects": [
     "*.css"
-  ]
+  ],
+  "we": {
+    "neutralExports": [
+      "./signals",
+      "./step-words"
+    ]
+  }
 }
