@@ -65,10 +65,11 @@ import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
 import { solidReactivity } from '@we/reactivity-solid';
-import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+import { Accessor, batch, createEffect, createMemo, createSignal, untrack } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
+import { followLive } from '../../../shared/followLive';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
 import { isRank, isUnder, rowFor, seatInRow } from '../../../shared/kernels/treeRanks';
@@ -3033,12 +3034,6 @@ export function createRecordStore(
   }
   createEffect(() => {
     const dataset = datasetStore.currentDataset();
-    let stopped = false;
-    let watch: LiveQuery<Page<KeyRow>> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
     setSpacePresentation({});
     if (!dataset) return;
     const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => LiveQuery<Page<KeyRow>> }).query;
@@ -3047,34 +3042,34 @@ export function createRecordStore(
       void untrack(reloadSpacePresentation);
       return;
     }
-    void untrack(async () => {
-      const space = (await Space.findOne(dataset.handle)) as { id?: string } | null;
-      return datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
-    })
-      .then((spaceId) => {
-        if (stopped) return;
-        if (spaceId) {
-          /*
-            The watch asks what the layer is — the space's own styles, not every canvas's — and its
-            first result is the layer as it stands, so nothing is read separately before it.
-          */
-          watch = query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) });
-          watch.subscribe((snapshot) => {
-            if (!stopped && snapshot.data) applySpacePresentation(snapshot.data.results);
-          });
-        } else {
-          /*
-            No space record to scope to yet — a dataset that becomes a space later. Any style written is
-            the cue to look for the space again, so this watch only signals, and asks for ids alone.
-          */
-          watch = query.call(TypeStyle, dataset.handle, { properties: ['id'] });
-          watch.subscribe((snapshot) => {
-            if (!stopped && snapshot.status === 'ready' && !snapshot.initial) void reloadSpacePresentation();
-          });
-        }
-        watch.first.catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
-      })
-      .catch((error: unknown) => console.warn("RecordStore: could not read the space's presentation", error));
+    let spaceId: string | undefined;
+    followLive(
+      solidReactivity,
+      async (current) => {
+        const space = (await untrack(() => Space.findOne(dataset.handle))) as { id?: string } | null;
+        if (!current()) return undefined;
+        spaceId = datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
+        /*
+          The watch asks what the layer is — the space's own styles, not every canvas's — and its first
+          result is the layer as it stands, so nothing is read separately before it.
+
+          With no space record to scope to yet — a dataset that becomes a space later — any style
+          written is the cue to look for the space again, so that watch only signals, and asks for ids
+          alone.
+        */
+        return spaceId
+          ? query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) })
+          : query.call(TypeStyle, dataset.handle, { properties: ['id'] });
+      },
+      {
+        store: 'RecordStore',
+        what: "the space's types",
+        apply: (rows, opened) => {
+          if (spaceId) applySpacePresentation(rows);
+          else if (!opened) void reloadSpacePresentation();
+        },
+      },
+    );
   });
 
   async function setSpaceTypePresentation(

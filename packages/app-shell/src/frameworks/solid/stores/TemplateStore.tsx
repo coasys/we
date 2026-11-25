@@ -45,12 +45,14 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, TEMPLATE_SCHEMA_VERSION, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import { Accessor, createEffect, createMemo, createSignal, on, onCleanup, untrack } from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, on, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { followLive } from '../../../shared/followLive';
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
 import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../../../shared/safeMode';
 import {
@@ -1712,26 +1714,22 @@ export function createTemplateStore(
     editing = probe;
   }
 
-  /** Watch one dataset's templates, calling `onChange` with the records added, changed or removed. */
-  function watchTemplates(handle: unknown, onChange: (records: string[]) => void): () => void {
+  /**
+   * Follow one dataset's templates for as long as the calling effect lives, calling `onChange` with
+   * the records added, changed or removed.
+   */
+  function watchTemplates(handle: unknown, onChange: (records: string[]) => void): void {
     let stamps: Map<string, string> | undefined;
-    let stopped = false;
-    const take = (rows: { id: string; version?: unknown; updatedAt?: unknown }[]) => {
-      if (stopped) return;
-      const { next, changed, removed } = templateChanges(stamps, rows, ownSaves);
-      stamps = next;
-      if (changed.length || removed.length) onChange([...changed, ...removed]);
-    };
-    const watch = Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] });
     // Called with the rows it opened on, then with each change.
-    watch.subscribe((snapshot) => {
-      if (snapshot.status === 'ready' && snapshot.data) take(snapshot.data.results);
+    followLive(solidReactivity, Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] }), {
+      store: 'TemplateStore',
+      what: 'templates',
+      apply: (rows) => {
+        const { next, changed, removed } = templateChanges(stamps, rows, ownSaves);
+        stamps = next;
+        if (changed.length || removed.length) onChange([...changed, ...removed]);
+      },
     });
-    watch.first.catch((error: unknown) => console.warn('[TemplateStore] watching templates failed', error));
-    return () => {
-      stopped = true;
-      watch.dispose();
-    };
   }
 
   /**
@@ -1818,7 +1816,7 @@ export function createTemplateStore(
   createEffect(() => {
     const root = datasetStore.rootDataset();
     if (!root) return;
-    onCleanup(watchTemplates(root.handle, syncLibrary));
+    watchTemplates(root.handle, syncLibrary);
   });
 
   createEffect(() => {
@@ -1828,7 +1826,7 @@ export function createTemplateStore(
       await refreshSpaceTemplatesInPlace(dataset);
       if (datasetStore.currentDataset()?.id === dataset.id) followChange(true, records);
     });
-    onCleanup(watchTemplates(dataset.handle, syncSpace));
+    watchTemplates(dataset.handle, syncSpace);
   });
 
   /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
