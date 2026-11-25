@@ -2,7 +2,7 @@
  * The profile an author is drawn with: the person's, when the device that signed speaks for one.
  *
  * A record's `author` is a device key. A person who writes from two computers is two device keys
- * and one person (`did:scid:…`), and the person's profile is published under that `did:scid`, so
+ * and one person, and the person's profile is published under the person's own id, so
  * both computers' posts are drawn with one name and one face. The device stays on the answer
  * (`device`) for anything that needs to know which computer signed.
  *

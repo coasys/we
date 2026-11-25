@@ -3936,9 +3936,9 @@ export const contextData: ContextData = {
     {
       name: 'reactions',
       params: ['options'],
-      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.dids — every computer the reader writes from, so a held reaction stands in for the one their other device gave; me.did works too).",
+      doc: "A record's reactions, one per person — each person's newest — with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.dids — every computer the reader writes from, so a held reaction stands in for the one their other device gave; me.did works too), profiles (profileStore.profiles — anybody who reacted from two computers counts once, as their newest, so every reader sees the same reactions).",
       example:
-        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.dids })',
+        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.dids, profiles: profileStore.profiles })',
     },
     {
       name: 'reactors',
@@ -5211,9 +5211,9 @@ export const contextData: ContextData = {
         {
           name: 'tally',
           params: ['options'],
-          doc: 'Votes counted per choice — { option, count, share, leading, mine }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), me (me.dids — the reader’s votes from any of their devices count once, as the newest, and that choice is the row marked mine), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored ones so the bars move on the press).',
+          doc: 'Votes counted per choice — { option, count, share, leading, mine }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), me (me.dids — the reader’s votes from any of their devices count once, as the newest, and that choice is the row marked mine), profiles (profileStore.profiles — every voter’s votes from their several devices count once, as their newest, so every reader sees the same totals), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored ones so the bars move on the press).',
           example:
-            'tally({ votes: local.votes, options: block.options, me: me.dids, pending: modules.polls.pendingVote[block.id] })',
+            'tally({ votes: local.votes, options: block.options, me: me.dids, profiles: profileStore.profiles, pending: modules.polls.pendingVote[block.id] })',
         },
       ],
       views: [{ id: 'polls', name: 'Polls', segment: 'polls' }],
