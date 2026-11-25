@@ -587,7 +587,10 @@ describe('following the data', () => {
             ...(await ctx.query({ entity: 'Post', dataset: 'ds' })),
             ...(await ctx.query({ entity: 'Note', dataset: 'ds' })),
           ];
-          return { nodes: rows.map((row) => ({ id: String(row.id), kind: 'entity' as const })), edges: [] };
+          return {
+            nodes: rows.map((row) => ({ id: String(row.id), type: 'record', kind: 'entity' as const })),
+            edges: [],
+          };
         },
       };
       const engine = new GraphEngine({
