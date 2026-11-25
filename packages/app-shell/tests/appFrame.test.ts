@@ -7,11 +7,14 @@
  * against them; the built-in app declares today's furniture, so nothing moves on day one.
  */
 import { DEFAULT_APP_FRAME, railBand, snapTargetRects } from '@shared/dockGeometry';
-import { appFrame, declareAppFrame } from '@shared/registries/appFrame';
+import { createAppFrame } from '@shared/registries/appFrame';
+import { createTestReactivity } from '@we/reactivity/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 const viewport = { width: 1440, height: 900 };
 const topLeft = () => snapTargetRects(viewport).find((rect) => rect.id === 'top-left')!;
+
+const { appFrame, declareAppFrame } = createAppFrame(createTestReactivity());
 
 afterEach(() => declareAppFrame(undefined));
 

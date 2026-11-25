@@ -1,4 +1,3 @@
-import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
 import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
@@ -14,7 +13,6 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { evidenceSubjectOf } from '@shared/evidenceSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import { isoOf } from '@shared/interpretation/callExport';
-import { involvementOptimism } from '@shared/involvementOptimism';
 import {
   createInvolvementActions,
   INVOLVEMENT_SEMANTICS,
@@ -105,7 +103,6 @@ import {
   type TaskWorkflowRule,
   workflowStateOf,
 } from '@shared/taskWorkflow';
-import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -180,9 +177,9 @@ import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, unt
 
 import { followLive } from '../../../shared/followLive';
 import { oneAtATime } from '../../../shared/oneAtATime';
-import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
+import { boardOptimism, involvementOptimism, signalOptimism, taskWorkflowLive } from '../hostState';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
 import { createInterpretationRuntime } from './space/interpretationRuntime';

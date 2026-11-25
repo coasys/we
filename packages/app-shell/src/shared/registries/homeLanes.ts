@@ -10,8 +10,8 @@
  * own change channel rather than `createRegistry`'s, because nothing reactive hangs off *which*
  * outlets exist: they are only ever read during a drag, when the store measures whatever is there.
  */
+import type { ReactivityPort } from '@we/reactivity';
 import type { PanelFrame } from '@we/schema-shared';
-import { createSignal } from 'solid-js';
 
 export interface HomeLane {
   /** Its name, as `meta.panels` entries name it in `home`. */
@@ -52,18 +52,23 @@ export const HOME_SECTION_ATTR = 'data-we-section';
   `frame`. A signal, so a frame follows a lane that changes its mind; read through
   `shellStore.panelFrames`, which is what every frame draws from.
 */
-const [frames, setFrames] = createSignal<Record<string, PanelFrame>>({});
+export type LaneFrames = ReturnType<typeof createLaneFrames>;
 
-/** Declare a lane's default frame, while it is mounted. */
-export function declareLaneFrame(lane: string, frame: PanelFrame): () => void {
-  setFrames((all) => ({ ...all, [lane]: frame }));
-  return () =>
-    setFrames((all) => {
-      if (all[lane] !== frame) return all;
-      const { [lane]: _gone, ...rest } = all;
-      return rest;
-    });
+/** One app's lane frames. The app keeps one (`frameworks/solid/hostState.ts`). */
+export function createLaneFrames({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
+  const [frames, setFrames] = signal<Record<string, PanelFrame>>({});
+  return {
+    /** Declare a lane's default frame, while it is mounted. */
+    declareLaneFrame: (lane: string, frame: PanelFrame): (() => void) => {
+      setFrames({ ...untrack(frames), [lane]: frame });
+      return () => {
+        const all = untrack(frames);
+        if (all[lane] !== frame) return;
+        const { [lane]: _gone, ...rest } = all;
+        setFrames(rest);
+      };
+    },
+    /** Every mounted lane's default frame, by lane. */
+    laneFrames: frames,
+  };
 }
-
-/** Every mounted lane's default frame, by lane. */
-export const laneFrames = frames;

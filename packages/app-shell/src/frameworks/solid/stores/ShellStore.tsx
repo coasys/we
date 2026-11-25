@@ -76,7 +76,6 @@ import {
 } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE, isAppPanel } from '@shared/panelScope';
 import type { ScreenSource } from '@shared/platform/types';
-import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -90,15 +89,9 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
+import { HOME_SECTION_ATTR, homeLanes } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
-import {
-  declaredPanelOf,
-  instanceDockId,
-  instanceKeyOf,
-  type PanelInstance,
-  publishPanelInstances,
-} from '@shared/registries/panelInstances';
+import { declaredPanelOf, instanceDockId, instanceKeyOf, type PanelInstance } from '@shared/registries/panelInstances';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import {
@@ -127,6 +120,7 @@ export interface TemplateSaver {
 import type { PlatformAdapter } from '@shared/platform/types';
 
 import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
+import { appEdgeFrames, appFrame, laneFrames, publishPanelInstances } from '../hostState';
 
 /** How long the host waits for what a delete takes with it before asking without it. */
 const FACTS_WAIT_MS = 500;

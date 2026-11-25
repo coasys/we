@@ -22,7 +22,6 @@
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { firstScreenDrawn } from '@shared/firstScreen';
 import { activePanels as panelsFor } from '@shared/panelScope';
-import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { resolveParts } from '@shared/registries/moduleParts';
 import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templatePanels';
@@ -55,6 +54,7 @@ import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, onCleanup, Show, untrack } from 'solid-js';
 
+import { appFrame } from '../hostState';
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { createLiveSchema } from '../utils/liveSchema';
 import { resolveShellView, type ShellViewEntry } from './shellViews';

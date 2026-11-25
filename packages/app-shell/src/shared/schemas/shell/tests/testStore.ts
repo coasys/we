@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { EntityManifest, SchemaPort } from '@we/backend-shared';
-import { type Accessor, createEffect, createSignal } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 // ---------------------------------------------------------------------------
 // Test models — declared as a manifest and compiled, not hand-decorated.
@@ -39,8 +39,8 @@ const TEST_PREDICATES = {
 };
 
 // The parts of a compiled model class and of the dataset handle this page uses. `declare` returns
-// each backend's own payload as `unknown`; the test page only runs against AD4M, where a payload is
-// an Ad4mModel class and the handle a PerspectiveProxy, which have these members.
+// each backend's own payload as `unknown`; the members below are the ones the page calls on a
+// compiled model class and on a dataset handle.
 interface TestRecord {
   id: string;
 }
@@ -56,6 +56,7 @@ interface TestModelClass {
 // ---------------------------------------------------------------------------
 
 export function createTestStore(
+  { signal, effect }: Pick<ReactivityPort, 'signal' | 'effect'>,
   testPerspective: Accessor<{ handle: unknown } | null>,
   schemas: () => SchemaPort | null,
 ) {
@@ -81,10 +82,10 @@ export function createTestStore(
   const boolFalse = false;
 
   // ---- Interactive signals ----
-  const [counter, setCounter] = createSignal(0);
-  const [typedText, setTypedText] = createSignal('');
-  const [toggleValue, setToggleValue] = createSignal(false);
-  const [queryFilterMode, setQueryFilterMode] = createSignal('all');
+  const [counter, setCounter] = signal(0);
+  const [typedText, setTypedText] = signal('');
+  const [toggleValue, setToggleValue] = signal(false);
+  const [queryFilterMode, setQueryFilterMode] = signal('all');
 
   // ---- List data (for $each) ----
   const fruits = [
@@ -127,13 +128,13 @@ export function createTestStore(
 
   // ---- Actions ----
   function increment() {
-    setCounter((c) => c + 1);
+    setCounter(counter() + 1);
   }
   function setTypedTextFromArg(text: string) {
     setTypedText(text);
   }
   function toggle() {
-    setToggleValue((v) => !v);
+    setToggleValue(!toggleValue());
   }
 
   // Track how many items we've created for unique naming
@@ -191,8 +192,8 @@ export function createTestStore(
     }
   }
 
-  // ---- AD4M perspective (lazy init for $query testing) ----
-  const [perspective, setPerspective] = createSignal<unknown>(null);
+  // ---- The test dataset (lazy init for $query testing) ----
+  const [perspective, setPerspective] = signal<unknown>(null);
 
   const seedItems = [
     { name: 'Alpha', status: 'active', category: 'A' },
@@ -200,7 +201,7 @@ export function createTestStore(
     { name: 'Gamma', status: 'active', category: 'A' },
   ];
 
-  createEffect(() => {
+  effect(() => {
     const ref = testPerspective();
     const m = ensureEntities();
     if (!ref || !m) return;
@@ -263,7 +264,7 @@ export function createTestStore(
     seedQueryData,
     queryOwner,
 
-    // AD4M
+    // The test dataset
     perspective,
   };
 }

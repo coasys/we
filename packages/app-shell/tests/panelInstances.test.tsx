@@ -10,11 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
+import { panelInstances, publishPanelInstances } from '../src/frameworks/solid/hostState';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { APP_PANEL_SCOPE } from '../src/shared/panelScope';
-import { panelInstances, publishPanelInstances } from '../src/shared/registries/panelInstances';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';

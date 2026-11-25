@@ -27,7 +27,7 @@
  */
 import type { Pretend } from '@we/graph-expanders';
 import { DEV_FEATURES } from '@we/module-shared';
-import { createSignal } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
 
 const STORAGE_KEY = 'we.graph.pretendPeople';
 
@@ -63,60 +63,67 @@ function clamp(raw: number): number {
   return Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), MAX) : 0;
 }
 
-const [state, setState] = createSignal<Stored>(load());
+export type PretendPeople = ReturnType<typeof createPretendPeople>;
 
-function save(next: Stored) {
-  setState(next);
-  if (!pretendPeopleAvailable) return;
-  try {
-    if (!next.count && !next.answers) localStorage.removeItem(STORAGE_KEY);
-    else localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Storage refused — the people still exist for this session.
+/** One app's pretend people, loaded from the device. The app keeps one (`frameworks/solid/hostState.ts`). */
+export function createPretendPeople({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
+  const [state, setState] = signal<Stored>(load());
+
+  function save(next: Stored) {
+    setState(next);
+    if (!pretendPeopleAvailable) return;
+    try {
+      if (!next.count && !next.answers) localStorage.removeItem(STORAGE_KEY);
+      else localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage refused — the people still exist for this session.
+    }
   }
-}
 
-/** The pretend people, by id and name. */
-export function pretendPeople(): { id: string; name: string }[] {
-  return Array.from({ length: state().count }, (_, i) => ({
-    id: `pretend:${i + 1}`,
-    name: NAMES[i] ?? `Pretend ${i + 1}`,
-  }));
-}
+  /** The pretend people, by id and name. */
+  function pretendPeople(): { id: string; name: string }[] {
+    return Array.from({ length: state().count }, (_, i) => ({
+      id: `pretend:${i + 1}`,
+      name: NAMES[i] ?? `Pretend ${i + 1}`,
+    }));
+  }
 
-/** What the canvas seed is handed, or undefined while there is nobody pretending. */
-export function pretendSettings(): Pretend | undefined {
-  const { count, actingAs, answers } = state();
-  if (!count) return undefined;
-  return { people: pretendPeople(), ...(answers ? { answers } : {}), ...(actingAs ? { actingAs } : {}) };
-}
+  /** What the canvas seed is handed, or undefined while there is nobody pretending. */
+  function pretendSettings(): Pretend | undefined {
+    const { count, actingAs, answers } = state();
+    if (!count) return undefined;
+    return { people: pretendPeople(), ...(answers ? { answers } : {}), ...(actingAs ? { actingAs } : {}) };
+  }
 
-/** Which pretend person the reader is answering as, or empty for themselves. */
-export function actingAs(): string {
-  const { actingAs: id } = state();
-  return id && pretendPeople().some((person) => person.id === id) ? id : '';
-}
+  /** Which pretend person the reader is answering as, or empty for themselves. */
+  function actingAs(): string {
+    const { actingAs: id } = state();
+    return id && pretendPeople().some((person) => person.id === id) ? id : '';
+  }
 
-/** Change how many there are. One taken away who was being acted as hands the reader back to themselves. */
-export function setPretendCount(count: number) {
-  const next = clamp(count);
-  const current = state();
-  const acting = current.actingAs && Number(current.actingAs.split(':')[1]) <= next ? current.actingAs : undefined;
-  save({ ...current, count: next, actingAs: acting });
-}
+  /** Change how many there are. One taken away who was being acted as hands the reader back to themselves. */
+  function setPretendCount(count: number) {
+    const next = clamp(count);
+    const current = untrack(state);
+    const acting = current.actingAs && Number(current.actingAs.split(':')[1]) <= next ? current.actingAs : undefined;
+    save({ ...current, count: next, actingAs: acting });
+  }
 
-/** Answer as one of them from now on — or as oneself, with an empty id. */
-export function actAs(id: string) {
-  save({ ...state(), actingAs: id || undefined });
-}
+  /** Answer as one of them from now on — or as oneself, with an empty id. */
+  function actAs(id: string) {
+    save({ ...untrack(state), actingAs: id || undefined });
+  }
 
-/** Record what the pretend person being acted as gave on one card — null takes it back. */
-export function answerAs(person: string, record: string, value: number | null) {
-  const current = state();
-  save({ ...current, answers: { ...current.answers, [`${person}|${record}`]: value } });
-}
+  /** Record what the pretend person being acted as gave on one card — null takes it back. */
+  function answerAs(person: string, record: string, value: number | null) {
+    const current = untrack(state);
+    save({ ...current, answers: { ...current.answers, [`${person}|${record}`]: value } });
+  }
 
-/** Forget every answer given while acting, so the made-up ones come back. */
-export function forgetPretendAnswers() {
-  save({ ...state(), answers: undefined });
+  /** Forget every answer given while acting, so the made-up ones come back. */
+  function forgetPretendAnswers() {
+    save({ ...untrack(state), answers: undefined });
+  }
+
+  return { pretendPeople, pretendSettings, actingAs, setPretendCount, actAs, answerAs, forgetPretendAnswers };
 }

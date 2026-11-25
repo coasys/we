@@ -2,17 +2,10 @@
  * The pretend people a development build can add to a weighed canvas: how many, who the reader
  * answers as, and the answers given while acting — kept on the device, never written anywhere.
  */
+import { createTestReactivity } from '@we/reactivity/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  actAs,
-  actingAs,
-  answerAs,
-  forgetPretendAnswers,
-  pretendPeople,
-  pretendSettings,
-  setPretendCount,
-} from '../src/shared/pretendPeople';
+import { createPretendPeople } from '../src/shared/pretendPeople';
 
 // The node project has no storage; a map stands in, which is all the module asks of one.
 const stored = new Map<string, string>();
@@ -21,6 +14,9 @@ vi.stubGlobal('localStorage', {
   setItem: (key: string, value: string) => void stored.set(key, value),
   removeItem: (key: string) => void stored.delete(key),
 });
+
+const { actAs, actingAs, answerAs, forgetPretendAnswers, pretendPeople, pretendSettings, setPretendCount } =
+  createPretendPeople(createTestReactivity());
 
 afterEach(() => {
   forgetPretendAnswers();
