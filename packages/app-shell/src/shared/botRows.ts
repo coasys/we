@@ -8,6 +8,8 @@
  */
 import type { BotAction, BotActivityView, BotGrantInput, BotGrantState, BotKeyView, BotView } from '@we/backend-shared';
 
+import { dateOf } from './dates';
+
 const DAY = 86_400;
 
 /** The actions in the order the page lists them, with what each lets a bot do. */
@@ -16,11 +18,6 @@ export const BOT_ACTION_LABELS: ReadonlyArray<{ action: BotAction; label: string
   { action: 'write', label: 'Allow writing, with a reason each time' },
   { action: 'join', label: 'Allow joining' },
 ];
-
-/** A date as the page shows it, in the person's own locale. */
-export function dateOf(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 /** A moment as the activity log shows it. */
 export function momentOf(seconds: number): string {

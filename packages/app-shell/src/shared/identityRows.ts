@@ -13,6 +13,8 @@
  */
 import type { DeviceKeyView, DeviceNameView, DeviceRequestView, KeyLogEvent } from '@we/backend-shared';
 
+import { dateOf } from './dates';
+
 /** One row of Security → Key log. */
 export interface KeyLogRow {
   seq: number;
@@ -269,11 +271,6 @@ export function deviceRows(
         replaceMaster: endedMaster !== '',
       };
     });
-}
-
-/** A date as the device list shows it, in the person's own locale. */
-function dateOf(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** The seq of the last rotation in `events`, or `null` when the master key was never replaced. */
