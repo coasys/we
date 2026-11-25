@@ -23,6 +23,7 @@ import type { PresenceStore } from '@shared/stores/PresenceStore';
 import type { ProfileStore } from '@shared/stores/ProfileStore';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import type { SessionStore } from '@shared/stores/SessionStore';
+import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { BundleStore } from './BundleStore';
@@ -34,7 +35,6 @@ import type { ShellStore } from './ShellStore';
 import type { SpaceStore } from './SpaceStore';
 import type { TemplateStore } from './TemplateStore';
 import type { ThemeStore } from './ThemeStore';
-import type { WorkflowStore } from './WorkflowStore';
 
 /** Every app-lifetime store the host composes, by name, and the edit target composed with them. */
 export interface StoreRegistry {

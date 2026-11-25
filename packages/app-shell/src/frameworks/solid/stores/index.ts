@@ -13,7 +13,7 @@ export { type TemplateStore, createTemplateStore } from './TemplateStore';
 export { type EditorStore, createEditorStore } from './EditorStore';
 export { type AppStore, createAppStore } from '../../../shared/stores/AppStore';
 export { type ClockStore, type ClockView, createClockStore } from '../../../shared/stores/ClockStore';
-export { type WorkflowStore, createWorkflowStore } from './WorkflowStore';
+export { type WorkflowStore, createWorkflowStore } from '../../../shared/stores/WorkflowStore';
 export { type IdentityStore, createIdentityStore } from '../../../shared/stores/IdentityStore';
 export { type DeviceStore, createDeviceStore } from '../../../shared/stores/DeviceStore';
 export {

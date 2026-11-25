@@ -28,6 +28,7 @@ import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createProfileStore } from '@shared/stores/ProfileStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
+import { createWorkflowStore } from '@shared/stores/WorkflowStore';
 import { trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -46,7 +47,6 @@ import { createSpaceStore } from '../stores/SpaceStore';
 import { createTemplateStore } from '../stores/TemplateStore';
 import { createThemeStore } from '../stores/ThemeStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
-import { createWorkflowStore } from '../stores/WorkflowStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
 
@@ -168,7 +168,15 @@ export function BootController(props: ParentProps) {
     spaceStore,
   });
   // After the space store, whose task states, involvement kinds, archive list and administrator it reads.
-  const workflowStore = createWorkflowStore({ sessionStore, datasetStore, spaceStore, shapeStore });
+  const workflowStore = createWorkflowStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+    spaceStore,
+    shapeStore,
+  });
   // After every store an install writes through — templates, themes, record types, modules,
   // settings — none of which has to know what a bundle is.
   const bundleStore = createBundleStore({

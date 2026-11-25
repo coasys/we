@@ -110,8 +110,9 @@ const SOLID_TESTS = [
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
-  // Mounts the workflow store, whose memos run as they are made — a boot crash the pure tests cannot see.
-  'tests/workflowStore.test.tsx',
+  // Builds the workflow store under both ports, whose memos run as they are made — a boot crash the
+  // pure tests cannot see.
+  'tests/workflowStore.test.ts',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
   // And for a drag on a tree whose spine is a model relation rather than a connection kind.

@@ -2,7 +2,7 @@
  * WorkflowStore — the space's workflows, as the Workflows route, a record's inspector and a card read and change
  * them.
  *
- * The Solid binding over three framework-neutral files: `shared/workflowLanes.ts` (a workflow as a main line,
+ * The store over three framework-neutral files: `shared/workflowLanes.ts` (a workflow as a main line,
  * branches and a sequence rule), `shared/workflowDraft.ts` (every edit to a workflow being written) and
  * `shared/workflowViews.ts` (lanes, requirements and a record's walk, in words). Everything a schema shows
  * is computed there; this file decides only *when* — which workflow is open, what is being watched, and
@@ -24,10 +24,26 @@
  * space's other shared settings answer to. Anybody may start a workflow on a record, ask for a move, and
  * take back their own ask.
  */
-import { evidenceSubjectOf } from '@shared/evidenceSubjects';
-import { modelLabel } from '@shared/shapes/recordDisplay';
-import { TASK_WORKFLOW } from '@shared/taskWorkflow';
-import * as draftEdits from '@shared/workflowDraft';
+import type {
+  EntityManifest,
+  Requirement,
+  WorkflowCapabilities,
+  WorkflowDefinition,
+  WorkflowItem,
+  WorkflowSummary,
+} from '@we/backend-shared';
+import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '@we/backend-shared';
+import { getEntityForDataset } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+
+import { distinctSignal } from '../distinctSignal';
+import { evidenceSubjectOf } from '../evidenceSubjects';
+import type { FirstScreen } from '../firstScreen';
+import { modelLabel } from '../shapes/recordDisplay';
+import { TASK_WORKFLOW } from '../taskWorkflow';
+import type { Toasts } from '../toasts';
+import * as draftEdits from '../workflowDraft';
 import {
   definitionOf,
   type DraftEdit,
@@ -37,9 +53,9 @@ import {
   stateLabelOf,
   type WorkflowDraft,
   type WorkflowPreset,
-} from '@shared/workflowDraft';
-import { toLanes, type WorkflowSequenceRule } from '@shared/workflowLanes';
-import { subjectLabel, type SubjectName, subjectTitleOf } from '@shared/workflowSubjects';
+} from '../workflowDraft';
+import { toLanes, type WorkflowSequenceRule } from '../workflowLanes';
+import { subjectLabel, type SubjectName, subjectTitleOf } from '../workflowSubjects';
 import {
   approvalsRule,
   editorView,
@@ -51,22 +67,9 @@ import {
   type StepHistoryView,
   type WorkflowEditorView,
   type WorkflowLabels,
-} from '@shared/workflowViews';
-import { firstScreen } from '@solid/firstScreen';
-import type {
-  Requirement,
-  WorkflowCapabilities,
-  WorkflowDefinition,
-  WorkflowItem,
-  WorkflowSummary,
-} from '@we/backend-shared';
-import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
-import { getEntityForDataset } from '@we/entities';
-import { CORE_MANIFEST } from '@we/entities/manifest';
-import { type Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
-
-import type { StoreRegistry } from './useStore';
+} from '../workflowViews';
+import type { DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
 
 /** A workflow as a list shows it. */
 export interface WorkflowSummaryView {
@@ -266,9 +269,35 @@ const stillRunning = (definition: WorkflowDefinition | undefined) => {
 /** A time from the backend as an ISO date, for a we-timestamp; empty where there is none. */
 const isoOf = (ms: number | undefined): string => (ms === undefined ? '' : new Date(ms).toISOString());
 
-export function createWorkflowStore(
-  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore' | 'spaceStore'>,
-): WorkflowStore {
+/** What the workflow store reads of the space store: its words for steps, and who may edit. */
+export interface WorkflowSpace {
+  canAdministerCurrentSpace: Accessor<boolean>;
+  /** The space's task states, whose names the task-state workflow's steps read as. */
+  taskStates: Accessor<{ slug: string; name: string }[]>;
+  /** The space's involvement kinds, whose names an approval rule's kind reads as. */
+  involvementTypes: Accessor<{ slug: string; name: string }[]>;
+  archivedWorkflows: Accessor<string[]>;
+}
+
+/** What it reads of the shape store: the models the space adopted, which name a record. */
+export interface WorkflowShapes {
+  spaceShapes: Accessor<{ name: string; manifest: EntityManifest | null }[]>;
+}
+
+export interface WorkflowStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: the list is the sidebar's, and waits for it. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  toasts: Pick<Toasts, 'error' | 'info'>;
+  sessionStore: Pick<SessionStore, 'backendPorts' | 'me'>;
+  datasetStore: Pick<DatasetStore, 'isWeSpace' | 'currentDataset' | 'currentDatasetEntities'>;
+  spaceStore: WorkflowSpace;
+  shapeStore: WorkflowShapes;
+}
+
+export function createWorkflowStore(deps: WorkflowStoreDeps): WorkflowStore {
+  const { reactivity, firstScreen, toasts } = deps;
+  const { signal, memo, effect, untrack, batch, onCleanup } = reactivity;
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
   const spaceStore = deps.spaceStore;
@@ -287,8 +316,8 @@ export function createWorkflowStore(
    * Words for a workflow's steps. The task-state workflow's steps are the space's task states, so they read as
    * the community named them; any other workflow's read from their names.
    */
-  const taskStateNames = createMemo(() => new Map(spaceStore.taskStates().map((s) => [s.slug, s.name])));
-  const kindNames = createMemo(() => new Map(spaceStore.involvementTypes().map((k) => [k.slug, k.name])));
+  const taskStateNames = memo(() => new Map(spaceStore.taskStates().map((s) => [s.slug, s.name])));
+  const kindNames = memo(() => new Map(spaceStore.involvementTypes().map((k) => [k.slug, k.name])));
   const labelsFor = (workflow: string): WorkflowLabels => ({
     state: (name) => (workflow === TASK_WORKFLOW ? taskStateNames().get(name) : undefined) ?? stateLabelOf(name),
     kind: (slug) => kindNames().get(slug) ?? stateLabelOf(slug),
@@ -296,14 +325,14 @@ export function createWorkflowStore(
 
   // ─── The list ────────────────────────────────────────────────────────────────
 
-  const [summaries, setSummaries] = createSignal<WorkflowSummary[]>([]);
+  const [summaries, setSummaries] = signal<WorkflowSummary[]>([]);
   /*
     Which space the list last answered for, rather than a flag: a switch of space has to make the list
     unanswered again at once, and a slow answer for the space somebody just left must not count for
     the one they are in. On a shared node listing workflows takes seconds, and "no workflows" for those
     seconds read as the space having lost them.
   */
-  const [listedFor, setListedFor] = createSignal<string | null>(null);
+  const [listedFor, setListedFor] = distinctSignal<string | null>(reactivity, null);
   const workflowsLoaded = () => listedFor() === datasetId();
 
   async function refreshWorkflows(): Promise<void> {
@@ -330,25 +359,14 @@ export function createWorkflowStore(
     }
   }
 
-  /*
-    Asked again whenever the space changes; after a write, the write asks. Not before the first screen
-    is up (`shared/firstScreen.ts`): the list is the sidebar's, and each workflow brings a definition
-    read. Started late, it reads the space on screen then — and `workflowsLoaded` stays false until
-    it has, so nothing reads "no workflows" meanwhile.
-  */
-  createEffect(() => {
-    datasetId();
-    available();
-    untrack(() => setSummaries([]));
-    if (!firstScreen.open()) return;
-    void untrack(refreshWorkflows);
-  });
-
   // ─── Definitions, read once per workflow and kept ────────────────────────────────
 
   // Declared before `workflows`, which reads them: a memo runs as soon as it is made, and a signal
   // declared below it does not exist yet at that moment.
-  const [definitions, setDefinitions] = createSignal<Record<string, WorkflowDefinition>>({});
+  const [definitions, setDefinitions] = signal<Record<string, WorkflowDefinition>>({});
+  /** Hold one more definition, beside those already held. */
+  const holdDefinition = (name: string, definition: WorkflowDefinition) =>
+    setDefinitions({ ...untrack(definitions), [name]: definition });
   /**
    * A workflow's definition: the one already read, or — `fresh`, or none read yet — the backend's.
    * A fresh read leaves the one held in place until it lands, so nothing reading it goes without.
@@ -360,18 +378,14 @@ export function createWorkflowStore(
     const h = handle();
     if (!p || !h) return null;
     const read = await p.read(h, name);
-    if (read) setDefinitions((prev) => ({ ...prev, [name]: read }));
+    if (read) holdDefinition(name, read);
     return read;
   };
-  createEffect(() => {
-    datasetId();
-    setDefinitions({});
-  });
 
   // Declared before `workflows` for the same reason: what each watched workflow holds, by its name.
-  const [items, setItems] = createSignal<Record<string, WorkflowItem[]>>({});
+  const [items, setItems] = signal<Record<string, WorkflowItem[]>>({});
 
-  const workflows = createMemo<WorkflowSummaryView[]>(() => {
+  const workflows = memo<WorkflowSummaryView[]>(() => {
     const archived = new Set(spaceStore.archivedWorkflows());
     const defs = definitions();
     const watched = items();
@@ -400,16 +414,20 @@ export function createWorkflowStore(
       .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
   });
 
-  const startableNames = createMemo(
-    () =>
-      workflows()
-        .filter((f) => !f.archived && !f.managedBy)
-        .map((f) => f.name),
-    [],
-    { equals: (a, b) => a.join('\u0000') === b.join('\u0000') },
-  );
+  /*
+    The names, as the same list while they read the same: the watches below follow it, and a list
+    rebuilt on every move anybody makes would close and open every watch each time.
+  */
+  let startableHeld: string[] = [];
+  const startableNames = memo(() => {
+    const names = workflows()
+      .filter((f) => !f.archived && !f.managedBy)
+      .map((f) => f.name);
+    if (names.join('\u0000') !== startableHeld.join('\u0000')) startableHeld = names;
+    return startableHeld;
+  });
 
-  const startable = createMemo(() => {
+  const startable = memo(() => {
     const defs = definitions();
     return startableNames().map((name) => ({
       name,
@@ -422,7 +440,7 @@ export function createWorkflowStore(
 
   /** Watch these workflows, and only these, for as long as the space is on screen. */
   function watchWorkflows(names: () => string[]) {
-    createEffect(() => {
+    effect(() => {
       const list = names();
       const p = port();
       const h = handle();
@@ -437,7 +455,7 @@ export function createWorkflowStore(
         void definitionOfWorkflow(name).catch(() => {});
         void p
           .watch(h, name, (view) => {
-            if (!cancelled) setItems((prev) => ({ ...prev, [name]: view.items }));
+            if (!cancelled) setItems({ ...untrack(items), [name]: view.items });
           })
           .then(
             (stop) => (cancelled ? stop() : stops.push(stop)),
@@ -447,16 +465,9 @@ export function createWorkflowStore(
     });
   }
 
-  const [openName, setOpenName] = createSignal('');
+  const [openName, setOpenName] = distinctSignal(reactivity, '');
   watchWorkflows(startableNames);
   watchWorkflows(() => (openName() && !startableNames().includes(openName()) ? [openName()] : []));
-
-  createEffect(() => {
-    datasetId();
-    setItems({});
-    setOpenName('');
-    setDraftState(null);
-  });
 
   // ─── Subjects ────────────────────────────────────────────────────────────────
 
@@ -466,7 +477,7 @@ export function createWorkflowStore(
    * found yet — its model not registered for this space when it was looked for — is looked for again
    * when the space's models arrive, rather than read as nameless for good.
    */
-  const [subjects, setSubjects] = createSignal<Record<string, SubjectName>>({});
+  const [subjects, setSubjects] = signal<Record<string, SubjectName>>({});
   /**
    * Which models each record was already looked for in and not found, so a run moving does not ask
    * again. A read that failed is not kept, and opening a workflow forgets them all.
@@ -479,7 +490,7 @@ export function createWorkflowStore(
    * which carries no declaration and so only ever gives the guess — the same precedence as
    * `RecordStore.schemaFor`.
    */
-  const nameProperties = createMemo(() => {
+  const nameProperties = memo(() => {
     const out = new Map<string, string>();
     for (const entry of datasetStore.currentDatasetEntities()) {
       out.set(entry.name, nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
@@ -496,19 +507,13 @@ export function createWorkflowStore(
     return nameProperties().get(entity) ?? (core ? namePropertyOf(core) : '');
   };
 
-  createEffect(() => {
-    datasetId();
-    setSubjects({});
-    searched.clear();
-  });
-
   /*
     Every watched workflow's records, looked for in the models each workflow names — or, naming none,
     WE's own and the space's. Records of workflows that look in the same models are looked for together,
     and every model is read at once rather than one after another: a workflow over any record asks a
     dozen models on a space with a dozen of its own.
   */
-  createEffect(() => {
+  effect(() => {
     const h = handle();
     const watched = items();
     const defs = definitions();
@@ -565,14 +570,14 @@ export function createWorkflowStore(
         if (reads.some((read) => read.status === 'rejected')) {
           for (const id of wanted) if (!found[id] && searched.get(id) === looking) searched.delete(id);
         }
-        if (Object.keys(found).length) setSubjects((prev) => ({ ...prev, ...found }));
+        if (Object.keys(found).length) setSubjects({ ...untrack(subjects), ...found });
       })();
     }
   });
 
   // ─── The open workflow ───────────────────────────────────────────────────────────
 
-  const [history, setHistory] = createSignal<Record<string, StepHistoryView[]>>({});
+  const [history, setHistory] = signal<Record<string, StepHistoryView[]>>({});
 
   async function openWorkflow(name: string): Promise<void> {
     if (!name) return closeWorkflow();
@@ -589,7 +594,7 @@ export function createWorkflowStore(
       await definitionOfWorkflow(name, true);
     } catch (error) {
       console.error('WorkflowStore: could not read that workflow', error);
-      toastService.error('Could not open that workflow');
+      toasts.error('Could not open that workflow');
       throw error;
     }
   }
@@ -599,7 +604,7 @@ export function createWorkflowStore(
     setHistory({});
   }
 
-  const open = createMemo<OpenWorkflowView | null>(() => {
+  const open = memo<OpenWorkflowView | null>(() => {
     const name = openName();
     const definition = definitions()[name];
     if (!name || !definition) return null;
@@ -629,17 +634,17 @@ export function createWorkflowStore(
     if (!p || !h || !name) return;
     try {
       const moves = await p.history(h, name, record);
-      setHistory((prev) => ({ ...prev, [record]: historyView(moves, labelsFor(name)) }));
+      setHistory({ ...untrack(history), [record]: historyView(moves, labelsFor(name)) });
     } catch (error) {
       console.error('WorkflowStore: could not read that record’s history', error);
-      toastService.error('Could not read what happened to that record');
+      toasts.error('Could not read what happened to that record');
       throw error;
     }
   }
 
   // ─── Records ─────────────────────────────────────────────────────────────────
 
-  const recordWorkflows = createMemo<Record<string, RecordWorkflowChip[]>>(() => {
+  const recordWorkflows = memo<Record<string, RecordWorkflowChip[]>>(() => {
     const out: Record<string, RecordWorkflowChip[]> = {};
     const all = items();
     const defs = definitions();
@@ -669,7 +674,7 @@ export function createWorkflowStore(
     backend that cannot say when a record last saw activity is read by when it started; a tie goes to
     the record's id, so two readers holding the same runs list them alike.
   */
-  const active = createMemo<ActiveRunView[]>(() => {
+  const active = memo<ActiveRunView[]>(() => {
     const all = items();
     const defs = definitions();
     const named = subjects();
@@ -714,7 +719,7 @@ export function createWorkflowStore(
       await p.start(h, workflow, recordId);
     } catch (error) {
       console.error('WorkflowStore: could not start that workflow', error);
-      toastService.error('Could not start that workflow');
+      toasts.error('Could not start that workflow');
       throw error;
     }
   }
@@ -727,16 +732,15 @@ export function createWorkflowStore(
       outcome = result.outcome === 'refused' ? result.reason : result.outcome;
     } catch (error) {
       console.error('WorkflowStore: could not ask for that move', error);
-      toastService.error('Could not ask for that move');
+      toasts.error('Could not ask for that move');
       throw error;
     }
     const from = untrack(items)[workflow]?.find((item) => item.record === recordId)?.state;
     const why = refusalWords(untrack(definitions)[workflow], from, to, outcome, labelsFor(workflow));
-    if (outcome === 'unmet') toastService.error(why ?? 'Not yet — what that step asks for is not there');
-    else if (outcome === 'not-allowed') toastService.error(why ?? 'It cannot move there from where it is');
-    else if (outcome === 'stalled')
-      toastService.error('Stuck between two agreed moves — one of them has to be withdrawn');
-    else if (outcome === 'pending') toastService.info('Still being counted — it will move when it has');
+    if (outcome === 'unmet') toasts.error(why ?? 'Not yet — what that step asks for is not there');
+    else if (outcome === 'not-allowed') toasts.error(why ?? 'It cannot move there from where it is');
+    else if (outcome === 'stalled') toasts.error('Stuck between two agreed moves — one of them has to be withdrawn');
+    else if (outcome === 'pending') toasts.info('Still being counted — it will move when it has');
     return outcome;
   }
 
@@ -746,18 +750,19 @@ export function createWorkflowStore(
       await p.withdraw(h, workflow, recordId);
     } catch (error) {
       console.error('WorkflowStore: could not withdraw that', error);
-      toastService.error('Could not withdraw that');
+      toasts.error('Could not withdraw that');
       throw error;
     }
   }
 
   // ─── Writing a workflow ──────────────────────────────────────────────────────────
 
-  const [draftState, setDraftState] = createSignal<{ draft: WorkflowDraft; saved: WorkflowDefinition | null } | null>(
+  const [draftState, setDraftState] = distinctSignal<{ draft: WorkflowDraft; saved: WorkflowDefinition | null } | null>(
+    reactivity,
     null,
   );
 
-  const draft = createMemo<WorkflowDraftView | null>(() => {
+  const draft = memo<WorkflowDraftView | null>(() => {
     const state = draftState();
     if (!state) return null;
     const definition = definitionOf(state.draft);
@@ -781,7 +786,7 @@ export function createWorkflowStore(
     if (!state) return false;
     const next = change(state.draft);
     if (isRefusal(next)) {
-      toastService.error(next.refused);
+      toasts.error(next.refused);
       return false;
     }
     setDraftState({ ...state, draft: next });
@@ -810,7 +815,7 @@ export function createWorkflowStore(
     const definition = definitions()[openName()];
     if (!view || !definition) return;
     if (!view.editable) {
-      toastService.error(
+      toasts.error(
         view.managedBy === 'task-states'
           ? 'Task states are edited in the space’s settings'
           : 'This workflow was written by something that uses more than this editor can show',
@@ -819,7 +824,7 @@ export function createWorkflowStore(
     }
     const read = draftOf(definition);
     if (!read) {
-      toastService.error('This workflow does not read as lanes, so it cannot be edited here');
+      toasts.error('This workflow does not read as lanes, so it cannot be edited here');
       return;
     }
     setDraftState({ draft: read, saved: definition });
@@ -835,7 +840,7 @@ export function createWorkflowStore(
     if (!state || !view) return;
     if (!canEdit()) throw new Error('Only whoever administers this space can save its workflows');
     if (view.problems.length) {
-      toastService.error(view.problems[0]);
+      toasts.error(view.problems[0]);
       throw new Error(view.problems.join(' '));
     }
     const definition = definitionOf(state.draft);
@@ -844,11 +849,11 @@ export function createWorkflowStore(
       await p.install(h, definition);
     } catch (error) {
       console.error('WorkflowStore: could not save that workflow', error);
-      toastService.error('Could not save that workflow');
+      toasts.error('Could not save that workflow');
       throw error;
     }
     setDraftState(null);
-    setDefinitions((prev) => ({ ...prev, [definition.name]: definition }));
+    holdDefinition(definition.name, definition);
     await refreshWorkflows();
     await openWorkflow(definition.name);
   }
@@ -860,12 +865,46 @@ export function createWorkflowStore(
       await p.remove(h, name);
     } catch (error) {
       console.error('WorkflowStore: could not delete that workflow', error);
-      toastService.error('A workflow can only be deleted once nothing is going through it — archive it instead');
+      toasts.error('A workflow can only be deleted once nothing is going through it — archive it instead');
       throw error;
     }
     if (openName() === name) closeWorkflow();
     await refreshWorkflows();
   }
+
+  /*
+    What the space on screen holds: forgotten when the space changes, and the list asked again
+    whenever the space changes or workflows become available; after a write, the write asks. Not
+    before the first screen is up (`shared/firstScreen.ts`): the list is the sidebar's, and each
+    workflow brings a definition read. Started late, it reads the space on screen then — and
+    `workflowsLoaded` stays false until it has, so nothing reads "no workflows" meanwhile.
+
+    One effect, forgetting first and then reading. They were five, and correct only because Solid ran
+    them in the order they were made — a definition read before the old space's were dropped would
+    have found the old one held. The port promises no order between siblings, so forgetting happens
+    here, in one update, before the list is asked for.
+  */
+  let seenSpace: string | undefined;
+  effect(() => {
+    const space = datasetId();
+    available();
+    const open = firstScreen.open();
+    untrack(() => {
+      batch(() => {
+        if (space !== seenSpace) {
+          seenSpace = space;
+          setDefinitions({});
+          setItems({});
+          setOpenName('');
+          setDraftState(null);
+          setSubjects({});
+          searched.clear();
+        }
+        setSummaries([]);
+      });
+      if (open) void refreshWorkflows();
+    });
+  });
 
   const requirementsOf = (draftValue: WorkflowDraft, name: string): Requirement[] => [
     ...(draftValue.states[name]?.requires ?? []),
