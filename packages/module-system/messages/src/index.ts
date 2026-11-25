@@ -9,4 +9,13 @@
  */
 export { messageLine } from './messageLine.ts';
 export { CORRECTED, SPOKEN, sourceAfterEdit, TYPED } from './source.ts';
-export { lineContent, repliesInclude, threadLines, threadLinesFunction } from './thread.ts';
+export {
+  isMessage,
+  lineContent,
+  lineInclude,
+  lineText,
+  partsInclude,
+  repliesInclude,
+  threadLines,
+  threadLinesFunction,
+} from './thread.ts';
