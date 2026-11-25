@@ -183,8 +183,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
-import { Accessor, batch, createComputed, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
+import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { followLive } from '../../../shared/followLive';
 import { oneAtATime } from '../../../shared/oneAtATime';
@@ -1321,6 +1320,7 @@ export function createSpaceStore(
     datasetStore.orderedDatasets().map((ds) => {
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
       return {
+        id: ds.id,
         uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
@@ -1350,18 +1350,11 @@ export function createSpaceStore(
   );
 
   /*
-    Each row stays the same object for as long as its space is listed; a change to the space changes
-    the row's fields in place.
-
-    `<For>`, which `$each` renders through, keys by reference, so a fresh object for a row destroys
-    and rebuilds everything under it. Under the space-settings panel that is every `$localState`, a
-    half-typed name, and the scroll position: setting a space's default theme threw the Appearance
-    tab back to its top. Holding a row only while nothing in it changed was not enough, because
-    changing something is exactly what a settings page does. Query results are kept the same way.
+    A plain list, rebuilt whenever anything in it changes. What keeps a row's mount — a half-typed
+    name, the settings page's scroll — is the renderer, which keeps the rows of a list by `id`; each
+    row's is its dataset's.
   */
-  const [spaceListStore, setSpaceListStore] = createStore<SpaceListEntry[]>([]);
-  createComputed(() => setSpaceListStore(reconcile(spaceRows(), { key: 'uuid', merge: true })));
-  const spaceList: Accessor<SpaceListEntry[]> = () => spaceListStore;
+  const spaceList: Accessor<SpaceListEntry[]> = spaceRows;
 
   // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
   // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
@@ -4319,19 +4312,12 @@ export function createSpaceStore(
     });
   });
   /*
-    Each row stays the same object while its setting is listed; a change to it changes its fields in
-    place. The rows are rebuilt on every write, and `$each` keys by reference, so a fresh object per row
-    redrew every row under a settings screen: pressing one switch threw the page's scroll. The fix
-    `spaceList` already has, for the same reason.
+    Plain lists, rebuilt on every write. A settings screen keeps its rows through the renderer, which
+    keeps them by each row's `id` (`group.key`), so pressing one switch redraws nothing else.
   */
-  function keptRows(rows: () => SettingRow[]): Accessor<SettingRow[]> {
-    const [kept, setKept] = createStore<SettingRow[]>([]);
-    createComputed(() => setKept(reconcile(rows(), { key: 'id', merge: true })));
-    return () => kept;
-  }
-  const spaceModuleSettings = keptRows(() => settingRows(groupsHere(), 'space', settingLevels()));
-  const myModuleSettings = keptRows(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
-  const agentModuleSettings = keptRows(() => settingRows(settingGroups(), 'agent', settingLevels()));
+  const spaceModuleSettings = createMemo(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = createMemo(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
+  const agentModuleSettings = createMemo(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
    * Write, or withdraw, the community's opinion about one setting.

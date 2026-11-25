@@ -1437,22 +1437,24 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
-    `$each` keys by reference, so a row rebuilt as a new object remounts everything under it — in the
-    space-settings page that was the scroll position, thrown back to the top by setting a default.
+    A row is kept on screen by its `id` (the renderer's keepRows): a row whose id moved would be drawn
+    again, and in the space-settings page that was the scroll position, thrown back to the top by
+    setting a default. The rows themselves are plain and rebuilt; the browser harness's
+    space-settings case shows the page keeping them.
   */
-  it('keeps a space’s row the same object when one of its settings changes', async () => {
+  it('keeps a space’s row under its dataset’s id when one of its settings changes', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Row Space', '', 'personal', 'hidden');
     const uuid = (await lifecycle.list()).find((d) => d.name === 'Row Space')!.id;
     const rowOf = () => stores.spaces.spaceList().find((r) => r.uuid === uuid);
     await vi.waitFor(() => expect(rowOf()?.isWeSpace).toBe(true));
-    const before = rowOf();
+    expect(rowOf()?.id).toBe(uuid);
 
     await stores.spaces.setSpaceDefaultTheme('retro', uuid);
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
-    expect(rowOf()).toBe(before);
+    expect(rowOf()?.id).toBe(uuid);
   }, 10000);
 
   it('shows a space default set here before it is stored, read off the space on screen', async () => {
@@ -2190,10 +2192,11 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
-    The same for a module's setting rows, which are rebuilt on every write: pressing one switch on a
-    settings screen redrew every row under it and threw the page's scroll.
+    The same for a module's setting rows, which are rebuilt on every write: kept by anything but a
+    stable id, pressing one switch on a settings screen redrew every row under it and threw the
+    page's scroll.
   */
-  it('keeps a module setting’s row the same object when it changes', async () => {
+  it('keeps a module setting’s row under the same id when it changes', async () => {
     moduleRegistry.register(
       {
         manifest: { id: 'rowtest', name: 'Row test' },
@@ -2205,13 +2208,12 @@ describe('dataset lifecycle through the real stores', () => {
       const stores = mountShell();
       await ready(stores);
       const rowOf = () => stores.spaces.agentModuleSettings().find((r) => r.id === 'rowtest.loud');
-      const before = rowOf();
-      expect(before?.value).toBe(true);
+      expect(rowOf()?.value).toBe(true);
 
       await stores.spaces.setAgentModuleSetting('rowtest', 'loud', false);
 
       await vi.waitFor(() => expect(rowOf()?.value).toBe(false));
-      expect(rowOf()).toBe(before);
+      expect(stores.spaces.agentModuleSettings().filter((r) => r.id === 'rowtest.loud')).toHaveLength(1);
     } finally {
       moduleRegistry.unregister('rowtest');
     }
