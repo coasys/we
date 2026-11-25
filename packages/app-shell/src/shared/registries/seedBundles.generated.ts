@@ -33187,7 +33187,7 @@ export const seedBundles: Bundle[] = [
         role: 'base',
         themeId: 'glow',
       },
-      props: { styles: { display: 'contents' } },
+      props: { display: 'contents' },
       children: [
         {
           type: '$if',
