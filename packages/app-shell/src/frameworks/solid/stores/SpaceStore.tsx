@@ -148,6 +148,15 @@ export function createSpaceStore(
   const themeStore = deps.themeStore;
   const shellStore = deps.shellStore;
 
+  /*
+    The store is composed of parts, one per job, each a neutral factory in `@shared/stores/space/`:
+    the spaces held, how a setting on a space is written, where the agent is, what a space runs and
+    shows, and what it extracts — built in that order, each handed what it reads of the ones before,
+    and reaching a later one only through a function it calls after the store is built. The jobs
+    still written below (task states, involvements, roles and policy, unread and mentions, and the
+    space's own records — posts, boards, reactions, its fields and defaults) read the parts through
+    the names taken out of them here.
+  */
   const reactivity = solidReactivity;
   const ctx = createSpaceContext({
     reactivity,
@@ -303,9 +312,9 @@ export function createSpaceStore(
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each
     job — whether this agent administers the space (its roles), what it runs and shows and this
-    agent's own choices about it (the modules part). A plain list, rebuilt whenever anything in it changes. What keeps a row's mount
-    — a half-typed name, the settings page's scroll — is the renderer, which keeps the rows of a list
-    by `id`; each row's is its dataset's.
+    agent's own choices about it (the modules part). A plain list, rebuilt whenever anything in it
+    changes. What keeps a row's mount — a half-typed name, the settings page's scroll — is the
+    renderer, which keeps the rows of a list by `id`; each row's is its dataset's.
   */
   const spaceList = createMemo<SpaceListEntry[]>(() =>
     datasetStore.orderedDatasets().map((ds) =>
