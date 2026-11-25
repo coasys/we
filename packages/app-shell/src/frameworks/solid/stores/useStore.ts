@@ -20,13 +20,13 @@ import type { EditTargetPort } from '@shared/stores/editTarget';
 import type { IdentityStore } from '@shared/stores/IdentityStore';
 import type { InterpretationStore } from '@shared/stores/InterpretationStore';
 import type { PresenceStore } from '@shared/stores/PresenceStore';
+import type { ProfileStore } from '@shared/stores/ProfileStore';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import type { SessionStore } from '@shared/stores/SessionStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { BundleStore } from './BundleStore';
 import type { EditorStore } from './EditorStore';
-import type { ProfileStore } from './ProfileStore';
 import type { RecordStore } from './RecordStore';
 import type { RuntimeStore } from './RuntimeStore';
 import type { ShapeStore } from './ShapeStore';

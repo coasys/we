@@ -258,7 +258,6 @@ import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
 import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
@@ -277,6 +276,7 @@ import { createAccountStore } from '../src/shared/stores/AccountStore';
 import { createAppStore } from '../src/shared/stores/AppStore';
 import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
+import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 
@@ -333,7 +333,15 @@ function mountShell(): Stores {
     // states — so these are built in the order BootController uses.
     const shapeStore = createShapeStore({ sessionStore, datasetStore });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-    const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
+    const profileStore = createProfileStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      credential,
+      toasts: toastService,
+      sessionStore,
+      runtimeStore,
+      accountStore,
+    });
     const themeStore = createThemeStore({ sessionStore, datasetStore });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
     // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.

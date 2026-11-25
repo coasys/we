@@ -21,17 +21,13 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.ts',
   'tests/identityStore.test.ts',
-  'tests/profileStore.test.tsx',
-  // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
-  'tests/firstScreenDeferral.test.tsx',
-  // The same gate and store: this agent's own profile, asked for before `me()` answered.
-  'tests/firstScreenOwnProfile.test.tsx',
+  'tests/profileStore.test.ts',
   // The interpretation store under a held gate, under both ports: what it tells modules.
   'tests/interpretationStore.test.ts',
-  // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
-  // build, where `createEffect` never runs again — so every count would be 1 and the test would
-  // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
-  'tests/profileIndex.test.tsx',
+  // Counts effect re-runs under both ports. The node project resolves solid-js to its SSR build,
+  // where an effect never runs again — so every count would be 1 and the test would pass whether
+  // or not the cache is fine-grained, which is the one thing it exists to tell apart.
+  'tests/profileIndex.test.ts',
   // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
   // so the Solid port's effects re-run at all.
   'tests/routeStore.test.ts',

@@ -23,7 +23,6 @@
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
 import type {
-  AgentProfileSummary,
   BackendPorts,
   InterpretationActivity,
   InterpretationPhase,
@@ -45,6 +44,7 @@ import { watchPassRecord } from '../interpretation/activityView';
 import { provideModuleHostServices } from '../registries/moduleHostServices';
 import { formatJson } from '../sources/formatJson';
 import { holdSubscription } from '../utils';
+import type { ProfileStore } from './ProfileStore';
 
 /** What the interpretation store reads of the stores it is built from. */
 export interface InterpretationStoreDeps {
@@ -56,7 +56,7 @@ export interface InterpretationStoreDeps {
     backendPorts: Accessor<Pick<BackendPorts, 'interpretation' | 'ephemeral'> | null>;
   };
   datasetStore: { currentDataset: Accessor<{ handle: DatasetProxy } | null> };
-  profileStore: { profiles: Accessor<AgentProfileSummary[]>; fetchProfile: (did: string) => Promise<void> };
+  profileStore: Pick<ProfileStore, 'profiles' | 'fetchProfile'>;
   spaceStore: { autoInterpret: Accessor<boolean>; autoInterpretFor: (collectionId: string) => boolean };
 }
 

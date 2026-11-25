@@ -28,7 +28,6 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
 import { createShapeStore } from '../../src/frameworks/solid/stores/ShapeStore';
@@ -46,6 +45,7 @@ import { createChatStore } from '../../src/shared/stores/ChatStore';
 import { createClockStore } from '../../src/shared/stores/ClockStore';
 import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
+import { createProfileStore } from '../../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 
@@ -486,7 +486,15 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     const shapeStore = createShapeStore({ sessionStore, datasetStore });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-    const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
+    const profileStore = createProfileStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      credential,
+      toasts: toastService,
+      sessionStore,
+      runtimeStore,
+      accountStore,
+    });
     const themeStore = createThemeStore({ sessionStore, datasetStore });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
     const appStore = createAppStore({ reactivity: solidReactivity });

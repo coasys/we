@@ -74,6 +74,7 @@ import type { FirstScreen } from '../firstScreen';
 import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '../presenceScope';
 import { provideModuleHostServices } from '../registries/moduleHostServices';
 import { createTabCoordinator } from '../tabCoordinator';
+import type { ProfileStore } from './ProfileStore';
 import type { RouteStore } from './RouteStore';
 
 /** A dataset as presence reads it: where it is shared, and the handle a scope is opened on. */
@@ -90,7 +91,7 @@ export interface PresenceStoreDeps {
     currentDataset: Accessor<PresenceDataset | null>;
     currentDatasetUri: Accessor<string | undefined>;
   };
-  profileStore: { profiles: Accessor<AgentProfileSummary[]>; fetchProfile: (did: string) => Promise<void> };
+  profileStore: Pick<ProfileStore, 'profiles' | 'fetchProfile'>;
   routeStore: Pick<RouteStore, 'page'>;
 }
 

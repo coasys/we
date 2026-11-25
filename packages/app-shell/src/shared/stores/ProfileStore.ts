@@ -6,18 +6,19 @@
  * and owns the own-profile write path (text fields, images, location). Identity itself (`me`,
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
-import { createKeyedSignals } from '@shared/keyedSignals';
-import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { uploadOf } from '@shared/uploadOf';
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
-import { solidReactivity } from '@we/reactivity-solid';
-import { Accessor, batch, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import { credential } from '../credential';
-import { firstScreen } from '../firstScreen';
-import type { StoreRegistry } from './useStore';
+import type { Credential } from '../credential';
+import { distinctSignal } from '../distinctSignal';
+import type { FirstScreen } from '../firstScreen';
+import { createKeyedSignals } from '../keyedSignals';
+import { provideModuleHostServices } from '../registries/moduleHostServices';
+import type { Toasts } from '../toasts';
+import { uploadOf } from '../uploadOf';
+import type { AccountStore } from './AccountStore';
+import type { SessionStore } from './SessionStore';
 
 export interface ProfileStore {
   // State
@@ -128,26 +129,45 @@ function sameProfile(a: AgentProfileSummary | undefined, b: AgentProfileSummary 
   });
 }
 
-export function createProfileStore(
-  deps: Pick<StoreRegistry, 'accountStore' | 'runtimeStore' | 'sessionStore'>,
-): ProfileStore {
+/** What the profile store reads of the runtime store: whether a first run asks about AI next. */
+export interface ProfileRuntime {
+  openAiStep: () => Promise<boolean>;
+}
+
+export interface ProfileStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: somebody else's profile waits for it. */
+  firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
+  /** The host's password field state, which first-run setup submits — see `shared/credential.ts`. */
+  credential: Pick<Credential, 'confirmed' | 'touch' | 'read'>;
+  /** What a failed write says, and where a module's `notify` lands. */
+  toasts: Toasts;
+  sessionStore: Pick<SessionStore, 'me' | 'backendPorts' | 'bootState' | 'createAgent' | 'finishSetup'>;
+  runtimeStore: ProfileRuntime;
+  accountStore: Pick<AccountStore, 'syncDisplay'>;
+}
+
+export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
+  const { reactivity, firstScreen, credential, toasts } = deps;
+  const { signal, memo, untrack, batch, onCleanup } = reactivity;
   const session = deps.sessionStore;
   const runtime = deps.runtimeStore;
   const accounts = deps.accountStore;
 
-  const [rawProfiles, setRawProfiles] = createSignal<AgentProfileSummary[]>([]);
-  const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
+  const [rawProfiles, setRawProfiles] = signal<AgentProfileSummary[]>([]);
+  const [pendingAvatar, setPendingAvatarSignal] = distinctSignal(reactivity, '');
   /**
    * DIDs whose fetch has settled, however it settled.
    *
    * A list in a signal rather than a plain `Set`, because this is read from a memo and a mutated
    * Set does not notify. Only ever appended to, so identity comparison on the array is enough.
    */
-  const [fetchedDids, setFetchedDids] = createSignal<string[]>([]);
-  const [namePromptDismissed, setNamePromptDismissed] = createSignal(false);
+  const [fetchedDids, setFetchedDids] = signal<string[]>([]);
+  const [namePromptDismissed, setNamePromptDismissed] = distinctSignal(reactivity, false);
 
   function markFetched(did: string): void {
-    setFetchedDids((prev) => (prev.includes(did) ? prev : [...prev, did]));
+    const prev = untrack(fetchedDids);
+    if (!prev.includes(did)) setFetchedDids([...prev, did]);
   }
 
   /**
@@ -163,7 +183,7 @@ export function createProfileStore(
    * derived field reaches every list of people in the app, and no template has to spell a name out
    * of its parts again.
    */
-  const profiles = createMemo<AgentProfileSummary[]>(() =>
+  const profiles = memo<AgentProfileSummary[]>(() =>
     rawProfiles().map((profile) => ({ ...profile, name: displayName(profile) })),
   );
 
@@ -182,11 +202,14 @@ export function createProfileStore(
    * Written in the same update as the list (see `setProfiles`), so the index is never behind it: a
    * reader of both sees one answer.
    */
-  const profileIndex = createKeyedSignals<string, AgentProfileSummary>(solidReactivity, sameProfile);
+  const profileIndex = createKeyedSignals<string, AgentProfileSummary>(reactivity, sameProfile);
   /** Change the cache: the list, and in the same update the keys of the agents whose profile changed. */
   function setProfiles(update: (prev: AgentProfileSummary[]) => AgentProfileSummary[]): void {
     batch(() => {
-      const next = update(untrack(rawProfiles));
+      const prev = untrack(rawProfiles);
+      const next = update(prev);
+      // An update that changed nothing hands back the list it was given.
+      if (next === prev) return;
       setRawProfiles(next);
       profileIndex.replace(
         next
@@ -236,12 +259,12 @@ export function createProfileStore(
     lastLocalWrite.set(did, ++writeSequence);
   }
 
-  const ownProfile = createMemo(() => {
+  const ownProfile = memo(() => {
     const myDid = session.me()?.did;
     return myDid ? profiles().find((a) => a.did === myDid) : undefined;
   });
 
-  const ownProfileLoaded = createMemo(() => {
+  const ownProfileLoaded = memo(() => {
     const myDid = session.me()?.did;
     return !!myDid && fetchedDids().includes(myDid);
   });
@@ -260,7 +283,7 @@ export function createProfileStore(
    * never empty. That is the trap in reading a display value to decide anything: it always has an
    * answer, and the answer is not about the data.
    */
-  const needsName = createMemo(() => {
+  const needsName = memo(() => {
     if (namePromptDismissed()) return false;
     if (session.bootState() !== 'ready') return false;
     if (!ownProfileLoaded()) return false;
@@ -489,7 +512,7 @@ export function createProfileStore(
       await updateOwnProfile({ firstName: trimmed });
     } catch (err) {
       console.error('ProfileStore: could not publish the name from the prompt', err);
-      toastService.error('Your name did not save. You can set it in your profile.');
+      toasts.error('Your name did not save. You can set it in your profile.');
     }
   }
 
@@ -523,7 +546,7 @@ export function createProfileStore(
       }
     } catch (err) {
       console.error('ProfileStore: could not publish the profile after setup', err);
-      toastService.error(
+      toasts.error(
         'Your account was created, but your name and picture did not save. You can set them in your profile.',
       );
     }
@@ -622,9 +645,9 @@ export function createProfileStore(
           ...(from && { from: { name: from.name, image: from.avatar, hash: from.id } }),
         };
         // Only news and outcomes carry a button: a warning or an error says what went wrong.
-        if (tone === 'info') toastService.info(message, options?.duration, options?.action, look);
-        else if (tone === 'success') toastService.success(message, options?.duration, options?.action, look);
-        else toastService[tone](message, options?.duration);
+        if (tone === 'info') toasts.info(message, options?.duration, options?.action, look);
+        else if (tone === 'success') toasts.success(message, options?.duration, options?.action, look);
+        else toasts[tone](message, options?.duration);
       },
       identities: {
         get: (agentId) => {

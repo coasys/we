@@ -25,6 +25,7 @@ import { createEditTarget } from '@shared/stores/editTarget';
 import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
+import { createProfileStore } from '@shared/stores/ProfileStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { trace } from '@we/backend-shared';
@@ -37,7 +38,6 @@ import { firstScreen } from '../firstScreen';
 import { startAppBridge } from '../services/appBridge';
 import { createBundleStore } from '../stores/BundleStore';
 import { createEditorStore } from '../stores/EditorStore';
-import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
 import { createShapeStore } from '../stores/ShapeStore';
@@ -107,7 +107,15 @@ export function BootController(props: ParentProps) {
   const shapeStore = createShapeStore({ sessionStore, datasetStore });
   // It offers a form for every model this space carries, which is the list the rail assembles.
   const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-  const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
+  const profileStore = createProfileStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    credential,
+    toasts: toastService,
+    sessionStore,
+    runtimeStore,
+    accountStore,
+  });
   const themeStore = createThemeStore({ sessionStore, datasetStore });
   const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
   /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
