@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { followRead, type LiveRead } from '../src/shared/graphWatch';
+import { followRead, type LiveRead, wholeAnswer } from '../src/shared/graphWatch';
 
 type Row = { id: string };
 type Snapshot = { status: 'ready'; data: { results: Row[] }; initial: boolean };
@@ -120,5 +120,30 @@ describe('followRead', () => {
     await settle();
 
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'refused' }));
+  });
+});
+
+describe('handing the new answer over', () => {
+  it('passes the page a change brought', async () => {
+    const read = liveRead([{ id: 'a' }]);
+    const onChange = vi.fn();
+    followRead(read.subscription, { seen: () => ['a'], onChange, onError: vi.fn() });
+    await read.answer();
+
+    read.change([{ id: 'a' }, { id: 'b' }]);
+
+    expect(onChange).toHaveBeenCalledWith({ results: [{ id: 'a' }, { id: 'b' }] });
+  });
+
+  it('takes a page as the whole answer only when nothing is left out of it', () => {
+    const rows = [{ id: 'a' }, { id: 'b' }];
+    // Uncounted, or counted and all here.
+    expect(wholeAnswer({ results: rows }, undefined)).toBe(rows);
+    expect(wholeAnswer({ results: rows, totalCount: 2 }, undefined)).toBe(rows);
+    // Counted and short: a page of something larger.
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, undefined)).toBeUndefined();
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, 10)).toBeUndefined();
+    // Short of the count, but everything the read asked for.
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, 2)).toBe(rows);
   });
 });

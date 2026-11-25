@@ -21,6 +21,7 @@ import type {
   MatchClause,
   NodeStyleRules,
   SeedSpec,
+  WatchQuery,
 } from '@we/graph-protocol';
 import type { JSX } from 'solid-js';
 
@@ -1045,12 +1046,14 @@ export interface GraphHostBindings {
   observeConnections?: (connections: ObservedConnection[]) => void;
   query: (request: Record<string, unknown>) => Promise<Record<string, unknown>[]>;
   /**
-   * Report changes to records of a type, and return a function that stops reporting.
+   * Report changes to the answer of one read, and return a function that stops reporting.
    *
    * Optional: a host with no change notification omits it and the graph stays as loaded. The engine
-   * decides what to watch from the reads its seeds performed — nothing calls this directly.
+   * decides what to watch from the reads its seeds performed — nothing calls this directly. Pass the
+   * read's new rows to `onChange` when they are exactly what `query` would return for it, and the
+   * graph answers the read from them rather than asking again — see `ExpanderContext.watch`.
    */
-  watch?: (request: { entity: string | string[]; dataset?: string }, onChange: () => void) => () => void;
+  watch?: (request: WatchQuery, onChange: (rows?: readonly Record<string, unknown>[]) => void) => () => void;
   /**
    * Say what happened inside a load, for whoever is debugging an empty canvas.
    *

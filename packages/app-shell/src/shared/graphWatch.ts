@@ -16,8 +16,8 @@ export interface FollowOptions {
    * none to compare with.
    */
   seen: () => readonly string[] | undefined;
-  /** Something changed that the graph has not read. */
-  onChange: () => void;
+  /** Something changed that the graph has not read; `page` is the read's new answer. */
+  onChange: (page: Page<unknown>) => void;
   /** The backend would not subscribe. */
   onError: (error: unknown) => void;
 }
@@ -42,6 +42,20 @@ function differ(a: readonly string[], b: readonly string[]): boolean {
   return [...a].sort().some((id, i) => id !== sorted[i]);
 }
 
+/**
+ * A page as the whole answer to a read, or `undefined` when it may be only part of one.
+ *
+ * A live query opens on a page, and a backend that counts says so through `totalCount`. Rows short of
+ * that count are a page of something larger, and answering a read from them would draw a canvas
+ * missing the rest — so only a page that is everything there is, or everything the read asked for,
+ * stands in for the read.
+ */
+export function wholeAnswer<T>(page: Page<T>, limit: number | undefined): readonly T[] | undefined {
+  const { results, totalCount } = page;
+  if (totalCount === undefined || totalCount <= results.length) return results;
+  return limit !== undefined && results.length >= limit ? results : undefined;
+}
+
 /** Follow a read; returns the function that stops following it. */
 export function followRead<T>(subscription: LiveRead<T>, { seen, onChange, onError }: FollowOptions): () => void {
   let live = true;
@@ -59,9 +73,9 @@ export function followRead<T>(subscription: LiveRead<T>, { seen, onChange, onErr
   */
   subscription.subscribe((snapshot) => {
     if (!live || snapshot.status !== 'ready' || !snapshot.data) return;
-    if (!snapshot.initial) return onChange();
+    if (!snapshot.initial) return onChange(snapshot.data);
     const read = seen();
-    if (read !== undefined && differ(read, idsOf(snapshot.data.results))) onChange();
+    if (read !== undefined && differ(read, idsOf(snapshot.data.results))) onChange(snapshot.data);
   });
   subscription.first.catch((error: unknown) => {
     if (live) onError(error);
