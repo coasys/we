@@ -3693,7 +3693,11 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       }),
     ),
     panelDeclaration: (dockId) => declarationFor()[dockId],
-    seatFront: (ids) => (ids.length === 0 ? undefined : frontOf(ids, placementKey, activation())),
+    seatFront: (ids) => {
+      if (ids.length === 0) return undefined;
+      const touched = activation();
+      return frontOf(ids, Object.fromEntries(ids.map((id) => [id, touched[placementKey(id)]])));
+    },
 
     panelsHidden: panelsHiddenByUser,
     togglePanelsHidden: () => {

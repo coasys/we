@@ -43,8 +43,8 @@ const dock = (id: string, placement: FloatPlacement): DockRequest => ({
 
 describe('frontOf', () => {
   it('is the one touched last, and the first when none has been', () => {
-    expect(frontOf(['a', 'b', 'c'], (id) => id, { b: 3, c: 2 })).toBe('b');
-    expect(frontOf(['a', 'b'], (id) => id, {})).toBe('a');
+    expect(frontOf(['a', 'b', 'c'], { b: 3, c: 2 })).toBe('b');
+    expect(frontOf(['a', 'b'], {})).toBe('a');
   });
 });
 

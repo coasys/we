@@ -2971,13 +2971,18 @@ export function railBand(viewport: Viewport, inset: ContentInset, topChrome: Top
 export type Touched = Record<string, number | undefined>;
 
 /**
- * Which of several is in front: the one touched most recently, else the first.
+ * Which of several panels is in front: the one touched most recently, else the first.
  *
  * The one answer to "which tab of a seat shows", asked of a lane's seat, a loose stack, a strip and a
  * template's lane alike — the same answer {@link layerOrder} gives for which float is on top, since a
  * seat is that question asked of a smaller set.
  */
-export function frontOf<T>(items: readonly T[], idOf: (item: T) => string, touched: Touched): T {
+export function frontOf(ids: readonly string[], touched: Touched): string {
+  return frontBy(ids, (id) => id, touched);
+}
+
+/** {@link frontOf}, for things that carry a dock id rather than being one. */
+function frontBy<T>(items: readonly T[], idOf: (item: T) => string, touched: Touched): T {
   const at = (item: T) => touched[idOf(item)] ?? -1;
   return items.reduce((best, item) => (at(item) > at(best) ? item : best));
 }
@@ -3124,7 +3129,7 @@ export function seatLanes({ requests, viewport, chrome, touched, titles }: Seati
       .filter(({ index }) => requests[index].edge && requests[index].size !== 'full')
       .filter(({ placement }) => edgeOfSnap(placement.snap) === null),
   )) {
-    const front = frontOf(seat, (index) => requests[index].id, touched);
+    const front = frontBy(seat, (index) => requests[index].id, touched);
     const ids = seat.map((index) => requests[index].id);
     for (const index of seat) seating.hidden[requests[index].id] = index !== front;
     seating.tabs[requests[front].id] = stripOf(ids, requests[front].id);
@@ -3140,7 +3145,7 @@ export function seatLanes({ requests, viewport, chrome, touched, titles }: Seati
 
       if (group.displacing && group.members.every((member) => member.placement.stowed)) {
         const box = stripBox(edge, viewport, occupied);
-        const showing = group.seats.map((seat) => frontOf(seat, idOf, touched));
+        const showing = group.seats.map((seat) => frontBy(seat, idOf, touched));
         const boxes =
           group.seats.length < 2
             ? [box]
@@ -3163,7 +3168,7 @@ export function seatLanes({ requests, viewport, chrome, touched, titles }: Seati
 
       const narrow = !group.displacing && viewport.width < NARROW_VIEWPORT_PX;
       const seats = narrow ? [group.members] : group.seats;
-      const showing = seats.map((seat) => frontOf(seat, idOf, touched));
+      const showing = seats.map((seat) => frontBy(seat, idOf, touched));
 
       const seatOpen = showing.map((member) => !requests[member.index].placement?.collapsed);
       seats.forEach((seat, s) => {
@@ -3431,7 +3436,7 @@ export function resolveDocks(input: DockResolution): Record<string, DockGeometry
       else laneSeats.push([section.id]);
     }
     for (const ids of laneSeats) {
-      const front = frontOf(ids, (id) => id, touched);
+      const front = frontOf(ids, touched);
       const strip = ids.map((id) => ({ id, title: input.titles[id] ?? id, active: id === front }));
       for (const id of ids) {
         if (!resolved[id]) continue;
@@ -3515,7 +3520,7 @@ export function edgeLaneLayout(
   type Member = { placement: FloatPlacement; index: number };
   const seatOf = (seat: Member[], along: 'w' | 'h', spanning: boolean) => {
     const ids = seat.map((member) => requests[member.index].id);
-    const front = frontOf(seat, (member) => requests[member.index].id, touched);
+    const front = frontBy(seat, (member) => requests[member.index].id, touched);
     const share = laneBase(
       { ...front.placement, min: widestMin(seat.map((member) => requests[member.index].min)) },
       along,
