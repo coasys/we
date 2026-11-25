@@ -10,15 +10,16 @@
  * in the shell's identity window, which is the only place a secret is shown or typed. A shell with no
  * custody service (Electron on Windows) keeps no identity here, and the base app asks none of it.
  */
-import type {
-  BackendConnector,
-  BaseAgentPasswordAnswer,
-  BaseAgentState,
-  BaseConnection,
-  BaseExecutor,
-  BaseExecutorState,
-  BaseHost,
-  BaseIdentitySource,
+import {
+  type BackendConnector,
+  type BaseAgentPasswordAnswer,
+  type BaseAgentState,
+  type BaseConnection,
+  type BaseExecutor,
+  type BaseExecutorState,
+  type BaseHost,
+  type BaseIdentitySource,
+  currentProductName,
 } from '@we/app-shell/shared';
 import { type Ad4mCustodyHost, readCustody } from '@we/backend-ad4m';
 
@@ -168,7 +169,8 @@ export function shellRefusal(error: unknown): string {
   return text.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
 }
 
-export const WORDS_EXECUTOR_NOT_UP = 'Available once Coasys has started.';
+/** Under the app's own name, as the base app's starting screen says it. */
+export const wordsExecutorNotUp = (): string => `Available once ${currentProductName()} has started.`;
 
 /*
   A locked agent with nothing kept for it is one made with a WE password, or one whose kept passphrase
@@ -184,10 +186,10 @@ export const WORDS_AGENT_LOCKED =
 /**
  * The custody service as the base app's identity source. With the shell's `executor`, the doors open
  * only once it is ready with its agent unlocked: every step runs against the executor's main agent,
- * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until AR-06's
- * `storage.unlock`). An agent with nothing kept for it stays locked until sign-in, and the base app
- * asks the executor again (`refresh`) when it is shown and before a door opens. An executor that does
- * not say how its agent is leaves the doors as they were.
+ * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until the
+ * executor unlocks its own storage, `storage.unlock`). An agent with nothing kept for it stays locked
+ * until sign-in, and the base app asks the executor again (`refresh`) when it is shown and before a
+ * door opens. An executor that does not say how its agent is leaves the doors as they were.
  */
 export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseExecutor): BaseIdentitySource {
   const open = {
@@ -211,7 +213,7 @@ export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseE
     get doors() {
       const now = executor?.state();
       if (!now) return open;
-      if (now.phase !== 'ready') return closed(WORDS_EXECUTOR_NOT_UP);
+      if (now.phase !== 'ready') return closed(wordsExecutorNotUp());
       if (now.agent === 'locked') return closed(WORDS_AGENT_LOCKED);
       if (now.agent === 'needs-password' || now.agent === 'needs-new-password')
         return closed(WORDS_AGENT_NEEDS_PASSWORD);

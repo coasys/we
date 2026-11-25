@@ -49,7 +49,7 @@ app with "Try again", not a dialog and a quit. `main.executor-failed.test.js` co
 reason's words come from `electron/executorWords.js`: a system error (a data folder it cannot write)
 is told by its code, and any other message has its paths replaced (`executorWords.test.js`).
 
-### The main agent, made and unlocked with no password (a stopgap until AR-06)
+### The main agent, made and unlocked with no password (a stopgap until the executor unlocks its own storage)
 
 The identity window's steps run in custody against the executor's main agent, so it must exist and
 be unlocked before the app before a session opens a door. Once the executor answers, the supervisor
@@ -107,8 +107,8 @@ What it leaves alone, and what follows:
 - **Windows, or a build with no `we-custody`**: identity is off and nothing is made; WE's own create
   and sign-in make and unlock the agent, as they always did.
 
-This is a stopgap. Slice 3's AR-06 replaces it: the executor's storage is unlocked by a secret of its
-own (`storage.unlock`), and `mainAgent.js`, the keyring item and `wallet-passphrase` go.
+This is a stopgap. Once the executor's storage is unlocked by a secret of its own
+(`storage.unlock`), `mainAgent.js`, the keyring item and `wallet-passphrase` go.
 `electron/mainAgent.test.js` and `main.main-agent.test.js` cover it.
 
 ## Embedding External Apps

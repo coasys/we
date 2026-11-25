@@ -2,11 +2,13 @@
  * The Bots page's words: a bot as a row, its grant as a draft the editor changes, and an activity
  * entry as a line. Pure, so the wording and the draft rules are tested without a store.
  *
- * A grant names spaces as the backend matches them: a shared space by its neighbourhood URL (the
- * bot reaches it through its own copy). A space the grant names that is not one of the person's
- * here is kept, and shown as such, so saving never drops it unseen.
+ * A grant names a space by its shared id, what `Space.url` holds: the bot reaches a space through
+ * its own copy, and the shared id is the one name both copies have. A space the grant names that is
+ * not one of the person's here is kept, and shown as such, so saving never drops it unseen.
  */
 import type { BotAction, BotActivityView, BotGrantInput, BotGrantState, BotKeyView, BotView } from '@we/backend-shared';
+
+import { dateOf } from './dates';
 
 const DAY = 86_400;
 
@@ -16,11 +18,6 @@ export const BOT_ACTION_LABELS: ReadonlyArray<{ action: BotAction; label: string
   { action: 'write', label: 'Allow writing, with a reason each time' },
   { action: 'join', label: 'Allow joining' },
 ];
-
-/** A date as the page shows it, in the person's own locale. */
-export function dateOf(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 /** A moment as the activity log shows it. */
 export function momentOf(seconds: number): string {
@@ -35,30 +32,20 @@ export function momentOf(seconds: number): string {
 
 /** A space the person has here, as the grant names it. */
 export interface GrantSpace {
-  /** The shared space's neighbourhood URL. */
+  /**
+   * The space's shared id. A grant names a space by it, and so does the activity log, whichever
+   * copy of the space the bot's call reached.
+   */
   id: string;
-  /** The space's id here. The activity log names a write's space by it, and a join's by the URL. */
-  uuid: string;
   name: string;
 }
 
 /**
  * The person's shared spaces as a grant names them, from `spaceStore.mySpaces`. A bot is an agent of
- * its own: it reaches a space only by joining its neighbourhood, so a personal space is never one it
- * could be given. `Space.url` keeps only the CID, and the backend matches a bot's join by the whole
- * URL, so the URL is rebuilt.
+ * its own: it reaches a space only by joining it, so a personal space is never one it could be given.
  */
-export function grantSpaces(
-  spaces: ReadonlyArray<{ uuid: string; url?: string | null; name?: string | null }>,
-): GrantSpace[] {
-  return spaces.flatMap((s) =>
-    s.url ? [{ id: neighbourhoodUrl(s.url), uuid: s.uuid, name: s.name?.trim() || 'Untitled space' }] : [],
-  );
-}
-
-/** A shared space's neighbourhood URL, from its CID or from a URL already whole. */
-export function neighbourhoodUrl(url: string): string {
-  return url.includes('://') ? url : `neighbourhood://${url}`;
+export function grantSpaces(spaces: ReadonlyArray<{ url?: string | null; name?: string | null }>): GrantSpace[] {
+  return spaces.flatMap((s) => (s.url ? [{ id: s.url, name: s.name?.trim() || 'Untitled space' }] : []));
 }
 
 export interface BotRow {
@@ -232,17 +219,18 @@ export interface ActivityRow {
   allowed: boolean;
   /** 'Allowed', or 'Blocked: ' and why. */
   outcome: string;
-  /** What it did: 'write in Garden club', 'read', 'agent.status'. */
+  /** What it did: 'write in Garden club', 'read', or 'Another request' for a call outside every action. */
   what: string;
   /** The reason the bot gave, or that it gave none. */
   reason: string;
 }
 
+/** What an entry outside every action did. Its call is the backend's own name, never shown. */
+const OTHER_REQUEST = 'Another request';
+
 export function activityRow(entry: BotActivityView, spaces: GrantSpace[]): ActivityRow {
-  const where = entry.space
-    ? (spaces.find((s) => s.id === entry.space || s.uuid === entry.space)?.name ?? entry.space)
-    : '';
-  const what = entry.action ? `${entry.action}${where ? ` in ${where}` : ''}` : entry.method;
+  const where = entry.space ? (spaces.find((s) => s.id === entry.space)?.name ?? entry.space) : '';
+  const what = entry.action ? `${entry.action}${where ? ` in ${where}` : ''}` : OTHER_REQUEST;
   return {
     id: entry.id,
     when: momentOf(entry.at),

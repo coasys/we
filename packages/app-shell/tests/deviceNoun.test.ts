@@ -30,8 +30,16 @@ const evaluate = (source: string, noun: string) =>
 describe('the master-key cards name the device they are on', () => {
   it('is a phone where the custody service answers for a phone, and a computer otherwise', () => {
     expect(deviceNoun(null)).toBe('computer');
-    expect(deviceNoun(custodyDevice({ thisDevice: { keyId: 'd2', kind: 'phone-app' } } as never))).toBe('phone');
-    expect(deviceNoun(custodyDevice({ thisDevice: { keyId: 'd2', kind: 'laptop' } } as never))).toBe('computer');
+    expect(deviceNoun(custodyDevice({ thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' } } as never))).toBe(
+      'phone',
+    );
+    expect(
+      deviceNoun(custodyDevice({ thisDevice: { keyId: 'd2', kind: 'desktop-app', form: 'computer' } } as never)),
+    ).toBe('computer');
+    // The backend says which; the shell reads no record kind of its own.
+    expect(deviceNoun(custodyDevice({ thisDevice: { keyId: 'd2', kind: 'handset', form: 'phone' } } as never))).toBe(
+      'phone',
+    );
   });
 
   it('says on the desktop what it said, and "phone" on a phone', () => {

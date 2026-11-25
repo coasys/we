@@ -605,8 +605,8 @@ const custodyBinaryHere = () => {
 
 /**
  * Makes the executor's main agent, or unlocks it, with the passphrase this computer's keyring keeps
- * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap: slice 3's AR-06
- * (`storage.unlock`) replaces it. Where identity is off there is nothing to make it for, and WE's own
+ * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap until the executor
+ * unlocks its storage with a secret of its own (`storage.unlock`). Where identity is off there is nothing to make it for, and WE's own
  * create and sign-in make and unlock it, as they always have: null. Throws, in words for the window,
  * when the keyring refuses for an agent whose passphrase it keeps, or is there but locked or failing
  * where there is no agent yet. No keyring at all on a first start is `needs-new-password`; a keyring

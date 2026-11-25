@@ -1,7 +1,7 @@
 /**
  * The executor's main agent, made and unlocked by the supervisor, with no password asked for.
  *
- * ## A stopgap ahead of AR-06
+ * ## A stopgap until the executor unlocks its own storage
  *
  * The app before a session opens the identity window, whose steps run in custody against the
  * executor's main agent. WE used to make that agent only at "Create account", after the hand-off,
@@ -9,9 +9,8 @@
  * but not yet set in AgentService"), and after a restart they failed until sign-in ("main key not
  * found"). So the supervisor makes it on the first start, with a random passphrase this computer's
  * keyring keeps (`we-custody wallet-passphrase`, `crates/custody/src/wallet.rs`), and unlocks it
- * with that passphrase on every start after. Slice 3's AR-06 replaces all of this: the executor's
- * storage is unlocked by a secret of its own (`storage.unlock`), and this file and the keyring item
- * go.
+ * with that passphrase on every start after. Once the executor's storage is unlocked by a secret of
+ * its own (`storage.unlock`), this file and the keyring item go.
  *
  * What it leaves alone: an agent already unlocked; an agent whose passphrase the keyring does not
  * hold — one made before this, with a WE password, or one whose kept item was lost, which cannot be

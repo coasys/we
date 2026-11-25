@@ -39,7 +39,7 @@ export type Screen =
   | {
       screen: 'enter-offer';
       error: string | null;
-      /** Present when the device also asks which executor it signs in to: the address so far. */
+      /** Present when the device also asks which node it signs in to: the address so far. */
       host?: string;
     }
   | { screen: 'code-sent'; expires: number }

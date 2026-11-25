@@ -10,7 +10,9 @@ import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
  * - this device's own backend starting, and why it failed to start, with "Try again" — on the
  *   desktop that was an error box and a quit;
  * - the place chosen could not be reached (offline), with "Try again";
- * - the connection being made.
+ * - the connection being made;
+ * - the connection that could not be made, or the list of places that could not be read, with why
+ *   and a way on: each place to connect to again, or "Try again" where there is none.
  *
  * Read against `baseStore` alone, at the chrome tier (`BaseApp`).
  */
@@ -53,7 +55,7 @@ const problem = (id: string, title: string | { $: string }, reason: string): Sch
             {
               type: 'we-button',
               props: {
-                variant: 'primary',
+                variant: 'solid',
                 loading: { $: 'baseStore.busy' },
                 onClick: { $invoke: 'baseStore.retry' },
               },
@@ -72,6 +74,73 @@ const problem = (id: string, title: string | { $: string }, reason: string): Sch
   id,
 });
 
+/*
+  The connection choice, which this base never asks for: the store lands on it only when the first
+  place offered could not be taken — the list could not be read or was empty, the place refused, the
+  connector failed — or after a refused sign-in is handed back. Drawn as a wait, it was one that never
+  ended, with the reason hidden. So it says why and offers each place again, or "Try again", which
+  reads the list afresh.
+*/
+const connectChoice: SchemaNode = {
+  ...centred([
+    {
+      type: 'we-text',
+      props: { variant: 'heading-lg', tag: 'h1' },
+      children: [{ $: "baseStore.error != '' ? 'Can’t connect' : `Open ${baseStore.brand.name}`" }],
+    },
+    {
+      type: 'Column',
+      props: { width: '100%', maxWidth: '520px', gap: '400' },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.error != ''" },
+            then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'baseStore.error' }] },
+          },
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ax: 'end', wrap: true },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'baseStore.connections' }, as: 'place' },
+              children: [
+                {
+                  type: 'we-button',
+                  props: {
+                    variant: 'solid',
+                    loading: { $: 'baseStore.busy' },
+                    onClick: { $invoke: 'baseStore.choose', args: [{ $: 'place.id' }] },
+                  },
+                  children: [{ $: '`Connect to ${place.label}`' }],
+                },
+              ],
+            },
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'count(baseStore.connections) == 0' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    variant: 'solid',
+                    loading: { $: 'baseStore.busy' },
+                    onClick: { $invoke: 'baseStore.retry' },
+                  },
+                  children: ['Try again'],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    },
+  ]),
+  id: 'chrome__connect',
+};
+
 export const baseFallback: TemplateSchema & { id: string } = {
   id: 'we-base',
   type: 'Column',
@@ -81,7 +150,7 @@ export const baseFallback: TemplateSchema & { id: string } = {
     icon: 'power',
     role: 'base',
   },
-  props: { styles: { display: 'contents' } },
+  props: { display: 'contents' },
   children: [
     {
       type: '$if',
@@ -114,9 +183,16 @@ export const baseFallback: TemplateSchema & { id: string } = {
       type: '$if',
       props: {
         condition: {
-          $: "baseStore.stage == 'loading' || baseStore.stage == 'handing-off' || baseStore.stage == 'connect'",
+          $: "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'",
         },
         then: waiting('Connecting…'),
+      },
+    },
+    {
+      type: '$if',
+      props: {
+        condition: { $: "baseStore.stage == 'connect'" },
+        then: connectChoice,
       },
     },
   ],

@@ -160,7 +160,7 @@ export function isSessionTimeout(err: unknown): err is SessionTimeoutError {
  *
  * Its own type so the shell can send the person to sign in, rather than show a refusal they cannot
  * act on. A backend must never make a new agent over one that exists: that would replace its keys.
- * Adapters translate their own signal for it (AD4M's executor answers 409) into this.
+ * Each adapter translates its backend's own signal for it (an HTTP-style conflict, say) into this.
  */
 export class AgentExistsError extends Error {
   constructor(message = 'An agent already exists on this backend') {

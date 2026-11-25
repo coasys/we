@@ -33,7 +33,7 @@ import uniffi.we_phone_custody.StoreRequest
 import uniffi.we_phone_custody.TransportException
 
 /**
- * Phase 2b's Kotlin half on the JVM: [StoreHttp.Transport], the `StoreTransport` the Rust side's
+ * The Kotlin half of the identity through the store, on the JVM: [StoreHttp.Transport], the `StoreTransport` the Rust side's
  * `ViaStore` speaks through, against a real HTTP server, and the real `we_phone_custody` library's
  * `PhoneIdentity` over it. The whole flows (take, ask, answer, link) run against a real identity
  * store in `crates/phone-custody/tests/store.rs`; here is what the app adds: the bytes, headers

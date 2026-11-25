@@ -94,7 +94,7 @@ const EDGE = '200';
  *
  * Fixed padding could only centre the face at one rail width, and only by luck. The kit's 12px row
  * and list padding happened to suit its own 80px default (12 + 12 + 32 + 12 + 12 = 80) and nothing
- * else: at Coasys's 72px a 56px row overflowed the 47px it had, all of it to the right, and every
+ * else: at a 72px rail a 56px row overflowed the 47px it had, all of it to the right, and every
  * face sat four and a half pixels off centre. Derived from the width instead, so any width centres.
  *
  * The same inset holds while the rail opens, so a face never moves; only its label arrives. Centring
@@ -342,8 +342,8 @@ export function railShell(opts: RailShellOptions): SchemaNode {
  * nothing while the rail is not compact: there the pointer leaving closes it.
  *
  * What shuts defaults to the rail's own `expanded` flag. A caller whose openness lives elsewhere
- * passes `then` — the Coasys space's tree is a `PanelLane` on a phone rather than a compact rail,
- * so its rows fold the lane (`shellStore.setLaneCollapsed`) instead of clearing a local here.
+ * passes `then` — a space tree drawn as a `PanelLane` on a phone rather than as a compact rail,
+ * whose rows fold the lane (`shellStore.setLaneCollapsed`) instead of clearing a local here.
  */
 export function closeWhenCompact(compact: SchemaProp, then?: SchemaProp): SchemaProp {
   return { $if: { condition: compact, then: then ?? { $setLocal: 'expanded', value: false } } };

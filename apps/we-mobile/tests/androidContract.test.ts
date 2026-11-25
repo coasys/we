@@ -48,3 +48,14 @@ describe('the system bars', () => {
     expect(mainActivity).toMatch(/SafeArea\.INSTANCE\.install\(/);
   });
 });
+
+describe('what the identity plugin is handed', () => {
+  it('is not logged by Capacitor, whose debug builds log every plugin call with its options', () => {
+    expect(config.loggingBehavior).toBe('none');
+  });
+
+  it('cannot be reached over DevTools unless the build was synced to allow it', () => {
+    expect(config.android?.webContentsDebuggingEnabled).toBe(false);
+    expect(config.ios?.webContentsDebuggingEnabled).toBe(false);
+  });
+});

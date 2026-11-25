@@ -3,8 +3,8 @@
  *
  * Widening a bot's spaces or actions, or resuming it, does not go through the identity window: any
  * app with permission to change the identity can do it (WE asks for that on every connection), as the
- * executor's `bot.setGrant` allows. A
- * page that said nothing would let the person believe the grant is theirs alone to change.
+ * backend that runs the bot allows. A page that said nothing would let the person believe the grant
+ * is theirs alone to change.
  */
 export const name = "a bot's page says which apps can change its grant";
 export const scenario = 'bots:detail';

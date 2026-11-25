@@ -7,7 +7,7 @@
  *   node scripts/cdp-eval.mjs "location.href"
  *   node scripts/cdp-eval.mjs --page error.html "document.body.innerText"
  *
- * Needs `adb` on PATH and a debug build (Capacitor enables WebView debugging only there). It
+ * Needs `adb` on PATH and a build synced with `WE_MOBILE_INSPECTABLE=1` (capacitor.config.ts). It
  * forwards a local port to the WebView's DevTools socket, picks the page whose URL contains
  * `--page` (default: the first), and runs the expression inside an async function.
  */
@@ -31,7 +31,10 @@ const sockets = execFileSync('adb', ['shell', 'cat', '/proc/net/unix'], { encodi
 const pid = execFileSync('adb', ['shell', 'pidof', 'org.coasys.app'], { encoding: 'utf8' }).trim();
 // Other apps' WebViews have sockets too; the app's is named by its pid.
 const socket = sockets?.find((s) => s === `webview_devtools_remote_${pid}`);
-if (!socket) throw new Error('No WebView DevTools socket for org.coasys.app: is the debug app running?');
+if (!socket)
+  throw new Error(
+    'No WebView DevTools socket for org.coasys.app: is the app running, synced with WE_MOBILE_INSPECTABLE=1?',
+  );
 const port = 9333;
 execFileSync('adb', ['forward', `tcp:${port}`, `localabstract:${socket}`]);
 

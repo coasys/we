@@ -22,7 +22,7 @@ is too old to run WE, or when WE's page fails to load (`src/error/`).
 Android is built and checked in CI (`.github/workflows/phone-app.yaml`). The iOS project is in the
 tree, and `cap sync ios` works, but nothing builds it.
 
-## How the phone connects (phase 1)
+## How the phone connects
 
 Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
 "A host" is chosen on the connection choice. On a
@@ -35,7 +35,7 @@ The session is kept: a closed and reopened app is still signed in. The executor 
 WebView's storage, like the web app's: Android's app sandbox protects it, nothing seals it further,
 and the app opts out of backup and device transfer so it does not leave the phone.
 
-## The device key and key login (phase 2a)
+## The device key and key login
 
 The phone has a key of its own, held by the `DeviceKey` plugin
 (`android/app/src/main/java/org/coasys/app/devicekey/`) over `crates/phone-custody`, a Rust crate
@@ -70,13 +70,13 @@ built for Android with uniffi bindings:
   that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
   starts WE again: the boot logs in afresh, or comes back to the connection choice when it cannot; a
   session that ended within a minute of opening skips the key login on the next boot, so it cannot
-  loop. A phone with no key host connects as in phase 1.
+  loop. A phone with no key host connects as above.
 
-### Known limits of phase 2a
+### Known limits of the device key
 
 - **For the device key, protection is reported, not required.** A device key sealed at `software`
   protection is used like any other. The only signs are the `protection` field and the warning WE
-  logs. The master key is held to more (phase 2b, below): it is not kept at `software` unless the
+  logs. The master key is held to more (below): it is not kept at `software` unless the
   person agrees.
 - **What is wiped, and what is not.** Rust holds every seed it opens or makes in `Zeroizing`
   buffers, zeroed when the signature is made; the Kotlin sealer zeroes the plaintext `seal` was
@@ -86,7 +86,7 @@ built for Android with uniffi bindings:
   no zeroing, so a seed's plaintext can stay in freed native and JVM memory until it is reused.
   Follow-up: a zeroizing transfer path for secret bytes across the FFI.
 
-Phase 2a had no screens for any of this (phase 2b's identity page, below, is how a person does it
+The device key once had no screens of its own (the identity page, below, is how a person does it
 now). The executor to log in to is the localStorage key `we-phone/key-host` (an http(s) URL); the
 plugin's calls can still be driven from DevTools:
 
@@ -100,7 +100,7 @@ node scripts/cdp-eval.mjs "(localStorage.setItem('we-phone/key-host', 'http://12
 `crates/custody/tests/live.rs`'s `a_phone_joins_through_an_offer` is the computer's side of that
 run, against a throwaway store and executor.
 
-## The identity on the phone (phase 2b)
+## The identity on the phone
 
 Designed in [`docs/phase-2b.md`](docs/phase-2b.md). The phone runs its identity itself, through the
 identity store, with no computer in the loop: it makes, restores or joins an identity, keeps the
@@ -246,9 +246,9 @@ master key, replaces it with the words, adds devices and answers their requests.
   cannot reach its store says so and offers no changes. A revoked phone offers none either.
 
 `crates/custody/tests/live.rs`'s `a_phone_keeps_the_master_key_and_answers_for_it` is the computers'
-side of the phase 2b emulator run. It starts a throwaway store and executor A (with this computer's
+side of the emulator run for the identity on the phone. It starts a throwaway store and executor A (with this computer's
 custody service as "Desktop A") and makes an identity, then steps with the phone through files in
-`CUSTODY_PHONE_2B_DIR`:
+`CUSTODY_PHONE_MASTER_DIR`:
 
 1. the phone joins by paste;
 2. it asks for the master key, which A sends, and takes it behind the fingerprint;
@@ -257,7 +257,7 @@ custody service as "Desktop A") and makes an identity, then steps with the phone
 
 ```sh
 cd crates/custody
-CUSTODY_LIVE=1 CUSTODY_PHONE_2B_DIR=<empty dir> AD4M_REPO=<ad4m> \
+CUSTODY_LIVE=1 CUSTODY_PHONE_MASTER_DIR=<empty dir> AD4M_REPO=<ad4m> \
   AD4M_EXECUTOR=<copy of ad4m-executor> IDENTITY_STORE_BIN=<copy of identity-store> \
   cargo test --features cheap-kdf --test live a_phone_keeps_the_master_key_and_answers_for_it -- --nocapture
 ```
@@ -343,9 +343,12 @@ signed statement names the origin the phone dials, and an executor with no `--pu
 accepts only its own loopback origins on its own API port. The offer link names the identity store
 by its URL, so forward the store's port the same way.
 
-To read or drive the WebView without tapping (a debug build enables WebView debugging):
+To read or drive the WebView without tapping, sync with WebView debugging on, then build and install
+as above. It is off unless asked for, in debug builds too, since it lets anyone with the phone over
+USB call the identity plugin from the page:
 
 ```sh
+WE_MOBILE_INSPECTABLE=1 pnpm exec cap sync android
 node scripts/cdp-eval.mjs "location.href"
 node scripts/cdp-eval.mjs --page error.html "document.body.innerText"
 ```
@@ -387,7 +390,7 @@ mechanically: a token that needs a newer CSS feature means moving the floor and 
 Android System WebView updates through the Play Store, separately from Android, so the floor is a
 WebView version, not an Android version. `minSdk` stays 30.
 
-## What is left for phase 2
+## What is left on the phone
 
 - A revoke that rotates in one step, on the phone. It runs on a computer; the phone does the
   two one after the other.
@@ -424,5 +427,5 @@ WebView version, not an Android version. `minSdk` stays 30.
 | `../../crates/identity-steps/`                                               | The steps of make, restore and replace, shared with the desktop's `crates/custody`                            |
 | `../we-web/src/platform/deviceKey*.ts`, `keySession.ts`, `keyHost.ts`        | The plugin's TS surface, key login and renewal, the key host                                                  |
 | `../we-web/src/platform/phoneCustody.ts`                                     | Settings' custody host on the phone: the plugin's reads, changes sent to the identity page                    |
-| `docs/phase-2b.md`                                                           | The design of phase 2b                                                                                        |
+| `docs/phase-2b.md`                                                           | The design of the identity on the phone                                                                       |
 | `SPIKE.md`                                                                   | The phone spike's record: the pinned Rust transport, since removed                                            |

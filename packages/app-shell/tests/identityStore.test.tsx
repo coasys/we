@@ -5,6 +5,7 @@
 import { render } from '@solidjs/testing-library';
 import type {
   DeviceKeyView,
+  DeviceNameView,
   IdentityChange,
   IdentityChangeOutcome,
   IdentityCustodyView,
@@ -23,13 +24,18 @@ const NEW_DID = 'did:key:z6MkRekeyed';
 /** What `agent.me` answers: the executor's re-key changes it. */
 const agent = { did: RETIRED_DID };
 const [me, setMe] = createSignal<{ did: string }>({ did: RETIRED_DID });
+/** What the session's `refreshMe` throws, when the test has reading the agent again fail. */
+let refreshMeFails: Error | null = null;
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
     me,
-    refreshMe: async () => setMe({ did: agent.did }),
+    refreshMe: async () => {
+      if (refreshMeFails) throw refreshMeFails;
+      setMe({ did: agent.did });
+    },
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -184,6 +190,7 @@ beforeEach(() => {
   agent.did = RETIRED_DID;
   setMe({ did: RETIRED_DID });
   setBootState('ready');
+  refreshMeFails = null;
   localStorage.clear();
 });
 
@@ -458,8 +465,8 @@ describe('deviceStore', () => {
     expect(stores.devices.canManage()).toBe(true);
   });
 
-  it('on a phone, marks the phone’s key and not the key of the computer whose executor it reaches', async () => {
-    // The executor is the computer's (d1, which it marks as its own); the phone's custody is d2.
+  it('on a phone, marks the phone’s key and not the key of the computer it reaches', async () => {
+    // The backend is the computer's (d1, which it marks as its own); the phone's custody is d2.
     const b = backend({ did: DID, events: [incept, add], devices });
     const state: IdentityCustodyView = {
       ...NO_CUSTODY,
@@ -468,7 +475,7 @@ describe('deviceStore', () => {
       unlock: 'os',
       devices: [{ keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'no' }],
       requests: [{ id: 'r1', kind: 'confirm-revoke', by: 'd1', keyIds: ['d2'], expires: 99 }],
-      thisDevice: { keyId: 'd2', kind: 'phone-app' },
+      thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' },
     };
     setPorts({ identity: signing(b.port, { custody: async () => state, change: async () => 'done' }) });
     const { identity, devices: deviceStore } = mount();
@@ -483,7 +490,7 @@ describe('deviceStore', () => {
       ['Created identity', 'with d1'],
     ]);
     expect(deviceStore.requests()[0].title).toBe('Desktop asks to remove This phone');
-    // `unlinkSelf` would retire the executor's key (d1), not the phone's: the phone's row offers no unlink,
+    // `unlinkSelf` would retire the backend's key (d1), not the phone's: the phone's row offers no unlink,
     // and neither the confirm nor the call can be reached.
     expect(deviceStore.devices().map((d) => [d.keyId, d.canUnlink])).toEqual([
       ['d2', false],
@@ -697,6 +704,17 @@ describe('deviceStore', () => {
       b.state.refuse = undefined;
       expect(await deviceStore.unlinkThisComputer()).toBe('done');
       expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(2);
+    });
+
+    it('frees the device buttons when reading again after the unlink throws', async () => {
+      const { devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      refreshMeFails = new Error('the agent could not be read');
+      await expect(deviceStore.unlinkThisComputer()).rejects.toThrow('the agent could not be read');
+      expect(deviceStore.unlinking()).toBe(false);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
     });
 
     describe('while the unlink is in flight', () => {
@@ -988,7 +1006,38 @@ describe('deviceStore', () => {
     expect(changes).toEqual([{ kind: 'restore' }]);
     expect(identity.did()).toBe(DID);
     expect(deviceStore.canRestore()).toBe(false);
+    // The only copy of the master key is here: sign out does not offer to remove it.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+  });
+
+  it('offers to remove the master key on sign out only where another active device keeps it', async () => {
+    const b = backend({ did: DID, events: [incept, add], devices });
+    let laptop: DeviceNameView['holdsMaster'] = 'offered';
+    setPorts({
+      identity: signing(b.port, {
+        custody: async () => ({
+          ...NO_CUSTODY,
+          did: DID,
+          holdsMaster: true,
+          unlock: 'os',
+          devices: [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: laptop }],
+        }),
+        change: async () => 'done',
+      }),
+    });
+    const { identity, devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    // Sent and not yet taken: this is still the only copy the custody service counts.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
+    laptop = 'yes';
+    await identity.refresh();
     expect(deviceStore.canRemoveMaster()).toBe(true);
+    // A holder that is no longer linked keeps no copy the identity can use.
+    b.state.devices = devices.map((d) => (d.keyId === 'd2' ? { ...d, unlinkedSeq: 2 } : d));
+    await deviceStore.refresh();
+    await identity.refresh();
+    expect(deviceStore.canRemoveMaster()).toBe(false);
   });
 
   it('offers no words without a custody service to take them', async () => {
@@ -1044,10 +1093,10 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     expect(d2()).toMatchObject({ master: '', replaceMaster: false });
-    expect(deviceStore.canRemoveMaster()).toBe(true);
+    // The revoked laptop keeps no copy the identity can use, so the new key here is the only one.
+    expect(deviceStore.canRemoveMaster()).toBe(false);
     expect(await deviceStore.removeMaster()).toBe('done');
     await flush();
-    expect(deviceStore.canRemoveMaster()).toBe(false);
     expect(changes).toEqual([{ kind: 'replace-master' }, { kind: 'remove-master' }]);
   });
 });

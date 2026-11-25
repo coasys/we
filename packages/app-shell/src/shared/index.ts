@@ -22,5 +22,8 @@ export * from './utils';
 // Guest invite links — what one is, in both directions
 export * from './guestLink';
 
+// The product's name, for words drawn outside a template
+export { currentProductName } from './bundles/brand';
+
 // Prompts
 // schemaContext is now provided by @we/ai-context

@@ -294,7 +294,7 @@ export const chromeRail: SchemaNode = {
           nothing.
 
           A maximised panel is not among the collisions, and briefly was: this used to drop below its
-          titlebar so it stayed reachable over the top of one. The rail hides instead — see `styles`
+          titlebar so it stayed reachable over the top of one. The rail hides instead — see `display`
           below — because full screen means the app's own furniture is gone.
 
           The band is this rail's alone, which is why it is not folded into `--we-chrome-top`: every
@@ -356,7 +356,7 @@ export const chromeRail: SchemaNode = {
           The same while a cover has the whole window (`data-we-covers-window="window"`, a phone's
           thread): the frame's bands are the cover's then, and this rail's 56px is one of them.
         */
-        styles: { $: "shellStore.panelMaximised || shellStore.chromeCovered ? { display: 'none' } : null" },
+        display: { $: "shellStore.panelMaximised || shellStore.chromeCovered ? 'none' : 'flex'" },
         transition: 'right var(--we-chrome-transition, 300ms) ease, top var(--we-chrome-transition, 300ms) ease',
       },
       /*

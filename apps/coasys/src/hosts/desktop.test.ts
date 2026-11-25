@@ -18,8 +18,8 @@ import {
   THIS_COMPUTER_CONNECTION,
   WORDS_AGENT_LOCKED,
   WORDS_AGENT_NEEDS_PASSWORD,
-  WORDS_EXECUTOR_NOT_UP,
   WORDS_HERE_OFF,
+  wordsExecutorNotUp,
 } from './desktop';
 
 const DID = 'did:scid:coasys:1:QmTestIdentity';
@@ -87,9 +87,11 @@ describe('the custody identity source', () => {
       words: { step: null, note },
     });
 
-    expect(source.doors).toEqual(closed(WORDS_EXECUTOR_NOT_UP));
+    // Under the app's name: WE's until a base names its own.
+    expect(wordsExecutorNotUp()).toBe('Available once WE has started.');
+    expect(source.doors).toEqual(closed(wordsExecutorNotUp()));
     state = { phase: 'failed', reason: 'x' };
-    expect(source.doors).toEqual(closed(WORDS_EXECUTOR_NOT_UP));
+    expect(source.doors).toEqual(closed(wordsExecutorNotUp()));
     state = { phase: 'ready', agent: 'locked' };
     expect(source.doors).toEqual(closed(WORDS_AGENT_LOCKED));
     // No keyring: the WE password is asked for first, and the doors wait on it.

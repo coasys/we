@@ -12,6 +12,7 @@ import type { BaseConnection, BaseExecutorState, BaseHost } from '@shared/platfo
 import type { PlatformAdapter } from '@shared/platform/types';
 import { render, screen } from '@solidjs/testing-library';
 import type { IdentityCustodyView } from '@we/backend-shared';
+import { baseFallback } from '@we/template-shell';
 import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -431,6 +432,58 @@ describe('BaseBoot', () => {
       await until(() => screen.queryByText('Wrong password. Try again.') !== null);
       expect(store().stage()).toBe('password');
     });
+  });
+
+  /*
+    The connection choice WE's own base never asks for: the store lands on it when the first place
+    could not be taken. A press needs a trusted event, which jsdom cannot make, so what each drawn
+    control invokes is read from the fallback and invoked as a press would.
+  */
+  const fallbackButton = (label: string) =>
+    findNode(
+      findNode(baseFallback, (n) => n.id === 'chrome__connect'),
+      (n) => n.type === 'we-button' && JSON.stringify(n.children ?? []).includes(label),
+    );
+
+  it('says why a connection could not be made, and offers the place again, rather than waiting forever', async () => {
+    let refuse = true;
+    const { store, made } = boot({
+      connector: async (c) => {
+        made.push(c);
+        if (refuse) throw new Error('This node refused the connection.');
+        return connector(async () => ({ client: {}, ports: {} }) as never);
+      },
+    });
+    await until(() => screen.queryByText('This node refused the connection.') !== null);
+    expect(store().stage()).toBe('connect');
+    expect(screen.getByText('Can’t connect')).toBeTruthy();
+    expect(screen.queryByText('Connecting…')).toBeNull();
+    expect(screen.getByText('Connect to This computer').closest('we-button')).toBeTruthy();
+    expect(fallbackButton('Connect to')?.props?.onClick).toEqual({
+      $invoke: 'baseStore.choose',
+      args: [{ $: 'place.id' }],
+    });
+    refuse = false;
+    await store().choose(HERE.id);
+    await until(() => mounted.apps === 1);
+    expect(made).toHaveLength(2);
+  });
+
+  it('says why the list of places could not be read, and reads it again on "Try again"', async () => {
+    let fail = true;
+    const { store } = boot({
+      connections: async () => {
+        if (fail) throw new Error('the shell did not answer');
+        return [HERE];
+      },
+    });
+    await until(() => screen.queryByText("Couldn't load the list: the shell did not answer") !== null);
+    expect(store().stage()).toBe('connect');
+    expect(screen.getByText('Try again').closest('we-button')).toBeTruthy();
+    expect(fallbackButton('Try again')?.props?.onClick).toEqual({ $invoke: 'baseStore.retry' });
+    fail = false;
+    await store().retry();
+    await until(() => mounted.apps === 1);
   });
 
   it('takes the page back to the offline state when the place cannot be reached', async () => {

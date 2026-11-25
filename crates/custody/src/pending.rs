@@ -960,13 +960,13 @@ fn write_bytes(dir: &std::path::Path, file: &str, bytes: &[u8]) -> Result<(), Va
 mod tests {
     use super::*;
 
-    /// Lal's P2 at 564d9aaa0. `write_noted` made the metadata note durable before the entry,
-    /// so a crash between the two in an identity's first `establish_epoch` (a first restore on
-    /// a computer not linked yet) left the identity noted with no entry: lost, and the way back
-    /// it names, "Replace master key", refuses on a computer that is not linked. With the
-    /// entry written first, that crash leaves nothing of the identity: a fresh start, and the
-    /// restore goes on. Here the epochs file's write fails once, after whatever is written
-    /// before it: its temp name is taken by a directory.
+    /// The entry is written before the metadata note. Written the other way round, a crash between
+    /// the two in an identity's first `establish_epoch` (a first restore on a computer not linked
+    /// yet) would leave the identity noted with no entry: lost, and the way back it names, "Replace
+    /// master key", refuses on a computer that is not linked. With the entry written first, that
+    /// crash leaves nothing of the identity: a fresh start, and the restore goes on. Here the
+    /// epochs file's write fails once, after whatever is written before it: its temp name is taken
+    /// by a directory.
     #[test]
     fn a_crash_between_an_identitys_first_entry_and_its_note_is_a_fresh_start_not_a_loss() {
         let dir = tempfile::tempdir().unwrap();
@@ -1128,10 +1128,10 @@ mod tests {
         assert_eq!(memory.record_seen("QmA", 2).unwrap(), Some(4));
     }
 
-    /// Lal's review of we#431: after version 20 was opened here, the marks' file disappears (a
-    /// partial clean-up, an incomplete restore of the folder). Read as no marks at all, an older
-    /// record that still verifies would be taken as the first ever opened. Lost marks are an
-    /// error; only a reset forgets one.
+    /// After version 20 was opened here, the marks' file disappears (a partial clean-up, an
+    /// incomplete restore of the folder). Read as no marks at all, an older record that still
+    /// verifies would be taken as the first ever opened. Lost marks are an error; only a reset
+    /// forgets one.
     #[test]
     fn lost_record_marks_are_an_error_and_only_a_reset_forgets_one() {
         let dir = tempfile::tempdir().unwrap();
@@ -1194,10 +1194,10 @@ mod tests {
             .unwrap_or_default()
     }
 
-    /// Lal's P2 at 564d9aaa0, the other stop: an identity's first epoch written, the process
-    /// gone before its note. The entry is there and read as it is, never as lost; the next
-    /// change notes it, and from then on its loss is told apart. In a folder that never counted
-    /// an epoch, and beside another identity's.
+    /// A crash at the other point: an identity's first epoch written, the process gone before its
+    /// note. The entry is there and read as it is, never as lost; the next change notes it, and
+    /// from then on its loss is told apart. In a folder that never counted an epoch, and beside
+    /// another identity's.
     #[test]
     fn a_crash_after_an_identitys_first_entry_before_its_note_reads_the_entry() {
         let dir = tempfile::tempdir().unwrap();
@@ -1260,9 +1260,9 @@ mod tests {
         );
     }
 
-    /// Lal's review of we#431 at 0d4501589: a reset is the way back from a lost marks file, so
-    /// it does not fail on the read that lost it. It writes the file again with its reset;
-    /// another identity's mark that went with the file is still lost, not a first opening.
+    /// A reset is the way back from a lost marks file, so it does not fail on the read that lost
+    /// it. It writes the file again with its reset; another identity's mark that went with the file
+    /// is still lost, not a first opening.
     #[test]
     fn a_reset_repairs_a_lost_marks_file_for_its_identity_only() {
         let dir = tempfile::tempdir().unwrap();

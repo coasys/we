@@ -7,7 +7,7 @@
 //!
 //! `we-custody wallet-passphrase read|make --data-folder <dir>` instead answers one line about the
 //! executor's wallet passphrase in the keyring (`we_custody::wallet`) and exits: the Electron
-//! supervisor's stopgap ahead of AR-06.
+//! supervisor's stopgap until the executor unlocks its own storage.
 
 use std::process::ExitCode;
 
