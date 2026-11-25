@@ -28,7 +28,7 @@ import {
   TREE_LEAD,
   treeRow,
 } from '@we/template-kit';
-import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
+import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner, spaceSettingsPanel } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
   SHOWCASE_THEME_PRESETS,
@@ -2886,6 +2886,79 @@ const coasysSpaceFeed = (): Scenario => {
   };
 };
 
+/**
+ * The space settings panel over a store that hands out plain lists, rebuilt on every change.
+ *
+ * `spaceStore.spaceList` and `spaceStore.spaceModuleSettings` are built afresh here each time
+ * anything in them changes — new arrays of new objects, as a memo makes them — with nothing held
+ * between one answer and the next. What keeps a row's mount, and the half-typed name in it, is the
+ * renderer keeping rows by `id`; this is the page that broke when nothing did.
+ */
+const spaceSettingsRows = (): Scenario => {
+  const [space, setSpace] = createSignal({ name: 'Riverside', description: 'Down by the water', discovery: 'hidden' });
+  const [recording, setRecording] = createSignal(false);
+  const spaceRow = () => ({
+    id: 'space-1',
+    uuid: 'space-1',
+    ...space(),
+    avatar: '',
+    kind: 'shared',
+    isWeSpace: true,
+    loading: false,
+    canAdminister: true,
+    modules: [],
+    views: [],
+    usesSections: true,
+    location: null,
+    defaultTemplateId: '',
+    defaultThemeId: '',
+    templateOverride: '',
+    themeOverride: '',
+    shareLink: '',
+    guestLink: '',
+    sharing: '',
+    shareError: '',
+  });
+  const settingRow = (key: string, label: string, value: boolean) => ({
+    id: `call.${key}`,
+    group: 'call',
+    groupLabel: 'Calls',
+    key,
+    label,
+    description: '',
+    type: 'boolean',
+    value,
+    source: 'space',
+    set: true,
+    locked: false,
+  });
+  return {
+    node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [spaceSettingsPanel] },
+    tables: {},
+    stores: {
+      datasetStore: { currentDataset: { id: 'space-1' } },
+      shellStore: { spaceSettingsTab: 'about' },
+      spaceStore: {
+        mutedDids: [],
+        members: [],
+        get spaceList() {
+          return [spaceRow()];
+        },
+        get spaceModuleSettings() {
+          return [settingRow('record', 'Record calls', recording()), settingRow('captions', 'Show captions', true)];
+        },
+        myModuleSettings: [],
+        agentModuleSettings: [],
+      },
+    },
+    actions: {
+      // Another field of the space changing under the page — a peer's write arriving.
+      describe: (text) => setSpace((current) => ({ ...current, description: String(text) })),
+      record: (on) => setRecording(Boolean(on)),
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
@@ -2962,4 +3035,5 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'cards:collapse': collapsingCard,
   'ds:unshrinkable-box': unshrinkableBox,
   'ds:folding-section': foldingSection,
+  'space:settings-rows': spaceSettingsRows,
 };
