@@ -19,10 +19,8 @@
 // And a neutral package may not depend on solid-js, nor on a workspace package that depends on it
 // without declaring which of its exports are neutral.
 //
-// Files under `shared/` that import Solid today are listed in neutral-stores-allowlist.txt. The list
-// may only shrink: a listed file that no longer imports Solid fails the check too, so converting a
-// store means deleting its line, and the list stays an exact account of what is left to do.
-// Neutral packages get no list.
+// Nothing is let through: every store and shared module was converted, so a Solid import under
+// `shared/` now is a new one, and the binding it needs belongs in `frameworks/solid/` instead.
 //
 // Run: pnpm check:neutral-stores
 
@@ -34,7 +32,6 @@ import ts from 'typescript';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const SHARED = 'packages/app-shell/src/shared';
-const ALLOWLIST = join(import.meta.dirname, 'neutral-stores-allowlist.txt');
 const SOURCE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 const pkgFiles = execSync(
@@ -100,29 +97,12 @@ const listFiles = (dir) =>
         .sort()
     : [];
 
-const allowlist = new Set(
-  readFileSync(ALLOWLIST, 'utf8')
-    .split('\n')
-    .map((line) => line.replace(/#.*/, '').trim())
-    .filter(Boolean),
-);
-
 const problems = [];
 
 for (const file of listFiles(SHARED)) {
   const found = solidImports(file);
-  if (found.length > 0 && !allowlist.has(file)) {
+  if (found.length > 0) {
     problems.push(`${file} imports ${found.join(', ')}. Take reactivity from the ReactivityPort instead.`);
-  }
-  if (found.length === 0 && allowlist.has(file)) {
-    problems.push(`${file} no longer imports Solid — delete its line from scripts/neutral-stores-allowlist.txt.`);
-  }
-}
-for (const file of allowlist) {
-  if (!file.startsWith(`${SHARED}/`)) {
-    problems.push(`${file} is in the allowlist but not under ${SHARED}/ — only files there may be listed.`);
-  } else if (!existsSync(join(ROOT, file))) {
-    problems.push(`${file} is in the allowlist but does not exist — delete its line.`);
   }
 }
 
@@ -147,7 +127,4 @@ if (problems.length > 0) {
   for (const problem of problems) console.error(`  ${problem}`);
   process.exit(1);
 }
-console.log(
-  `check:neutral-stores — ${SHARED}/ and ${neutral.length} neutral packages are free of Solid, ` +
-    `apart from ${allowlist.size} listed file${allowlist.size === 1 ? '' : 's'}.`,
-);
+console.log(`check:neutral-stores — ${SHARED}/ and ${neutral.length} neutral packages are free of Solid.`);

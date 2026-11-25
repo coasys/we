@@ -267,16 +267,14 @@ are in that package's README.
 Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
 checks) holds them to it:
 
-- **`packages/app-shell/src/shared/`**, where stores move once they are written against the port.
-  Any import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
+- **`packages/app-shell/src/shared/`**, where every store and the modules they use live. Any
+  import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
   alias, a relative path into `frameworks/solid/`, or a workspace package that depends on solid-js
-  fails. The files there that still import Solid are listed in
-  `scripts/neutral-stores-allowlist.txt`, which **may only shrink**: a listed file that stops
-  importing Solid fails the check until its line is deleted, so the list is always exactly what is
-  left to convert.
+  fails. Nothing is let through: what a store needs from Solid is a binding, and a binding goes in
+  `frameworks/solid/`.
 - **A package marked `"we": { "neutral": true }`** in its package.json — the contract packages a
   host on another framework installs (`@we/reactivity`, `@we/backend-shared`, `@we/schema-shared`,
-  `@we/module-shared`, …). Its `src/` is held to the same import rule with no allowlist, and it may
+  `@we/module-shared`, …). Its `src/` is held to the same import rule, and it may
   not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
   when you add it.
 
