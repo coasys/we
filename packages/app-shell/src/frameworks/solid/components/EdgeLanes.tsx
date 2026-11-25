@@ -26,12 +26,13 @@
  * the seams the flex makes.
  */
 import { COLLAPSED_PX, DOCK_GAP_PX, EDGES, PANEL_LAYER_BASE } from '@shared/dockGeometry';
+import { type EdgeLane, type EdgeSeat } from '@shared/dockGeometry';
 import { dockRegistry, dockTitle, STOW_ICONS } from '@shared/registries/dockRegistry';
 import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
 import { createMemo, For, Index, Show, untrack } from 'solid-js';
 
-import { type EdgeLane, type EdgeSeat, type ShellStore } from '../stores/ShellStore';
+import { type ShellStore } from '../stores/ShellStore';
 import { useStore } from '../stores/useStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup } from './PanelGroup';

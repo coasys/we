@@ -9,69 +9,67 @@
  */
 import { dockIsOffered } from '@shared/dockGating';
 import {
+  arrangedPanel,
   arrangeDrop,
   arrangeHomeDrop,
-  canFold,
   chooseTarget,
-  COLLAPSED_PX,
-  columnLayout,
-  columnSlots,
   type ContentInset,
   contentInset,
   coveredInset,
-  coveringLanes,
+  type CoveringEdgeLane,
   displaces,
-  displacingLanes,
   type DockGeometry,
   type DockMin,
   type DockRequest,
   type DockTab,
   dockThickness,
   EDGE_REACH_PX,
-  edgeGroups,
-  edgeLaneBox,
+  edgeDropSlots,
+  type EdgeLane,
+  type EdgeLaneBoxes,
+  edgeLaneLayout,
   edgeOfSnap,
-  EDGES,
+  edgeSeatOrder,
   fitPlacement,
   type FloatPlacement,
   floorOf,
   followSeat,
+  frontOf,
   grown,
-  insertionSlots,
+  homeDropSlots,
   laneable,
-  laneBase,
-  layerOrder,
-  looseSeats,
-  MIN_FLOAT_PX,
-  NARROW_VIEWPORT_PX,
-  nearEdge,
+  type LaneSection,
+  laneSectionsOf,
+  liftedCard,
+  movedBoundary,
   NO_INSET,
-  occupiedFor,
+  occupiedById,
+  overlapArea,
+  panelFramesOf,
   placementFromDeclaration,
   railBand,
   type Rect,
   rectOf,
+  resizedBox,
   type ResizeSide,
-  resolveDock,
+  resolveDocks,
   RESTORE_DRAG_PX,
-  roomElsewhere,
-  seatOrder,
+  seatLanes,
   seatSize,
   seedPlacement,
-  shareSeatBox,
   SIDEBAR_PX,
   snapBeatsSlot,
   snapCandidate,
   type SnapPoint,
   snapTargetRects,
+  stackCandidates,
+  stackDropSlots,
   STOW_DRAG_PX,
-  stripBox,
-  takenSnaps,
+  takenSnapsOf,
   thicknessOf,
   TITLE_BAR_PX,
   type TopChrome,
   unlaned,
-  widestMin,
   withChromeCovered,
 } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE, isAppPanel } from '@shared/panelScope';
@@ -165,52 +163,6 @@ function warnAmbiguousSupply(moduleId: string, count: number): void {
       "and each keeps the module's own contents.",
   );
 }
-
-/** A panel at home in a lane — see `ShellStore.laneSections`. */
-export interface LaneSection {
-  id: string;
-  open: boolean;
-  /** Its place along the lane. Two sections with the same explicit `order` share a seat, as tabs. */
-  order?: number;
-  /** Its place in that seat's strip. */
-  tab?: number;
-  /** Declared at home here, and somewhere else for now — the lane shows a placeholder with the way back. */
-  away?: boolean;
-}
-
-/** A lane pushing the content aside at one edge, as `EdgeLanes` draws it. */
-export interface EdgeLane {
-  /** Its name while it lasts — see `DisplacingLane.key`. */
-  key: string;
-  /** How far into the window it reaches: the room the content gives up for it. */
-  thickness: number;
-  /** Put away whole, to its strip. */
-  stowed: boolean;
-  seats: EdgeSeat[];
-}
-
-/**
- * A seat of an edge lane — its panels, tabs when there are several — and its share of the lane: flex
- * `grow 1 base`, never below `floor`. Folded, it is its titlebar.
- */
-export interface EdgeSeat {
-  key: string;
-  ids: string[];
-  base: number;
-  grow: number;
-  floor: number;
-  folded: boolean;
-  /** A card's own size across a lane over the content; absent where a lane's thickness decides. */
-  cross?: number;
-}
-
-/** An edge's lane of cards over the content, and the room it stands in — see `coveringLanes`. */
-export interface CoveringEdgeLane extends EdgeLane {
-  box: { top: number; right: number; bottom: number; left: number };
-}
-
-/** Where each edge's lanes go, as CSS offsets from the window's sides — see `edgeLaneBox`. */
-export type EdgeLaneBoxes = Record<Exclude<DockEdge, null>, ReturnType<typeof edgeLaneBox>>;
 
 export interface ShellStore {
   /** Id of the currently open shell overlay, or null. */
@@ -1526,20 +1478,10 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    */
   const stackTargets = (moving: string | null) => {
     const requests = dockRequests();
-    const seating = laneSeating();
-    return (
-      requests
-        .map((request, index) => ({ request, index }))
-        .filter(({ request }) => request.edge && request.size !== 'full' && request.id !== moving)
-        .filter(({ request }) => !seating.hidden[request.id] && !placementOf(request).maximised)
-        .filter(({ request }) => edgeOfSnap((request.placement ?? placementOf(request)).snap) === null)
-        /*
-        Not a section at home in a lane: stacking onto one put the dragged panel in that lane without
-        the lane's own rule (see \`insertHome\`) being asked, which is how a call's stage ended up in
-        an inspector's lane. A lane is reached through its own drop slots.
-      */
-        .filter(({ request }) => (request.placement ?? placementOf(request)).snap !== 'home')
-    );
+    return stackCandidates(requests, laneSeating().hidden, moving).map((index) => ({
+      request: requests[index],
+      index,
+    }));
   };
 
   /**
@@ -1577,59 +1519,11 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * The mover and the seat-mates coming with it are left out of what counts as taken: they are the
    * ones being placed, and a stack must be allowed to land back on the number it already holds.
    */
-  const laneSeatOrder = (id: string, snap: SnapPoint, mine: number | undefined) => {
-    const mates = movingSeat();
-    const taken = dockRequests()
-      .filter((request) => request.edge && request.size !== 'full' && request.id !== id)
-      .filter((request) => !mates.includes(request.id))
-      .map((request) => request.placement ?? placementOf(request))
-      .filter((placement) => placement.snap === snap && !placement.displace)
-      .map((placement) => placement.order)
-      .filter((order): order is number => order !== undefined);
-    return seatOrder(mine, taken);
-  };
+  const laneSeatOrder = (id: string, snap: SnapPoint, mine: number | undefined) =>
+    edgeSeatOrder(dockRequests(), [id, ...movingSeat()], snap, mine);
 
-  const takenSnapPoints = (moving: string | null) => {
-    const seating = laneSeating();
-    return takenSnaps(
-      dockRequests()
-        .filter((request) => request.edge && request.size !== 'full')
-        .map((request) => ({
-          id: request.id,
-          placement: request.placement ?? placementOf(request),
-          hidden: seating.hidden[request.id],
-        })),
-      moving ? [moving, ...movingSeat()] : [],
-    );
-  };
-
-  const tabTarget = (box: Rect): Rect => ({
-    x: box.x + box.w / 4,
-    y: box.y + box.h / 4,
-    w: box.w / 2,
-    h: box.h / 2,
-  });
-
-  /**
-   * The smallest box holding both — how a lane's members become the one box a new lane goes beside.
-   *
-   * A lane is a band across the edge, and the boundary a drop would take is the band's, not each
-   * panel's. Two stacked sidebars offer one line above them and one below, and taking their boxes
-   * separately offered a third down the seam between them: a line whose meaning would have been "a
-   * new lane inside this lane", which is not a place a panel can go.
-   */
-  const unionRect = (a: Rect, b: Rect): Rect => {
-    const x = Math.min(a.x, b.x);
-    const y = Math.min(a.y, b.y);
-    return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-  };
-
-  /** How much of a target a dragged panel covers — the same measure `snapCandidate` ranks snaps by. */
-  const overlapArea = (rect: Rect, box: Rect) => {
-    const x = Math.max(0, Math.min(rect.x + rect.w, box.x + box.w) - Math.max(rect.x, box.x));
-    const y = Math.max(0, Math.min(rect.y + rect.h, box.y + box.h) - Math.max(rect.y, box.y));
-    return x * y;
-  };
+  const takenSnapPoints = (moving: string | null) =>
+    takenSnapsOf(dockRequests(), laneSeating().hidden, moving ? [moving, ...movingSeat()] : []);
 
   const [layouts, setLayouts] = createSignal<SavedLayouts>(loadLayouts());
   /**
@@ -2098,40 +1992,36 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     }
   });
 
-  const laneSections = createMemo(() => {
-    const byLane: Record<string, LaneSection[]> = {};
-    const declared = declarationFor();
-    for (const request of dockRequests()) {
-      const placement = request.placement;
-      if (placement?.snap === 'home' && placement.home) {
-        (byLane[placement.home] ??= []).push({
-          id: request.id,
-          open: request.edge !== null,
-          ...(placement.order !== undefined ? { order: placement.order } : {}),
-          ...(placement.tab !== undefined ? { tab: placement.tab } : {}),
-        });
-        continue;
-      }
-      // Declared at home here and somewhere else for now: the lane keeps a place for it, with the way back.
-      const home = declared[request.id]?.home;
-      if (home && request.edge !== null) (byLane[home] ??= []).push({ id: request.id, open: true, away: true });
-    }
-    const along = (section: LaneSection) => section.order ?? Number.POSITIVE_INFINITY;
-    // Ties — tabs that name no `tab` — in the order the interface declared them, not the registry's.
-    const declaredAt = new Map(declaredPanels().map((panel, index) => [dockIdFor(panel), index]));
-    // An instance where the panel it is of is declared, after it, in the order they were opened.
-    const instances = instancesHere();
-    const listed = (section: LaneSection) =>
-      declaredAt.get(instances[section.id] ? templatePanelDockId(instances[section.id].panel) : section.id) ??
-      Number.POSITIVE_INFINITY;
-    const opened = (section: LaneSection) => instances[section.id]?.opened ?? 0;
-    for (const sections of Object.values(byLane)) {
-      sections.sort(
-        (a, b) => along(a) - along(b) || (a.tab ?? 0) - (b.tab ?? 0) || listed(a) - listed(b) || opened(a) - opened(b),
-      );
-    }
-    return byLane;
+  const laneSections = createMemo(() =>
+    laneSectionsOf({
+      requests: dockRequests(),
+      homes: Object.fromEntries(Object.entries(declarationFor()).map(([id, declared]) => [id, declared.home])),
+      declared: declaredPanels()
+        .map((panel) => dockIdFor(panel))
+        .filter((id): id is string => id !== null),
+      instances: Object.fromEntries(
+        Object.values(instancesHere()).map((instance) => [
+          instance.id,
+          { of: templatePanelDockId(instance.panel), opened: instance.opened },
+        ]),
+      ),
+    }),
+  );
+
+  /** How recently each dock was touched, by dock id — activation is kept by placement key. */
+  const touchedById = createMemo(() => {
+    const touched = activation();
+    return Object.fromEntries(dockRequests().map((request) => [request.id, touched[placementKey(request.id)]]));
   });
+  /** What each dock's tab says. */
+  const dockTitles = createMemo(() =>
+    Object.fromEntries(
+      dockRequests().map((request) => {
+        const entry = dockRegistry.get(request.id);
+        return [request.id, entry ? dockTitle(entry) : request.id];
+      }),
+    ),
+  );
 
   /**
    * Chrome a floating panel must clear, live — see `DEFAULT_FLOAT_CHROME` for why floating and
@@ -2304,14 +2194,6 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   }));
 
   /**
-   * What one panel has to keep clear of — the rule itself is in `dockGeometry`, pure and tested.
-   *
-   * Here it is only fed: the placements the panels currently have, and whatever non-dock chrome has
-   * told this store it is holding.
-   */
-  const occupiedOf = (index: number, requests: DockRequest[]): ContentInset => occupiedFor(requests, index, viewport());
-
-  /**
    * The same, by id — what the drag paths have, since a pointer knows which panel it has hold of and
    * not where that panel sits in the registry's order.
    *
@@ -2332,18 +2214,8 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * Only for a seat with tabs, because only a tab is dragged this way: several panels sharing that
    * edge one above the other are each dragged by their own titlebar, and are restored to cards first.
    */
-  const occupiedForId = (id: string | null): ContentInset => {
-    const requests = dockRequests();
-    const index = requests.findIndex((request) => request.id === id);
-    if (index === -1) return { ...NO_INSET };
-    if (!dragCarry()) return occupiedOf(index, requests);
-    const leaving = requests.map((request, at) =>
-      at === index
-        ? { ...request, placement: { ...(request.placement ?? placementOf(request)), snap: null, displace: false } }
-        : request,
-    );
-    return occupiedFor(leaving, index, viewport());
-  };
+  const occupiedForId = (id: string | null): ContentInset =>
+    occupiedById(dockRequests(), id, viewport(), Boolean(dragCarry()));
 
   /**
    * Every dock's box, resolved against the room the others have left it.
@@ -2428,426 +2300,40 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     };
   };
 
-  const laneSeating = createMemo(() => {
-    const requests = dockRequests();
-    const panels = laneable(requests, viewport());
-
-    const seats: Record<string, Rect> = {};
-    const below: Record<string, string> = {};
-    const above: Record<string, string> = {};
-    const axis: Record<string, 'vertical' | 'horizontal'> = {};
-    const lanes: Record<string, string[]> = {};
-    const hidden: Record<string, boolean> = {};
-    /**
-     * A hidden seat-mate, and the front whose resolved box it takes. Only for a seat whose lane
-     * holds nothing else, where there is no `columnLayout` pass to hand every member one box.
-     */
-    const follows: Record<string, string> = {};
-    const tabs: Record<string, DockTab[]> = {};
-    /** Whether this panel's lane has an open seat elsewhere to take a fold's room. */
-    const laneRoom: Record<string, boolean> = {};
-    /** The first showing member of every open displacing lane — the titlebar that offers to stow it. */
-    const canStow: Record<string, boolean> = {};
-    /** Every member of a stowed lane, and the strip it is folded into. */
-    const stowed: Record<string, Rect> = {};
-    const titleOf = (id: string) => {
-      const entry = dockRegistry.get(id);
-      return entry ? dockTitle(entry) : id;
-    };
-    const touched = activation();
-    // A panel that stops fronting a seat should not hold its old strip alive.
-    lastStrips = { ...lastStrips };
-
-    /*
-      The seats that are not in any lane — a floating stack, or one parked in a corner.
-
-      Same rule as a lane seat and a much shorter walk: there is no lane to divide, so there is no
-      box to solve. One member shows (whichever was touched last), the rest are hidden, and the one
-      showing carries the strip. Every member holds the same box already — `followSeat` gives a loose
-      landing its geometry for exactly this reason — so the panel does not move as tabs are switched.
-
-      Read from `panels`, the same array the lanes are built from, and NOT by asking `placementOf`
-      again. A seat-mate leaving its lane is *derived* while the drag is live (see `dockRequests`),
-      so re-deriving from storage here answered with the docked placement it still has written down:
-      the mate was excluded from this walk for having an edge, excluded from its lane for not having
-      one, and so was drawn as a loose card of its own in the middle of the screen — a stack coming
-      apart on the way out of an edge and reassembling on the drop.
-
-      The `edge`/`size` filter is against `requests` on purpose: `laneable` flattens a closed or
-      maximised panel to `snap: null` so no lane counts it, which is right for lanes and would read a
-      closed panel as loose here.
-    */
-    for (const seat of looseSeats(
-      panels
-        .filter(({ index }) => requests[index].edge && requests[index].size !== 'full')
-        .filter(({ placement }) => edgeOfSnap(placement.snap) === null),
-    )) {
-      const at = (id: string) => touched[placementKey(id)] ?? -1;
-      const front = seat.reduce((best, index) => (at(requests[index].id) > at(requests[best].id) ? index : best));
-      const strip = seat.map((index) => {
-        const id = requests[index].id;
-        return { id, title: titleOf(id), active: index === front };
-      });
-      for (const index of seat) {
-        const id = requests[index].id;
-        hidden[id] = index !== front;
-        if (index === front) tabs[id] = stableStrip(id, strip);
-      }
-    }
-
-    for (const edge of EDGES) {
-      const vertical = edge === 'left' || edge === 'right';
-      for (const group of edgeGroups(panels, edge, viewport())) {
-        const ids = group.members.map((member) => requests[member.index].id);
-        // A lane's members all clear the same things — the lanes outboard of theirs — so one
-        // member's answer serves the whole lane, exactly as it already did for a column.
-        const occupied = occupiedOf(group.members[0].index, requests);
-        for (const id of ids) lanes[id] = ids;
-
-        /*
-          A lane put away whole is a strip, and nothing about it needs dividing.
-
-          Every member shares the strip as its box — hidden, as a background tab is, so opening the
-          lane brings back exactly what was there. One name per panel, seats flattened in lane order:
-          a stack's other tabs are panels too, and the strip is where somebody reads what they put
-          away. The seat structure itself is untouched, which is what lets the lane come back with
-          the same tab in front.
-        */
-        if (group.displacing && group.members.every((member) => member.placement.stowed)) {
-          const box = stripBox(edge, viewport(), occupied);
-          /*
-            Each seat keeps the place along the edge it has open, at the strip's thickness.
-
-            Handing every member the whole strip meant the lane opened in two directions at once: the
-            first panel widened, and the one below it widened *and* slid from the top of the edge down
-            to where it belonged, as though coming out of its own titlebar. Laid out exactly as the open
-            lane is — `columnLayout` over the same members, whose thickness is the strip's now — the
-            only thing that moves in or out is the thickness.
-          */
-          const showing = group.seats.map((seat) =>
-            seat.reduce((best, member) => {
-              const at = (id: string) => touched[placementKey(id)] ?? -1;
-              return at(requests[member.index].id) > at(requests[best.index].id) ? member : best;
-            }),
-          );
-          const boxes =
-            group.seats.length < 2
-              ? [box]
-              : columnLayout(
-                  showing.map((member, s) => ({
-                    ...member.placement,
-                    min: widestMin(group.seats[s].map((held) => requests[held.index].min)),
-                  })),
-                  edge,
-                  viewport(),
-                  occupied,
-                  floatChrome(),
-                  { displacing: true },
-                );
-          group.seats.forEach((seat, s) => {
-            for (const member of seat) stowed[requests[member.index].id] = boxes[s];
-          });
-          continue;
-        }
-
-        /*
-          Below `NARROW_VIEWPORT_PX` a floating lane is one seat.
-
-          Two cards over content on a phone leave nothing of either, so the members share one seat:
-          they become tabs, whichever was touched last shows, and the titlebar names the rest.
-        */
-        const narrow = !group.displacing && viewport().width < NARROW_VIEWPORT_PX;
-        const seating = narrow ? [group.members] : group.seats;
-
-        /*
-          One panel shows per seat: the most recently touched, else the first — the same answer
-          `layerOrder` gives for which float is on top, since a seat is the same question asked of a
-          smaller set. The rest are hidden and take the showing one's box, so a tab brought forward
-          appears exactly where its seat is.
-        */
-        const showing = seating.map((seat) =>
-          seat.reduce((best, member) => {
-            const at = (id: string) => touched[placementKey(id)] ?? -1;
-            return at(requests[member.index].id) > at(requests[best.index].id) ? member : best;
-          }),
-        );
-        /*
-          Where a fold's room would go: another **seat** of this lane that is open.
-
-          Per seat rather than per panel, because a lane divides its length between seats and the
-          panels sharing one are tabs in the same box. Asked about panels, two tabs of a single seat
-          each counted as somewhere for the other's room to go — so folding either was offered, and
-          did nothing but empty the box while the edge kept its full width. See `roomElsewhere`.
-        */
-        const seatOpen = showing.map((member) => !placementOf(requests[member.index]).collapsed);
-        seating.forEach((seat, s) => {
-          /*
-            Across a top or bottom lane there is always somewhere: a fold takes height, the lane is as
-            thick as its tallest open member, and the last fold is the one that hands the room back to
-            the content. See `canFold`.
-          */
-          for (const member of seat) laneRoom[requests[member.index].id] = !vertical || roomElsewhere(seatOpen, s);
-        });
-
-        /*
-          The lane's first showing member offers to put the lane away — its titlebar is the nearest
-          thing a column has to a header of its own. Displacing lanes only: a floating one takes no
-          room, so there is nothing for a strip to hand back.
-        */
-        if (group.displacing) canStow[requests[showing[0].index].id] = true;
-
-        seating.forEach((seat, s) => {
-          if (seat.length < 2) return;
-          const front = requests[showing[s].index].id;
-          const strip = seat.map((member) => {
-            const id = requests[member.index].id;
-            return { id, title: titleOf(id), active: id === front };
-          });
-          for (const member of seat) {
-            const id = requests[member.index].id;
-            hidden[id] = id !== front;
-            if (id === front) tabs[id] = stableStrip(id, strip);
-          }
-        });
-
-        if (showing.length < 2) {
-          /*
-            A lane of one seat is not divided, so there is no box to solve — but a seat of several
-            still shares one box, and the members that are not showing have to hold it too.
-
-            They were handed a zero rect, which `resolveDock` takes at face value: a hidden tab
-            resolved to a 0×0 box in the corner of the screen. Nothing revealed that while a
-            background tab was `display: none` and had no box at all; the moment it became
-            `visibility: hidden` — so a tab switch stops tearing down the card's backdrop layer —
-            the box was real, and bringing that tab forward animated it in from the corner. Which
-            is why this only showed on a *docked* stack: a floating one is its own lane of one
-            seat too, but its members are laid out by `followSeat` and never reach this branch.
-
-            Recorded rather than assigned, because the box to copy is the front's *resolved* one
-            and this runs before `resolveDock`. See `follows`.
-          */
-          const front = requests[showing[0].index].id;
-          for (const member of seating[0])
-            if (requests[member.index].id !== front) follows[requests[member.index].id] = front;
-          continue;
-        }
-
-        const boxes = columnLayout(
-          // The floor rides on the request, not the placement — see `DockRequest.min` — and a seat's
-          // is the largest its members ask for rather than the showing one's. See `widestMin`.
-          showing.map((member, s) => ({
-            ...member.placement,
-            min: widestMin(seating[s].map((held) => requests[held.index].min)),
-          })),
-          edge,
-          viewport(),
-          occupied,
-          floatChrome(),
-          { displacing: group.displacing },
-        );
-
-        showing.forEach((member, i) => {
-          const id = requests[member.index].id;
-          for (const mate of seating[i]) seats[requests[mate.index].id] = boxes[i];
-          axis[id] = vertical ? 'vertical' : 'horizontal';
-          const next = showing[i + 1];
-          if (next) {
-            const nextId = requests[next.index].id;
-            below[id] = nextId;
-            above[nextId] = id;
-          }
-        });
-      }
-    }
-    return {
-      seats,
-      below,
-      above,
-      axis,
-      lanes,
-      hidden,
-      follows,
-      tabs,
-      laneRoom,
-      canStow,
-      stowed,
-    };
-  });
-
-  /** Every lane pushing the content aside, and how thick each is — see `displacingLanes`. */
-  const laneLayout = createMemo(() => displacingLanes(dockRequests(), viewport()));
-  /** Every edge's floating lane of two seats or more — see `coveringLanes`. */
-  const coverLayout = createMemo(() => coveringLanes(dockRequests(), viewport(), floatChrome()));
+  /** Every lane's division and which tab of each seat shows — see `seatLanes`. */
+  const laneSeating = createMemo(() =>
+    seatLanes({
+      requests: dockRequests(),
+      viewport: viewport(),
+      chrome: floatChrome(),
+      touched: touchedById(),
+      titles: dockTitles(),
+    }),
+  );
 
   const dockGeometry = createMemo(() => {
-    const requests = dockRequests();
-    const { seats, below, above, axis, lanes, hidden, follows, tabs, laneRoom, canStow, stowed } = laneSeating();
-    const pendingStow = stowPending();
-    const move = laneMove();
-    const pendingLane = pendingStow ? (lanes[pendingStow] ?? [pendingStow]) : [];
-    const px = (n: number) => `${Math.round(n)}px`;
-    // Activation is keyed the way placements are — by scope — and the layer is asked for by dock id.
-    const touched = activation();
-    const layers = layerOrder(
-      requests.map((request) => request.id),
-      Object.fromEntries(requests.map((request) => [request.id, touched[placementKey(request.id)]])),
-    );
-    /*
-      While a panel is full screen, it is the only panel.
-
-      Covering the others is not enough: covering is a stacking question a raise can reopen — the seams and lane grips outrank their own lane on purpose. So the
-      rest are hidden, the way a background tab is: gone from the screen, never unmounted, and back
-      exactly where they were when full screen ends. Two maximised at once is a state a drag can leave
-      behind; the one on top wins.
-    */
-    const fullScreen = requests
-      .filter(
-        (request) => request.edge && (request.size === 'full' || placementOf(request).maximised) && !hidden[request.id],
-      )
-      .reduce<string | null>((top, request) => (top && layers[top] > layers[request.id] ? top : request.id), null);
-    const resolved: Record<string, DockGeometry> = {};
-    requests.forEach((request, index) => {
-      const maximised = request.size === 'full' || Boolean(placementOf(request).maximised);
-      const box = resolveDock(
-        request,
-        viewport(),
-        occupiedOf(index, requests),
-        maximised ? fullScreenChrome() : floatChrome(),
-        seats[request.id],
-      );
-      const folded = Boolean(placementOf(request).collapsed);
-      // Somewhere for the room to go — an open seat elsewhere in the lane. See `canFold`.
-      const canCollapse = canFold(box, folded, laneRoom[request.id] ?? false);
-      const eclipsed = fullScreen !== null && request.id !== fullScreen;
-      resolved[request.id] = {
-        ...box,
-        canCollapse,
-        collapsed: canCollapse && folded,
-        hidden: eclipsed || (hidden[request.id] ?? false),
-        settling: settling() === request.id,
-        // Opening out of a strip: laid out at the box it is heading for, and faded in. See `laneMove`.
-        ...(move && !move.closing && move.ids.includes(request.id)
-          ? { layoutWidth: box.width, layoutHeight: box.height, contentsFaded: move.faded }
-          : {}),
-        tabs: tabs[request.id] ?? [],
-        landedTab: landedTab(),
-        // Empty rather than absent, so a schema condition reads a string either way.
-        below: below[request.id] ?? '',
-        above: above[request.id] ?? '',
-        laneAxis: axis[request.id] ?? '',
-        layer: layers[request.id],
-        canStow: Boolean(canStow[request.id]),
-        stowPending: pendingLane.includes(request.id),
-      };
-
-      /*
-        In a lane put away to its edge: hidden, at the strip's box.
-
-        The box is the strip rather than nothing, because the drag targets are built from the boxes —
-        a new lane dropped against this edge goes beside the strip, which is where the lane actually
-        is. Folded or not, nothing of the panel is on screen, so it reports neither.
-      */
-      const away = stowed[request.id];
-      if (away) {
-        // Still shrinking onto the strip: on screen, at the size it had, fading out. See `laneMove`.
-        const leaving = move?.closing && move.ids.includes(request.id) ? move.sizes[request.id] : undefined;
-        resolved[request.id] = {
-          edge: box.edge,
-          snap: box.snap,
-          floating: false,
-          /*
-            Anchored to the same sides the open panel is, so the frame eases between the two boxes.
-
-            A right-hand or bottom lane is placed from the right or the bottom, and this box was placed
-            from the left and the top. A CSS transition cannot run between an offset that is set and one
-            that is not, so closing put the frame's near edge straight at the strip's position and only
-            the size eased — shrinking off the far side of the screen, which read as the lane shutting
-            on the press. Opening happened to look right, moving the other way.
-          */
-          ...(box.edge === 'right' ? { right: px(viewport().width - away.x - away.w) } : { left: px(away.x) }),
-          ...(box.edge === 'bottom' ? { bottom: px(viewport().height - away.y - away.h) } : { top: px(away.y) }),
-          width: px(away.w),
-          height: px(away.h),
-          stowed: true,
-          canStow: false,
-          canCollapse: false,
-          // A folded panel stays a bar on its way into the strip, rather than showing its contents.
-          collapsed: folded,
-          hidden: eclipsed || !leaving,
-          ...(leaving ? { layoutWidth: leaving.width, layoutHeight: leaving.height, contentsFaded: true } : {}),
-          settling: settling() === request.id,
-          tabs: [],
-          below: '',
-          above: '',
-          laneAxis: '',
-          layer: layers[request.id],
-        };
-      }
+    const resolved = resolveDocks({
+      requests: dockRequests(),
+      seating: laneSeating(),
+      viewport: viewport(),
+      chrome: floatChrome(),
+      fullScreenChrome: fullScreenChrome(),
+      touched: touchedById(),
+      titles: dockTitles(),
+      settling: settling(),
+      landedTab: landedTab(),
+      laneMove: laneMove(),
+      stowPending: stowPending(),
+      away: awayPhase(),
+      sections: laneSections(),
+      fixed: Object.fromEntries(
+        Object.entries(declarationFor()).map(([id, declared]) => [id, Boolean(declared.fixed)]),
+      ),
+      framed: Object.fromEntries(dockRequests().map((request) => [request.id, isFramed(request.id)])),
     });
-
-    // A hidden tab of an undivided seat takes the front's box. After the walk rather than inside it,
-    // because the front is resolved by the same walk. See `shareSeatBox`.
-    shareSeatBox(resolved, follows);
-
-    // A panel pushing the content aside is framed inside its edge's lane — see `edgeLanes`. Its box
-    // stays the engine's: the drop targets, the grips and a drag's origin are measured from it.
-    for (const lane of [...laneLayout(), ...coverLayout()])
-      for (const seat of lane.seats)
-        for (const member of seat) {
-          const id = requests[member.index]?.id;
-          if (id && resolved[id] && isFramed(id)) resolved[id] = { ...resolved[id], inLane: true };
-        }
-
-    /*
-      A template's lane groups its sections as an edge does: consecutive ones naming the same `order`
-      share a seat, as tabs, the most recently touched showing and its titlebar naming them all — in
-      the lane's own order (`laneSections`), which is the order the interface declared them.
-    */
-    for (const sections of Object.values(laneSections())) {
-      const seats: string[][] = [];
-      for (const section of sections.filter((entry) => entry.open && !entry.away)) {
-        const last = seats[seats.length - 1];
-        const lastOrder = last ? sections.find((entry) => entry.id === last[0])?.order : undefined;
-        if (last && section.order !== undefined && lastOrder === section.order) last.push(section.id);
-        else seats.push([section.id]);
-      }
-      for (const ids of seats) {
-        const front = ids.reduce((best, id) =>
-          (touched[placementKey(id)] ?? -1) > (touched[placementKey(best)] ?? -1) ? id : best,
-        );
-        const strip = ids.map((id) => {
-          const entry = dockRegistry.get(id);
-          return { id, title: entry ? dockTitle(entry) : id, active: id === front };
-        });
-        for (const id of ids) {
-          if (!resolved[id]) continue;
-          resolved[id] = {
-            ...resolved[id],
-            hidden: id !== front || resolved[id].hidden,
-            tabs: id === front && ids.length > 1 ? stableStrip(id, strip) : [],
-            fixed: Boolean(declarationFor()[id]?.fixed),
-          };
-        }
-      }
-    }
-
-    /*
-      Every panel away — see `panelsAway`. Hidden once gone, as a background tab is, so a call keeps its
-      streams and a transcript its scroll; faded on the way out and in. A lane's own grips and its
-      strip follow its panels — see `EdgeLanes`.
-    */
-    const phase = awayPhase();
-    if (phase !== 'shown') {
-      for (const [id, geometry] of Object.entries(resolved)) {
-        // Not a section at home in the template: it is the page's, and the page stays.
-        if (geometry.home) continue;
-        resolved[id] = {
-          ...geometry,
-          hidden: phase === 'away' || geometry.hidden,
-          awayFaded: true,
-        };
-      }
-    }
+    // An unchanged strip keeps its identity, so its tab buttons are not rebuilt — see `stableStrip`.
+    for (const [id, box] of Object.entries(resolved))
+      if (box.tabs?.length) resolved[id] = { ...box, tabs: stableStrip(id, box.tabs) };
     return resolved;
   });
 
@@ -2860,64 +2346,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     thickness (the same number the inset sums) and its seats, each with its share of the lane worked
     out as `columnLayout` works it out, for flex to hand out. See `EdgeLanes`.
   */
-  const edgeLanes = createMemo(() => {
-    const requests = dockRequests();
-    const touched = activation();
-    const at = (index: number) => touched[placementKey(requests[index].id)] ?? -1;
-    type Member = { placement: FloatPlacement; index: number };
-    // A seat's panels and its share of its lane: the showing member's size and the widest floor of
-    // any, as `laneSeating` hands the layout — spanning for a lane pushing the content aside.
-    const seatOf = (seat: Member[], along: 'w' | 'h', spanning: boolean) => {
-      const ids = seat.map((member) => requests[member.index].id);
-      const front = seat.reduce((best, member) => (at(member.index) > at(best.index) ? member : best));
-      const share = laneBase(
-        { ...front.placement, min: widestMin(seat.map((member) => requests[member.index].min)) },
-        along,
-        spanning,
-      );
-      return { seat: { key: ids.join('|'), ids, ...share, folded: Boolean(front.placement.collapsed) }, front };
-    };
-    const alongOf = (edge: Exclude<DockEdge, null>) => (edge === 'left' || edge === 'right' ? 'h' : 'w');
-
-    const lanes: Record<Exclude<DockEdge, null>, EdgeLane[]> = { left: [], right: [], top: [], bottom: [] };
-    for (const lane of laneLayout()) {
-      lanes[lane.edge].push({
-        key: lane.key,
-        thickness: lane.thickness,
-        stowed: lane.stowed,
-        seats: lane.seats.map((seat) => seatOf(seat, alongOf(lane.edge), true).seat),
-      });
-    }
-
-    const covers: Partial<Record<Exclude<DockEdge, null>, CoveringEdgeLane>> = {};
-    for (const lane of coverLayout()) {
-      const vertical = lane.edge === 'left' || lane.edge === 'right';
-      covers[lane.edge] = {
-        key: `cover:${lane.edge}`,
-        thickness: 0,
-        stowed: false,
-        box: lane.box,
-        seats: lane.seats.map((members) => {
-          const { seat, front } = seatOf(members, alongOf(lane.edge), false);
-          // Its own size across the lane, clamped as `columnLayout` clamps it; folded, its bar.
-          const own = vertical ? front.placement.w : front.placement.collapsed ? COLLAPSED_PX : front.placement.h;
-          return {
-            ...seat,
-            cross: front.placement.collapsed && !vertical ? own : Math.min(Math.max(own, MIN_FLOAT_PX), lane.room),
-          };
-        }),
-      };
-    }
-
-    const all = laneLayout().reduce((sum, lane) => ({ ...sum, [lane.edge]: sum[lane.edge] + lane.thickness }), {
-      ...NO_INSET,
-    });
-    return {
-      lanes,
-      covers,
-      boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes,
-    };
-  });
+  const edgeLanes = createMemo(() => edgeLaneLayout(dockRequests(), viewport(), floatChrome(), touchedById()));
   /*
     The same requests, asked the other question: not what the panels take, but what they hide.
 
@@ -3354,24 +2783,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const arranged = panels.map((panel) => {
         const id = dockIdFor(panel);
         const request = id ? dockRequests().find((entry) => entry.id === id) : undefined;
-        if (!id || !request) return panel;
-        const placement = placementOf(request);
-        const { home: _home, snap: _snap, order: _order, band: _band, tab: _tab, grow: _grow, ...rest } = panel;
-        const position: Partial<TemplatePanel> =
-          placement.snap === 'home' && placement.home
-            ? { home: placement.home }
-            : placement.snap
-              ? { snap: placement.snap as Exclude<SnapPoint, 'home'> }
-              : {};
-        return {
-          ...rest,
-          ...position,
-          ...(placement.order !== undefined ? { order: placement.order } : {}),
-          ...(placement.band !== undefined ? { band: placement.band } : {}),
-          ...(placement.tab !== undefined ? { tab: placement.tab } : {}),
-          ...(placement.grow !== undefined ? { grow: placement.grow } : {}),
-          ...(placement.displace ? { displace: true } : {}),
-        };
+        return id && request ? arrangedPanel(panel, placementOf(request)) : panel;
       });
 
       /*
@@ -3550,30 +2962,10 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       // The panel's own floor per axis, over the host's default — see `DockRequest.min`.
       const minW = floorOf(request.min, 'w', spanning);
       const minH = floorOf(request.min, 'h', spanning);
-      const pulls = (edge: string) => side.includes(edge);
-
-      let { x, y, w, h } = start;
-      if (pulls('left')) {
-        w = start.w - dx;
-        x = start.x + dx;
-      }
-      if (pulls('right')) w = start.w + dx;
-      if (pulls('top')) {
-        h = start.h - dy;
-        y = start.y + dy;
-      }
-      if (pulls('bottom')) h = start.h + dy;
-      // What the drag asked for before the floor had its say — see the stow check below.
-      const asked = { w, h };
-
-      if (w < minW) {
-        if (pulls('left')) x = start.x + (start.w - minW);
-        w = minW;
-      }
-      if (h < minH) {
-        if (pulls('top')) y = start.y + (start.h - minH);
-        h = minH;
-      }
+      const {
+        box: { x, y, w, h },
+        asked,
+      } = resizedBox(start, side, dx, dy, { w: minW, h: minH });
 
       /*
         A spanning panel writes its *thickness*; a floating one writes the card.
@@ -3669,10 +3061,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const spanning = dockGeometry()[id]?.floating === false;
       const floorTop = floorOf(upper.min, along, spanning, placementOf(upper).collapsed);
       const floorBottom = floorOf(lower.min, along, spanning, placementOf(lower).collapsed);
-      const room = columnDrag.top + columnDrag.bottom;
-      const ceiling = Math.max(floorTop, room - floorBottom);
-      const top = Math.min(ceiling, Math.max(floorTop, columnDrag.top + delta));
-      const bottom = room - top;
+      const { top, bottom } = movedBoundary(columnDrag, delta, { top: floorTop, bottom: floorBottom });
 
       writePlacement(id, { ...placementOf(upper), [along]: top });
       writePlacement(belowId, { ...placementOf(lower), [along]: bottom });
@@ -3933,19 +3322,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const request = dockRequests().find((entry) => entry.id === id);
       const placement = request ? placementOf(request) : dragOrigin;
       const attached = placement.maximised || displaces(placement, viewport());
-      if (attached) {
-        const fraction = dragOrigin.w > 0 ? (dragPointer.x - dragOrigin.x) / dragOrigin.w : 0.5;
-        dragOrigin = {
-          ...placement,
-          maximised: false,
-          displace: false,
-          snap: null,
-          x: dragPointer.x - fraction * placement.w,
-          y: dragPointer.y - TITLE_BAR_PX / 2,
-          w: placement.w,
-          h: placement.h,
-        };
-      }
+      if (attached) dragOrigin = liftedCard(placement, dragOrigin, dragPointer);
 
       /*
         In the air, a stack is a **loose seat** — which is what keeps its tabs on screen.
@@ -4205,252 +3582,55 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const moving = movingDock();
       if (!moving) return [];
       const requests = dockRequests();
-
       /*
-        The home lanes: every `$panels` outlet on screen that would take this panel.
-
-        Measured rather than computed, because an outlet is an element the template laid out and only
-        it knows where it is. Its sections' boxes are the seams between them, exactly as a lane's
-        seats are on an edge; an empty outlet offers its whole box, the way an empty edge offers one
-        slot — that is how a lane gets its first section by dragging.
-      */
-      /*
-        What is being carried — the box the targets are offered against. `edgeZone` and the outlets
-        both ask "has it reached me", and this is what reaches.
-
-        Two gestures, two answers. Dragging a titlebar writes the panel's own placement every frame,
-        so its resolved geometry *is* the box on screen. Dragging one **tab** out of a seat does not:
-        the tab cannot leave the seat to be carried without taking the strip and the pointer capture
-        with it, so the panel stays exactly where it is and an outline is carried instead. Asking the
-        panel then answers about the seat it is still sitting in, which is a fixed box — so every
-        edge's lane targets were decided by where the stack was docked and not by where the tab was
-        being dragged. Tearing a tab towards any other edge offered no seam to land in, and the
-        stack's own edge offered its seams from the first frame, wherever the pointer was.
+        What is being carried — the box the targets are offered against. A titlebar drag writes the
+        panel's own placement every frame, so its box on screen is the answer; a **tab** drag carries an
+        outline and leaves the panel in its seat, so the outline is. Asking the panel then would answer
+        about the seat it is still sitting in, and every edge's targets would follow where the stack was
+        docked rather than where the tab was being dragged.
       */
       const dragged = requests.find((entry) => entry.id === moving);
       const carried = dragCarry()?.box ?? (dragged ? boxOnScreen(moving, placementOf(dragged)) : null);
+      const boxes = Object.fromEntries(
+        requests.map((request) => [request.id, boxOnScreen(request.id, request.placement ?? placementOf(request))]),
+      );
 
+      /*
+        The home lanes: every `$panels` outlet on screen that would take this panel, measured, because an
+        outlet is an element the template laid out and only it knows where it is. Only for a panel an
+        interface declared at home in a lane — a lane keeps nothing else (see `placementOf`) — and only
+        an outlet it has been carried to: the outlet's own box, grown a little, stands in for a band.
+      */
       const homeSlots = () => {
-        // Only for a panel an interface declared at home in a lane: a lane keeps nothing else (see
-        // `placementOf`), so offering it to one would be a drop that silently goes nowhere.
         if (!declarationFor()[moving]?.home || !carried) return [];
         const panelId = moving.replace(/^template:/, '');
         return homeLanes().flatMap((outlet) => {
           // An instance is taken where the panel it is of is.
           if (outlet.accepts.length > 0 && !outlet.accepts.includes(declaredPanelOf(moving))) return [];
-          // Only an outlet the panel has been carried to. Its seams are the one target family with
-          // no band of their own, so the outlet's own box, grown a little, stands in for one.
-          const box = outlet.el.getBoundingClientRect();
-          const reach = grown({ x: box.x, y: box.y, w: box.width, h: box.height }, EDGE_REACH_PX / 2);
-          if (overlapArea(carried, reach) <= 0) return [];
+          const drawn = outlet.el.getBoundingClientRect();
+          const box = { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height };
+          if (overlapArea(carried, grown(box, EDGE_REACH_PX / 2)) <= 0) return [];
           const sections = [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
             .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
             .map((section) => {
-              const box = section.getBoundingClientRect();
-              return { x: box.x, y: box.y, w: box.width, h: box.height };
+              const at = section.getBoundingClientRect();
+              return { x: at.x, y: at.y, w: at.width, h: at.height };
             });
-          const slots =
-            sections.length > 0
-              ? columnSlots(outlet.direction === 'row' ? 'top' : 'left', sections, {
-                  x: box.x,
-                  y: box.y,
-                  w: box.width,
-                  h: box.height,
-                })
-              : (() => {
-                  const box = outlet.el.getBoundingClientRect();
-                  const whole = { x: box.x, y: box.y, w: Math.max(box.width, 24), h: Math.max(box.height, 24) };
-                  return [{ index: 0, hit: whole, line: whole }];
-                })();
-          return slots.map((slot) => ({
-            key: `home:${outlet.lane}::${slot.index}`,
-            index: slot.index,
-            lane: '' as const,
-            edge: outlet.lane,
-            mode: 'home' as const,
-            top: `${slot.line.y}px`,
-            left: `${slot.line.x}px`,
-            width: `${slot.line.w}px`,
-            height: `${slot.line.h}px`,
-            hit: slot.hit,
-          }));
+          return homeDropSlots(outlet.lane, outlet.direction, sections, box);
         });
       };
 
-      const edgeSlots = EDGES.flatMap((edge) => {
-        /*
-          The **seams** wait for the edge; the **seats** do not.
-
-          A seam is a place in a lane's geometry, so it only means anything once the panel has reached
-          that edge's band — the lanes already there, and a reach past them (see `edgeZone`). A seat
-          is a card you point at, and a card is a card wherever it is: gating it as though it were
-          lane geometry meant the panel parked at an edge showed no target to stack onto until the
-          drag was already at the edge, while every free float showed one the whole time.
-        */
-        const reached = Boolean(carried && nearEdge(carried, edge, viewport(), inset()[edge]));
-        /*
-          Measured in a region that still contains the lanes being described.
-
-          `occupiedForId` answers "what must this panel keep clear of", which excludes every docked
-          panel — including the ones these lines are *about*. Computed in that region, all of an
-          edge's boundaries fall outside it and clamp to the same spot: three lines drawn on top of
-          one another at the innermost lane's edge, which is precisely the one place you cannot drop.
-
-          So the panels on *this* edge are added back, and everything else — other edges, and chrome
-          like the editor's rails — stays subtracted, because that space really is unavailable.
-        */
-        const occupied = { ...occupiedForId(moving) };
-        occupied[edge] = 0;
-
-        /*
-          The lanes already on this edge, without the panel being dragged.
-
-          Leaving it in would offer a seat either side of where it already is, and — worse — would
-          have it hold open the lane it is about to leave, so the lines would describe an arrangement
-          that stops existing the moment it lands.
-        */
-        const groups = edgeGroups(
-          laneable(requests, viewport()).filter((panel) => requests[panel.index].id !== moving),
-          edge,
-          viewport(),
-        );
-
-        const rects = (group: (typeof groups)[number]) =>
-          group.members.map((member) =>
-            boxOnScreen(requests[member.index].id, requests[member.index].placement ?? member.placement),
-          );
-
-        /*
-          One box per lane, since a lane is what a new one would go beside. Two panels sharing a lane
-          are one band across the edge and offer one boundary either side of them, not two — passing
-          the panels instead put a line down the middle of a lane, where dropping would have meant
-          "a new lane inside this one", which is not a place.
-        */
-        const lanes = groups
-          .filter((group) => group.displacing)
-          .map((group) => rects(group).reduce((a, b) => unionRect(a, b)));
-
-        /*
-          A lane is named by its *position* among the displacing lanes on this edge, or by `float`.
-
-          Positional rather than by `band`, because a lane nobody has arranged has no band to quote —
-          and by position rather than by the id of a panel in it, because a dock id holds a colon and
-          this key does not survive being parsed back if its own fields can contain the delimiter.
-          `insertDock` recomputes the same sequence, from the same list minus the same panel, so the
-          two agree by construction.
-        */
-        const draw = (
-          mode: 'band' | 'lane' | 'tab',
-          lane: number | 'float' | '',
-          slot: { index: number; hit: Rect; line: Rect },
-        ) => ({
-          // Four fields, because a seat is only identified by all four: "second from the top, in the
-          // lane second from the edge, on the left".
-          key: `${mode}:${edge}:${lane}:${slot.index}`,
-          index: slot.index,
-          lane,
-          edge,
-          mode,
-          // The line, not the target: the frame draws what these describe, and the hit box it is
-          // measured against stays here. Drawing the target put a 10px bar a dozen pixels off the
-          // boundary it was describing.
-          top: `${slot.line.y}px`,
-          left: `${slot.line.x}px`,
-          width: `${slot.line.w}px`,
-          height: `${slot.line.h}px`,
-          hit: slot.hit,
-        });
-
-        /*
-          One box per seat, for the seams between seats and for the seat itself as a tab target.
-
-          A seat of several shares one box — the one showing — so a drop onto a stacked seat is a
-          drop onto whichever tab is in front, which is the only one there is to point at.
-        */
-        const seatRects = (group: (typeof groups)[number]) =>
-          group.seats.map((seat) => {
-            const front = seat.find((member) => !laneSeating().hidden[requests[member.index].id]) ?? seat[0];
-            return boxOnScreen(requests[front.index].id, requests[front.index].placement ?? front.placement);
-          });
-
-        let displacingLane = -1;
-        const lanesOf = groups.map((group) => (group.displacing ? ++displacingLane : ('float' as const)));
-
-        /*
-          The seat itself: **the whole panel** to aim at, and its middle drawn to say so.
-
-          `hit` and `line` differ on purpose. The line is inset well clear of the seams either side,
-          so the two kinds of target never fight over the same pixels — a seam is a boundary and a
-          seat is the thing between two. But the seam is the *smaller* box, and `chooseTarget` gives a
-          pointer inside both to the smaller one, so the seat can safely claim the whole card without
-          swallowing them. Claiming only the middle meant aiming at a quarter of the panel to stack.
-        */
-        /*
-          A lane put away offers nothing to join. Its strip is a place to *reach* the panels in it,
-          not a seat to stack into or a column to divide — and dropping into it would land a panel
-          inside a lane nobody can see. It still counts in `lanesOf`, since `arrangeDrop` numbers it,
-          and its strip still bounds the new-lane lines either side of it.
-        */
-        const joinable = (group: (typeof groups)[number]) =>
-          !(group.displacing && group.members.every((member) => member.placement.stowed));
-
-        const seatSlots = groups.flatMap((group, lane) =>
-          joinable(group)
-            ? seatRects(group).map((box, index) =>
-                draw('tab', lanesOf[lane], { index, hit: box, line: tabTarget(box) }),
-              )
-            : [],
-        );
-        if (!reached) return seatSlots;
-
-        return [
-          // An empty edge still offers its one new-lane slot — that is how an arrangement gets
-          // started.
-          ...insertionSlots(edge, lanes, viewport(), occupied).map((slot) => draw('band', '', slot)),
-          /*
-            And a seat in each lane already there, displacing or floating alike — which is the whole
-            of what bands added: these are the seams that let a panel join one and share its width.
-
-            Bounded by the screen: a displacing lane spans its whole edge, so its outer two seams
-            would otherwise sit just off it — see `columnSlots`.
-          */
-          ...groups.flatMap((group, lane) =>
-            joinable(group)
-              ? columnSlots(edge, seatRects(group), { x: 0, y: 0, w: viewport().width, h: viewport().height }).map(
-                  (slot) => draw('lane', lanesOf[lane], slot),
-                )
-              : [],
-          ),
-          ...seatSlots,
-        ];
+      const edgeSlots = edgeDropSlots({
+        requests,
+        moving,
+        boxes,
+        hidden: laneSeating().hidden,
+        viewport: viewport(),
+        inset: inset(),
+        occupied: occupiedForId(moving),
+        carried,
       });
-      /*
-        And every floating panel, as somewhere to stack.
-
-        A tab slot with no edge, which is the same rule the rest of the model runs on: no edge means
-        no lane, and no lane is what makes a seat loose. Keyed by position in `stackTargets`, in the
-        four-field shape the other slots use so one `split(':')` still reads them all. Inset to the
-        middle of the card like a lane's tab target, for the same reason — the edges of a float are
-        where you aim to get *past* it, not at it.
-      */
-      const stackSlots = stackTargets(moving).map(({ request }, index) => {
-        const box = boxOnScreen(request.id, request.placement ?? placementOf(request));
-        // The whole card to aim at, its middle drawn — the same split as a lane's seat above.
-        const line = tabTarget(box);
-        return {
-          key: `tab:::${index}`,
-          index,
-          lane: '' as const,
-          edge: '',
-          mode: 'tab' as const,
-          top: `${line.y}px`,
-          left: `${line.x}px`,
-          width: `${line.w}px`,
-          height: `${line.h}px`,
-          hit: box,
-        };
-      });
-
+      const stackSlots = stackDropSlots(stackTargets(moving).map(({ request }) => boxes[request.id]));
       return [...homeSlots(), ...edgeSlots, ...stackSlots];
     },
 
@@ -4503,31 +3683,17 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
           writePlacement(id, { ...placementOf(request), grow: Math.max(0, grow) });
       }
     },
-    panelFrames: createMemo(() => {
-      const frames: Record<string, PanelFrame> = {};
-      // A panel pushing the content aside takes its edge's frame, as the app declares it (`meta.edges`)…
-      const edges = appEdgeFrames();
-      for (const [id, box] of Object.entries(dockGeometry()))
-        if (box.inLane && !box.floating && box.edge && edges[box.edge]) frames[id] = edges[box.edge]!;
-      // …one at home in a template, its lane's (the outlet's `frame`), flush when it says none…
-      const lanes = laneFrames();
-      for (const request of dockRequests()) {
-        const placement = placementOf(request);
-        if (placement.snap === 'home' && placement.home) frames[request.id] = lanes[placement.home] ?? 'flush';
-      }
-      // …and a panel's own declaration wins wherever it is.
-      for (const [id, declared] of Object.entries(declarationFor())) if (declared.frame) frames[id] = declared.frame;
-      return frames;
-    }),
+    panelFrames: createMemo(() =>
+      panelFramesOf({
+        geometry: dockGeometry(),
+        edges: appEdgeFrames(),
+        requests: dockRequests().map((request) => ({ ...request, placement: placementOf(request) })),
+        laneFrames: laneFrames(),
+        declared: Object.fromEntries(Object.entries(declarationFor()).map(([id, declared]) => [id, declared.frame])),
+      }),
+    ),
     panelDeclaration: (dockId) => declarationFor()[dockId],
-    seatFront: (ids) => {
-      const order = activation();
-      const at = (id: string) => order[placementKey(id)] ?? -1;
-      return ids.reduce<string | undefined>(
-        (best, id) => (best === undefined || at(id) > at(best) ? id : best),
-        undefined,
-      );
-    },
+    seatFront: (ids) => (ids.length === 0 ? undefined : frontOf(ids, placementKey, activation())),
 
     panelsHidden: panelsHiddenByUser,
     togglePanelsHidden: () => {
