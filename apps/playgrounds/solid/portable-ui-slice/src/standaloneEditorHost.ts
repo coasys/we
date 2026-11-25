@@ -170,7 +170,7 @@ export function createStandaloneEditorHost(initial: TemplateSchema): {
 
     identity: {
       me: () => ({ did: 'did:example:local' }),
-      currentPerspective: () => null,
+      currentDataset: () => null,
       orderedSidebarItems: () => [],
       marketplaceJoined: () => false,
       spaceDefaultTemplateId: () => '',
