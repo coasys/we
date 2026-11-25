@@ -60,8 +60,8 @@ import {
   toModelDraft,
   withService,
 } from '@shared/stores/aiModelDraft';
+import { describeLocalAi, isManaged, type LocalAiView, reduceProgress } from '@shared/stores/localAiView';
 import { copyText } from '@shared/utils';
-import { describeLocalAi, isManaged, type LocalAiView, reduceProgress } from '@solid/stores/localAiView';
 import type {
   AiDetectedEndpoint,
   AiDiscoveredModel,

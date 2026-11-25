@@ -15,7 +15,7 @@ import {
   reduceProgress,
   runtimeView,
   sizeText,
-} from '../src/frameworks/solid/stores/localAiView';
+} from '../src/shared/stores/localAiView';
 
 const event = (overrides: Partial<LocalAiProgress> = {}): LocalAiProgress => ({
   phase: 'download',
