@@ -6,7 +6,13 @@ import { relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { ContextData } from '../contextTypes.js';
-import { asHostChrome, buildValidationContext, validateSemantic, withOwnModule } from '../semanticValidation.js';
+import {
+  asHostChrome,
+  buildValidationContext,
+  validateSemantic,
+  withHostOnlyReport,
+  withOwnModule,
+} from '../semanticValidation.js';
 import { validateStructure } from '../validators.js';
 
 // Validating a schema means importing it, which means resolving its asset imports — see assetHooks.
@@ -17,6 +23,7 @@ register('./assetHooks.mjs', import.meta.url);
 
 const red = '\x1b[31m';
 const yellow = '\x1b[33m';
+const blue = '\x1b[34m';
 const green = '\x1b[32m';
 const dim = '\x1b[2m';
 const bold = '\x1b[1m';
@@ -129,7 +136,9 @@ try {
 }
 // context.json is written by @we/ai-context's generator from the same ContextData type.
 const contextData = JSON.parse(contextJson) as ContextData;
-const validationContext = buildValidationContext(contextData);
+// Every schema is also told which store members it uses outside the capability profiles — one line
+// each, as advice: see `withHostOnlyReport`.
+const validationContext = withHostOnlyReport(buildValidationContext(contextData));
 
 /**
  * Which module a schema file belongs to, if any — the nearest `package.json` above it that is a
@@ -170,6 +179,8 @@ function isHostChrome(filePath: string): boolean {
 // Validate each file
 let totalErrors = 0;
 let totalWarnings = 0;
+const hostOnlyFiles = new Set<string>();
+let hostOnlyUses = 0;
 let filesWithIssues = 0;
 
 for (const filePath of files) {
@@ -195,28 +206,40 @@ for (const filePath of files) {
     const semantic = validateSemantic(result.schema, own || isHostChrome(filePath) ? asHostChrome(judged) : judged);
 
     const allErrors = [...structural.errors, ...semantic.errors];
+    const notes = allErrors.filter((e) => e.severity === 'info');
+    const issues = allErrors.filter((e) => e.severity !== 'info');
+    if (notes.length > 0) {
+      hostOnlyFiles.add(relPath);
+      for (const note of notes) hostOnlyUses += Number(/^WE-host-only: (\d+)/.exec(note.message)?.[1] ?? 0);
+    }
     if (allErrors.length === 0) continue;
 
-    fileHasIssues = true;
-
-    const errors = allErrors.filter((e) => e.severity === 'error');
-    const warnings = allErrors.filter((e) => e.severity === 'warning');
+    const errors = issues.filter((e) => e.severity === 'error');
+    const warnings = issues.filter((e) => e.severity === 'warning');
     totalErrors += errors.length;
     totalWarnings += warnings.length;
+    if (issues.length > 0) fileHasIssues = true;
 
     const counts = [
       errors.length > 0 ? `${red}${errors.length} error${errors.length > 1 ? 's' : ''}${reset}` : '',
       warnings.length > 0 ? `${yellow}${warnings.length} warning${warnings.length > 1 ? 's' : ''}${reset}` : '',
+      notes.length > 0 ? `${blue}host-only${reset}` : '',
     ]
       .filter(Boolean)
       .join(', ');
 
     console.log(`\n${bold}${relPath}${reset} ${dim}(${result.name})${reset} — ${counts}`);
 
-    for (const err of allErrors) {
-      const icon = err.severity === 'error' ? `${red}✗${reset}` : `${yellow}⚠${reset}`;
+    for (const err of [...issues, ...notes]) {
+      const icon =
+        err.severity === 'error'
+          ? `${red}✗${reset}`
+          : err.severity === 'warning'
+            ? `${yellow}⚠${reset}`
+            : `${blue}ℹ${reset}`;
       const pathStr = err.path ? `${dim}${err.path}${reset} ` : '';
-      console.log(`  ${icon} ${pathStr}${err.message}`);
+      const text = err.severity === 'info' ? `${dim}${err.message}${reset}` : err.message;
+      console.log(`  ${icon} ${pathStr}${text}`);
     }
   }
 
@@ -234,6 +257,10 @@ if (totalErrors === 0 && totalWarnings === 0) {
   if (totalWarnings > 0) parts.push(`${yellow}${totalWarnings} warning${totalWarnings > 1 ? 's' : ''}${reset}`);
   console.log(parts.join(', '));
 }
+if (hostOnlyFiles.size > 0)
+  console.log(
+    `${blue}ℹ${reset} ${hostOnlyUses} WE-host-only store use${hostOnlyUses === 1 ? '' : 's'} in ${hostOnlyFiles.size} file${hostOnlyFiles.size === 1 ? '' : 's'}: members outside every capability profile, which work only in WE`,
+  );
 
 // Exit non-zero on errors (warnings are ok)
 if (totalErrors > 0) {

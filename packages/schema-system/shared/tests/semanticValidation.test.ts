@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContextData } from '../src/contextTypes';
 import type { ValidationContext } from '../src/semanticValidation';
-import { buildValidationContext, validateSchema, validateSemantic } from '../src/semanticValidation';
+import {
+  buildValidationContext,
+  validateSchema,
+  validateSemantic,
+  withHostOnlyReport,
+} from '../src/semanticValidation';
 
 // ── Test helpers ───────────────────────────────────────────────────
 
@@ -1107,5 +1112,59 @@ describe('$if in a handler position', () => {
   it('is still refused in a value position, which is what the rule is for', () => {
     const errors = errorsFor({ loading: guard });
     expect(errors.some((e) => e.message.includes('Use a ternary instead'))).toBe(true);
+  });
+});
+
+describe('WE-host-only store members', () => {
+  const template = (children: unknown[], meta: Record<string, unknown> = {}) => ({
+    type: 'Column',
+    schemaVersion: 1,
+    meta: { name: 'T', description: '', icon: 'x', ...meta },
+    children,
+  });
+  const notes = (schema: unknown, context = withHostOnlyReport(ctx())) =>
+    validateSemantic(schema, context).errors.filter((e) => e.severity === 'info');
+
+  it('says nothing unless asked', () => {
+    const schema = template([{ type: 'we-text', children: [{ $: 'sessionStore.bootState' }] }]);
+    expect(validateSemantic(schema, ctx()).errors.filter((e) => e.severity === 'info')).toEqual([]);
+  });
+
+  it('says nothing about a member a profile holds', () => {
+    const schema = template([
+      { type: 'we-text', children: [{ $: 'routeStore.currentPath' }] },
+      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args: ['~/'] } } },
+    ]);
+    expect(notes(schema)).toEqual([]);
+  });
+
+  it('reports the rest once for the schema, counted, naming a neutral equivalent where there is one', () => {
+    const schema = template([
+      { type: 'we-text', children: [{ $: 'sessionStore.bootState' }] },
+      { type: 'we-text', children: [{ $: "sessionStore.bootState == 'ready' ? sessionStore.me.did : ''" }] },
+    ]);
+    const found = notes(schema);
+    expect(found).toHaveLength(1);
+    expect(found[0].path).toBe('');
+    expect(found[0].message).toContain('3 uses of 2 store members');
+    expect(found[0].message).toContain('sessionStore.me → me');
+    expect(found[0].message).toContain('sessionStore.bootState ×2');
+  });
+
+  it('is advice: the schema stays valid', () => {
+    const schema = template([{ type: 'we-text', children: [{ $: 'sessionStore.bootState' }] }]);
+    expect(validateSemantic(schema, withHostOnlyReport(ctx())).valid).toBe(true);
+  });
+
+  it('leaves out stores a schema declares for itself, names that are not stores, and records', () => {
+    const schema = template(
+      [
+        { type: 'we-text', children: [{ $: 'testStore.value' }] },
+        { type: 'we-text', children: [{ $: 'local.name' }] },
+        { type: 'we-button', props: { onClick: { $invoke: 'record.create', args: ['TaskBlock', {}] } } },
+      ],
+      { stores: { testStore: { state: ['value'] } } },
+    );
+    expect(notes(schema)).toEqual([]);
   });
 });
