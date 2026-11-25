@@ -6,18 +6,9 @@
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { type ContentBlock, decodeEditorState, planPost, registerCoreBlocks, writePost } from '@we/block-shared';
-import {
-  COMPOSE_CARD_POST,
-  getEntity,
-  isOperationError,
-  registerOperations,
-  runOperation,
-  threadSubject,
-  unregisterOperations,
-} from '@we/entities';
-import { FEED_MANIFEST } from '@we/module-feed';
+import { COMPOSE_CARD_POST, getEntity, isOperationError, runOperation } from '@we/entities';
 import { pollsModule } from '@we/module-polls';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { documentAccess } from '../src/shared/agentData';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
@@ -220,37 +211,6 @@ describe('core.composeCard', () => {
     });
     expect(placements).toHaveLength(1);
     expect(placements[0]).toMatchObject({ nodeType: 'CollectionBlock', x: 40, y: 60, node: card });
-  });
-});
-
-describe('feed.reply', () => {
-  beforeEach(() => registerOperations('feed', FEED_MANIFEST.operations, { version: FEED_MANIFEST.version }));
-  afterEach(() => unregisterOperations('feed'));
-
-  it('answers a line with a line: a response to it, threaded under its subject, mentioning whom its marks name', async () => {
-    const line = await model('TextBlock').create(dataset, { text: 'who has the venue?', source: 'typed' });
-    const reply = async (to: string, text: string, marks?: unknown[]) => {
-      const thread = await threadSubject(dataset as never, to);
-      return (await runOperation(
-        'feed.reply',
-        {
-          line: to,
-          text,
-          ...(marks ? { marks } : {}),
-          ...(thread ? { thread: thread.id, threadEntity: thread.entity } : {}),
-        },
-        { dataset, invoker: ME },
-      )) as string;
-    };
-    const first = await reply(line.id, '@Ann does', [{ start: 0, end: 4, type: 'mention', did: 'did:ann' }]);
-    const second = await reply(first, 'thanks');
-
-    expect(await read('TextBlock', first)).toMatchObject({ text: '@Ann does', source: 'typed' });
-    expect(ids((await read('TextBlock', first)).mentions)).toEqual(['did:ann']);
-    expect(ids((await read('TextBlock', line.id)).responses)).toEqual([first]);
-    expect(ids((await read('TextBlock', first)).responses)).toEqual([second]);
-    // The whole conversation under the line is one read of its thread.
-    expect(ids((await read('TextBlock', line.id)).thread).sort()).toEqual([first, second].sort());
   });
 });
 

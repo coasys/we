@@ -7,6 +7,7 @@
  * packages. Nothing here is a capability; each module keeps its own actions and passes their store's
  * name to the line it draws.
  */
+export { correctLine, lineDocumentOptions, type LinePlace, messageBlocks } from './compose.ts';
 export { messageLine } from './messageLine.ts';
 export { CORRECTED, SPOKEN, sourceAfterEdit, TYPED } from './source.ts';
 export {

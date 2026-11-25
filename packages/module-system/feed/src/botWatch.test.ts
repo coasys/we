@@ -16,6 +16,8 @@ type Row = Record<string, unknown>;
 
 function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?: boolean } = {}) {
   let push: (rows: Row[]) => void = () => {};
+  /** Each subscription's callback, by entity: messages, and bare text blocks. */
+  const pushTo: Record<string, (rows: Row[]) => void> = {};
   const people = new Map<string, ModuleIdentity>([
     ['did:data', { name: 'Data', avatar: 'data.png', kind: 'bot' }],
     ['did:ann', { name: 'Ann' }],
@@ -32,8 +34,9 @@ function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?:
     onDispose: () => {},
     space: () => 'root-1',
     records: {
-      subscribe: (_entity: string, _query: unknown, cb: (rows: Row[]) => void) => {
+      subscribe: (entity: string, _query: unknown, cb: (rows: Row[]) => void) => {
         push = cb;
+        pushTo[entity] = cb;
         return () => {};
       },
     } as never,
@@ -47,7 +50,7 @@ function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?:
   });
   let n = 0;
   const line = (author: string, text: string, source = ''): Row => ({ id: `line-${++n}`, author, text, source });
-  return { push, people, fetched, notices, open, line };
+  return { push, pushTo, people, fetched, notices, open, line };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -132,6 +135,30 @@ describe('a bot answering in the space', () => {
     vi.advanceTimersByTime(BOT_BURST_MS);
     expect(h.notices.map((n) => n.message)).toEqual(['on it']);
     expect(h.notices[0].options?.from).toEqual({ name: 'Hermes', id: 'did:hermes' });
+  });
+});
+
+describe('a bot writing messages', () => {
+  it('raises one notice for a message, and none for the text block that is a part of it', () => {
+    const h = harness();
+    h.pushTo.CollectionBlock([]);
+    h.pushTo.TextBlock([]);
+    h.pushTo.CollectionBlock([{ id: 'msg-1', author: 'did:data', textContent: 'The notes are up.', source: '' }]);
+    h.pushTo.TextBlock([
+      { id: 'msg-1/text', author: 'did:data', text: 'The notes are up.', partOf: { id: 'msg-1', kind: 'message' } },
+    ]);
+    vi.advanceTimersByTime(BOT_BURST_MS);
+    expect(h.notices).toHaveLength(1);
+    expect(h.notices[0]).toMatchObject({ message: 'The notes are up.' });
+  });
+
+  it('still hears a bare line a bot wrote through its own tools', () => {
+    const h = harness();
+    h.pushTo.CollectionBlock([]);
+    h.pushTo.TextBlock([]);
+    h.pushTo.TextBlock([{ id: 'bare-1', author: 'did:data', text: 'Done.', partOf: { id: 'root-1', kind: 'space' } }]);
+    vi.advanceTimersByTime(BOT_BURST_MS);
+    expect(h.notices).toHaveLength(1);
   });
 });
 

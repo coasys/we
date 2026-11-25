@@ -475,6 +475,15 @@ export function createFeed(deps: FeedDeps) {
     */
     const ownLines = deps.activityRoot ? { within: space } : {};
     stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
+    // A message or a reply: a new line is one of these, its words a part inside it rather than in the
+    // window's own collection.
+    stops.push(
+      records.subscribe(
+        'CollectionBlock',
+        { ...ownLines, where: { kind: ['message', 'reply'] }, ...newest, select: ['id'] },
+        onChange(),
+      ),
+    );
     // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
     // one is heard by the TextBlock subscription above rather than through the call's line list.
     stops.push(
@@ -507,7 +516,17 @@ export function createFeed(deps: FeedDeps) {
     shownStop?.();
     shownStop = null;
     if (!ids.length || typeof records?.subscribe !== 'function') return;
-    shownStop = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    // A message's corrected words are on the message itself; a bare line's on the line.
+    const messages = records.subscribe(
+      'CollectionBlock',
+      { where: { id: ids }, select: ['textContent', 'source'] },
+      onChange(),
+    );
+    const bare = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    shownStop = () => {
+      messages();
+      bare();
+    };
   });
   deps.onDispose?.(() => {
     disposed = true;

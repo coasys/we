@@ -56,7 +56,7 @@ function space() {
   const subs: { entity: string; within?: string; ids?: string[]; cb: (rows: unknown[]) => void }[] = [];
   const reads: string[] = [];
   /** Every read, with what it was within — a call's page is a TextBlock read within that call. */
-  const finds: { entity: string; within?: string }[] = [];
+  const finds: { entity: string; within?: string; kind?: unknown }[] = [];
   /** The lines typed into the space, as a page of them reads back. */
   const lines: Record<string, unknown>[] = [];
   /** The space's calls, and what was said in each. */
@@ -67,8 +67,12 @@ function space() {
   let gate: Promise<void> | null = null;
   let open: (() => void) | null = null;
   let failing = false;
-  const answer = (entity: string, within?: string) => {
-    if (entity === 'CollectionBlock') return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
+  // Lines here are bare text blocks; a read of messages finds none, and only the call list finds calls.
+  const answer = (entity: string, within?: string, kind?: unknown) => {
+    if (entity === 'CollectionBlock') {
+      if (kind !== 'call') return [];
+      return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
+    }
     if (entity === 'TextBlock') {
       if (within === 'root-1') return lines.map((line) => ({ ...line }));
       return (within && said[within]?.map((line) => ({ ...line }))) || [];
@@ -76,23 +80,23 @@ function space() {
     return within === 'root-1' ? (found[entity] ?? []).map((row) => ({ ...row })) : [];
   };
   const records = {
-    find: async (entity: string, query: { within?: string } = {}) => {
+    find: async (entity: string, query: { within?: string; where?: { kind?: unknown } } = {}) => {
       reads.push(entity);
-      finds.push({ entity, within: query.within });
+      finds.push({ entity, within: query.within, kind: query.where?.kind });
       if (gate) await gate;
       if (entity === 'CollectionBlock' && failing) throw new Error('executor unreachable');
-      return answer(entity, query.within);
+      return answer(entity, query.within, query.where?.kind);
     },
     subscribe: (
       entity: string,
-      query: { within?: string; where?: { id?: string[] } },
+      query: { within?: string; where?: { id?: string[]; kind?: unknown } },
       cb: (rows: unknown[]) => void,
     ) => {
       const sub = { entity, within: query.within, ids: query.where?.id, cb };
       subs.push(sub);
       // The first answer: the rows it starts from, which is not a change.
       void Promise.resolve().then(() => {
-        if (subs.includes(sub)) cb(answer(entity, query.within));
+        if (subs.includes(sub)) cb(answer(entity, query.within, query.where?.kind));
       });
       return () => {
         if (subs.includes(sub)) subs.splice(subs.indexOf(sub), 1);
@@ -127,7 +131,7 @@ function space() {
     failing = on;
   };
   /** One whole read of the window: the call list is asked once per read, and nowhere else. */
-  const windowReads = () => finds.filter((f) => f.entity === 'CollectionBlock').length;
+  const windowReads = () => finds.filter((f) => f.entity === 'CollectionBlock' && f.kind === 'call').length;
   /** The call pages read — the serial part of a read. */
   const callPages = () => finds.filter((f) => f.entity === 'TextBlock' && f.within?.startsWith('call-')).length;
   return {
@@ -471,8 +475,9 @@ describe('the Feed reading only when something changed', () => {
     open();
     await vi.runAllTimersAsync();
 
-    // Three subscriptions answered, the suggestions arrived, and the lines on screen are followed.
-    expect(s.subs.length).toBe(3);
+    // Three subscriptions answered (new bare lines, new messages, calls), the suggestions arrived, and
+    // the lines on screen are followed: as messages and as bare lines.
+    expect(s.subs.length).toBe(5);
     expect(staged.asked.length).toBe(1);
     expect(s.windowReads()).toBe(1);
     // The suggestions mark what is on screen, with no read of their own.

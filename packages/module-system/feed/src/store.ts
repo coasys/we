@@ -10,7 +10,7 @@
  * is what a message *is* (`@we/messages`): a `TextBlock` with its `source`, a reply linked from the
  * line it answers through `responses`, and a heard line turning `corrected` when somebody mends it.
  */
-import { sourceAfterEdit, TYPED } from '@we/messages';
+import { correctLine, lineDocumentOptions, messageBlocks, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import { watchBotMessages } from './botWatch';
@@ -34,40 +34,21 @@ const unmarked = (<T>(value: T) => value) as never;
 export function createFeedStore(deps: ModuleStoreDeps) {
   const { signal, effect, settings, dataset, onDispose, state, action } = deps;
   const { records, interpretation } = deps.kernels;
-  const createEntity: RecordsKernel['create'] | undefined =
-    typeof records?.create === 'function' ? (...args) => records.create(...args) : undefined;
   const updateEntity: RecordsKernel['update'] | undefined =
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
   /**
-   * A reply, as the Feed's declared operation (`feed.reply`): the line made a response to the one it
-   * answers and threaded under its thread's subject, in one write. The subject is the host's to read
-   * (`threadSubject`); a line it cannot place is still answered, unthreaded.
+   * One typed line, into whatever holds it: the space or a call, or — as a reply — the line it
+   * answers. A message, written as a post is: a collection holding its blocks, whoever its marks
+   * mention linked from it, and a reply threaded under its thread's subject in the same write.
    */
-  async function writeReply(line: string, words: string, marks?: unknown) {
-    const operations = deps.operations;
-    if (!operations) return null;
-    const thread = (await records?.threadSubject?.(line).catch(() => null)) ?? null;
-    const id = await operations.run('feed.reply', {
-      line,
-      text: words,
-      ...(Array.isArray(marks) && marks.length ? { marks } : {}),
-      ...(thread ? { thread: thread.id, threadEntity: thread.entity } : {}),
-    });
-    return typeof id === 'string' ? id : null;
-  }
-
-  /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
   async function writeMessage(holder: FeedHolder, text: string, marks?: unknown) {
     const words = String(text ?? '').trim();
-    if (!words) return null;
-    if (holder.relation === 'responses') return writeReply(holder.id, words, marks);
-    if (!createEntity) return null;
-    return createEntity(
-      'TextBlock',
-      { text: words, source: TYPED, ...(Array.isArray(marks) && marks.length ? { marks } : {}) },
-      { parent: holder },
-    );
+    const documents = records?.documents;
+    if (!words || !documents) return null;
+    const place = holder.relation === 'responses' ? { respondsTo: holder.id } : { container: holder.id };
+    const written = await documents.create(messageBlocks(words, marks, TYPED), lineDocumentOptions(place, TYPED));
+    return written?.id ?? null;
   }
 
   const {
@@ -270,10 +251,8 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       becomes `corrected` (see `sourceAfterEdit`), so a mended line never reads as a verbatim quote.
     */
     editUtterance: action(async (id: string, text: string, was?: string) => {
-      const words = String(text ?? '').trim();
-      if (!id || !words || !updateEntity) return;
-      const source = sourceAfterEdit(was);
-      await updateEntity('TextBlock', id, { text: words, ...(source ? { source } : {}) });
+      if (!records?.documents || !updateEntity) return;
+      await correctLine(records, id, text, was);
     }, 'Corrects the words on a line, marking a heard line as corrected.'),
     callFeedRoot: state(callRoot, 'The call whose Feed is drawn — the one shown most recently — or empty.'),
     callFeedRows: state(
