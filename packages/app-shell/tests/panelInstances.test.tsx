@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
-import { panelInstances, publishPanelInstances, shellHost } from '../src/frameworks/solid/hostState';
+import { panelInstances, publishPanelInstances, shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { APP_PANEL_SCOPE } from '../src/shared/panelScope';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';

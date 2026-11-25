@@ -6,7 +6,7 @@
  * Doing that needs fine-grained reactivity over a nested object, or a renderer that diffs trees
  * itself — either way it is the renderer's business, not the stores'. So a store asks the renderer's
  * adapter for a live document and holds this handle; under Solid the document is a nested store
- * (`frameworks/solid/liveTemplate.ts`), and another framework brings its own.
+ * (`frameworks/solid/stores/liveTemplate.ts`), and another framework brings its own.
  *
  * What a store may rely on is only what is written here. Reading the tree inside a reactive scope
  * follows what was read, however finely the implementation tracks it.

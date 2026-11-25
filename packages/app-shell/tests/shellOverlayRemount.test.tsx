@@ -16,8 +16,8 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { createSignal, Show } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
-import { shellHost } from '../src/frameworks/solid/hostState';
 import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
 import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';

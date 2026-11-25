@@ -27,7 +27,7 @@ const parts = (k: string): [string, string, string] => k.split('\u0000') as [str
 
 export type InvolvementOptimism = ReturnType<typeof createInvolvementOptimism>;
 
-/** The holds over one app's involvements. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** The holds over one app's involvements. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createInvolvementOptimism(signal: ReactivityPort['signal']) {
   const optimism = createOptimism<boolean>(signal, { same: sameValue });
 

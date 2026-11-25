@@ -13,7 +13,7 @@ import type { TaskWorkflowView } from './taskWorkflow';
 
 export type TaskWorkflowLive = ReturnType<typeof createTaskWorkflowLive>;
 
-/** One app's workflow on screen. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** One app's workflow on screen. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createTaskWorkflowLive(signal: ReactivityPort['signal']) {
   const [view, setView] = signal<TaskWorkflowView | null>(null);
   return {

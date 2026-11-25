@@ -33,7 +33,7 @@ import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-j
 
 import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
 import { reactions } from '../../../shared/sources/signalTally';
-import { actingAs, answerAs, signalOptimism } from '../hostState';
+import { actingAs, answerAs, signalOptimism } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 
 type TypeRow = SignalTypeData & { id: string; name?: string };

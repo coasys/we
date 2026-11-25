@@ -43,12 +43,13 @@ import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
+import type { StoreRegistry } from '../../../shared/stores/storeRegistry';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { shellHost, spaceHost } from '../hostState';
-import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
+import { shellHost, spaceHost } from '../stores/hostState';
+import { solidLiveTemplates } from '../stores/liveTemplate';
+import { StoreRegistryContext } from '../stores/useStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
 

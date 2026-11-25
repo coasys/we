@@ -12,7 +12,7 @@ import { cleanup, render } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplatePanelBody } from '../src/frameworks/solid/components/TemplatePanelBody';
-import { publishPanelInstances } from '../src/frameworks/solid/hostState';
+import { publishPanelInstances } from '../src/frameworks/solid/stores/hostState';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 

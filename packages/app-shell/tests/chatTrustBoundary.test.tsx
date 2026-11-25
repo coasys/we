@@ -17,7 +17,8 @@ import type { JSX } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chromeComponentRegistry, componentRegistry } from '../src/frameworks/solid/registries/componentRegistry';
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 const conversations = {
   create: vi.fn(async () => ({ id: 's1' })),

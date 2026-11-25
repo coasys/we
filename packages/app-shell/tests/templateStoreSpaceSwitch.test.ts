@@ -12,7 +12,7 @@ import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
+import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';

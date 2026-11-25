@@ -11,7 +11,8 @@ import { cleanup, render as mount, waitFor } from '@solidjs/testing-library';
 import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 const create = vi.fn(async () => ({ id: 'c9' }));
 const send = vi.fn(async () => {});

@@ -1,28 +1,26 @@
-import type {
-  AccountStore,
-  AppStore,
-  BundleStore,
-  ClockStore,
-  DatasetStore,
-  DeviceStore,
-  EditorStore,
-  IdentityStore,
-  InterpretationStore,
-  PresenceStore,
-  ProfileStore,
-  RecordStore,
-  RouteStore,
-  RuntimeStore,
-  SessionStore,
-  ShapeStore,
-  ShellStore,
-  SpaceStore,
-  TemplateStore,
-  ThemeStore,
-  WorkflowStore,
-} from '@solid/stores';
-import type { RendererStores } from '@we/backend-shared';
-import type { RecordInstance } from '@we/backend-shared';
+import type { RecordInstance, RendererStores } from '@we/backend-shared';
+
+import type { AccountStore } from './AccountStore';
+import type { AppStore } from './AppStore';
+import type { BundleStore } from './BundleStore';
+import type { ClockStore } from './ClockStore';
+import type { DatasetStore } from './DatasetStore';
+import type { DeviceStore } from './DeviceStore';
+import type { EditorStore } from './EditorStore';
+import type { IdentityStore } from './IdentityStore';
+import type { InterpretationStore } from './InterpretationStore';
+import type { PresenceStore } from './PresenceStore';
+import type { ProfileStore } from './ProfileStore';
+import type { RecordStore } from './RecordStore';
+import type { RouteStore } from './RouteStore';
+import type { RuntimeStore } from './RuntimeStore';
+import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
+import type { ShellStore } from './ShellStore';
+import type { SpaceStore } from './SpaceStore';
+import type { TemplateStore } from './TemplateStore';
+import type { ThemeStore } from './ThemeStore';
+import type { WorkflowStore } from './WorkflowStore';
 
 export type RecordActionOptions = {
   dataset?: string;
@@ -42,13 +40,13 @@ export type RecordActions = {
 };
 
 /**
- * This host's store bag.
+ * This host's store bag: what a template's nodes render against, by the names templates read.
+ * Types only, so a host on any framework builds the same bag from the same composed stores.
  *
  * Extends {@link RendererStores} rather than restating the neutral bindings, so the renderer's
  * contract is checked here, at the host's own declaration. Restating them let the two drift: this
- * type had `$getEntity` returning AD4M's `EntityClass` (whose `query` takes a `PerspectiveProxy`)
- * where the contract asks for the neutral shape, and it omitted bindings the renderer genuinely
- * reads. Inheriting means adding a binding to the contract surfaces here as a type error rather
+ * type once had `$getEntity` returning one backend's own entity class where the contract asks for
+ * the neutral shape, and it omitted bindings the renderer genuinely reads. Inheriting means adding a binding to the contract surfaces here as a type error rather
  * than at runtime.
  *
  * Only host-specific members are declared below; everything neutral comes from the contract, and

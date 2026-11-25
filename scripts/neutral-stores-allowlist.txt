@@ -2,4 +2,3 @@
 # lets through. Nothing may be added. When a file stops importing Solid, its line must be deleted:
 # the check fails on a listed file that no longer needs listing, so this stays an exact account of
 # what is left to convert. See scripts/check-neutral-stores.mjs.
-packages/app-shell/src/shared/registries/templateBag.ts

@@ -19,8 +19,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coasysApp } from '../../templates/cartridges/src/coasys/app';
 import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHost';
-import { shellHost } from '../src/frameworks/solid/hostState';
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
@@ -28,6 +28,7 @@ import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateS
 import { createChatStore } from '../src/shared/stores/ChatStore';
 import type { ShellStore } from '../src/shared/stores/ShellStore';
 import { createShellStore } from '../src/shared/stores/ShellStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 let agentChatMounts = 0;
 

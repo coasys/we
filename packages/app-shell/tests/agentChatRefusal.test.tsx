@@ -9,8 +9,9 @@ import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 import { type ChatInputs, type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 

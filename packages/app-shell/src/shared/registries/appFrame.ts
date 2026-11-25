@@ -13,7 +13,7 @@ type Edges = Partial<Record<'left' | 'right' | 'top' | 'bottom', PanelFrame>>;
 
 export type AppFrameState = ReturnType<typeof createAppFrame>;
 
-/** One app's frame. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** One app's frame. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createAppFrame({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
   const [frame, setFrame] = signal<AppFrame>(DEFAULT_APP_FRAME);
 

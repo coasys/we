@@ -11,8 +11,9 @@ import type { JSX } from 'solid-js';
 import { createSignal } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { ChatInputs } from '../src/shared/stores/ChatStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 const [sheet, setSheet] = createSignal<ChatInputs | null>(null);
 const closeSheet = vi.fn(() => setSheet(null));

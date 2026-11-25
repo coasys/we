@@ -22,7 +22,7 @@
  * A module-scoped lender rather than a context, for the same reason `hostDockStores` is one: the
  * consumer is reached through the slot registry, which is not a descendant of anything.
  */
-import type { Stores } from '@solid/types';
+import type { Stores } from '@shared/stores/storeBag';
 
 let lent: Stores | null = null;
 

@@ -31,10 +31,10 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 /*
-  Both homes a store has: the neutral ones in `shared/stores/`, and those not converted yet in the
-  Solid half. Reading only the second made every store that moved drop out of these checks unnoticed.
+  Every store lives in `shared/stores/`, on the reactivity port; the Solid half keeps only the hook
+  that reaches them. Read as a list so a second home for stores is one entry here.
 */
-const storeDirs = [join(here, '../src/shared/stores'), join(here, '../src/frameworks/solid/stores')];
+const storeDirs = [join(here, '../src/shared/stores')];
 
 /** Members declared on each `export interface …Store`, read from the source. */
 function declaredMembers(): Map<string, string[]> {

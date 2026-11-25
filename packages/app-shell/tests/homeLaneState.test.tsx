@@ -7,7 +7,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
-import { shellHost } from '../src/frameworks/solid/hostState';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import type { ShellStore } from '../src/shared/stores/ShellStore';

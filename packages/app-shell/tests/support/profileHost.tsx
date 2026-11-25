@@ -27,9 +27,9 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
-import { shellHost, spaceHost } from '../../src/frameworks/solid/hostState';
-import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
+import { shellHost, spaceHost } from '../../src/frameworks/solid/stores/hostState';
+import { solidLiveTemplates } from '../../src/frameworks/solid/stores/liveTemplate';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';

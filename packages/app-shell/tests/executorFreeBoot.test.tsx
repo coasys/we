@@ -34,7 +34,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { createEffect, createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { shellHost, spaceHost } from '../src/frameworks/solid/hostState';
+import { shellHost, spaceHost } from '../src/frameworks/solid/stores/hostState';
 import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -271,9 +271,9 @@ import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
-import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
+import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';

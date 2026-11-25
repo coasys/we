@@ -14,7 +14,7 @@ import { ensureNodeIds } from '@we/schema-shared';
 import { type ComponentRegistry, RenderSchema } from '@we/schema-solid';
 import { describe, expect, it } from 'vitest';
 
-import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
+import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { createEditorStore } from '../src/shared/stores/EditorStore';
 import { createEditTarget } from '../src/shared/stores/editTarget';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';

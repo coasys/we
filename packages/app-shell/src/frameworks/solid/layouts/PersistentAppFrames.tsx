@@ -12,7 +12,7 @@
  * Positioning mirrors TemplateLayout's content viewport (same left/right offsets)
  * so the active app iframe lines up with the same viewport the template occupies.
  */
-import type { Stores } from '@solid/types';
+import type { Stores } from '@shared/stores/storeBag';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
 import { For, untrack } from 'solid-js';

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
-import { declareAppEdges, shellHost } from '../src/frameworks/solid/hostState';
+import { declareAppEdges, shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import {
   DOCK_FRAME_ATTR,

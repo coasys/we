@@ -8,15 +8,15 @@
  */
 import { solidReactivity } from '@we/reactivity-solid';
 
-import { createBoardOptimism } from '../../shared/boardOptimism';
-import { createInvolvementOptimism } from '../../shared/involvementOptimism';
-import { createPretendPeople } from '../../shared/pretendPeople';
-import { createAppFrame } from '../../shared/registries/appFrame';
-import { createLaneFrames } from '../../shared/registries/homeLanes';
-import { createPanelInstances } from '../../shared/registries/panelInstances';
-import { createSignalOptimism } from '../../shared/signalOptimism';
-import { signalOrder } from '../../shared/signalOrder';
-import { createTaskWorkflowLive } from '../../shared/taskWorkflowLive';
+import { createBoardOptimism } from '../../../shared/boardOptimism';
+import { createInvolvementOptimism } from '../../../shared/involvementOptimism';
+import { createPretendPeople } from '../../../shared/pretendPeople';
+import { createAppFrame } from '../../../shared/registries/appFrame';
+import { createLaneFrames } from '../../../shared/registries/homeLanes';
+import { createPanelInstances } from '../../../shared/registries/panelInstances';
+import { createSignalOptimism } from '../../../shared/signalOptimism';
+import { signalOrder } from '../../../shared/signalOrder';
+import { createTaskWorkflowLive } from '../../../shared/taskWorkflowLive';
 
 /** Cards drawn where they were dropped, ahead of the data. See `shared/boardOptimism.ts`. */
 export const boardOptimism = createBoardOptimism(solidReactivity.signal);

@@ -11,7 +11,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
+import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { type LiveTemplates, plainLiveTemplates } from '../src/shared/liveTemplate';
 import { createEditorStore, type EditorStore } from '../src/shared/stores/EditorStore';
 import { createEditTarget, type EditTargetPort } from '../src/shared/stores/editTarget';

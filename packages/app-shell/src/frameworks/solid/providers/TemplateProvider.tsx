@@ -40,8 +40,8 @@ interface RecordModel {
 /** An entity's registered class by name; the registry answers untyped, but every class implements these. */
 const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
+import type { Stores } from '@shared/stores/storeBag';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries, type RecordInstance } from '@we/backend-shared';
 import { BlockDisplayOverrides, BlockHostProvider, colorFor } from '@we/block-solid';
@@ -71,6 +71,8 @@ import { EdgeLanes } from '../components/EdgeLanes';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
+import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
+import { TemplateLayout } from '../layouts/TemplateLayout';
 import {
   appFrame,
   boardOptimism,
@@ -79,9 +81,7 @@ import {
   involvementOptimism,
   signalOptimism,
   taskWorkflowLive,
-} from '../hostState';
-import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
-import { TemplateLayout } from '../layouts/TemplateLayout';
+} from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 import { buildRoutes } from '../utils/buildRoutes';
 

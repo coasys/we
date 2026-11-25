@@ -21,7 +21,7 @@ import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { involvementOptimism } from '../src/frameworks/solid/hostState';
+import { involvementOptimism } from '../src/frameworks/solid/stores/hostState';
 import { liveRows } from './liveRows';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 

@@ -25,8 +25,9 @@ vi.mock('@we/entities', async () => {
   };
 });
 import { ReactionBadge } from '../src/frameworks/solid/components/ReactionBadge';
-import { signalOptimism } from '../src/frameworks/solid/hostState';
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { signalOptimism } from '../src/frameworks/solid/stores/hostState';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 /** What the badge reads from the registry, as the host composes it. */
 const stores = {

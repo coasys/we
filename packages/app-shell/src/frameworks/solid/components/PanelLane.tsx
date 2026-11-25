@@ -58,7 +58,7 @@ import { parseBorder, tokenVar } from '@we/design-utils';
 import type { PanelFrame } from '@we/schema-shared';
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
-import { declareLaneFrame } from '../hostState';
+import { declareLaneFrame } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup, panelTitle, sectionKey } from './PanelGroup';

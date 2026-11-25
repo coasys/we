@@ -1,73 +1,13 @@
 /**
  * The host's stores, as Solid components reach them.
  *
- * The stores are composed once, at `BootController`: each is built with the stores it reads passed
- * in as arguments, and the finished set is this registry. A component asks for one by name —
- * `useStore('spaceStore')` — and gets it typed. This hook is the only thing here that is Solid's;
- * a host on another framework writes its own over the same composed instances.
- *
- * Keyed by the names the stores already go by everywhere else: a template reads
- * `{ $: 'spaceStore.x' }`, the store bag (`Stores`) and the template surface list `spaceStore`, and
- * the AI context describes `spaceStore`. One name per store, whichever side reaches for it.
+ * The stores are composed once, at `BootController`, into a `StoreRegistry` (`shared/stores/storeRegistry.ts`).
+ * A component asks for one by name — `useStore('spaceStore')` — and gets it typed. This hook and its
+ * context are the only things here that are Solid's; a host on another framework writes its own
+ * over the same composed instances.
  */
-import type { AccountStore } from '@shared/stores/AccountStore';
-import type { AppStore } from '@shared/stores/AppStore';
-import type { BundleStore } from '@shared/stores/BundleStore';
-import type { ChatStore } from '@shared/stores/ChatStore';
-import type { ClockStore } from '@shared/stores/ClockStore';
-import type { DatasetStore } from '@shared/stores/DatasetStore';
-import type { DeviceStore } from '@shared/stores/DeviceStore';
-import type { EditorStore } from '@shared/stores/EditorStore';
-import type { EditTargetPort } from '@shared/stores/editTarget';
-import type { IdentityStore } from '@shared/stores/IdentityStore';
-import type { InterpretationStore } from '@shared/stores/InterpretationStore';
-import type { PresenceStore } from '@shared/stores/PresenceStore';
-import type { ProfileStore } from '@shared/stores/ProfileStore';
-import type { RecordStore } from '@shared/stores/RecordStore';
-import type { RouteStore } from '@shared/stores/RouteStore';
-import type { RuntimeStore } from '@shared/stores/RuntimeStore';
-import type { SessionStore } from '@shared/stores/SessionStore';
-import type { ShapeStore } from '@shared/stores/ShapeStore';
-import type { ShellStore } from '@shared/stores/ShellStore';
-import type { SpaceStore } from '@shared/stores/SpaceStore';
-import type { TemplateStore } from '@shared/stores/TemplateStore';
-import type { ThemeStore } from '@shared/stores/ThemeStore';
-import type { WorkflowStore } from '@shared/stores/WorkflowStore';
+import type { StoreKey, StoreRegistry } from '@shared/stores/storeRegistry';
 import { createContext, useContext } from 'solid-js';
-
-/** Every app-lifetime store the host composes, by name, and the edit target composed with them. */
-export interface StoreRegistry {
-  accountStore: AccountStore;
-  appStore: AppStore;
-  bundleStore: BundleStore;
-  chatStore: ChatStore;
-  clockStore: ClockStore;
-  datasetStore: DatasetStore;
-  deviceStore: DeviceStore;
-  editorStore: EditorStore;
-  /**
-   * Not a store: what the editing session edits, the editor's own plumbing (`editTarget.ts`).
-   * Composed with the stores and reached the same way; no template bag is built from this registry,
-   * so no template can name it.
-   */
-  editTarget: EditTargetPort;
-  identityStore: IdentityStore;
-  interpretationStore: InterpretationStore;
-  presenceStore: PresenceStore;
-  profileStore: ProfileStore;
-  recordStore: RecordStore;
-  routeStore: RouteStore;
-  runtimeStore: RuntimeStore;
-  sessionStore: SessionStore;
-  shapeStore: ShapeStore;
-  shellStore: ShellStore;
-  spaceStore: SpaceStore;
-  templateStore: TemplateStore;
-  themeStore: ThemeStore;
-  workflowStore: WorkflowStore;
-}
-
-export type StoreKey = keyof StoreRegistry;
 
 /**
  * The composed stores. Partial in its type so a test can hand a component only the stores it

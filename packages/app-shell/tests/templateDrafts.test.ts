@@ -16,7 +16,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
+import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTemplates; fine: boolean }][] = [

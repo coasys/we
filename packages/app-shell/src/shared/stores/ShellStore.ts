@@ -53,7 +53,7 @@ export interface TemplateSaver {
 /**
  * The host state the shell reads and publishes but does not hold — the app's frame and its edges'
  * frames, the template lanes' frames, and the panel instances on screen. One of each per app
- * (`frameworks/solid/hostState.ts`); a test builds its own over its port.
+ * (`frameworks/solid/stores/hostState.ts`); a test builds its own over its port.
  */
 export type ShellHostState = Pick<AppFrameState, 'appFrame' | 'appEdgeFrames'> &
   Pick<LaneFrames, 'laneFrames'> &
