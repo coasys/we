@@ -223,7 +223,7 @@ export async function callThatFinds(who, perspective, needs = []) {
  * Waits for what interpretation makes of a call: with `want`, every scripted record; without, a titled
  * record of each class in `needs`, or, with no `needs`, any record of the package. Matched on class,
  * not title: a real model's titles are its own. When it times out, the error says why a pass did not
- * run or found nothing — the call's watch as the executor stores it, the turns its scope query reads,
+ * run or found nothing — the call's watch as the executor stores it, what its source scope names,
  * and what the model was asked — since the executor logs none of that at its default level.
  */
 export async function untilInterpreted(perspective, callId, found, want, needs = []) {
@@ -273,8 +273,9 @@ async function interpretationFacts(perspective, callId) {
     l.data.predicate,
     String(valueOf(l.data.target)).slice(0, 2_000),
   ]);
-  const scope = config.find(([p]) => p === 'ad4m://source_scope_query')?.[1];
-  const turns = scope ? await perspective.querySparql(scope).catch((e) => `query failed: ${e.message}`) : null;
+  // The source scope is a class, a property and a model query the executor evaluates — nothing
+  // here can replay it, so the report names it and the call's own links stand in for what it reads.
+  const source = Object.fromEntries(config.filter(([p]) => p.startsWith('ad4m://source_')));
   const lines = await Promise.all(
     (await perspective.get(new LinkQuery({ source: callId }))).map(async (l) => ({
       predicate: l.data.predicate,
@@ -289,7 +290,7 @@ async function interpretationFacts(perspective, callId) {
   return {
     watch: node,
     config,
-    turns,
+    source,
     callLinks: lines,
     asked: stub?.calls.map((c) => ({ kind: c.kind, records: c.records.length })) ?? 'real tier',
   };

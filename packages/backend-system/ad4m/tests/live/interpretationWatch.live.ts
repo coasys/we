@@ -4,8 +4,8 @@
  * `watch` writes nothing when the registered config already says what the watch wants. It decides
  * that by reading the config's links back and comparing each setting, as text, with what it would
  * write — so the decision is only as good as the round trip. If the executor stored one setting in a
- * form that does not decode to the value sent (the scope query is a long multi-line string with
- * quotes and `<<( … )>>` in it), every call would read as "a setting changed" and register again:
+ * form that does not decode to the value sent (the source query is a JSON string full of quotes),
+ * every call would read as "a setting changed" and register again:
  * no deletes, but another copy of every class link and another live-query push each time, which is
  * the churn this was meant to end. The unit tests use a fake that stores values exactly as written,
  * so they cannot see that. This asks the executor.

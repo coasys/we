@@ -84,7 +84,6 @@ export {
   createAd4mInterpretationPort,
   runtimeSupportsAutoProcessing,
   runtimeSupportsInterpretation,
-  transcriptScopeQuery,
 } from './interpretationAdapter';
 export {
   type Ad4mCapability,
