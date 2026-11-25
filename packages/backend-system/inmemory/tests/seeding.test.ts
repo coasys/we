@@ -11,6 +11,7 @@
  * Presence is a *message*, so it has to arrive over the bus the way a heartbeat would, and keep
  * arriving, because presence ages itself out on a TTL by design.
  */
+import { createHeartbeatPresence } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -92,11 +93,31 @@ describe('seeded presence', () => {
 
     expect(received.map((r) => r.from)).toEqual([ADA, BO]);
     expect(received[0].payload).toMatchObject({
-      agentId: ADA,
-      availability: 'available',
-      focus: { datasetUri: 'inmemory://ds-main', path: '/channel/1' },
+      v: 1,
+      state: {
+        agentId: ADA,
+        availability: 'available',
+        focus: { datasetUri: 'inmemory://ds-main', path: '/channel/1' },
+      },
     });
-    expect((received[0].payload as { updatedAt: number }).updatedAt).toBeTypeOf('number');
+    expect((received[0].payload as { state: { updatedAt: number } }).state.updatedAt).toBeTypeOf('number');
+  });
+
+  it('beats in the envelope a presence source reads, so the peers are in its roster', async () => {
+    const ports = makePorts({ presence: PEERS });
+    const dataset = (await ports.lifecycle.get('ds-main'))!;
+    const scope = ports.ephemeral(dataset.handle)!;
+    let roster: string[] = [];
+    const presence = createHeartbeatPresence(scope.channel('presence'), {
+      onPeersChanged: (peers) => (roster = peers.map((peer) => peer.agentId)),
+    });
+    presence.start({ agentId: 'did:test:me', updatedAt: Date.now(), availability: 'available' });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(roster).toEqual(expect.arrayContaining([ADA, BO]));
+    presence.stop();
+    scope.dispose();
   });
 
   it('keeps beating, because presence ages itself out', async () => {

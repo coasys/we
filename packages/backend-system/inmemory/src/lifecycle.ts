@@ -440,9 +440,19 @@ function startSeededPresence(bus: InMemoryBus, dataset: unknown, peers: readonly
     return () => release(beats, key);
   }
 
+  /*
+    Each beat in the envelope a real peer's heartbeat sends (`{ v: 1, state, client }`), from a client
+    of its own. A bare state is what a presence source drops as malformed, so a seeded roster showed
+    nobody however long it beat.
+  */
   const beat = () => {
     for (const { did, ...state } of peers) {
-      bus.deliver(key, 'presence', did, { ...state, agentId: did, updatedAt: Date.now() } satisfies PresenceState);
+      const message = {
+        v: 1,
+        client: 'seeded',
+        state: { ...state, agentId: did, updatedAt: Date.now() } satisfies PresenceState,
+      };
+      bus.deliver(key, 'presence', did, message);
     }
   };
 
