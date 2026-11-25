@@ -202,15 +202,19 @@ export function DeviceStoreProvider(props: ParentProps) {
     // reads its own agent again too: the agent has a new DID, and the shell compares against it.
     // An unlink that may have happened is read again for the same reason, and the person tries again
     // from the row, which stays while the status still lists this computer.
-    if (outcome !== 'failed') {
-      await session.refreshMe();
-      await identity.refresh();
-      await refresh();
+    // A read that throws must not leave the flag set, or every device button stays disabled.
+    try {
+      if (outcome !== 'failed') {
+        await session.refreshMe();
+        await identity.refresh();
+        await refresh();
+      }
+    } finally {
+      // After the reads, which clear `error` when they succeed: why it failed outlives them.
+      if (reason) setError(reason);
+      setUnlinking(false);
+      setConfirmingUnlink(false);
     }
-    // After the reads, which clear `error` when they succeed: why it failed outlives them.
-    if (reason) setError(reason);
-    setUnlinking(false);
-    setConfirmingUnlink(false);
     return outcome;
   }
 
