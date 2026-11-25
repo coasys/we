@@ -766,8 +766,12 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       out of it is leaving them out of everything. The settings page still lists them to delete.
     */
     if (safeMode().on) return builtInThemes();
+    /*
+      Only the ones on the visible list, an empty list included. Read as "show everything" when it was
+      empty, hiding the last theme shown brought every hidden one back.
+    */
     const ids = visibleThemeIds();
-    const visible = ids.size > 0 ? installedThemes().filter((t) => ids.has(t.id)) : installedThemes();
+    const visible = installedThemes().filter((t) => ids.has(t.id));
     return [...builtInThemes(), ...visible, ...spaceThemes()];
   };
 
@@ -1539,6 +1543,11 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
         css: editing.css,
       };
       setInstalledThemes([...untrack(installedThemes), data]);
+      // Visible as well, as a new theme is: one left off the list is missing from every picker and
+      // from the lookup of the theme on screen, which then fell back to another.
+      setVisibleThemeIds(new Set([...untrack(visibleThemeIds), model.id]));
+      const prefs = datasetStore.agentSettings();
+      if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
       setEditingTheme({ ...data, isDirty: false });
       setCurrentTheme(data.id);
       toasts.success(`Theme "${name}" saved`);

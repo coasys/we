@@ -142,6 +142,23 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     expect(store.allThemes().some((t) => t.id === mine.id)).toBe(true);
   });
 
+  it('hides the last theme shown as well, rather than showing every one again', async () => {
+    const mine = await custom(handles.root, 'mine');
+    const { store } = await mount();
+    await store.setThemeInstalled(mine.id, false);
+    expect(store.allThemes().some((t) => t.id === mine.id)).toBe(false);
+  });
+
+  it('lists a theme saved as a new one, beside the others', async () => {
+    await custom(handles.root, 'mine');
+    const { store } = await mount();
+    store.startEditing('dark');
+    const saved = await store.saveEditingThemeAs('Copy', 'palette');
+    expect(store.allThemes().some((t) => t.id === saved?.id)).toBe(true);
+    expect(store.currentTheme().id).toBe(saved?.id);
+    expect(installedRefs).toContain(saved?.id);
+  });
+
   it('reads the space’s own themes while it is open, and drops them when it closes', async () => {
     const theirs = await custom(handles.space, 'theirs');
     const { store, setCurrent } = await mount({ space: true });
