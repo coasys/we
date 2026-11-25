@@ -14,6 +14,7 @@ import type { AccountStore } from '@shared/stores/AccountStore';
 import type { AppStore } from '@shared/stores/AppStore';
 import type { ChatStore } from '@shared/stores/ChatStore';
 import type { ClockStore } from '@shared/stores/ClockStore';
+import type { DatasetStore } from '@shared/stores/DatasetStore';
 import type { DeviceStore } from '@shared/stores/DeviceStore';
 import type { EditTargetPort } from '@shared/stores/editTarget';
 import type { IdentityStore } from '@shared/stores/IdentityStore';
@@ -24,7 +25,6 @@ import type { SessionStore } from '@shared/stores/SessionStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { BundleStore } from './BundleStore';
-import type { DatasetStore } from './DatasetStore';
 import type { EditorStore } from './EditorStore';
 import type { ProfileStore } from './ProfileStore';
 import type { RecordStore } from './RecordStore';

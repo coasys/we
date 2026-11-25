@@ -22,6 +22,7 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
+import { type AppDataset } from '@shared/stores/DatasetStore';
 import {
   datasetIdOf,
   datasetKey,
@@ -104,7 +105,6 @@ import {
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import { type AppDataset } from './DatasetStore';
 import { BLOCK_ICONS } from './ShapeStore';
 import type { StoreRegistry } from './useStore';
 

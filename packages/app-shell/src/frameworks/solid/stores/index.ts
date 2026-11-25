@@ -2,7 +2,7 @@ export { type StoreKey, type StoreRegistry, useStore } from './useStore';
 export { type RouteStore, createRouteStore } from '../../../shared/stores/RouteStore';
 export { type AccountStore, createAccountStore } from '../../../shared/stores/AccountStore';
 export { type SessionStore, type BootState, createSessionStore } from '../../../shared/stores/SessionStore';
-export { type DatasetStore, createDatasetStore } from './DatasetStore';
+export { type DatasetStore, createDatasetStore } from '../../../shared/stores/DatasetStore';
 export { type ProfileStore, createProfileStore } from './ProfileStore';
 export { type RuntimeStore, createRuntimeStore } from './RuntimeStore';
 export { type ShapeStore, createShapeStore } from './ShapeStore';

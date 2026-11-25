@@ -258,7 +258,6 @@ import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
@@ -277,6 +276,7 @@ import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
 import { createAccountStore } from '../src/shared/stores/AccountStore';
 import { createAppStore } from '../src/shared/stores/AppStore';
 import { createChatStore } from '../src/shared/stores/ChatStore';
+import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 
@@ -322,7 +322,12 @@ function mountShell(): Stores {
     });
     // Setting up an account asks it whether there is an AI question, as the real order has it.
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
-    const datasetStore = createDatasetStore({ sessionStore });
+    const datasetStore = createDatasetStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      toasts: toastService,
+      sessionStore,
+    });
     // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
     // enroller, and hands the record layer the vocabularies this community owns — a task's own
     // states — so these are built in the order BootController uses.

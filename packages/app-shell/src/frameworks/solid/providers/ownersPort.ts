@@ -6,6 +6,7 @@
  * module registry and the stores, and nothing else — so the editor can stay ignorant of both.
  */
 import { currentProductName } from '@shared/bundles/brand';
+import type { DatasetStore } from '@shared/stores/DatasetStore';
 import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
@@ -15,7 +16,6 @@ import { HOST_PARTS } from '../../../shared/registries/hostParts';
 import { openPart, openPartPath } from '../../../shared/registries/moduleParts';
 import { moduleRegistry, type RegisteredPart } from '../../../shared/registries/moduleRegistry';
 import { viewRegistry } from '../../../shared/registries/viewRegistry';
-import type { DatasetStore } from '../stores/DatasetStore';
 import type { ShellStore } from '../stores/ShellStore';
 import type { SpaceStore } from '../stores/SpaceStore';
 import type { TemplateStore } from '../stores/TemplateStore';

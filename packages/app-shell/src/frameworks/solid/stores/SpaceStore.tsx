@@ -89,6 +89,7 @@ import {
   syncSpaceToParent,
   withFields,
 } from '@shared/spaceSync';
+import { type AppDataset, canonicalSpaceId } from '@shared/stores/DatasetStore';
 import { isSystemDataset } from '@shared/systemDatasets';
 import {
   approvalsOf,
@@ -188,7 +189,6 @@ import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
-import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
 import { createInterpretationRuntime } from './space/interpretationRuntime';

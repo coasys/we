@@ -15,22 +15,23 @@
  * which layers on top of this store and reacts to dataset changes via `onDatasetRemoved` and the
  * `currentDataset` signal.
  */
-import { createCallKernel } from '@shared/callKernel';
-import { sameDataset } from '@shared/datasetIdentity';
-import { hostListeners } from '@shared/hostSlot';
-import { reportModuleRefusal } from '@shared/moduleSchemaRefusal';
-import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { moduleRegistry } from '@shared/registries/moduleRegistry';
-import { getSeed } from '@shared/seedRegistry';
-import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy } from '@we/entities';
 import { latest } from '@we/module-shared';
-import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import { firstScreen } from '../firstScreen';
-import type { StoreRegistry } from './useStore';
+import { createCallKernel } from '../callKernel';
+import { sameDataset } from '../datasetIdentity';
+import { distinctSignal } from '../distinctSignal';
+import type { FirstScreen } from '../firstScreen';
+import { hostListeners } from '../hostSlot';
+import { reportModuleRefusal } from '../moduleSchemaRefusal';
+import { provideModuleHostServices } from '../registries/moduleHostServices';
+import { moduleRegistry } from '../registries/moduleRegistry';
+import { getSeed } from '../seedRegistry';
+import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '../systemDatasets';
+import type { Toasts } from '../toasts';
+import type { SessionStore } from './SessionStore';
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -171,11 +172,23 @@ export interface DatasetStore {
   getDatasetOrder: () => string[];
 }
 
-export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): DatasetStore {
+export interface DatasetStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: the personal space's schema waits for it. */
+  firstScreen: Pick<FirstScreen, 'whenOpen'>;
+  toasts: Pick<Toasts, 'error'>;
+  sessionStore: Pick<SessionStore, 'bootState' | 'lifecycle' | 'backendPorts' | 'me' | 'ephemeralPort'>;
+}
+
+export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
+  const { reactivity, firstScreen, toasts } = deps;
+  const { signal, memo, effect, untrack, batch, onCleanup } = reactivity;
   const session = deps.sessionStore;
 
-  const [datasets, setDatasets] = createSignal<AppDataset[]>([]);
-  const [datasetsLoaded, setDatasetsLoaded] = createSignal(false);
+  const [datasets, writeDatasets] = signal<AppDataset[]>([]);
+  /** Change the list from what it holds now. */
+  const setDatasets = (change: (prev: AppDataset[]) => AppDataset[]) => writeDatasets(change(untrack(datasets)));
+  const [datasetsLoaded, setDatasetsLoaded] = distinctSignal(reactivity, false);
   /**
    * The dataset on screen — and it notifies only when that is a *different* dataset.
    *
@@ -191,10 +204,10 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
    *
    * See {@link sameDataset} for what counts as the same.
    */
-  const [currentDataset, setCurrentDataset] = createSignal<AppDataset | null>(null, { equals: sameDataset });
-  const [currentDatasetEntities, setCurrentDatasetEntities] = createSignal<EntityManifestEntry[]>([]);
+  const [currentDataset, setCurrentDataset] = distinctSignal<AppDataset | null>(reactivity, null, sameDataset);
+  const [currentDatasetEntities, setCurrentDatasetEntities] = signal<EntityManifestEntry[]>([]);
   /** The dataset `currentDatasetEntities` was last read for — see `currentDatasetEntitiesLoaded`. */
-  const [entitiesReadFor, setEntitiesReadFor] = createSignal<string | null>(null);
+  const [entitiesReadFor, setEntitiesReadFor] = distinctSignal<string | null>(reactivity, null);
   /**
    * Which publish the read in flight belongs to. Opening a space again starts a new read, and an
    * older read of the same space finishing must not say the newer one is done.
@@ -204,21 +217,28 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
     const id = currentDataset()?.id;
     return Boolean(id) && entitiesReadFor() === id;
   };
-  const [isWeSpace, setIsWeSpace] = createSignal<boolean>(false);
-  const [rootDataset, setRootDataset] = createSignal<AppDataset | null>(null);
-  const [personalDataset, setPersonalDataset] = createSignal<AppDataset | null>(null);
-  const [whenPersonalDataset, setWhenPersonalDataset] = createSignal<Promise<AppDataset | null> | null>(null);
+  const [isWeSpace, setIsWeSpace] = distinctSignal(reactivity, false);
+  const [rootDataset, setRootDataset] = distinctSignal<AppDataset | null>(reactivity, null);
+  const [personalDataset, setPersonalDataset] = distinctSignal<AppDataset | null>(reactivity, null);
+  const [whenPersonalDataset, setWhenPersonalDataset] = signal<Promise<AppDataset | null> | null>(null);
   /*
     Counted up each time the agent locks. The personal space's install runs after the app appears,
     so it can still be out when somebody locks and signs in again; what it finds belongs to the
     session that started it, and the count is how it knows that session has ended.
   */
   let sessionsEnded = 0;
-  createEffect(() => {
+  effect(() => {
     if (session.bootState() === 'login') sessionsEnded++;
   });
-  const [testDataset, setTestDataset] = createSignal<AppDataset | null>(null);
-  const [agentSettings, setAgentSettings] = createSignal<AgentSettings | null>(null, { equals: false });
+  const [testDataset, setTestDataset] = distinctSignal<AppDataset | null>(reactivity, null);
+  /*
+    The settings record is changed in place and written back, so every write must wake its readers
+    even though the object is the same one. Each write is held in a fresh box, so it is a new value
+    on any port; the record inside is the same.
+  */
+  const [settingsHeld, holdSettings] = signal<{ settings: AgentSettings | null }>({ settings: null });
+  const agentSettings = (): AgentSettings | null => settingsHeld().settings;
+  const setAgentSettings = (settings: AgentSettings | null) => holdSettings({ settings });
 
   /*
     Who wants telling when a dataset goes away.
@@ -311,18 +331,18 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
 
   // Converts null → undefined so that when JSON-serialised into an ORM WHERE clause,
   // personal datasets (no shared uri) produce {} rather than {"url":null}.
-  const currentDatasetUri = createMemo<string | undefined>(() => currentDataset()?.sharedUri ?? undefined);
+  const currentDatasetUri = memo<string | undefined>(() => currentDataset()?.sharedUri ?? undefined);
 
   // The scheme-less shared id, for comparing against Space.url — which stores that form so the
   // backend never has to resolve a URI mid-query.
-  const currentDatasetCid = createMemo<string | undefined>(() => currentDataset()?.sharedId ?? undefined);
-  const joinedSpaceCids = createMemo<string[]>(() =>
+  const currentDatasetCid = memo<string | undefined>(() => currentDataset()?.sharedId ?? undefined);
+  const joinedSpaceCids = memo<string[]>(() =>
     datasets()
       .map((d) => d.sharedId)
       .filter((id): id is string => !!id),
   );
 
-  const systemDatasetUuids = createMemo(() =>
+  const systemDatasetUuids = memo(() =>
     datasets()
       .filter((d) => isSystemDataset(d.name))
       .map((d) => d.id),
@@ -334,7 +354,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
   }
 
   // Derived: datasets sorted by user-defined order (falls back to load order), system datasets excluded
-  const orderedDatasets = createMemo(() => {
+  const orderedDatasets = memo(() => {
     const all = datasets().filter((d) => !isSystemDataset(d.name));
     const order = getDatasetOrder();
     if (order.length === 0) return all;
@@ -361,7 +381,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
     const url = getSeed().marketplaceUrl;
     return url ? url.replace('neighbourhood://', '') : null;
   };
-  const marketplaceJoined = createMemo(() => {
+  const marketplaceJoined = memo(() => {
     const id = marketplaceId();
     return id ? joinedSpaceCids().includes(id) : false;
   });
@@ -374,11 +394,11 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
    * (`rootDataset`/`testDataset` stay explicit signals below: those the host *creates* when
    * absent, which is a lifecycle step rather than a match.)
    */
-  const globalDataset = createMemo<AppDataset | null>(() => {
+  const globalDataset = memo<AppDataset | null>(() => {
     const seedUrl = getSeed().globalSpaceUrl;
     return seedUrl ? (datasets().find((d) => d.sharedUri === seedUrl) ?? null) : null;
   });
-  const marketplaceDataset = createMemo<AppDataset | null>(() => {
+  const marketplaceDataset = memo<AppDataset | null>(() => {
     const mktUrl = getSeed().marketplaceUrl;
     return mktUrl ? (datasets().find((d) => d.sharedUri === mktUrl) ?? null) : null;
   });
@@ -432,7 +452,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
     if (!lifecycle) return;
     try {
       const refs = known ?? (await lifecycle.list()).map(toApp);
-      setDatasets(refs);
+      writeDatasets(refs);
 
       // Bootstrap dataset order on first load (when no order has been saved yet)
       if (!Array.isArray(agentSettings()?.datasetOrder)) {
@@ -497,7 +517,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
           if (started !== sessionsEnded) return;
           // Held, not awaited: the boot does not wait for it. `initPersonalDataset` catches its own errors.
           const install = initPersonalDataset(personal, made.includes(personal));
-          void setWhenPersonalDataset(() => install);
+          setWhenPersonalDataset(install);
         },
         (error) => console.error('DatasetStore: personal dataset error', error),
       ),
@@ -675,7 +695,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
       Object.assign(settings, before);
       setAgentSettings(settings);
       console.error('DatasetStore: updateAgentSettings error', error);
-      toastService.error('That setting could not be saved');
+      toasts.error('That setting could not be saved');
       return false;
     }
   }
@@ -880,7 +900,7 @@ export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): D
       // Switching is a navigation, and a navigation that silently does not happen is the worst
       // failure a store can have: the sidebar highlights the space, the URL says the space, and the
       // content is the previous one's. Console-only, this looked like the app ignoring a click.
-      toastService.error('Could not open that space');
+      toasts.error('Could not open that space');
     }
   }
 

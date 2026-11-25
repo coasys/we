@@ -26,6 +26,7 @@ import { slotRegistry } from '@shared/registries/slotRegistry';
 import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
+import { type AppDataset, canonicalSpaceId } from '@shared/stores/DatasetStore';
 import { latestPerSpace } from '@shared/stores/latestPerSpace';
 import { createSpaceRecordWait } from '@shared/stores/spaceRecordWait';
 import { createSpaceTemplateChoosing } from '@shared/stores/spaceTemplateChoosing';
@@ -71,7 +72,6 @@ import {
   TEMPLATE_WATCH_FIELDS,
   templateChanges,
 } from '../../../shared/templateSync';
-import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { createTemplateDrafts } from './templateDrafts';
 import type { StoreRegistry } from './useStore';
 

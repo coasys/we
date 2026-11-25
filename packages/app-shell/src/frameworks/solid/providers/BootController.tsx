@@ -19,6 +19,7 @@ import { createAccountStore } from '@shared/stores/AccountStore';
 import { createAppStore } from '@shared/stores/AppStore';
 import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
+import { createDatasetStore } from '@shared/stores/DatasetStore';
 import { createDeviceStore } from '@shared/stores/DeviceStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createIdentityStore } from '@shared/stores/IdentityStore';
@@ -27,6 +28,7 @@ import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { trace } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
@@ -34,7 +36,6 @@ import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
 import { startAppBridge } from '../services/appBridge';
 import { createBundleStore } from '../stores/BundleStore';
-import { createDatasetStore } from '../stores/DatasetStore';
 import { createEditorStore } from '../stores/EditorStore';
 import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
@@ -95,7 +96,12 @@ export function BootController(props: ParentProps) {
   // Identity before devices, whose changes it opens.
   const identityStore = createIdentityStore({ reactivity: solidReactivity, sessionStore });
   const deviceStore = createDeviceStore({ reactivity: solidReactivity, sessionStore, identityStore });
-  const datasetStore = createDatasetStore({ sessionStore });
+  const datasetStore = createDatasetStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    toasts: toastService,
+    sessionStore,
+  });
   // The shape adoption rail follows the current dataset, and everything that renders a space may
   // query the entities it registers.
   const shapeStore = createShapeStore({ sessionStore, datasetStore });

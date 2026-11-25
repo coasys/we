@@ -18,6 +18,7 @@
  * `popstate`, which is what the app's router does with both.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { toastService } from '@we/components/solid';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -27,7 +28,6 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
@@ -44,6 +44,7 @@ import { createAccountStore } from '../../src/shared/stores/AccountStore';
 import { createAppStore } from '../../src/shared/stores/AppStore';
 import { createChatStore } from '../../src/shared/stores/ChatStore';
 import { createClockStore } from '../../src/shared/stores/ClockStore';
+import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
@@ -477,7 +478,12 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       accountStore,
     });
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
-    const datasetStore = createDatasetStore({ sessionStore });
+    const datasetStore = createDatasetStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      toasts: toastService,
+      sessionStore,
+    });
     const shapeStore = createShapeStore({ sessionStore, datasetStore });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
     const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
