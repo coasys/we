@@ -1,7 +1,12 @@
-import { moduleRegistry, type RegisteredEmbed } from '@shared/registries/moduleRegistry';
-import { Accessor, createEffect, createMemo, createSignal } from 'solid-js';
+/**
+ * AppStore — the embedded applications this agent has installed, and which one is on screen.
+ *
+ * Written against the reactivity port and nothing else, so it runs under any host.
+ */
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import weLogo from '../../../shared/assets/we-icon.png';
+import weLogo from '../assets/we-icon.png';
+import { moduleRegistry, type RegisteredEmbed } from '../registries/moduleRegistry';
 
 export interface AppStore {
   /**
@@ -38,14 +43,20 @@ export interface AppStore {
 
 const WE_SENTINEL: RegisteredEmbed = { id: 'we', name: 'WE', image: weLogo, icon: '', url: '', allow: '' };
 
-export function createAppStore(): AppStore {
-  const [installedModules, setInstalledModules] = createSignal<(() => string[]) | null>(null);
-  const [activeAppId, setActiveAppId] = createSignal<string | null>(null);
+export function createAppStore({ reactivity }: { reactivity: ReactivityPort }): AppStore {
+  const { signal, memo, effect, untrack } = reactivity;
+  // Holds a function, which the port's setter stores as the value rather than calling.
+  const [installedModules, setInstalledModules] = signal<(() => string[]) | null>(null);
+  const [activeAppId, writeActiveAppId] = signal<string | null>(null);
+  // Compared first: whether writing what it already holds wakes its readers is not the port's to say.
+  const setActiveAppId = (id: string | null) => {
+    if (untrack(activeAppId) !== id) writeActiveAppId(id);
+  };
 
   // A memo, not a snapshot: modules can register after this store is constructed, and the agent can
   // change their mind. Read once at construction, an app appeared for the session whatever anyone
   // did with it.
-  const apps = createMemo<RegisteredEmbed[]>(() => {
+  const apps = memo<RegisteredEmbed[]>(() => {
     const embeds = moduleRegistry.embeds();
     const lookup = installedModules();
     if (!lookup) return embeds;
@@ -53,7 +64,7 @@ export function createAppStore(): AppStore {
     return embeds.filter((embed) => installed.has(embed.id));
   });
 
-  const appsWithWe = createMemo(() => [WE_SENTINEL, ...apps()]);
+  const appsWithWe = memo(() => [WE_SENTINEL, ...apps()]);
 
   function activateApp(id: string) {
     // Guards on the filtered list, so an uninstalled app cannot be opened by a stale control or a
@@ -71,7 +82,7 @@ export function createAppStore(): AppStore {
 
   // Leaving an app open after it has been uninstalled would keep its iframe filling the content
   // area with no entry point left to close it.
-  createEffect(() => {
+  effect(() => {
     const id = activeAppId();
     if (id && !apps().some((a) => a.id === id)) setActiveAppId(null);
   });
@@ -82,7 +93,7 @@ export function createAppStore(): AppStore {
     activeAppId,
     activateApp,
     deactivateApp,
-    provideInstalledModules: (lookup) => setInstalledModules(() => lookup),
+    provideInstalledModules: (lookup) => setInstalledModules(lookup),
   };
 
   return store;

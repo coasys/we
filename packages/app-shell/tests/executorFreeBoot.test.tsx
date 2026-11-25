@@ -258,7 +258,6 @@ import { credential } from '../src/frameworks/solid/credential';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
-import { createAppStore } from '../src/frameworks/solid/stores/AppStore';
 import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
@@ -277,6 +276,7 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
+import { createAppStore } from '../src/shared/stores/AppStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
@@ -322,7 +322,7 @@ function mountShell(): Stores {
     const themeStore = createThemeStore({ sessionStore, datasetStore });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
     // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
-    const appStore = createAppStore();
+    const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       sessionStore,
       datasetStore,

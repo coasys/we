@@ -15,6 +15,7 @@
  * is already unlocked, and again after login().
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { createAppStore } from '@shared/stores/AppStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -22,7 +23,6 @@ import type { ParentProps } from 'solid-js';
 
 import { firstScreen } from '../firstScreen';
 import { createAccountStore } from '../stores/AccountStore';
-import { createAppStore } from '../stores/AppStore';
 import { createBundleStore } from '../stores/BundleStore';
 import { createChatStore } from '../stores/ChatStore';
 import { createClockStore } from '../stores/ClockStore';
@@ -89,7 +89,7 @@ export function BootController(props: ParentProps) {
     shapeStore,
     editTarget,
   });
-  const appStore = createAppStore();
+  const appStore = createAppStore({ reactivity: solidReactivity });
   const spaceStore = createSpaceStore({
     sessionStore,
     datasetStore,

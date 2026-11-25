@@ -41,6 +41,7 @@ const SOLID_TESTS = [
   'tests/keyedSignals.test.ts',
   // And for the store helpers and stores converted after it, each run under both ports.
   'tests/spaceTemplateChoosing.test.ts',
+  'tests/appStore.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',

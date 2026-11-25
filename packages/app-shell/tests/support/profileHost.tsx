@@ -27,7 +27,6 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createAccountStore } from '../../src/frameworks/solid/stores/AccountStore';
-import { createAppStore } from '../../src/frameworks/solid/stores/AppStore';
 import { createChatStore } from '../../src/frameworks/solid/stores/ChatStore';
 import { createClockStore } from '../../src/frameworks/solid/stores/ClockStore';
 import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
@@ -45,6 +44,7 @@ import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
+import { createAppStore } from '../../src/shared/stores/AppStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
@@ -473,7 +473,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
     const themeStore = createThemeStore({ sessionStore, datasetStore });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
-    const appStore = createAppStore();
+    const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       sessionStore,
       datasetStore,
