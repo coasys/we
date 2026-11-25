@@ -16,7 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { messageLine, repliesInclude } from '@we/messages';
+import { MESSAGE_KINDS, messageLine, repliesInclude } from '@we/messages';
 import {
   emptyState,
   foldingBody,
@@ -151,6 +151,24 @@ const MORE_WORDS: { $: string } = {
  * where one press reveals nothing and the offer then withdraws itself.
  */
 const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.transcriptShown'}`;
+
+/**
+ * The lines in the transcript's window: each bare `TextBlock`, and each `CollectionBlock` that is a
+ * message composition.
+ *
+ * The window reads `TextBlock` and `CollectionBlock` in one query (see `transcriptLines`). The query
+ * cannot filter `kind` on the `CollectionBlock` rows only: in a union, the same `where` goes to each
+ * entity, and `kind` would remove every `TextBlock`. So the filter is here. A `CollectionBlock` that
+ * is not a message (a post in a channel) is not a line. `TRANSCRIPT_HAS_MORE` reads the window
+ * before this filter, because the limit applies to the window.
+ */
+const TRANSCRIPT_LINES = `local.utterances.filter(r, r.__subjectClass != 'CollectionBlock' || r.kind in [${MESSAGE_KINDS.map((kind) => `'${kind}'`).join(', ')}])`;
+
+/**
+ * True when nothing has been said in the subject yet: no heard line (`spoken`) and no typed message
+ * (`typed`). Both queries are on `interpretNow`.
+ */
+const NOTHING_SAID = '!count(local.spoken) && !count(local.typed)';
 
 /**
  * Which collection the *extraction* surface is about — always one, inside a space.
@@ -2599,7 +2617,7 @@ const interpretNowControl: SchemaNode = {
       $:
         `!count(${forSubject('targets').$}) ? 'No models are set up here' : ` +
         `!${forSubject('targets').$}.exists(t, t.selected) ? 'Nothing is selected to interpret' : ` +
-        "!count(local.spoken) ? 'Nothing has been said yet' : " +
+        `${NOTHING_SAID} ? 'Nothing has been said yet' : ` +
         "'Reads the whole conversation so far'",
     },
   },
@@ -2623,11 +2641,11 @@ const interpretNowControl: SchemaNode = {
         alignSelf: 'start',
         // Disabled rather than hidden once the panel is showing the section: the reason is
         // "nothing has been said yet", which resolves on its own and is worth waiting for.
-        // `count(local.spoken)` is the honest half — see the query on the panel root. `canInterpret`
+        // `NOTHING_SAID` is the honest half — see the queries on `interpretNow`. `canInterpret`
         // stays for what it still answers alone: a model on this node, and something ticked.
         disabled: {
           $:
-            `!count(local.spoken) || !${forSubject('canInterpret').$} || ` +
+            `(${NOTHING_SAID}) || !${forSubject('canInterpret').$} || ` +
             "modules.transcribe.interpretStatus == 'running'",
         },
         /*
@@ -2684,6 +2702,14 @@ const interpretNowControl: SchemaNode = {
  * name; they never share a scope, and two `local.utterances` in one module is a trap for whoever
  * moves one of them.
  *
+ * Two queries, because a line has two shapes. A heard line is a bare `TextBlock` under the record
+ * (`spoken`). A message typed into the call chat is a composition: a `CollectionBlock` with
+ * `kind: 'message'` or `'reply'` under the record (`typed`), with its own `TextBlock` under it, not
+ * under the record. Two queries rather than one union, because `kind` filters only the
+ * `CollectionBlock` rows: in a union, the same `where` goes to each entity and removes the TextBlocks.
+ * Here each query has its own `where`, so `kind` is sent to the backend and a post in a channel does
+ * not count. `NOTHING_SAID` reads both.
+ *
  * `when` for the reason every scoped query here carries it: an unresolved anchor is *pruned* rather
  * than sent, and pruning widens, so without it a subject that has not arrived asks for every
  * TextBlock in the space.
@@ -2700,6 +2726,13 @@ const interpretNow: SchemaNode = {
   $queries: {
     spoken: {
       entity: 'TextBlock',
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: INTERPRETATION_SUBJECT },
+      limit: 1,
+      when: INTERPRETATION_SUBJECT,
+    },
+    typed: {
+      entity: 'CollectionBlock',
+      where: { kind: MESSAGE_KINDS },
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: INTERPRETATION_SUBJECT },
       limit: 1,
       when: INTERPRETATION_SUBJECT,
@@ -3073,8 +3106,14 @@ export const transcriptLines: SchemaNode = {
     transcript of the whole community, shown with confidence, for a frame or forever.
   */
   $queries: {
+    /*
+      A line has two shapes, and this is one window over both, in one order and one limit (see
+      `TRANSCRIPT_LINES`): a heard line is a bare `TextBlock` under the call, and a message typed
+      into the call chat is a `CollectionBlock` with `kind: 'message'` or `'reply'` under the call.
+      The message's own `TextBlock` is under the message, not under the call, so it is not read here.
+    */
     utterances: {
-      entity: 'TextBlock',
+      entity: ['TextBlock', 'CollectionBlock'],
       scope: {
         anchor: 'CollectionBlock',
         via: 'children',
@@ -3166,7 +3205,7 @@ export const transcriptLines: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'count(local.utterances)' },
+        condition: { $: `count(${TRANSCRIPT_LINES})` },
         then: {
           type: '$each',
           props: {
@@ -3185,7 +3224,7 @@ export const transcriptLines: SchemaNode = {
             */
             items: {
               $: timelineOrder(
-                `threadLines({ rows: local.utterances, newestFirst: !${TRANSCRIPT_FROM_START} })`,
+                `threadLines({ rows: ${TRANSCRIPT_LINES}, newestFirst: !${TRANSCRIPT_FROM_START} })`,
                 TRANSCRIPT_FROM_START,
                 TIMELINE_ORIENTATION,
               ),

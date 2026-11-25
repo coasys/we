@@ -6,6 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { resolveParts } from '@shared/registries/moduleParts';
+import { hostSourceBag } from '@shared/sources';
 import { callFeedView, feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
@@ -43,9 +44,11 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 // By path: the app shell does not depend on `@we/messages`, and a scenario only needs its reader.
-import { lineContent } from '../../../module-system/messages/src/index.ts';
+import { lineContent, threadLines } from '../../../module-system/messages/src/index.ts';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { callsList } from '../../../templates/views/src/views/CardsView/CallsList.ts';
+import { recordPage } from '../../../templates/views/src/views/RecordPage/index.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -1294,6 +1297,123 @@ const transcriptAt = (rows: number): Scenario => ({
         transcriptFromStart: false,
       },
     },
+  },
+});
+
+/**
+ * A call that holds one heard line and one typed message — the two shapes of a line in one call.
+ *
+ * - The heard line is a bare `TextBlock` directly under the call, as transcription writes it.
+ * - The typed message is a composition: a `CollectionBlock` with `kind: 'message'` under the call,
+ *   with its words in `textContent`, and its own `TextBlock` under it (not under the call).
+ *
+ * A reader of the call must show each line once, heard line first. It must not show the typed words
+ * a second time from the composition's own `TextBlock`. The cases `typedAndHeard*` check this on each
+ * surface that reads a call's lines.
+ */
+const MIXED_CALL = 'call-mixed';
+const HEARD_WORDS = 'Heard on the call before anybody typed.';
+const TYPED_WORDS = 'Typed into the call chat after that.';
+
+const mixedCallData = () => ({
+  tables: {
+    CollectionBlock: [
+      {
+        id: MIXED_CALL,
+        kind: 'call',
+        title: 'Mixed call',
+        author: SPEAKERS[0],
+        participants: [SPEAKERS[0], SPEAKERS[1]],
+        createdAt: '2026-09-01T09:00:00',
+      },
+      {
+        id: 'typed-message',
+        parentId: MIXED_CALL,
+        kind: 'message',
+        textContent: TYPED_WORDS,
+        source: 'typed',
+        author: SPEAKERS[1],
+        createdAt: '2026-09-01T09:02:00',
+      },
+    ],
+    TextBlock: [
+      {
+        id: 'heard-line',
+        parentId: MIXED_CALL,
+        text: HEARD_WORDS,
+        source: 'spoken',
+        author: SPEAKERS[0],
+        createdAt: '2026-09-01T09:01:00',
+      },
+      {
+        id: 'typed-message-words',
+        parentId: 'typed-message',
+        text: TYPED_WORDS,
+        source: 'typed',
+        author: SPEAKERS[1],
+        createdAt: '2026-09-01T09:02:00',
+      },
+    ],
+  },
+  relations: {
+    CollectionBlock: { children: { type: 'hasMany' as const, target: 'TextBlock', foreignKey: 'parentId' } },
+  },
+});
+
+const mixedCallProfiles = { profiles: SPEAKERS.map((did, i) => ({ did, name: `Peer ${i + 1}` })) };
+
+/** The transcript panel's lines, on the mixed call. */
+const typedAndHeardTranscript = (): Scenario => ({
+  node: panelScroll({ pin: 'end', jump: 'both', children: [transcriptLines] }),
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    // `threadLines` is a function the transcribe module lends (`contributes.functions`). The harness
+    // mounts no module registry, so the scenario gives it, as `TemplateProvider` does in the app.
+    $sources: { ...hostSourceBag(), threadLines },
+    modules: {
+      transcribe: {
+        collectionId: MIXED_CALL,
+        callOnScreenLive: false,
+        transcriptShown: 200,
+        transcriptFromStart: true,
+      },
+      call: { liveCalls: [] },
+    },
+  },
+});
+
+/** The calls list in the Cards view, with each card open, on the mixed call. */
+const typedAndHeardCallsList = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '400', width: '100%' },
+    $localState: {
+      contentType: { type: 'string', initial: 'calls' },
+      displayMode: { type: 'string', initial: 'expanded' },
+      sortDirection: { type: 'string', initial: 'desc' },
+      showEmptyCalls: { type: 'boolean', initial: false },
+    },
+    children: [callsList],
+  },
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    routeStore: { params: {}, segments: [] },
+    shapeStore: { interpretationCandidates: [] },
+    recordStore: { displays: {} },
+    modules: { call: { liveCalls: [] } },
+  },
+});
+
+/** The call's own record page, on the mixed call. */
+const typedAndHeardRecordPage = (): Scenario => ({
+  node: recordPage,
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    routeStore: { params: { id: MIXED_CALL }, segments: ['record', 'CollectionBlock'] },
+    recordStore: { displays: {} },
   },
 });
 
@@ -3003,6 +3123,9 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),
+  'calls:typed-and-heard-transcript': typedAndHeardTranscript,
+  'calls:typed-and-heard-list': typedAndHeardCallsList,
+  'calls:typed-and-heard-record': typedAndHeardRecordPage,
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
   'cards:counts': countControls,

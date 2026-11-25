@@ -12,7 +12,7 @@
  * through `responses`, and a heard line turning `corrected` when somebody mends it. A heard line is a
  * bare `TextBlock`; the transcript writes those.
  */
-import { ATTACHMENTS_KIND, MESSAGE_KIND, MESSAGE_KINDS, REPLY_KIND, sourceAfterEdit, TYPED } from '@we/messages';
+import { ATTACHMENTS_KIND, mendLine, MESSAGE_KIND, REPLY_KIND, sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { ATTACH_MAX_BYTES } from '@we/schema-kit';
 
@@ -366,23 +366,13 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     editUtterance: action(async (id: string, text: string, was?: string) => {
       const words = String(text ?? '').trim();
       if (!id || !words || !updateEntity) return;
-      const source = sourceAfterEdit(was);
       /*
-        A message composition holds its words twice: in the `TextBlock` it holds, and in its own
-        `textContent`, which readers draw first. Both change. A bare line is its own `TextBlock`.
+        A message composition holds its words two times: in the `TextBlock` it holds, and in its own
+        `textContent`, which readers draw first. `mendLine` changes both. A bare line is its own `TextBlock`.
       */
-      const [message] =
-        (await records?.find?.('CollectionBlock', { where: { id, kind: MESSAGE_KINDS }, limit: 1 })) ?? [];
-      if (!message) {
-        await updateEntity('TextBlock', id, { text: words, ...(source ? { source } : {}) });
-        return;
-      }
-      const [part] =
-        (await records?.find?.('TextBlock', { within: id, order: { createdAt: 'asc' }, limit: 1, select: ['text'] })) ??
-        [];
-      if (typeof part?.id === 'string' && part.id)
-        await updateEntity('TextBlock', part.id, { text: words, ...(source ? { source } : {}) });
-      await updateEntity('CollectionBlock', id, { textContent: words, ...(source ? { source } : {}) });
+      const find: RecordsKernel['find'] | undefined =
+        typeof records?.find === 'function' ? (...args) => records.find(...args) : undefined;
+      await mendLine({ update: updateEntity, find }, id, words, sourceAfterEdit(was));
     }, 'Corrects the words on a line, marking a heard line as corrected.'),
     callFeedRoot: state(callRoot, 'The call whose Feed is drawn — the one shown most recently — or empty.'),
     callFeedRows: state(

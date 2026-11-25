@@ -9,9 +9,12 @@ nothing enforces any of it.
 CollectionBlock                    ← one call's transcript
   kind: 'call'                     ← what sort of collection this is
   mode: 'feed'                     ← many agents append here; never reconcile
-  children:  [TextBlock, …]        ← the utterances, in order
-                each carries: text, author (who said it), createdAt
-                and `thread`: every reply typed to it, at any depth
+  children:  [TextBlock | CollectionBlock, …]   ← the lines, in order
+                a heard line is a TextBlock: text, author (who said it), createdAt
+                a typed line is a message composition: a CollectionBlock with kind 'message'
+                  or 'reply', source 'typed', its words in `textContent`, its own TextBlock
+                  under it and, if files were sent, a CollectionBlock of kind 'attachments'
+                each line has `thread`: every reply typed to it, at any depth
   participants: [did, …]           ← who was present, including people who never spoke
   ↑ a response to the node the call was about, through `we://response` (WeNode.responses), and in
     that node's thread — or, for a call about nothing, a child of the space collection
@@ -86,12 +89,12 @@ this page is the contract, and a change to the shape means changing every row ab
 ## Reading it
 
 Drill down from the collection, and include each line's thread — the replies are there, not among
-the children:
+the children. Ask for both shapes of a line in one query, so they share one order and one window:
 
 ```ts
 {
   $query: {
-    entity: 'TextBlock',
+    entity: ['TextBlock', 'CollectionBlock'],  // a heard line, and a typed message
     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: <collection id> },
     order: { createdAt: 'desc' },  // the newest page, turned back the right way up when drawn
     limit: <window>,
@@ -99,6 +102,12 @@ the children:
   }
 }
 ```
+
+The same `where` goes to each entity of a union, so the query cannot keep only the message
+compositions. Keep them in the expression: `rows.filter(r, r.__subjectClass != 'CollectionBlock' ||
+r.kind in ['message', 'reply'])` (the views use `callLines` in `views/src/views/callLines.ts`). The
+words of a line are `text` on a `TextBlock` and `textContent` on a composition. Count the filtered
+rows, not the raw window, but use the raw window to tell whether there are more.
 
 Then `threadLines({ rows, newestFirst })` flattens the threads in, sorts by when each line was said,
 and gives each reply the quote of what it answers. The transcript panel reads exactly this, windowed

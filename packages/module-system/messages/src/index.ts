@@ -10,7 +10,9 @@
 export {
   ATTACHMENTS_KIND,
   isMessageComposition,
+  type LineRecords,
   lineText,
+  mendLine,
   MESSAGE_KIND,
   MESSAGE_KINDS,
   REPLY_KIND,

@@ -1,6 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { linkedRecords, loadMore, pageShell, RECORD_ROUTE_PATH } from '@we/template-kit';
 
+import { CALL_LINE_ENTITIES, callLines, lineWords } from '../callLines.ts';
+
 /**
  * A page for one record.
  *
@@ -278,6 +280,11 @@ const genericBody: SchemaNode = {
  */
 const TRANSCRIPT_PAGE = 100;
 const TRANSCRIPT_FIELD = 'transcriptShown';
+/**
+ * The lines in the page's window: heard lines and typed messages (see `callLines`). The "+" and
+ * `loadMore` read the window before this filter, because the limit applies to the window.
+ */
+const LINES = callLines('local.utterances');
 
 const callBody: SchemaNode = {
   type: 'Column',
@@ -285,7 +292,8 @@ const callBody: SchemaNode = {
   $localState: { [TRANSCRIPT_FIELD]: { type: 'number', initial: TRANSCRIPT_PAGE } },
   $queries: {
     utterances: {
-      entity: 'TextBlock',
+      // A heard line and a typed message are both lines of the call — see `callLines`.
+      entity: CALL_LINE_ENTITIES,
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: idExpr },
       order: { createdAt: 'asc' },
       limit: { $: `local.${TRANSCRIPT_FIELD}` },
@@ -318,8 +326,8 @@ const callBody: SchemaNode = {
             {
               $:
                 `count(local.utterances) >= local.${TRANSCRIPT_FIELD}` +
-                ' ? `· ${count(local.utterances)}+ utterances`' +
-                " : `· ${count(local.utterances)} ${plural(count(local.utterances), 'utterance', 'utterances')}`",
+                ` ? \`· \${count(${LINES})}+ utterances\`` +
+                ` : \`· \${count(${LINES})} \${plural(count(${LINES}), 'utterance', 'utterances')}\``,
             },
           ],
         },
@@ -339,14 +347,14 @@ const callBody: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'count(local.utterances)' },
+        condition: { $: `count(${LINES})` },
         then: {
           type: 'Column',
           props: { gap: '300', bg: 'surface', r: '400', border: '1px solid border', p: '400' },
           children: [
             {
               type: '$each',
-              props: { items: { $: 'local.utterances' }, as: 'line' },
+              props: { items: { $: LINES }, as: 'line' },
               children: [
                 {
                   type: '$agent',
@@ -384,7 +392,7 @@ const callBody: SchemaNode = {
                                 },
                               },
                             },
-                            { type: 'we-text', children: [{ $: 'line.text' }] },
+                            { type: 'we-text', children: [{ $: lineWords('line') }] },
                           ],
                         },
                       ],

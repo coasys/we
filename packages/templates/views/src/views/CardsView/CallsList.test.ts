@@ -40,13 +40,20 @@ function queries(node: unknown, found: Record<string, unknown>[] = []): Record<s
   return found;
 }
 
+/**
+ * A query that reads a call's lines. A line is a heard `TextBlock` or a typed message, which is a
+ * `CollectionBlock` (see `callLines`), so such a query asks for both entities.
+ */
+const readsLines = (q: Record<string, unknown>): boolean =>
+  Array.isArray(q.entity) ? q.entity.includes('TextBlock') : q.entity === 'TextBlock';
+
 describe('the calls list', () => {
   /**
    * Every read of a transcript is bounded — including the hoisted one, which is the expensive one
    * because it runs per card rather than per opened card.
    */
   it('bounds every transcript it reads', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = queries(callsList).filter(readsLines);
     expect(transcripts.length).toBeGreaterThan(0);
     for (const q of transcripts) expect(q.limit).toBeTypeOf('number');
   });
@@ -59,7 +66,7 @@ describe('the calls list', () => {
    * names the one call that is running, by record, so a list of past calls subscribes to nothing.
    */
   it('subscribes only to a call that is running', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = queries(callsList).filter(readsLines);
     for (const q of transcripts) {
       expect(q.subscribe).toEqual({ $: 'call.id in modules.call.liveCalls.map(c, c.recordId)' });
     }
@@ -97,9 +104,23 @@ describe('the calls list', () => {
    * quietly swap the cheap wrong count back in.
    */
   it('counts the transcript rather than everything parented to the call', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = queries(callsList).filter(readsLines);
     expect(transcripts.length).toBeGreaterThan(0);
     expect(json).not.toContain('count(call.children)');
+  });
+
+  /**
+   * And counts a message typed into the call chat as one line.
+   *
+   * A typed message is a composition: a `CollectionBlock` with `kind: 'message'` under the call, and
+   * its own `TextBlock` under it. Each read of the transcript asks for both entities, so the message
+   * is a line, and the message's own `TextBlock` is not a second one.
+   */
+  it('reads heard lines and typed messages in each transcript query', () => {
+    const transcripts = queries(callsList).filter(readsLines);
+    // The card's count and the opened transcript, at least.
+    expect(transcripts.length).toBeGreaterThanOrEqual(2);
+    for (const q of transcripts) expect(q.entity).toEqual(['TextBlock', 'CollectionBlock']);
   });
 });
 

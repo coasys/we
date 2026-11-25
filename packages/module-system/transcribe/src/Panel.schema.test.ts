@@ -268,8 +268,10 @@ describe('a transcript with nothing in it', () => {
   it('draws the window the reader’s way round, with the replies flattened in', () => {
     // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
     expect(linesJson).toContain(
-      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+      "? reverse(threadLines({ rows: local.utterances.filter(r, r.__subjectClass != 'CollectionBlock' || r.kind in ['message', 'reply']), newestFirst: !modules.transcribe.transcriptFromStart })) :",
     );
+    // One window over both shapes of a line: a heard TextBlock and a typed message composition.
+    expect(linesJson).toContain('"utterances":{"entity":["TextBlock","CollectionBlock"]');
     // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
     expect(linesJson).toContain('"include":{"thread":true}');
   });
@@ -1331,7 +1333,7 @@ describe('the interpretation panel', () => {
     const order = ['No models are set up here', 'Nothing is selected to interpret', 'Nothing has been said yet'];
 
     expect(json).toContain(`!${targets}.exists(t, t.selected) ? 'Nothing is selected to interpret'`);
-    expect(json).toContain("!count(local.spoken) ? 'Nothing has been said yet'");
+    expect(json).toContain("!count(local.spoken) && !count(local.typed) ? 'Nothing has been said yet'");
     // Tested in the order they rule each other out: a space with no models has nothing to tick, and
     // a call with nothing ticked cannot be fixed by waiting for somebody to speak.
     for (let i = 1; i < order.length; i += 1) {
@@ -1351,7 +1353,7 @@ describe('the interpretation panel', () => {
     expect(json).toContain('"spoken":{"entity":"TextBlock"');
     // Scoped to the call on screen, through the relation its utterances hang off.
     expect(json).toContain(`"via":"children","anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
-    expect(json).toContain('!count(local.spoken) || !');
+    expect(json).toContain('(!count(local.spoken) && !count(local.typed)) || !');
     // `when`, for the reason every scoped query here carries it: an unresolved anchor is pruned
     // rather than sent, and pruning widens to every TextBlock in the space.
     expect(json).toContain(`"limit":1,"when":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
@@ -1450,6 +1452,26 @@ describe('the interpretation panel', () => {
     const owner = findNode(interpretationPanel, (n) => declares(n.$queries, 'spoken'));
     expect(owner).toBeDefined();
     expect(JSON.stringify(owner)).toContain('!count(local.spoken)');
+  });
+
+  it('counts a message typed into the call as something said', () => {
+    /*
+      A message typed into the call chat is a composition: a CollectionBlock with `kind: 'message'`
+      (or `'reply'`) under the call, and not a TextBlock under the call. A call that holds only typed
+      messages has had something said in it, so Interpret now must not wait for a heard line.
+    */
+    const owner = findNode(interpretationPanel, (n) => declares(n.$queries, 'typed'));
+    expect(owner).toBeDefined();
+    const queries = owner!.$queries as Record<string, Record<string, unknown>>;
+    expect(queries.typed).toMatchObject({
+      entity: 'CollectionBlock',
+      where: { kind: ['message', 'reply'] },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: INTERPRETATION_SUBJECT_EXPR } },
+      limit: 1,
+      when: { $: INTERPRETATION_SUBJECT_EXPR },
+    });
+    expect(json).toContain("!count(local.spoken) && !count(local.typed) ? 'Nothing has been said yet'");
+    expect(json).toContain('(!count(local.spoken) && !count(local.typed)) || !');
   });
 
   it('gives every named region in the panel the same heading treatment', () => {

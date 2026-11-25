@@ -12,6 +12,8 @@ import {
   recordLink,
 } from '@we/template-kit';
 
+import { CALL_LINE_ENTITIES, callLines, lineWords } from '../callLines.ts';
+
 /**
  * Recorded calls in this space.
  *
@@ -63,7 +65,8 @@ const CALL_IS_LIVE = 'call.id in modules.call.liveCalls.map(c, c.recordId)';
 const UTTERANCE_CAP = 200;
 
 const utterancesQuery = {
-  entity: 'TextBlock',
+  // A heard line and a typed message are both lines of the call — see `callLines`.
+  entity: CALL_LINE_ENTITIES,
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
   /*
     Bounded, because this is one query PER CARD in a list of up to twenty.
@@ -77,8 +80,13 @@ const utterancesQuery = {
   limit: UTTERANCE_CAP,
   subscribe: { $: CALL_IS_LIVE },
 };
-/** Hoisted on each call's card as `utterances`. */
+/**
+ * Hoisted on each call's card as `utterances`: the window, before {@link callLines} keeps the lines.
+ * The cap check reads it, because the limit applies to the window.
+ */
 const utterances = { $: 'local.utterances' };
+/** The lines in the card's window — what the card counts. */
+const lines = { $: callLines('local.utterances') };
 
 /** What a call's card subscribes to. The findings are per-model and hoisted below. */
 const callQueries = { utterances: utterancesQuery };
@@ -260,7 +268,7 @@ export const callsList: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'local.showEmptyCalls || count(local.utterances)' },
+                condition: { $: `local.showEmptyCalls || count(${lines.$})` },
                 then: cardShell({
                   drag: {
                     entity: 'CollectionBlock',
@@ -422,7 +430,7 @@ export const callsList: SchemaNode = {
                             conversation plainly went on would be a quiet lie about coverage, which
                             is the one thing this figure exists to tell the truth about.
                           */
-                                text: expr`count(${utterances}) >= ${UTTERANCE_CAP} ? '${UTTERANCE_CAP}+ utterances' : count(${utterances}) + plural(count(${utterances}), ' utterance', ' utterances')`,
+                                text: expr`count(${utterances}) >= ${UTTERANCE_CAP} ? '${UTTERANCE_CAP}+ utterances' : count(${lines}) + plural(count(${lines}), ' utterance', ' utterances')`,
                               },
                             },
                             /*
@@ -929,33 +937,39 @@ export const callsList: SchemaNode = {
                         {
                           type: 'Column',
                           props: { gap: '300' },
+                          /*
+                            Drilled down from the call rather than hydrated with `include` — see the note
+                            on the outer query. `children` still arrives as an array of ids, but the ids
+                            alone cannot render the text.
+
+                            Hoisted here rather than inline on the `$each`, so that the rows can go
+                            through `callLines`: the query reads heard lines and typed messages in one
+                            window, and only the expression can keep the `CollectionBlock` rows that are
+                            messages.
+
+                            Oldest first, because a transcript read backwards is not a transcript.
+                          */
+                          $queries: {
+                            transcript: {
+                              entity: CALL_LINE_ENTITIES,
+                              scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
+                              order: { createdAt: 'asc' },
+                              /*
+                                The opened transcript, bounded and read as a settled record.
+
+                                The oldest N rather than the newest, unlike the panel's live
+                                window: this is a call somebody opened to READ, so it starts
+                                where the conversation started. A long one is followed in the
+                                panel, which is the surface built for that.
+                              */
+                              limit: UTTERANCE_CAP,
+                              subscribe: { $: CALL_IS_LIVE },
+                            },
+                          },
                           children: [
                             {
                               type: '$each',
-                              // Drilled down from the call rather than hydrated with `include` — see the note
-                              // on the outer query. `children` still arrives as an array of ids, but the ids
-                              // alone cannot render the text.
-                              // Oldest first, because a transcript read backwards is not a transcript.
-                              props: {
-                                items: {
-                                  $query: {
-                                    entity: 'TextBlock',
-                                    scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
-                                    order: { createdAt: 'asc' },
-                                    /*
-                                      The opened transcript, bounded and read as a settled record.
-
-                                      The oldest N rather than the newest, unlike the panel's live
-                                      window: this is a call somebody opened to READ, so it starts
-                                      where the conversation started. A long one is followed in the
-                                      panel, which is the surface built for that.
-                                    */
-                                    limit: UTTERANCE_CAP,
-                                    subscribe: { $: CALL_IS_LIVE },
-                                  },
-                                },
-                                as: 'utterance',
-                              },
+                              props: { items: { $: callLines('local.transcript') }, as: 'utterance' },
                               children: [
                                 /*
                             Attribution is free here and needs no diarization: each agent transcribes only
@@ -975,7 +989,11 @@ export const callsList: SchemaNode = {
                                   // block is flushed as the speaker finishes.
                                   timestamp: { $: 'utterance.createdAt' },
                                   children: [
-                                    { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                                    {
+                                      type: 'we-text',
+                                      props: { color: 'text' },
+                                      children: [{ $: lineWords('utterance') }],
+                                    },
                                   ],
                                 }),
                               ],

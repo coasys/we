@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isMessageComposition, lineText, threadLines } from './index.ts';
+import { isMessageComposition, lineText, mendLine, threadLines } from './index.ts';
 
 /*
   A message is a composition (a CollectionBlock with `kind: message`, or `reply`) that holds its words
@@ -57,5 +57,54 @@ describe('a conversation of bare lines and message compositions', () => {
     ]);
     const quoted = Object.fromEntries(lines.map((line) => [line.id, (line.replyTo as { text?: string })?.text]));
     expect(quoted).toMatchObject({ r1: 'the plan is attached', r2: 'the plan is attached', r3: 'lunch at 1?' });
+  });
+});
+
+describe('mending a line', () => {
+  type Call = [string, ...unknown[]];
+  const recordsWith = (message: boolean) => {
+    const calls: Call[] = [];
+    return {
+      calls,
+      records: {
+        update: async (...args: unknown[]) => {
+          calls.push(['update', ...args]);
+        },
+        find: async (entity: string, ...rest: unknown[]) => {
+          calls.push(['find', entity, ...rest]);
+          if (!message) return [];
+          return entity === 'CollectionBlock' ? [{ id: 'msg', kind: 'message' }] : [{ id: 'msg-words' }];
+        },
+      },
+    };
+  };
+
+  it('changes the words of a message composition in its TextBlock and in its textContent, in the target', async () => {
+    const { calls, records } = recordsWith(true);
+    const target = { dataset: 'call-space' };
+
+    await mendLine(records, 'msg', 'the fixed words', 'corrected', target);
+
+    expect(calls.filter((c) => c[0] === 'update')).toEqual([
+      ['update', 'TextBlock', 'msg-words', { text: 'the fixed words', source: 'corrected' }, target],
+      ['update', 'CollectionBlock', 'msg', { textContent: 'the fixed words', source: 'corrected' }, target],
+    ]);
+    expect(calls.filter((c) => c[0] === 'find').every((c) => c.at(-1) === target)).toBe(true);
+  });
+
+  it('changes the text of a bare line, and gives no target when it has none', async () => {
+    const { calls, records } = recordsWith(false);
+
+    await mendLine(records, 'line', 'the fixed words', undefined);
+
+    expect(calls.filter((c) => c[0] === 'update')).toEqual([
+      ['update', 'TextBlock', 'line', { text: 'the fixed words' }],
+    ]);
+  });
+
+  it('writes a bare line when it cannot find', async () => {
+    const calls: unknown[][] = [];
+    await mendLine({ update: async (...args: unknown[]) => void calls.push(args) }, 'line', 'words', undefined);
+    expect(calls).toEqual([['TextBlock', 'line', { text: 'words' }]]);
   });
 });

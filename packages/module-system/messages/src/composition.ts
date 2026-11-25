@@ -21,6 +21,8 @@
  * every line a call hears. Readers accept both. Use {@link lineText} to get the words of either.
  */
 
+import type { DatasetTarget, RecordsKernel } from '@we/module-shared';
+
 type Row = Record<string, unknown>;
 
 /** `kind` of a message composition said into a conversation. */
@@ -42,4 +44,48 @@ export function lineText(row: Row | null | undefined): string {
   if (!row) return '';
   if (typeof row.text === 'string' && row.text) return row.text;
   return isMessageComposition(row) && typeof row.textContent === 'string' ? row.textContent : '';
+}
+
+/** The record reads and writes {@link mendLine} uses: `find` and `update` of a records kernel. */
+export interface LineRecords {
+  update: RecordsKernel['update'];
+  find?: RecordsKernel['find'];
+}
+
+/**
+ * Write new words onto a line, bare or composition.
+ *
+ * - A message composition holds its words two times: in its first `TextBlock` and in its own
+ *   `textContent`, which readers draw first. This changes both.
+ * - A bare line is its own `TextBlock`, so this changes its `text`.
+ * - `source` goes with the words, when the edit changes how the line arrived (see `sourceAfterEdit`).
+ *
+ * The line is a composition when a `CollectionBlock` with a message kind has its id. When `find` is
+ * not there, the line is written as a bare line.
+ */
+export async function mendLine(
+  records: LineRecords,
+  id: string,
+  words: string,
+  source: string | undefined,
+  target?: DatasetTarget,
+): Promise<void> {
+  const marked = source ? { source } : {};
+  // The target only when there is one, so a caller that gives none makes the same calls as before.
+  const at: [] | [DatasetTarget] = target ? [target] : [];
+  const [message] =
+    (await records.find?.('CollectionBlock', { where: { id, kind: MESSAGE_KINDS }, limit: 1 }, ...at)) ?? [];
+  if (!message) {
+    await records.update('TextBlock', id, { text: words, ...marked }, ...at);
+    return;
+  }
+  const [part] =
+    (await records.find?.(
+      'TextBlock',
+      { within: id, order: { createdAt: 'asc' }, limit: 1, select: ['text'] },
+      ...at,
+    )) ?? [];
+  if (typeof part?.id === 'string' && part.id)
+    await records.update('TextBlock', part.id, { text: words, ...marked }, ...at);
+  await records.update('CollectionBlock', id, { textContent: words, ...marked }, ...at);
 }
