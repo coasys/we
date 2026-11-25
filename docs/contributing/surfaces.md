@@ -279,7 +279,7 @@ This surface has the strictest registration on the page, and both halves fail th
 failing quietly, which is deliberate: a store member is vocabulary, and undeclared vocabulary is
 either invisible or dangerous.
 
-- **Lives in** `packages/app-shell/src/shared/stores/`, written against `@we/reactivity`'s port; stores not yet converted are still in `src/frameworks/solid/stores/`
+- **Lives in** `packages/app-shell/src/shared/stores/`, written against `@we/reactivity`'s port; a store doing several jobs composes parts from a subdirectory (`space/`, `shell/`, `records/`)
 - **Conventions** [app-shell/CONVENTIONS.md](../../packages/app-shell/CONVENTIONS.md) — the composition order in `BootController` is load-bearing: a store may read stores built before it, never after
 - **Register** classify it in [`templateSurface.ts`](../../packages/app-shell/src/shared/registries/templateSurface.ts) — an unclassified member fails `templateSurface.test.ts` — **and** describe it in `packages/ai-context/src/fragments/stores.ts`, where a stale entry fails `generate-context`
 - **Verify** `pnpm --filter @we/app-shell test`, then `generate-context`
