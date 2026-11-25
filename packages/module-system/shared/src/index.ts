@@ -38,6 +38,7 @@ export type {
   ClocksKernel,
   ComposedDocument,
   CopiedIn,
+  CreateDocumentOptions,
   DocumentAccess,
   KernelName,
   LanguageModelKernel,

@@ -118,6 +118,31 @@ export interface WrittenDocument {
 }
 
 /**
+ * Where a new document goes and what it is. Every field is optional: with none, a post in the space
+ * collection of the dataset the accessor is pinned to, as the composer's save writes one.
+ *
+ * A message is a document too — a line in a call or a channel is a collection holding its blocks,
+ * written by this same path — and it is the reason the placement fields exist: a line goes in a
+ * call (`container`) or answers another line (`respondsTo`), says how it arrived (`fields.source`),
+ * names the run that wrote it when a model transcribed it, and keeps no stored copy of itself
+ * (`storeDocument: false`), since a line is read with its parts.
+ */
+export interface CreateDocumentOptions extends DatasetTarget {
+  /** What it is — `'post'` (the default), `'message'`, `'reply'`, `'note'`. */
+  kind?: string;
+  /** The collection it is a child of. Not with `respondsTo`. */
+  container?: string;
+  /** The record it answers: it is that record's response, threaded under its subject. */
+  respondsTo?: string;
+  /** The `ModelRun` that wrote it, when a model did (a transcribed line). */
+  generatedBy?: string;
+  /** The root's own scalars beside `kind` — `source`, for a message. Fields the root does not declare are dropped. */
+  fields?: Record<string, string>;
+  /** Whether the root keeps a stored copy of the whole document. Default true; false for a message. */
+  storeDocument?: boolean;
+}
+
+/**
  * Composed documents in one dataset: posts, notes, anything the composer writes.
  *
  * ## Why this is not `create` with a different entity
@@ -137,7 +162,7 @@ export interface WrittenDocument {
  */
 export interface DocumentAccess {
   /** Write a new document. `kind` defaults to `'post'`. `null` if there was nowhere to write it. */
-  create: (document: ComposedDocument, options?: { kind?: string }) => Promise<WrittenDocument | null>;
+  create: (document: ComposedDocument, options?: CreateDocumentOptions) => Promise<WrittenDocument | null>;
   /**
    * Save an edit to one. Refused for a collection whose `mode` is not a single author's
    * (`document`) — reconciling a feed would delete every child the editor never loaded.
@@ -222,8 +247,8 @@ export interface RecordsKernel {
   onCopiedIn: (cb: (event: CopiedIn) => void) => () => void;
   /**
    * Composed documents in the space on screen — a post, written or read the way the composer's own
-   * save writes one. Always the space on screen: a document is written because somebody composed
-   * it here, and there is no module whose work outlives the view that also writes whole posts.
+   * save writes one — or in the dataset `create` names, as every other write here may: a call's
+   * lines are written into the call's space however long the call outlives the view of it.
    */
   documents: DocumentAccess;
 }

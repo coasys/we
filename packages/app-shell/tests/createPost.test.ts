@@ -19,6 +19,7 @@ import { FEED_MANIFEST } from '@we/module-feed';
 import { pollsModule } from '@we/module-polls';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { documentAccess } from '../src/shared/agentData';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 
@@ -250,5 +251,38 @@ describe('feed.reply', () => {
     expect(ids((await read('TextBlock', first)).responses)).toEqual([second]);
     // The whole conversation under the line is one read of its thread.
     expect(ids((await read('TextBlock', line.id)).thread).sort()).toEqual([first, second].sort());
+  });
+});
+
+describe('a message, through the documents a module is lent', () => {
+  it('goes in the dataset it names, in its call, says how it arrived, and keeps no stored copy', async () => {
+    const elsewhere = { id: 'ds-posts', sharedUri: 'we://shared/posts', handle: dataset } as never;
+    const documents = documentAccess(
+      (uri) => (uri === 'we://shared/posts' ? elsewhere : null),
+      () => ME,
+    );
+    const written = await documents.create([paragraph('Data, can you take the notes?')], {
+      kind: 'message',
+      container: channel.id,
+      fields: { source: 'spoken', notAField: 'dropped' },
+      storeDocument: false,
+      dataset: 'we://shared/posts',
+    });
+    expect(written).not.toBeNull();
+    const message = await read('CollectionBlock', written!.id);
+    expect(message).toMatchObject({
+      kind: 'message',
+      mode: 'document',
+      source: 'spoken',
+      textContent: 'Data, can you take the notes?',
+    });
+    expect(message.editorState ?? null).toBeNull();
+    expect(message).not.toHaveProperty('notAField');
+    expect(ids((await read('CollectionBlock', channel.id)).children)).toEqual([written!.id]);
+    const [text] = ids(message.children);
+    expect((await read('TextBlock', text)).text).toBe('Data, can you take the notes?');
+
+    // A dataset nobody can name is refused, not written to the space on screen.
+    expect(await documents.create([paragraph('lost')], { kind: 'message', dataset: 'we://nowhere' })).toBeNull();
   });
 });

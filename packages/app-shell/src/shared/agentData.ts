@@ -27,7 +27,7 @@ export interface WriteTarget {
  * with a promise, for a dataset that is still coming up.
  */
 export function documentAccess(
-  target: () => WriteTarget | null | Promise<WriteTarget | null>,
+  target: (dataset?: string) => WriteTarget | null | Promise<WriteTarget | null>,
   invoker: () => string | undefined,
 ): DocumentAccess {
   const collection = async (handle: DatasetProxy, id: string) => CollectionBlock.findOne(handle, { where: { id } });
@@ -35,11 +35,12 @@ export function documentAccess(
     // Through `core.createPost`, as the composer's save and an agent's post are: the agent acting
     // is whoever is signed in, as for every write a module makes.
     create: async (document, options) => {
-      const ds = await target();
+      const { dataset, kind = 'post', ...placed } = options ?? {};
+      const ds = await target(dataset);
       if (!ds) return null;
       const by = invoker();
       if (!by) throw new Error('Sign in to write this.');
-      const id = await writePost(ds.handle, document as ContentInput, { invoker: by, kind: options?.kind ?? 'post' });
+      const id = await writePost(ds.handle, document as ContentInput, { invoker: by, kind, ...placed });
       if (!id) return null;
       const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
       return { id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id }) };
@@ -140,6 +141,7 @@ export function agentDataKernel(personal: PersonalSpaceSource, writes: RecordWri
       if (!ds) throw new Error(`${name}: your personal space is not open yet`);
       return writes.run(ds.handle, name, args);
     },
-    documents: documentAccess(target, writes.invoker),
+    // This agent's own space only: a document naming another dataset is not this kernel's to write.
+    documents: documentAccess((dataset) => (dataset ? null : target()), writes.invoker),
   };
 }
