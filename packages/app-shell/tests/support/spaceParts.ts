@@ -78,6 +78,8 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
     isWeSpace: () => current() !== null,
     currentDatasetEntities: () => [],
     rootDataset: root,
+    personalDataset: () => null,
+    testDataset: () => null,
     globalDataset: () => null,
     globalSpaceId: () => null,
     marketplaceId: () => null,

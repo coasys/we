@@ -29,6 +29,8 @@ export type SpaceDatasets = Pick<
   | 'isWeSpace'
   | 'currentDatasetEntities'
   | 'rootDataset'
+  | 'personalDataset'
+  | 'testDataset'
   | 'globalDataset'
   | 'globalSpaceId'
   | 'marketplaceId'
