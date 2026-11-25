@@ -26,56 +26,69 @@
  *
  * Mirrors the main template system's RouteStore + <Router>:
  * - createShellRouteStore makes the store, once per overlay, where the overlay is built
- * - ShellRouterRoot is mounted as the <MemoryRouter> root, is handed that store, and calls
- *   useNavigate()/useLocation() to populate it — exactly as the layout does for the main Router.
+ * - the host's router binding (`ShellRouterRoot` under Solid, mounted as the <MemoryRouter> root) is
+ *   handed that store and fills it from the router's location — exactly as the layout does for the
+ *   main Router.
  *
- * Usage in TemplateLayout:
- *   const shellRouteStore = createShellRouteStore();
- *   <MemoryRouter root={(p) => <ShellRouterRoot store={shellRouteStore}>…</ShellRouterRoot>}>…</MemoryRouter>
- *   // pass shellRouteStore as routeStore in shellStores bag
+ * Written against the reactivity port and nothing else, so it runs under any host.
  */
+import type { ReactivityPort } from '@we/reactivity';
+
 import {
   type NavigateFunction,
   type NavigateOptions,
   queryString,
   resolveNavigation,
   type RouteStore,
-} from '@shared/stores/RouteStore';
-import { useLocation, useNavigate } from '@solidjs/router';
-import { createEffect, createMemo, createSignal, JSX, onCleanup, onMount, ParentProps, untrack } from 'solid-js';
-
-import { useStore } from './useStore';
+} from './RouteStore';
 
 /**
- * The shell's store, plus the one setter only {@link ShellRouterRoot} may call.
+ * The shell's store, plus the one setter only the host's router binding may call.
  *
  * The query string has to come from the MemoryRouter's location rather than `window.location`,
  * which is the whole reason this store exists separately: the overlay's URL is deliberately not
- * the browser's. Everything but {@link ShellRouterRoot} reads it as a {@link RouteStore}.
+ * the browser's. Everything but the binding reads it as a {@link RouteStore}.
+ *
+ * A type alias rather than an interface: it is `routeStore` to the overlay's templates, not a store
+ * of its own, so it is not described to them under a name of its own.
  */
-interface ShellRouteStore extends RouteStore {
+export type ShellRouteStore = RouteStore & {
   setSearch: (search: string) => void;
-}
+};
 
 /**
- * The overlay's route store, made by whatever renders the overlay and handed to its
- * {@link ShellRouterRoot}. The signals inside start empty; ShellRouterRoot fills them once it is
- * mounted inside the MemoryRouter.
+ * The overlay's route store, made by whatever renders the overlay and handed to its router
+ * binding. The signals inside start empty; the binding fills them once it is mounted inside the
+ * MemoryRouter.
  */
-export function createShellRouteStore(): ShellRouteStore {
-  const [currentPath, setCurrentPath] = createSignal('/');
-  const [search, setSearch] = createSignal('');
-  const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
+export function createShellRouteStore({ reactivity }: { reactivity: ReactivityPort }): ShellRouteStore {
+  const { signal, memo, untrack } = reactivity;
+  const [currentPath, writeCurrentPath] = signal('/');
+  const [search, writeSearch] = signal('');
+  const [navigateFunction, setNavigateFunction] = signal<NavigateFunction | null>(null);
+  /*
+    The router reports its location on every move, path and query apart, so most reports repeat one
+    of them. Compared here rather than left to the signal, because whether an equal write wakes the
+    readers of `segments` and `params` is not something the port promises.
+  */
+  const setCurrentPath = (path: string) => {
+    if (untrack(currentPath) !== path) writeCurrentPath(path);
+  };
+  const setSearch = (next: string) => {
+    if (untrack(search) !== next) writeSearch(next);
+  };
 
   /** Lend the overlay router's `navigate`, and take it back — see `RouteStore.setNavigateFunction`. */
   function provideNavigate(navigate: NavigateFunction): () => void {
-    setNavigateFunction(() => navigate);
-    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+    setNavigateFunction(navigate);
+    return () => {
+      if (untrack(navigateFunction) === navigate) setNavigateFunction(null);
+    };
   }
-  const segments = createMemo(() => currentPath().split('/').filter(Boolean));
-  const params = createMemo(() => Object.fromEntries(new URLSearchParams(search())));
+  const segments = memo(() => currentPath().split('/').filter(Boolean));
+  const params = memo(() => Object.fromEntries(new URLSearchParams(search())));
   // As `RouteStore.page`: the path, and the record the page is about.
-  const page = createMemo(() => {
+  const page = memo(() => {
     const id = params().id;
     return id ? `${currentPath()}?${queryString({ id })}` : currentPath();
   });
@@ -155,52 +168,4 @@ export function createShellRouteStore(): ShellRouteStore {
   };
 
   return store;
-}
-
-/**
- * Mount as the `root` prop of <MemoryRouter>. Calls useNavigate()/useLocation()
- * from inside the router context and wires them into the ShellRouteStore signals.
- */
-export function ShellRouterRoot(props: ParentProps<{ store: ShellRouteStore }>): JSX.Element {
-  // The overlay's store for the overlay's life: another overlay is another ShellRouterRoot.
-  const store = untrack(() => props.store);
-  const shell = useStore('shellStore');
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  /*
-    Claimed synchronously, here in setup, rather than inside `onMount`.
-
-    Effects run in creation order and `onMount` is one of them, so the location effect below fires
-    first — with the *fresh* router's `/`, since a remounted `MemoryRouter` starts there. Asking
-    afterwards therefore returned `/`: the answer had been overwritten by the question. Reading it
-    before any effect exists is what makes the restore survive its own bookkeeping.
-  */
-  const restoreTo = shell.takePendingPath();
-
-  // The overlay's own router, taken back when the overlay closes — see `RouteStore`, which had the
-  // same slot and the same missing half.
-  onCleanup(store.setNavigateFunction(navigate));
-  createEffect(() => {
-    store.setCurrentPath(location.pathname);
-    // Reported upwards on every move, because this store does not outlive the overlay and the
-    // question "where was I" is asked after it has already been destroyed. See `rememberShellPath`.
-    shell.rememberShellPath(location.pathname + location.search);
-  });
-  createEffect(() => store.setSearch(location.search));
-
-  // A control outside the overlay can ask for a page inside it — see `ShellStore.openShellView`.
-  // Claimed here rather than by the opener because this is the first moment `navigate` exists, and
-  // taken rather than read so a later open with no path does not replay the last one.
-  //
-  // With nothing pending this returns where the overlay was last standing, which is what makes a
-  // remount survivable: `TemplateLayout` hosts this router, so rebuilding the main route table —
-  // adding or removing a section, switching template — takes the overlay down and a fresh
-  // `MemoryRouter` starts at `/`. Without this you were on a space's settings page and are now on
-  // the account page, having asked for neither.
-  onMount(() => {
-    if (restoreTo && restoreTo !== location.pathname + location.search) navigate(restoreTo, { replace: true });
-  });
-
-  return <>{props.children}</>;
 }

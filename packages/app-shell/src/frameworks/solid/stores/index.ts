@@ -24,7 +24,8 @@ export {
 export { type PresenceStore, type PresentAgent, createPresenceStore } from './PresenceStore';
 export { type ShellStore, createShellStore } from './ShellStore';
 export { type ChatOpen, type ChatStore, createChatStore } from './ChatStore';
-export { createShellRouteStore, ShellRouterRoot } from './ShellRouteStore';
+export { createShellRouteStore } from '../../../shared/stores/ShellRouteStore';
+export { ShellRouterRoot } from '../layouts/ShellRouterRoot';
 export {
   type BundleStore,
   createBundleStore,

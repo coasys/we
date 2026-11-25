@@ -1,5 +1,6 @@
 /**
- * The shell overlay's query params.
+ * The shell overlay's router binding: `ShellRouterRoot` filling the overlay's route store from a real
+ * `MemoryRouter`. The store's own behaviour, under both reactivity ports, is `shellRouteStore.test.ts`.
  *
  * `ShellRouteStore` implements the same `RouteStore` contract the main router does, but over a
  * `MemoryRouter` — the overlay's URL is deliberately not the browser's, so profile and settings
@@ -13,11 +14,13 @@
  */
 import { createMemoryHistory, MemoryRouter, Route } from '@solidjs/router';
 import { render, waitFor } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
+import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
 import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
+import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';
 
 /** A stand-in for the store above the overlay, mutable so a test can steer it. */
 const shellMock = {
@@ -47,7 +50,7 @@ async function mountStore(initial = '/settings'): Promise<RouteStore> {
 
   render(() => {
     // Made where the overlay is built, as `TemplateLayout` makes it, and handed to its router root.
-    const shellRoute = createShellRouteStore();
+    const shellRoute = createShellRouteStore({ reactivity: solidReactivity });
     store = shellRoute;
     return (
       <StoreRegistryContext.Provider value={stores}>

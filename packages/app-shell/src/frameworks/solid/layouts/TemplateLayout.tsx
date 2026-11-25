@@ -28,15 +28,17 @@ import { resolveParts } from '@shared/registries/moduleParts';
 import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
+import { createShellRouteStore } from '@shared/stores/ShellRouteStore';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
+import { ShellRouterRoot } from '@solid/layouts/ShellRouterRoot';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { createShellRouteStore, ShellRouterRoot } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -113,7 +115,7 @@ function ShellOverlayInner(props: {
   view: ShellViewEntry;
 }) {
   // The overlay's own router state, for this overlay's life: another view is another overlay.
-  const shellRouteStore = createShellRouteStore();
+  const shellRouteStore = createShellRouteStore({ reactivity: solidReactivity });
   // The overlay is its own surface: it is a sibling of the template's box, not inside it, so a
   // settings page adapts to the overlay's width rather than to whatever the space behind it is.
   const overlaySurface = createSurface();
