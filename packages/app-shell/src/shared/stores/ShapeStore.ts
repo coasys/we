@@ -4,9 +4,10 @@
  * Owns three things:
  *
  * 1. **The adoption rail.** On every switch into a WE space, the space's models are read through its
- *    backend's `SchemaPort.shapes` (a `Shape` record per model by default), validated through the same gate module manifests pass
- *    (`validateManifest`, against core vocabulary + sibling shapes + foreign entities), compiled
- *    and registered *for that dataset only*, and their SHACL ensured into the space — after which
+ *    backend's `SchemaPort.shapes` (a `Shape` record per model by default), validated through the
+ *    same gate module manifests pass (`validateManifest`, against core vocabulary + sibling shapes
+ *    + foreign entities — `shapeViewsOf`), compiled and registered *for that dataset only*, and
+ *    their schema installed into the space — after which
  *    `$query { entity: "<ShapeName>" }`, derived forms and extraction all work through machinery
  *    that already existed. Where each model is kept — a manifest document, or the backend's own
  *    schema read back as one — is the store's; everything here speaks in manifests.
@@ -19,33 +20,34 @@
  * 3. **The hint editor.** Per-space tuning of interpretation hints, for core vocabulary (TaskBlock,
  *    EventBlock) and space shapes alike, through `SchemaPort.interpretationHints` — with the
  *    customized/reset lifecycle that decides whether release improvements still flow.
+ *
+ * Written against the reactivity port. The rules each job applies — which models stand, what may
+ * be interpreted, what the generate button would do, what a hint editor opens on — are plain
+ * functions beside it in `shared/shapes/`; this file decides when they are asked.
  */
-import { hostSlot } from '@shared/hostSlot';
 import {
   type DatasetHandle,
-  type EntityManifest,
-  interpretableEntities,
-  manifestEntries,
   ModuleSchemasRefused,
-  namePropertyOf,
   type ShapeInput,
   type ShapeStore as ShapeStorage,
   trace,
   validateManifest,
 } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import { createJsonShapeStore, getRegisteredEntityNames, Shape } from '@we/entities';
-import { CORE_MANIFEST } from '@we/entities/manifest';
 import { latest } from '@we/module-shared';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { BundleRecordType } from '@we/schema-shared';
-import { Accessor, batch, createEffect, createMemo, createSignal } from 'solid-js';
 
+import { generateShapeDraft as runShapeGeneration, type ShapeGenerationTransport } from '../ai/shapeGeneration';
+import { distinctSignal } from '../distinctSignal';
+import { hostSlot } from '../hostSlot';
 import {
-  generateShapeDraft as runShapeGeneration,
-  type ShapeGenerationTransport,
-} from '../../../shared/ai/shapeGeneration';
-import { hintToDisplay } from '../../../shared/shapes/hintEditor';
-import { foreignInterpretationCandidates } from '../../../shared/shapes/interpretationCandidates';
+  declaredHintsOf,
+  type HintEditorState,
+  hintEditorStateOf,
+  hintEntitiesOf,
+  type HintEntityView,
+} from '../shapes/hintEditor';
 import {
   additiveViolations,
   authoredFields,
@@ -54,108 +56,33 @@ import {
   emptyDraftRelationship,
   emptyShapeDraft,
   type GeneratedOutput,
-  isTouched,
   manifestToDraft,
-  memberSignature,
   type ShapeDraft,
   type ShapeDraftMember,
   syncDerived,
-} from '../../../shared/shapes/shapeDraft';
-import type { StoreRegistry } from './useStore';
-
-/** A we-select option row: icon drawn beside the label, group rendered once as a heading. */
-export interface RelationshipTargetOption {
-  label: string;
-  value: string;
-  icon?: string;
-  group?: string;
-}
-
-/**
- * The block composer's own iconography (BlockMenu.tsx), so a block is drawn the same way wherever
- * it is named. Blocks the composer has no insert entry for get the nearest documented icon.
- */
-export const BLOCK_ICONS: Record<string, string> = {
-  AudioBlock: 'speaker-high',
-  CalloutBlock: 'megaphone',
-  CodeBlock: 'code',
-  // A stack of rows with one more arriving: a collection is a sequence of blocks somebody adds to.
-  // `squares-four` is the app's glyph for "some node, kind unknown" — it is what `nodeTypeIcon`
-  // falls back to — so a collection drawn with it was indistinguishable from a thing nothing knew
-  // anything about.
-  CollectionBlock: 'rows-plus-bottom',
-  DividerBlock: 'minus',
-  EmbedBlock: 'browser',
-  EventBlock: 'calendar',
-  FileBlock: 'paperclip',
-  ImageBlock: 'image',
-  LinkBlock: 'link',
-  LocationBlock: 'map-pin',
-  // Not a block, but drawn from this table wherever a core entity needs a glyph — the chooser, the
-  // inspector, the key. Plugs rather than a link, which `LinkBlock` already is: a relationship joins
-  // two records, and a URL is a different kind of pointing.
-  Relationship: 'plugs',
-  TagBlock: 'tag',
-  TaskBlock: 'check-square',
-  TextBlock: 'text-t',
-  VideoBlock: 'youtube-logo',
-  // A space's own vocabulary — shown in an inspector and on a map of what it has defined, so drawn
-  // with the glyphs the Social DNA lists use.
-  InvolvementType: 'hand-waving',
-  RelationshipType: 'arrows-left-right',
-  SignalType: 'heart',
-  TaskState: 'circle-half',
-  Topic: 'hash',
-};
-
-export interface SpaceShapeView {
-  /** The Shape record's id. */
-  id: string;
-  /** Entity name — what `$query` resolves. */
-  name: string;
-  description: string;
-  icon: string;
-  shapeId: string;
-  version: number;
-  forkedFrom: string;
-  propertyCount: number;
-  /** Why this shape could not be adopted, empty for a healthy one. */
-  problems: string[];
-  manifest: EntityManifest | null;
-  /** The stored form says exactly what the manifest says — see `StoredShape.editable`. */
-  editable: boolean;
-}
-
-/**
- * What clicking the wizard's generate button would do, given what the draft currently holds.
- *
- * Generation replaces the member list wholesale, so the interesting distinction is what stands to
- * be lost: `generate` (nothing yet), `regenerate` (a proposal nobody has touched — the "try again"
- * that must stay one click), `replace` (rows somebody wrote, so it asks first), `none` (there is
- * nothing to generate from).
- */
-export type GenerateIntent = 'none' | 'generate' | 'regenerate' | 'replace';
-
-export interface HintEntityView {
-  entity: string;
-  /** 'core' = ships with WE (structure immutable, hints tunable); 'shape' = this space's own. */
-  source: 'core' | 'shape';
-}
-
-export interface HintEditorRow {
-  name: string;
-  hint: string;
-  /** What the declaration ships — the value reset returns to. */
-  defaultHint: string;
-}
-
-export interface HintEditorState {
-  entity: string;
-  classHint: string;
-  defaultClassHint: string;
-  rows: HintEditorRow[];
-  customized: boolean;
-}
+} from '../shapes/shapeDraft';
+import {
+  draftHasWork,
+  draftNameMemberOf,
+  generatedOutputOf,
+  type GenerateIntent,
+  generateIntentOf,
+  generationPrompt,
+  landGeneratedFields,
+  namedPropertyOptions,
+  nameOptionsOf,
+} from '../shapes/shapeWizard';
+import {
+  interpretationCandidatesOf,
+  knownEntityNames as knownEntityNamesOf,
+  type RelationshipTargetOption,
+  relationshipTargetOptions,
+  shapeViewsOf,
+  type SpaceShapeView,
+} from '../shapes/spaceShapes';
+import type { Toasts } from '../toasts';
+import type { DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
 
 export interface ShapeStore {
   // State
@@ -233,8 +160,8 @@ export interface ShapeStore {
   /**
    * SpaceStore supplies "add this model to the space's default interpretation targets".
    *
-   * Injected upward rather than read, because SpaceStore owns the `Space` record and sits *below*
-   * this store in the provider tree.
+   * Lent rather than read, because SpaceStore owns the `Space` record and is built *after* this
+   * store.
    *
    * Used on save and nowhere else, which is what makes the imported case behave: a shape that
    * arrives already marked extractable — copied, forked, synced from a peer — becomes a *candidate*
@@ -372,13 +299,30 @@ export interface ShapeStore {
   resetHintEditor: () => Promise<void>;
 }
 
-export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore'>): ShapeStore {
+/** What the shape store reads of the dataset store: the space on screen, and the classes it already had. */
+export type ShapeDatasets = Pick<
+  DatasetStore,
+  'currentDataset' | 'isWeSpace' | 'currentDatasetEntities' | 'currentDatasetEntitiesLoaded' | 'datasets'
+>;
+
+export interface ShapeStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Pick<Toasts, 'success' | 'error'>;
+  sessionStore: Pick<SessionStore, 'backendPorts'>;
+  datasetStore: ShapeDatasets;
+}
+
+export function createShapeStore(deps: ShapeStoreDeps): ShapeStore {
+  const { reactivity, toasts } = deps;
+  const { memo, effect, untrack, batch } = reactivity;
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
+  // Every write skips a value the signal already holds, so a reader wakes only for a change.
+  const signal = <T>(initial: T) => distinctSignal(reactivity, initial);
 
-  const [spaceShapes, setSpaceShapes] = createSignal<SpaceShapeView[]>([]);
-  const [shapesLoaded, setShapesLoaded] = createSignal(false);
-  const [shapeDraft, setShapeDraft] = createSignal<ShapeDraft | null>(null);
+  const [spaceShapes, setSpaceShapes] = signal<SpaceShapeView[]>([]);
+  const [shapesLoaded, setShapesLoaded] = signal(false);
+  const [shapeDraft, setShapeDraft] = signal<ShapeDraft | null>(null);
 
   /**
    * The draft as it was when the wizard opened, serialised — for the discard guard on an *edit*.
@@ -387,18 +331,18 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * moment somebody tries to close. Null for a new model, which has no "before" to compare with.
    */
   let openedDraft: string | null = null;
-  const [editingShapeId, setEditingShapeId] = createSignal<string | null>(null);
-  const [draftErrors, setDraftErrors] = createSignal<string[]>([]);
-  const [savingShape, setSavingShape] = createSignal(false);
-  const [hintEditor, setHintEditor] = createSignal<HintEditorState | null>(null);
+  const [editingShapeId, setEditingShapeId] = signal<string | null>(null);
+  const [draftErrors, setDraftErrors] = signal<string[]>([]);
+  const [savingShape, setSavingShape] = signal(false);
+  const [hintEditor, setHintEditor] = signal<HintEditorState | null>(null);
 
   /** The hint editor as it was when it opened, serialised — see `hintEditorDirty`. */
   let openedHints: string | null = null;
-  const [hintBusy, setHintBusy] = createSignal(false);
-  const [generating, setGenerating] = createSignal(false);
-  const [expandedMembers, setExpandedMembers] = createSignal<string[]>([]);
-  const [confirmDiscard, setConfirmDiscard] = createSignal(false);
-  const [confirmReplaceFields, setConfirmReplaceFields] = createSignal(false);
+  const [hintBusy, setHintBusy] = signal(false);
+  const [generating, setGenerating] = signal(false);
+  const [expandedMembers, setExpandedMembers] = signal<string[]>([]);
+  const [confirmDiscard, setConfirmDiscard] = signal(false);
+  const [confirmReplaceFields, setConfirmReplaceFields] = signal(false);
   /**
    * What generation last put into the draft, or null if it never has: its own words for each
    * top-level field it answered (empty where the author's own survived), and a signature of the rows.
@@ -409,9 +353,9 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * wrote itself feeds the last answer back in as though it were a request, which is how renaming a
    * model and pressing Regenerate returned something half about the old subject.
    */
-  const [lastGenerated, setLastGenerated] = createSignal<GeneratedOutput | null>(null);
+  const [lastGenerated, setLastGenerated] = signal<GeneratedOutput | null>(null);
 
-  const memberOptions = createMemo(() =>
+  const memberOptions = memo(() =>
     (shapeDraft()?.members ?? []).map((m) => ({ rowId: m.rowId, options: m.defaultOptions })),
   );
 
@@ -420,8 +364,8 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     the template editor. There was a fallback to an Anthropic key the agent had pasted into the
     editor; nothing has set that key since the editor moved onto the backend's model.
   */
-  const [backendLlm, setBackendLlm] = createSignal(false);
-  createEffect(() => {
+  const [aiAvailable, setBackendLlm] = signal(false);
+  effect(() => {
     const port = session.backendPorts()?.languageModel;
     if (!port) {
       setBackendLlm(false);
@@ -432,16 +376,15 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       .then(setBackendLlm)
       .catch(() => setBackendLlm(false));
   });
-  const aiAvailable = createMemo(() => backendLlm());
 
   /** The transport a generation should run on right now, or null while the backend has no model. */
   function generationTransport(): ShapeGenerationTransport | null {
     const port = session.backendPorts()?.languageModel;
-    return backendLlm() && port ? { kind: 'backend', port } : null;
+    return aiAvailable() && port ? { kind: 'backend', port } : null;
   }
 
   /*
-    Filled in by SpaceStore, which owns the `Space` record and mounts below this store — see
+    Filled in by SpaceStore, which owns the `Space` record and is built after this store — see
     `provideInterpretationEnroller`. Unset until it does, and a save before then simply does not enrol.
   */
   const interpretationEnroller = hostSlot<(entity: string) => Promise<void>>();
@@ -454,68 +397,13 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   });
   const storage = (): ShapeStorage => schemas()?.shapes ?? jsonShapes;
 
-  /** Core entities worth offering the hint editor: the ones whose declaration carries any hint. */
-  const coreHintEntities = Object.entries(CORE_MANIFEST.entities)
-    .filter(
-      ([, entity]) => entity.interpretationHint || Object.values(entity.properties).some((p) => p.interpretationHint),
-    )
-    .map(([name]) => name);
+  const hintEntities = memo<HintEntityView[]>(() => hintEntitiesOf(spaceShapes()));
 
-  const hintEntities = createMemo<HintEntityView[]>(() => [
-    ...coreHintEntities.map((entity) => ({ entity, source: 'core' as const })),
-    ...spaceShapes()
-      .filter((s) => s.manifest)
-      .map((s) => ({ entity: s.name, source: 'shape' as const })),
-  ]);
-
-  /** Core vocabulary that declares itself interpretable — `TaskBlock`, `EventBlock` and `Relationship` today. */
-  const coreInterpretationTargets = interpretableEntities(CORE_MANIFEST);
-
-  /*
-    What could be interpreted in this space: core vocabulary plus the shapes this community adopted.
-
-    Core first because those are the entities every space has, so a list that grows as a community
-    defines models reads as an addition rather than a reshuffle. A shape with adoption problems is
-    excluded by `manifest` being null — an entity that is not queryable cannot be minted into
-    either, and offering it would produce a pass that fails on a name the executor has no shape for.
-
-    Deduplicated, because a space may name a shape after core vocabulary: `getEntityForDataset`
-    prefers the native class, so the two names resolve to one class and requesting it twice would
-    put the same shape in the prompt twice at the community's expense.
-  */
-  /*
-    Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
-    plumbing, those carrying an interpretation hint first — see `foreignInterpretationCandidates`. Last,
-    so WE's own read first.
-
-    One rule for the list on screen and for `interpretationCandidatesFor` below: candidacy is which
-    models may be extracted into, not which names the registry happens to resolve — an adopted
-    model whose manifest is not extractable resolves all the same.
-  */
-  const interpretationCandidatesOf = (
-    shapes: readonly { name: string; manifest: EntityManifest | null }[],
-    foreign: readonly { name: string; interpretationHint?: string }[],
-  ): { candidates: string[]; shadowed: string[] } => {
-    const { offered, shadowed } = foreignInterpretationCandidates(foreign, {
-      taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
-      adopted: shapes.map((shape) => shape.name),
-    });
-    return {
-      candidates: [
-        ...new Set([
-          ...coreInterpretationTargets,
-          ...shapes.flatMap((shape) => (shape.manifest ? interpretableEntities(shape.manifest) : [])),
-          ...offered,
-        ]),
-      ],
-      shadowed,
-    };
-  };
-
-  const candidatesRead = createMemo(() =>
-    interpretationCandidatesOf(spaceShapes(), datasetStore.currentDatasetEntities()),
+  // What could be interpreted in this space — see `interpretationCandidatesOf`.
+  const candidatesRead = memo(() =>
+    interpretationCandidatesOf(spaceShapes(), datasetStore.currentDatasetEntities(), getRegisteredEntityNames()),
   );
-  createEffect(() => {
+  effect(() => {
     const { shadowed } = candidatesRead();
     if (shadowed.length)
       console.warn(
@@ -524,16 +412,16 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       );
   });
 
-  const interpretationCandidates = createMemo<string[]>(() => candidatesRead().candidates);
+  const interpretationCandidates = memo<string[]>(() => candidatesRead().candidates);
 
   /*
     The same rule read through a handle rather than the signals a switch fills — SpaceStore's
     off-screen collection reads ask about the collection's own dataset, which may not be the one
     on screen. Its shapes are listed and validated as `loadShapes` validates them — a manifest
     that could not stand is no candidate — and `foreignEntries` answers the classes it already
-    had. The read is the pure one: `foreignSchemas` *registers* what it finds, which on AD4M
-    replaces the dataset's synthesised-class registry — adopted shapes' compiled classes
-    included — and an ask about a dataset nobody is adopting into must not take its classes
+    had. The read is the pure one: `foreignSchemas` *registers* what it finds, which on some
+    backends replaces the dataset's registry of synthesised classes — adopted shapes' compiled
+    classes included — and an ask about a dataset nobody is adopting into must not take its classes
     apart as the price of asking.
   */
   async function interpretationCandidatesFor(
@@ -551,19 +439,12 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     const records = weSpace ? stored : [];
     const storedNames = new Set(stored.map((record) => record.name));
     const foreign = weSpace ? allForeign : allForeign.filter((m) => !storedNames.has(m.name));
-    const shapes = records.map((record) => {
-      if (!record.manifest) return { name: record.name, manifest: null };
-      const gate = validateManifest(record.manifest, {
-        externalEntities: [
-          ...Object.keys(CORE_MANIFEST.entities),
-          ...foreign.map((m) => m.name),
-          ...records.map((r) => r.name).filter((n) => n !== record.name),
-        ],
-      });
-      return { name: record.name, manifest: gate.valid ? gate.manifest : null };
-    });
+    const shapes = shapeViewsOf(
+      records,
+      foreign.map((m) => m.name),
+    );
     return {
-      candidates: interpretationCandidatesOf(shapes, foreign).candidates,
+      candidates: interpretationCandidatesOf(shapes, foreign, getRegisteredEntityNames()).candidates,
       installed: allForeign.map((m) => m.name),
     };
   }
@@ -574,99 +455,27 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     again when the rest arrives — writes to the shared graph from every member, ending where they
     started.
   */
-  const interpretationCandidatesLoaded = createMemo(
-    () => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded(),
+  const interpretationCandidatesLoaded = memo(() => shapesLoaded() && datasetStore.currentDatasetEntitiesLoaded());
+
+  const relationshipTargets = memo<RelationshipTargetOption[]>(() =>
+    relationshipTargetOptions(spaceShapes(), datasetStore.currentDatasetEntities()),
   );
-
-  /**
-   * What a relationship may point at here, grouped by where it comes from and labelled for the
-   * picker: this space's own models first (the interesting case when modelling), then the block
-   * vocabulary (attaching content — a photo, a place), then any foreign app's models.
-   *
-   * Core entities are offered **only** where they are block types. The rest of core is
-   * infrastructure — `Template`, `Theme`, `AgentSettings`, `SpacePreference` — which no community
-   * shape should point at, and offering them made the picker read as a dump of everything the app
-   * happens to define. The block-suffix rule is the one WE's own model conventions already enforce
-   * (`blocks/` holds exactly the `*Block` classes), and it fails safe: a new block type appears
-   * here automatically, a new infrastructure entity stays out.
-   */
-  /*
-    Grouped rather than suffixed. "ImageBlock — block" said the name twice, and the suffixes were
-    inconsistent between groups — worst of all "— another app", which asserted an origin nothing
-    established: getForeignShacl returns every SHACL shape in the dataset that is not WE's own,
-    whoever put it there. The heading claims only where the model lives, which is all that is known.
-
-    Block icons are the block composer's own (BlockMenu.tsx), so the two surfaces name a block the
-    same way; a space shape brings the icon its author picked in this wizard.
-  */
-  const relationshipTargets = createMemo<RelationshipTargetOption[]>(() => {
-    const entry = (name: string, group: string, icon?: string) => ({ label: name, value: name, group, icon });
-    const dedupeSort = <T extends { value: string }>(rows: T[]) => {
-      const seen = new Set<string>();
-      return rows.filter((r) => !seen.has(r.value) && seen.add(r.value)).sort((a, b) => a.value.localeCompare(b.value));
-    };
-    return [
-      ...dedupeSort(
-        spaceShapes()
-          .filter((s) => s.manifest)
-          .map((s) => ({ ...entry(s.name, 'This space', s.icon || 'cube'), icon: s.icon || 'cube' })),
-      ),
-      ...dedupeSort(
-        Object.keys(CORE_MANIFEST.entities)
-          .filter((name) => name.endsWith('Block'))
-          .map((name) => entry(name, 'Blocks', BLOCK_ICONS[name] ?? 'cube')),
-      ),
-      ...dedupeSort(datasetStore.currentDatasetEntities().map((m) => entry(m.name, 'Other models in this space'))),
-    ];
-  });
 
   /** Every named property of the open draft — what both member pickers choose from. */
-  const namedProperties = createMemo(() =>
-    (shapeDraft()?.members ?? [])
-      .filter((m) => m.kind === 'property' && m.name.trim())
-      .map((m) => ({ label: m.name, value: m.rowId })),
-  );
+  const namedProperties = memo(() => namedPropertyOptions(shapeDraft()));
 
-  const identityOptions = createMemo<{ label: string; value: string }[]>(() => [
+  const identityOptions = memo<{ label: string; value: string }[]>(() => [
     { label: 'None', value: 'none' },
     ...namedProperties(),
   ]);
 
-  /*
-    Worked out the way the saved model will be: the draft lowered as a save lowers it, then the rule
-    every surface names a record by. So the wizard shows the field a card will be headed with, not
-    a second guess at the guess.
-  */
-  const draftNameMember = createMemo<string>(() => {
-    const draft = shapeDraft();
-    if (!draft) return '';
-    if (draft.nameMember) return draft.nameMember;
-    const lowered = draftToManifest(draft, 'preview');
-    if (!lowered.ok) return '';
-    const entity = Object.values(lowered.manifest.entities)[0];
-    const field = entity ? namePropertyOf(entity) : '';
-    return draft.members.find((m) => m.kind === 'property' && m.name.trim() === field)?.rowId ?? '';
-  });
+  const draftNameMember = memo<string>(() => draftNameMemberOf(shapeDraft()));
 
-  const nameOptions = createMemo<{ label: string; value: string }[]>(() => {
-    // "Work it out" says what it worked out, so a person sees which field heads the card.
-    const worked = shapeDraft()?.nameMember ? '' : draftNameMember();
-    const name = worked
-      ? shapeDraft()
-          ?.members.find((m) => m.rowId === worked)
-          ?.name.trim()
-      : '';
-    return [{ label: name ? `Work it out (${name})` : 'Work it out', value: 'none' }, ...namedProperties()];
-  });
+  const nameOptions = memo<{ label: string; value: string }[]>(() => nameOptionsOf(shapeDraft(), draftNameMember()));
 
   /** Entity names a shape may legitimately reference: core + foreign + this space's other shapes. */
-  const knownEntityNames = (excludeShapeRecordId?: string) => [
-    ...Object.keys(CORE_MANIFEST.entities),
-    ...datasetStore.currentDatasetEntities().map((m) => m.name),
-    ...spaceShapes()
-      .filter((s) => s.id !== excludeShapeRecordId)
-      .map((s) => s.name),
-  ];
+  const knownEntityNames = (excludeShapeRecordId?: string) =>
+    knownEntityNamesOf(spaceShapes(), datasetStore.currentDatasetEntities(), excludeShapeRecordId);
 
   // ── The adoption rail ─────────────────────────────────────────────────────────
 
@@ -714,10 +523,12 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     // Only the newest load publishes. Saving a model reloads while an earlier load can still be
     // adopting, and that one finishing first showed the older list and called it whole.
     const loadIsLatest = shapesLoad.begin();
-    const current = () => loadIsLatest() && datasetStore.currentDataset()?.id === uuid;
+    const current = () => loadIsLatest() && untrack(datasetStore.currentDataset)?.id === uuid;
     if (!ports || !dataset || !datasetStore.isWeSpace()) {
-      setSpaceShapes([]);
-      setShapesLoaded(true);
+      batch(() => {
+        setSpaceShapes([]);
+        setShapesLoaded(true);
+      });
       return;
     }
     setShapesLoaded(false);
@@ -734,49 +545,12 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       trace('shapes', 'records', { space: uuid, count: records.length, ms: lap() });
       if (!current()) return; // navigated away, or reloaded, while loading
 
-      const views: SpaceShapeView[] = [];
-      const adopted = new Set<string>();
-      for (const record of records) {
-        const view: SpaceShapeView = {
-          id: record.id,
-          name: record.name,
-          description: record.description,
-          icon: record.icon,
-          shapeId: record.shapeId,
-          version: record.version,
-          forkedFrom: record.forkedFrom,
-          propertyCount: 0,
-          problems: [],
-          manifest: null,
-          editable: record.editable,
-        };
-        const manifest = record.manifest;
-        if (!manifest) {
-          view.problems = ['definition document missing or unreadable'];
-          views.push(view);
-          continue;
-        }
-        // Validated against everything nameable here except itself — including shapes loaded
-        // earlier in this same pass, so sibling references resolve whatever the record order.
-        const external = [
-          ...Object.keys(CORE_MANIFEST.entities),
-          ...datasetStore.currentDatasetEntities().map((m) => m.name),
-          ...records.map((r) => r.name).filter((n) => n !== record.name),
-        ];
-        const gate = validateManifest(manifest, { externalEntities: external });
-        if (!gate.valid) {
-          view.problems = gate.errors.map((e) => `${e.path}: ${e.message}`);
-          views.push(view);
-          continue;
-        }
-        view.manifest = gate.manifest;
-        const entity = gate.manifest.entities[record.name];
-        view.propertyCount = entity ? Object.keys(entity.properties).length + Object.keys(entity.relations).length : 0;
-        if (!entity) view.problems = [`definition does not declare an entity named "${record.name}"`];
-        views.push(view);
-      }
-
+      const views = shapeViewsOf(
+        records,
+        untrack(datasetStore.currentDatasetEntities).map((m) => m.name),
+      );
       trace('shapes', 'validated', { space: uuid, ms: lap() });
+      const adopted = new Set<string>();
       for (const view of views) {
         if (!view.manifest || view.problems.length || adopted.has(view.name)) continue;
         adopted.add(view.name);
@@ -802,11 +576,12 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     }
   }
 
-  createEffect(() => {
-    // Re-runs on every dataset switch and when the space's WE-ness settles.
+  effect(() => {
+    // Re-runs on every dataset switch, when the space's WE-ness settles, and on a new backend.
     void datasetStore.currentDataset();
     void datasetStore.isWeSpace();
-    void loadShapes();
+    void session.backendPorts();
+    untrack(() => void loadShapes());
   });
 
   // ── Wizard actions ────────────────────────────────────────────────────────────
@@ -816,11 +591,6 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     // anything but a real id means "new model" — without this, the New button arrived carrying a
     // MouseEvent and the wizard refused to open.
     const recordId = typeof shapeRecordId === 'string' && shapeRecordId ? shapeRecordId : undefined;
-    setDraftErrors([]);
-    // Nothing here was generated yet, whatever the last draft did — so every word in it is the
-    // author's, including a stored model's own description.
-    setLastGenerated(null);
-    setConfirmReplaceFields(false);
     if (!recordId) {
       const draft = emptyShapeDraft();
       // A new model starts from nothing, and the field tests below are what judge it — no snapshot.
@@ -829,6 +599,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       // the starter row played its opening animation every time the modal was opened. Together they
       // are one update, and the row is simply open from the first frame.
       batch(() => {
+        resetGenerationState();
         setEditingShapeId(null);
         setShapeDraft(draft);
         // The one starter row opens: it is about to be filled in.
@@ -836,18 +607,18 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       });
       return;
     }
-    const view = spaceShapes().find((s) => s.id === recordId);
+    const view = untrack(spaceShapes).find((s) => s.id === recordId);
     if (!view?.manifest) {
-      toastService.error('This model has no readable definition to edit.');
+      resetGenerationState();
+      toasts.error('This model has no readable definition to edit.');
       return;
     }
-    // Lifted out of the batch: a property narrowing does not survive into a callback, and the
-    // lowering is pure anyway.
     const draft = manifestToDraft(view.name, view.manifest, { description: view.description, icon: view.icon });
     // What it looked like on open, so the guard can ask whether anything actually changed. See
     // `draftHasWork`.
     openedDraft = JSON.stringify(draft);
     batch(() => {
+      resetGenerationState();
       setEditingShapeId(recordId);
       setShapeDraft(draft);
       // A stored model opens collapsed — the list is there to be read before it is edited.
@@ -856,30 +627,21 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   /**
-   * Whether closing would throw anything away.
-   *
-   * A pristine wizard — opened and not typed in — closes without ceremony; asking there would train
-   * the answer out of anyone. Editing an existing model counts as having something to lose from the
-   * moment it opens, since its content came from the space.
+   * What opening the wizard clears, whatever it opens on: the last save's errors, and the record of
+   * what generation wrote — nothing in a freshly opened draft was generated yet, so every word in it
+   * is the author's, including a stored model's own description.
    */
-  function draftHasWork(): boolean {
-    const draft = shapeDraft();
-    if (!draft) return false;
-    /*
-      Editing an existing model asks whether it *changed*, not whether it is filled in: opening a
-      model to read it and pressing Escape must not ask "discard this model?" about nothing.
-
-      Compared against a snapshot taken when the wizard opened. Rows are mutated in place without
-      touching the signal (see the note below `commitDraft`), so this has to be evaluated at close
-      time rather than memoised — which it is: `requestCloseWizard` calls it on the click.
-    */
-    if (editingShapeId()) return openedDraft !== null && JSON.stringify(draft) !== openedDraft;
-    if (draft.name.trim() || draft.description.trim() || draft.classHint.trim() || draft.icon) return true;
-    return draft.members.some((m) => m.name.trim() || m.hint.trim() || m.options.trim() || m.target || m.defaultValue);
+  function resetGenerationState(): void {
+    setDraftErrors([]);
+    setLastGenerated(null);
+    setConfirmReplaceFields(false);
   }
 
   function requestCloseWizard(): void {
-    if (draftHasWork()) setConfirmDiscard(true);
+    // Evaluated on the click rather than memoised: rows are mutated in place without touching the
+    // signal (see the note below `cancelShapeWizard`), so nothing would notify a memo.
+    const work = untrack(() => draftHasWork(shapeDraft(), editingShapeId() ? { opened: openedDraft } : null));
+    if (work) setConfirmDiscard(true);
     else cancelShapeWizard();
   }
 
@@ -888,13 +650,15 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   function cancelShapeWizard(): void {
-    setConfirmDiscard(false);
-    setConfirmReplaceFields(false);
-    setShapeDraft(null);
-    setEditingShapeId(null);
-    setDraftErrors([]);
-    setExpandedMembers([]);
-    setLastGenerated(null);
+    batch(() => {
+      setConfirmDiscard(false);
+      setConfirmReplaceFields(false);
+      setShapeDraft(null);
+      setEditingShapeId(null);
+      setDraftErrors([]);
+      setExpandedMembers([]);
+      setLastGenerated(null);
+    });
   }
 
   /*
@@ -908,7 +672,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     which replace objects and accept the remount — there is no caret to lose in a select.
   */
   function setShapeField(field: 'name' | 'description' | 'icon' | 'classHint', value: string): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     /*
       Published, not mutated in place. In-place mutation is the *member rows'* concession — they
       live in an $each keyed by object identity, where replacing a row remounts it and drops input
@@ -920,33 +684,35 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   function setIdentityMember(rowId: string): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     // '' is the "None" option, and the only way to clear it.
     if (draft) setShapeDraft({ ...draft, identityMember: rowId === 'none' ? '' : rowId });
   }
 
   function setNameMember(rowId: string): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     // 'none' here is "work it out" rather than "there isn't one" — see `nameOptions`.
     if (draft) setShapeDraft({ ...draft, nameMember: rowId === 'none' ? '' : rowId });
   }
 
   function setInterpretable(on: boolean): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     if (draft) setShapeDraft({ ...draft, extractable: on });
   }
 
-  const interpretationNeedsIdentity = createMemo(() => {
+  const interpretationNeedsIdentity = memo(() => {
     const draft = shapeDraft();
     return Boolean(draft?.extractable) && !draft?.identityMember;
   });
 
   /** Append a row and open it — you added it in order to fill it in. */
   function appendMember(row: ShapeDraftMember): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     if (!draft) return;
-    setShapeDraft({ ...draft, members: [...draft.members, row] });
-    setExpandedMembers([...expandedMembers(), row.rowId]);
+    batch(() => {
+      setShapeDraft({ ...draft, members: [...draft.members, row] });
+      setExpandedMembers([...untrack(expandedMembers), row.rowId]);
+    });
   }
 
   function addProperty(): void {
@@ -958,34 +724,36 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   function toggleMemberExpanded(rowId: string): void {
-    const open = expandedMembers();
+    const open = untrack(expandedMembers);
     setExpandedMembers(open.includes(rowId) ? open.filter((id) => id !== rowId) : [...open, rowId]);
   }
 
   function commitDraft(): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     if (draft) setShapeDraft({ ...draft });
   }
 
   function removeMember(rowId: string): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     if (!draft) return;
-    setShapeDraft({
-      ...draft,
-      members: draft.members.filter((m) => m.rowId !== rowId),
-      // A dangling identity would be refused at save with an error about a row that is no longer
-      // on screen, which reads as a bug rather than a consequence. Same for the naming property.
-      identityMember: draft.identityMember === rowId ? '' : draft.identityMember,
-      nameMember: draft.nameMember === rowId ? '' : draft.nameMember,
+    batch(() => {
+      setShapeDraft({
+        ...draft,
+        members: draft.members.filter((m) => m.rowId !== rowId),
+        // A dangling identity would be refused at save with an error about a row that is no longer
+        // on screen, which reads as a bug rather than a consequence. Same for the naming property.
+        identityMember: draft.identityMember === rowId ? '' : draft.identityMember,
+        nameMember: draft.nameMember === rowId ? '' : draft.nameMember,
+      });
+      setExpandedMembers(untrack(expandedMembers).filter((id) => id !== rowId));
     });
-    setExpandedMembers(expandedMembers().filter((id) => id !== rowId));
   }
 
   /** Member fields edited by typing — updated in place so the input keeps focus (see note above). */
   const TYPED_MEMBER_FIELDS: ReadonlySet<keyof ShapeDraftMember> = new Set(['name', 'hint', 'defaultValue', 'options']);
 
   function setMemberField(rowId: string, field: keyof ShapeDraftMember, value: string | boolean | number): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     const row = draft?.members.find((m) => m.rowId === rowId);
     if (!draft || !row) return;
     // `we-number-input` reports a number where the draft holds text — every default is stored as
@@ -1015,7 +783,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * position at the end, so a partial or stale report can never drop a row.
    */
   function reorderMembers(rowIds: string[]): void {
-    const draft = shapeDraft();
+    const draft = untrack(shapeDraft);
     if (!draft || !Array.isArray(rowIds)) return;
     const byId = new Map(draft.members.map((m) => [m.rowId, m]));
     const ordered = rowIds.map((id) => byId.get(id)).filter((m): m is ShapeDraftMember => Boolean(m));
@@ -1024,68 +792,56 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   function replaceDraft(draft: ShapeDraft): void {
-    setShapeDraft(draft);
-    setDraftErrors([]);
+    batch(() => {
+      setShapeDraft(draft);
+      setDraftErrors([]);
+    });
   }
 
-  async function generateShapeDraft(description: string): Promise<void> {
-    const transport = generationTransport();
-    if (!transport || !description.trim()) return;
-    setGenerating(true);
-    setDraftErrors([]);
+  /** Ask for a draft, with what the space already names, and land it through `land`. */
+  async function generate(prompt: string, failure: string, land: (generated: ShapeDraft) => void): Promise<void> {
+    const transport = untrack(generationTransport);
+    if (!transport) return;
+    batch(() => {
+      setGenerating(true);
+      setDraftErrors([]);
+    });
     try {
-      const existing = knownEntityNames(editingShapeId() ?? undefined);
-      const { draft, remainingProblems } = await runShapeGeneration(description, {
-        transport,
-        existingEntities: existing,
-        referenceTargets: relationshipTargets().map((t) => t.value),
-      });
-      // Editing keeps the record's name and predicates — generation only replaces a NEW draft
-      // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
+      const { draft, remainingProblems } = await untrack(() =>
+        runShapeGeneration(prompt, {
+          transport,
+          existingEntities: knownEntityNames(editingShapeId() ?? undefined),
+          referenceTargets: relationshipTargets().map((t) => t.value),
+        }),
+      );
       batch(() => {
-        replaceDraft(draft);
-        // Closed, like the typed route: a collapsed row shows its hint, so what was generated can
-        // be read without every card standing open.
-        setExpandedMembers([]);
-        // Every word of it is the machine's — this route replaces the draft outright, so there is
-        // no authored field to protect from the next run.
-        setLastGenerated({
-          name: draft.name,
-          description: draft.description,
-          icon: draft.icon,
-          classHint: draft.classHint,
-          members: memberSignature(draft.members),
-        });
+        land(draft);
+        if (remainingProblems.length) setDraftErrors(remainingProblems);
       });
-      if (remainingProblems.length) setDraftErrors(remainingProblems);
     } catch (err) {
-      console.error('ShapeStore: shape generation failed', err);
+      console.error(`ShapeStore: ${failure} failed`, err);
       setDraftErrors([`Generation failed: ${err instanceof Error ? err.message : String(err)}`]);
     } finally {
       setGenerating(false);
     }
   }
 
-  /**
-   * The guard itself, over a live draft — the memo below tracks it, the action re-checks it fresh.
-   *
-   * Generation replaces the member list wholesale, so what the button may do depends entirely on
-   * what would be lost: nothing (`generate`), a proposal nobody has touched (`regenerate` — the
-   * "try again" that must not cost a dialog), or somebody's own work (`replace`, which asks first).
-   *
-   * The context test is deliberately over everything present, the author's words or not: a draft
-   * carrying a generated description has something to re-run from, and greying the button there
-   * would be refusing to act on a form that visibly has writing in it.
-   */
-  function computeGenerateIntent(draft: ShapeDraft | null): GenerateIntent {
-    if (!draft) return 'none';
-    const hasContext = Boolean(draft.name.trim() || draft.description.trim() || draft.classHint.trim());
-    if (!hasContext) return 'none';
-    if (!draft.members.some(isTouched)) return 'generate';
-    return memberSignature(draft.members) === lastGenerated()?.members ? 'regenerate' : 'replace';
+  async function generateShapeDraft(description: string): Promise<void> {
+    if (!untrack(generationTransport) || !description.trim()) return;
+    // Editing keeps the record's name and predicates — generation only replaces a NEW draft
+    // wholesale; on an edit it would orphan storage keys, so it is offered only for new models.
+    await generate(description, 'shape generation', (draft) => {
+      replaceDraft(draft);
+      // Closed, like the typed route: a collapsed row shows its hint, so what was generated can
+      // be read without every card standing open.
+      setExpandedMembers([]);
+      // Every word of it is the machine's — this route replaces the draft outright, so there is
+      // no authored field to protect from the next run.
+      setLastGenerated(generatedOutputOf(draft));
+    });
   }
 
-  const generateIntent = createMemo<GenerateIntent>(() => computeGenerateIntent(shapeDraft()));
+  const generateIntent = memo<GenerateIntent>(() => generateIntentOf(shapeDraft(), lastGenerated()));
 
   /**
    * The button's own entry point: generate now, or ask first when the click would discard work.
@@ -1095,7 +851,9 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * the answer out of anyone before they met the latter.
    */
   function requestGenerateFields(): void {
-    if (computeGenerateIntent(shapeDraft()) === 'replace') setConfirmReplaceFields(true);
+    // Computed fresh rather than read from the memo: member rows mutate in place (the focus
+    // concession), so the memo can be a keystroke stale.
+    if (untrack(() => generateIntentOf(shapeDraft(), lastGenerated())) === 'replace') setConfirmReplaceFields(true);
     else void generateShapeFields();
   }
 
@@ -1104,109 +862,50 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   async function generateShapeFields(): Promise<void> {
-    const draft = shapeDraft();
-    const transport = generationTransport();
-    // Computed fresh rather than read from the memo: member rows mutate in place (the focus
-    // concession), so the memo can be a keystroke stale — and a stale intent here decides whether
-    // rows somebody just typed are replaced without asking.
-    if (!draft || !transport || computeGenerateIntent(draft) === 'none') return;
+    const draft = untrack(shapeDraft);
+    // Computed fresh rather than read from the memo, as above — and a stale intent here decides
+    // whether rows somebody just typed are replaced without asking.
+    if (!draft || !untrack(generationTransport) || generateIntentOf(draft, untrack(lastGenerated)) === 'none') return;
     setConfirmReplaceFields(false);
-
-    /*
-      Prompted by what the author wrote, and only that.
-
-      A previous generation's own description and hint are still sitting in the form, and feeding
-      them back would quote the last answer as part of the next question: renaming a model to
-      "MovieNight" while its generated description still discussed books returned a model about
-      both. Fields generation wrote are dropped here and re-answered below, so a re-run follows the
-      rename — and pressing Regenerate twice over an untouched draft is a fresh attempt rather than
-      a slow convergence on the first one.
-    */
-    const authored = authoredFields(draft, lastGenerated());
-    const askedFor = [
-      authored.name && `The model is called "${authored.name}".`,
-      authored.description && `Description: ${authored.description}`,
-      authored.classHint && `Guidance for AI interpretation: ${authored.classHint}`,
-    ].filter(Boolean);
-    /*
-      Nothing of the author's left to go on — they generated a model and then deleted the name they
-      started from. What remains is the machine's, but it is all there is, and a prompt built from
-      it beats refusing a button the form gives every reason to expect to work.
-    */
-    const context = askedFor.length
-      ? askedFor.join('\n')
-      : [
-          draft.name.trim() && `The model is called "${draft.name.trim()}".`,
-          draft.description.trim() && `Description: ${draft.description.trim()}`,
-          draft.classHint.trim() && `Guidance for AI interpretation: ${draft.classHint.trim()}`,
-        ]
-          .filter(Boolean)
-          .join('\n');
-    setGenerating(true);
-    setDraftErrors([]);
-    try {
-      const existing = knownEntityNames(editingShapeId() ?? undefined);
-      const { draft: generated, remainingProblems } = await runShapeGeneration(context, {
-        transport,
-        existingEntities: existing,
-        referenceTargets: relationshipTargets().map((t) => t.value),
-      });
-      batch(() => {
-        const current = shapeDraft();
-        if (!current) return;
-        // The author's words survive; the generation answers everything else — the fields, and any
-        // top-level blank, including the ones its own last run had filled.
-        const settled = {
-          name: authored.name || generated.name,
-          description: authored.description || generated.description,
-          icon: authored.icon || generated.icon,
-          classHint: authored.classHint || generated.classHint,
-        };
-        replaceDraft({ ...current, ...settled, members: generated.members, identityMember: generated.identityMember });
-        // Left closed: a collapsed row shows its hint, so the generated hints can be read without
-        // eight expanded cards standing between the author and the Save button.
-        setExpandedMembers([]);
-        // '' for anything the author owns, so their words can never be mistaken for the machine's
-        // on the next run — the record is of what generation contributed, not of what is on screen.
-        setLastGenerated({
-          name: authored.name ? '' : settled.name,
-          description: authored.description ? '' : settled.description,
-          icon: authored.icon ? '' : settled.icon,
-          classHint: authored.classHint ? '' : settled.classHint,
-          members: memberSignature(generated.members),
-        });
-      });
-      if (remainingProblems.length) setDraftErrors(remainingProblems);
-    } catch (err) {
-      console.error('ShapeStore: field generation failed', err);
-      setDraftErrors([`Generation failed: ${err instanceof Error ? err.message : String(err)}`]);
-    } finally {
-      setGenerating(false);
-    }
+    const authored = authoredFields(draft, untrack(lastGenerated));
+    await generate(generationPrompt(draft, authored), 'field generation', (generated) => {
+      const current = untrack(shapeDraft);
+      if (!current) return;
+      const landed = landGeneratedFields(current, generated, authored);
+      replaceDraft(landed.draft);
+      // Left closed: a collapsed row shows its hint, so the generated hints can be read without
+      // eight expanded cards standing between the author and the Save button.
+      setExpandedMembers([]);
+      setLastGenerated(landed.last);
+    });
   }
 
   async function saveShapeDraft(): Promise<void> {
-    const draft = shapeDraft();
-    const dataset = handle();
+    const draft = untrack(shapeDraft);
+    const dataset = untrack(handle);
     if (!draft || !dataset) return;
-    const editingId = editingShapeId();
-    const existing = editingId ? spaceShapes().find((s) => s.id === editingId) : undefined;
+    const editingId = untrack(editingShapeId);
+    const existing = editingId ? untrack(spaceShapes).find((s) => s.id === editingId) : undefined;
+    const known = untrack(() => knownEntityNames(editingId ?? undefined));
 
-    setSavingShape(true);
-    setDraftErrors([]);
+    batch(() => {
+      setSavingShape(true);
+      setDraftErrors([]);
+    });
     try {
       const shapeUuid = existing?.shapeId.replace('we://shapes/', '') || crypto.randomUUID();
       const lowered = draftToManifest(draft, shapeUuid);
       if (!lowered.ok) {
-        setDraftErrors(lowered.errors);
-        // Open whatever the complaint is about: a message naming a field the reader cannot see
-        // reads as a bug in the form rather than a mistake in the model.
-        setExpandedMembers([...new Set([...expandedMembers(), ...lowered.rows])]);
+        batch(() => {
+          setDraftErrors(lowered.errors);
+          // Open whatever the complaint is about: a message naming a field the reader cannot see
+          // reads as a bug in the form rather than a mistake in the model.
+          setExpandedMembers([...new Set([...untrack(expandedMembers), ...lowered.rows])]);
+        });
         return;
       }
       const entityName = Object.keys(lowered.manifest.entities)[0];
-      const nameTaken = knownEntityNames(editingId ?? undefined).includes(entityName);
-      if (!existing && nameTaken) {
+      if (!existing && known.includes(entityName)) {
         setDraftErrors([`"${entityName}" already names a model here — pick another name.`]);
         return;
       }
@@ -1214,7 +913,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         setDraftErrors(['Renaming a model is not supported yet — its name is how existing data is found.']);
         return;
       }
-      const gate = validateManifest(lowered.manifest, { externalEntities: knownEntityNames(editingId ?? undefined) });
+      const gate = validateManifest(lowered.manifest, { externalEntities: known });
       if (!gate.valid) {
         setDraftErrors(gate.errors.map((e) => `${e.path}: ${e.message}`));
         return;
@@ -1238,7 +937,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       };
       // Installed before the record is saved, so a model the backend refuses leaves no record that
       // every later visit would fail to adopt.
-      await adoptShape(shape);
+      await adoptShape(shape, dataset);
       await storage().save(dataset, shape, existing?.id);
       /*
         Ticking the switch is the space's decision, so it does not need making twice.
@@ -1259,7 +958,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         }
       }
       cancelShapeWizard();
-      toastService.success(existing ? `Model "${entityName}" updated` : `Model "${entityName}" created`);
+      toasts.success(existing ? `Model "${entityName}" updated` : `Model "${entityName}" created`);
       await loadShapes();
     } catch (err) {
       console.error('ShapeStore: saving shape failed', err);
@@ -1274,9 +973,9 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     types: readonly BundleRecordType[],
     datasetId?: string,
   ): Promise<string[]> {
-    const current = datasetStore.currentDataset();
-    const target = datasetId ? datasetStore.datasets().find((d) => d.id === datasetId) : current;
-    const ports = schemas();
+    const current = untrack(datasetStore.currentDataset);
+    const target = datasetId ? untrack(datasetStore.datasets).find((d) => d.id === datasetId) : current;
+    const ports = untrack(schemas);
     if (!target || !ports) return ['There is no space open to add them to'];
     const dataset = target.handle;
     const onScreen = target.id === current?.id;
@@ -1284,7 +983,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     // A space not on screen has no loaded list, so its own records say what it already has.
     let present: Map<string, { shapeId?: string }>;
     if (onScreen) {
-      present = new Map(spaceShapes().map((shape) => [shape.name, shape]));
+      present = new Map(untrack(spaceShapes).map((shape) => [shape.name, shape]));
     } else {
       present = new Map((await storage().list(dataset)).map((shape) => [shape.name, shape]));
     }
@@ -1300,7 +999,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
           problems.push(`it already has a kind of record called "${type.name}" that this app did not bring`);
         continue;
       }
-      const known = onScreen ? knownEntityNames() : [...Object.keys(CORE_MANIFEST.entities), ...present.keys()];
+      const known = onScreen ? untrack(() => knownEntityNames()) : [...knownEntityNamesOf([], []), ...present.keys()];
       const gate = validateManifest(type.manifest, {
         externalEntities: [...known, ...names.filter((name) => name !== type.name)],
       });
@@ -1342,64 +1041,34 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   async function deleteShape(shapeRecordId: string): Promise<void> {
-    const dataset = handle();
+    const dataset = untrack(handle);
     if (!dataset) return;
     try {
       await storage().remove(dataset, shapeRecordId);
-      toastService.success('Model removed. Existing entries keep their data.');
+      toasts.success('Model removed. Existing entries keep their data.');
       await loadShapes();
     } catch (err) {
       console.error('ShapeStore: deleting shape failed', err);
-      toastService.error('Removing the model failed.');
+      toasts.error('Removing the model failed.');
     }
   }
 
   // ── Hint editor actions ───────────────────────────────────────────────────────
 
-  /** The declared (shipped) hints for an entity, from whichever manifest declares it. */
-  function declaredHintSource(entity: string): {
-    classHint: string;
-    rows: { name: string; hint: string }[];
-  } {
-    const shape = spaceShapes().find((s) => s.name === entity && s.manifest);
-    const manifest = shape?.manifest ?? CORE_MANIFEST;
-    const entry = manifestEntries(manifest, { parents: CORE_MANIFEST }).find((e) => e.name === entity);
-    return {
-      classHint: entry?.interpretationHint ?? '',
-      rows: (entry?.properties ?? [])
-        .filter((p) => p.type !== 'uri')
-        .map((p) => ({ name: p.name, hint: p.interpretationHint ?? '' })),
-    };
-  }
-
   async function openHintEditor(entity: string): Promise<void> {
-    const ports = schemas();
-    const dataset = handle();
+    const ports = untrack(schemas);
+    const dataset = untrack(handle);
     if (!ports || !dataset) return;
     setHintBusy(true);
     try {
-      const declared = declaredHintSource(entity);
-      const stored = await ports.interpretationHints(dataset, entity);
-      // One rule for every hint on the entity, class and properties alike — they disagreed before,
-      // and the properties had it wrong. See {@link hintToDisplay} for what an absent hint means.
-      const customized = stored?.customized ?? false;
-      const editor = {
-        entity,
-        classHint: hintToDisplay({ stored: stored?.classHint, declared: declared.classHint, customized }),
-        defaultClassHint: declared.classHint,
-        rows: declared.rows.map((row) => ({
-          name: row.name,
-          hint: hintToDisplay({ stored: stored?.propHints[row.name], declared: row.hint, customized }),
-          defaultHint: row.hint,
-        })),
-        customized,
-      };
+      const declared = declaredHintsOf(entity, untrack(spaceShapes));
+      const editor = hintEditorStateOf(entity, declared, await ports.interpretationHints(dataset, entity));
       // What it looked like on open, so closing can tell an edit from a read. See `hintEditorDirty`.
       openedHints = JSON.stringify(editor);
       setHintEditor(editor);
     } catch (err) {
       console.error('ShapeStore: reading hints failed', err);
-      toastService.error('Could not read this model’s hints.');
+      toasts.error('Could not read this model’s hints.');
     } finally {
       setHintBusy(false);
     }
@@ -1429,7 +1098,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * `setHintDraft`), so nothing would notify a memo.
    */
   function hintEditorDirty(): boolean {
-    const editor = hintEditor();
+    const editor = untrack(hintEditor);
     if (!editor || openedHints === null) return false;
     return JSON.stringify(editor) !== openedHints;
   }
@@ -1437,7 +1106,7 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   function setHintDraft(key: string, value: string): void {
     // In-place for the same reason as setShapeField: every hint is a typed textarea, and nothing
     // rendered derives from hint text — save() reads the mutated editor state.
-    const editor = hintEditor();
+    const editor = untrack(hintEditor);
     if (!editor) return;
     if (key === 'class') {
       editor.classHint = value;
@@ -1448,9 +1117,9 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   async function saveHintEditor(): Promise<void> {
-    const ports = schemas();
-    const dataset = handle();
-    const editor = hintEditor();
+    const ports = untrack(schemas);
+    const dataset = untrack(handle);
+    const editor = untrack(hintEditor);
     if (!ports || !dataset || !editor) return;
     setHintBusy(true);
     try {
@@ -1459,28 +1128,28 @@ export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         propHints: Object.fromEntries(editor.rows.map((row) => [row.name, row.hint])),
       });
       setHintEditor(null);
-      toastService.success(`Hints for ${editor.entity} saved for this space`);
+      toasts.success(`Hints for ${editor.entity} saved for this space`);
     } catch (err) {
       console.error('ShapeStore: saving hints failed', err);
-      toastService.error('Saving hints failed.');
+      toasts.error('Saving hints failed.');
     } finally {
       setHintBusy(false);
     }
   }
 
   async function resetHintEditor(): Promise<void> {
-    const ports = schemas();
-    const dataset = handle();
-    const editor = hintEditor();
+    const ports = untrack(schemas);
+    const dataset = untrack(handle);
+    const editor = untrack(hintEditor);
     if (!ports || !dataset || !editor) return;
     setHintBusy(true);
     try {
       await ports.resetInterpretationHints(dataset, editor.entity);
-      toastService.success(`Hints for ${editor.entity} reset to defaults`);
+      toasts.success(`Hints for ${editor.entity} reset to defaults`);
       await openHintEditor(editor.entity);
     } catch (err) {
       console.error('ShapeStore: resetting hints failed', err);
-      toastService.error('Resetting hints failed.');
+      toasts.error('Resetting hints failed.');
     } finally {
       setHintBusy(false);
     }

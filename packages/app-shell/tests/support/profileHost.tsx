@@ -30,7 +30,6 @@ import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
-import { createShapeStore } from '../../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../../src/frameworks/solid/stores/TemplateStore';
@@ -48,6 +47,7 @@ import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createProfileStore } from '../../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
+import { createShapeStore } from '../../src/shared/stores/ShapeStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
 
@@ -484,7 +484,12 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       toasts: toastService,
       sessionStore,
     });
-    const shapeStore = createShapeStore({ sessionStore, datasetStore });
+    const shapeStore = createShapeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,

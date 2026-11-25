@@ -24,13 +24,13 @@ import type { PresenceStore } from '@shared/stores/PresenceStore';
 import type { ProfileStore } from '@shared/stores/ProfileStore';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import type { SessionStore } from '@shared/stores/SessionStore';
+import type { ShapeStore } from '@shared/stores/ShapeStore';
 import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { EditorStore } from './EditorStore';
 import type { RecordStore } from './RecordStore';
 import type { RuntimeStore } from './RuntimeStore';
-import type { ShapeStore } from './ShapeStore';
 import type { ShellStore } from './ShellStore';
 import type { SpaceStore } from './SpaceStore';
 import type { TemplateStore } from './TemplateStore';

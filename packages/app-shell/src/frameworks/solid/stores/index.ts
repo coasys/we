@@ -5,7 +5,7 @@ export { type SessionStore, type BootState, createSessionStore } from '../../../
 export { type DatasetStore, createDatasetStore } from '../../../shared/stores/DatasetStore';
 export { type ProfileStore, createProfileStore } from '../../../shared/stores/ProfileStore';
 export { type RuntimeStore, createRuntimeStore } from './RuntimeStore';
-export { type ShapeStore, createShapeStore } from './ShapeStore';
+export { type ShapeStore, createShapeStore } from '../../../shared/stores/ShapeStore';
 export { type RecordStore, createRecordStore } from './RecordStore';
 export { type SpaceStore, createSpaceStore } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, createThemeStore } from './ThemeStore';

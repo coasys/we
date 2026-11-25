@@ -29,6 +29,7 @@ import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createProfileStore } from '@shared/stores/ProfileStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
+import { createShapeStore } from '@shared/stores/ShapeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
 import { trace } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
@@ -41,7 +42,6 @@ import { startAppBridge } from '../services/appBridge';
 import { createEditorStore } from '../stores/EditorStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
-import { createShapeStore } from '../stores/ShapeStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
 import { createTemplateStore } from '../stores/TemplateStore';
@@ -104,7 +104,12 @@ export function BootController(props: ParentProps) {
   });
   // The shape adoption rail follows the current dataset, and everything that renders a space may
   // query the entities it registers.
-  const shapeStore = createShapeStore({ sessionStore, datasetStore });
+  const shapeStore = createShapeStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+  });
   // It offers a form for every model this space carries, which is the list the rail assembles.
   const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
   const profileStore = createProfileStore({

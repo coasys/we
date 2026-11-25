@@ -260,7 +260,6 @@ import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
-import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
@@ -279,6 +278,7 @@ import { createDatasetStore, type DatasetStore } from '../src/shared/stores/Data
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
+import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -331,7 +331,12 @@ function mountShell(): Stores {
     // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
     // enroller, and hands the record layer the vocabularies this community owns — a task's own
     // states — so these are built in the order BootController uses.
-    const shapeStore = createShapeStore({ sessionStore, datasetStore });
+    const shapeStore = createShapeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,

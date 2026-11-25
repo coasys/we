@@ -25,7 +25,6 @@
  * take back their own ask.
  */
 import type {
-  EntityManifest,
   Requirement,
   WorkflowCapabilities,
   WorkflowDefinition,
@@ -70,6 +69,7 @@ import {
 } from '../workflowViews';
 import type { DatasetStore } from './DatasetStore';
 import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
 
 /** A workflow as a list shows it. */
 export interface WorkflowSummaryView {
@@ -279,11 +279,6 @@ export interface WorkflowSpace {
   archivedWorkflows: Accessor<string[]>;
 }
 
-/** What it reads of the shape store: the models the space adopted, which name a record. */
-export interface WorkflowShapes {
-  spaceShapes: Accessor<{ name: string; manifest: EntityManifest | null }[]>;
-}
-
 export interface WorkflowStoreDeps {
   reactivity: ReactivityPort;
   /** The host's first-screen gate: the list is the sidebar's, and waits for it. */
@@ -292,7 +287,8 @@ export interface WorkflowStoreDeps {
   sessionStore: Pick<SessionStore, 'backendPorts' | 'me'>;
   datasetStore: Pick<DatasetStore, 'isWeSpace' | 'currentDataset' | 'currentDatasetEntities'>;
   spaceStore: WorkflowSpace;
-  shapeStore: WorkflowShapes;
+  /** The models the space adopted, which name a record. */
+  shapeStore: Pick<ShapeStore, 'spaceShapes'>;
 }
 
 export function createWorkflowStore(deps: WorkflowStoreDeps): WorkflowStore {

@@ -104,8 +104,8 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
+import { BLOCK_ICONS } from '../../../shared/shapes/spaceShapes';
 import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import { BLOCK_ICONS } from './ShapeStore';
 import type { StoreRegistry } from './useStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */

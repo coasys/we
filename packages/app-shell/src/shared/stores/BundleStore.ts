@@ -54,6 +54,7 @@ import type { Toasts } from '../toasts';
 import { explain } from '../userMessage';
 import type { DatasetStore } from './DatasetStore';
 import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
 
 /** Bigger than any app has reason to be, small enough that reading one cannot hang the page. */
 const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
@@ -184,12 +185,6 @@ export interface BundleThemes {
   deleteTheme: (themeId: string) => Promise<void>;
 }
 
-/** What it reads and writes of a space's models: which it has, and an app's record types added. */
-export interface BundleShapes {
-  spaceShapes: Accessor<{ name: string }[]>;
-  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[], datasetId?: string) => Promise<string[]>;
-}
-
 /** A space this agent has, as the set-up list reads it. */
 export interface BundleSpaceRow {
   id: string;
@@ -215,7 +210,8 @@ export interface BundleStoreDeps {
   datasetStore: Pick<DatasetStore, 'agentSettings' | 'currentDataset' | 'datasets' | 'updateAgentSettings'>;
   templateStore: BundleTemplates;
   themeStore: BundleThemes;
-  shapeStore: BundleShapes;
+  /** What it reads and writes of a space's models: which it has, and an app's record types added. */
+  shapeStore: Pick<ShapeStore, 'spaceShapes' | 'addRecordTypes'>;
   spaceStore: BundleSpaces;
 }
 

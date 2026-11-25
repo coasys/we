@@ -7,9 +7,16 @@
  * property opened its editor with every property blank, because the fallback to the declaration was
  * reachable only when nothing at all was stored.
  */
+import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
-import { hintToDisplay } from '../src/shared/shapes/hintEditor';
+import {
+  CORE_HINT_ENTITIES,
+  declaredHintsOf,
+  hintEditorStateOf,
+  hintEntitiesOf,
+  hintToDisplay,
+} from '../src/shared/shapes/hintEditor';
 
 const DECLARED = 'The title as spoken, without a subtitle.';
 const TUNED = 'Just the title. Skip the author.';
@@ -33,5 +40,43 @@ describe('hintToDisplay', () => {
 
   it('never invents a hint for a declaration that has none', () => {
     expect(hintToDisplay({ stored: undefined, declared: '', customized: false })).toBe('');
+  });
+});
+
+describe('hintEditorStateOf', () => {
+  const declared = { classHint: 'A task', rows: [{ name: 'title', hint: DECLARED }] };
+
+  it('opens on the declaration where the space stores nothing', () => {
+    expect(hintEditorStateOf('TaskBlock', declared, null)).toEqual({
+      entity: 'TaskBlock',
+      classHint: 'A task',
+      defaultClassHint: 'A task',
+      rows: [{ name: 'title', hint: DECLARED, defaultHint: DECLARED }],
+      customized: false,
+    });
+  });
+
+  it('reads class and properties by the one rule once the space owns its hints', () => {
+    const state = hintEditorStateOf('TaskBlock', declared, { propHints: {}, customized: true });
+    expect(state.classHint).toBe('');
+    expect(state.rows[0].hint).toBe('');
+    expect(state.rows[0].defaultHint).toBe(DECLARED);
+  });
+});
+
+describe('declaredHintsOf and hintEntitiesOf', () => {
+  it('reads a core entity’s declaration, leaving out link properties', () => {
+    const task = declaredHintsOf('TaskBlock', []);
+    expect(task.classHint).not.toBe('');
+    expect(task.rows.length).toBeGreaterThan(0);
+  });
+
+  it('offers core vocabulary first, then the space’s models that stand', () => {
+    const entities = hintEntitiesOf([
+      { name: 'Sighting', manifest: CORE_MANIFEST },
+      { name: 'Broken', manifest: null },
+    ]);
+    expect(entities.filter((e) => e.source === 'core').map((e) => e.entity)).toEqual([...CORE_HINT_ENTITIES]);
+    expect(entities.filter((e) => e.source === 'shape')).toEqual([{ entity: 'Sighting', source: 'shape' }]);
   });
 });
