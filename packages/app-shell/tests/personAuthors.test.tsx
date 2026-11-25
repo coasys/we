@@ -207,6 +207,23 @@ describe('ProfileStore — authors as persons', () => {
     expect(persons.personOf.mock.calls.filter(([did]) => did === LAPTOP)).toHaveLength(1);
   });
 
+  it("asks the backend about any backend's ids, whatever they look like — the port decides", async () => {
+    me = { did: 'did:key:z6MkTestViewer' };
+    const OTHER_DEVICE = 'agent:another-backend:laptop';
+    persons.personOf.mockImplementation(async (did: string) =>
+      did === OTHER_DEVICE ? PERSON : (personOfKey[did] ?? did),
+    );
+    try {
+      const store = mount();
+      await store.fetchProfile(OTHER_DEVICE);
+      await settle();
+      expect(persons.personOf).toHaveBeenCalledWith(OTHER_DEVICE);
+      expect(store.personOf(OTHER_DEVICE)).toBe(PERSON);
+    } finally {
+      persons.personOf.mockImplementation(async (did: string) => personOfKey[did] ?? did);
+    }
+  });
+
   it('asks again about a key that was a miss, once the port would let the question through', async () => {
     // A key read before its person linked it (or while the identity store was down) is its own
     // person for now. The port asks again after its miss TTL; the store must not hold the first
