@@ -20,7 +20,6 @@
  * `atIso`, `fromIso`, `toIso`, `atLabel` and `ticks` exist because a schema has no dates: a
  * `we-timestamp` takes an ISO string, and nothing in a schema could choose between hours and years. `progress` is the moment as a fraction of the range, which is what a slider moves along.
  */
-import { clockRegistry } from '@shared/clocks';
 import {
   type Clock,
   type ClockSettings,
@@ -32,7 +31,9 @@ import {
   toIso,
   toTime,
 } from '@we/clock';
-import { type Accessor, createSignal, onCleanup } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+
+import { clockRegistry } from '../clocks';
 
 /** One clock, ready to render. */
 export interface ClockView {
@@ -112,14 +113,20 @@ function view(clock: Clock, state: ClockState): ClockView {
   };
 }
 
-export function createClockStore(): ClockStore {
-  const [clocks, setClocks] = createSignal<Record<string, ClockView>>({});
+/**
+ * The app's clock store, built where the host composes its stores. Its subscriptions to the clocks
+ * go when the owner it is built under is disposed.
+ */
+export function createClockStore({ reactivity }: { reactivity: ReactivityPort }): ClockStore {
+  const { signal, untrack, onCleanup } = reactivity;
+  const [clocks, setClocks] = signal<Record<string, ClockView>>({});
+  // The port's setter takes a value, so one clock's view is written over what the others hold now.
+  const show = (id: string, clock: Clock, state: ClockState) =>
+    setClocks({ ...untrack(clocks), [id]: view(clock, state) });
 
   const publish = (id: string, clock: Clock) => {
-    const unsubscribe = throttle(clock, PUBLISH_INTERVAL, (state) =>
-      setClocks((all) => ({ ...all, [id]: view(clock, state) })),
-    );
-    setClocks((all) => ({ ...all, [id]: view(clock, clock.get()) }));
+    const unsubscribe = throttle(clock, PUBLISH_INTERVAL, (state) => show(id, clock, state));
+    show(id, clock, clock.get());
     return unsubscribe;
   };
 

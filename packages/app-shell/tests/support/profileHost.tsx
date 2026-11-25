@@ -28,7 +28,6 @@ import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createAccountStore } from '../../src/frameworks/solid/stores/AccountStore';
 import { createChatStore } from '../../src/frameworks/solid/stores/ChatStore';
-import { createClockStore } from '../../src/frameworks/solid/stores/ClockStore';
 import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
 import { createPresenceStore } from '../../src/frameworks/solid/stores/PresenceStore';
 import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
@@ -45,6 +44,7 @@ import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
 import { createAppStore } from '../../src/shared/stores/AppStore';
+import { createClockStore } from '../../src/shared/stores/ClockStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
@@ -461,7 +461,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     window.addEventListener('popstate', report);
     report();
-    const clockStore = createClockStore();
+    const clockStore = createClockStore({ reactivity: solidReactivity });
     const shellStore = createShellStore({ platform });
     const chatStore = createChatStore({ shellStore });
     const accountStore = createAccountStore({ platform });

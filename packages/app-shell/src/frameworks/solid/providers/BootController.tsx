@@ -16,6 +16,7 @@
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
 import { createAppStore } from '@shared/stores/AppStore';
+import { createClockStore } from '@shared/stores/ClockStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
@@ -26,7 +27,6 @@ import { firstScreen } from '../firstScreen';
 import { createAccountStore } from '../stores/AccountStore';
 import { createBundleStore } from '../stores/BundleStore';
 import { createChatStore } from '../stores/ChatStore';
-import { createClockStore } from '../stores/ClockStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createDeviceStore } from '../stores/DeviceStore';
 import { createEditorStore } from '../stores/EditorStore';
@@ -54,7 +54,7 @@ export function BootController(props: ParentProps) {
   // Depends on nothing: the app's address, read by templates, the space store and presence.
   const routeStore = createRouteStore({ reactivity: solidReactivity });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
-  const clockStore = createClockStore();
+  const clockStore = createClockStore({ reactivity: solidReactivity });
   const shellStore = createShellStore({ platform });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
   const chatStore = createChatStore({ shellStore });
