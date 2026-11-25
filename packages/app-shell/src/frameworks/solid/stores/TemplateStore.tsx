@@ -27,6 +27,7 @@ import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templat
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { latestPerSpace } from '@shared/stores/latestPerSpace';
+import { createSpaceRecordWait } from '@shared/stores/spaceRecordWait';
 import { createSpaceTemplateChoosing } from '@shared/stores/spaceTemplateChoosing';
 import { reserveId } from '@shared/templateIdentity';
 import { withLibrary, withLibraryListed } from '@shared/templateLists';
@@ -71,7 +72,6 @@ import {
   templateChanges,
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId } from './DatasetStore';
-import { createSpaceRecordWait } from './spaceRecordWait';
 import { createTemplateDrafts } from './templateDrafts';
 import type { StoreRegistry } from './useStore';
 
@@ -1027,6 +1027,7 @@ export function createTemplateStore(
 
   // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
   const spaceRecord = createSpaceRecordWait({
+    reactivity: solidReactivity,
     currentId: () => datasetStore.currentDataset()?.id ?? null,
     spaceOf: () => {
       const perspective = datasetStore.currentDataset();

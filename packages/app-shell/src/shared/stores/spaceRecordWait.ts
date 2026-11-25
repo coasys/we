@@ -26,12 +26,13 @@
  * Its own module, with its inputs passed in, so the reactive behaviour is tested against real
  * signals and effects rather than through the whole session stack the template store sits on.
  */
-import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
 
 export const SPACE_RECORD_PATIENCE_MS = 30_000;
 export const NO_DEFAULT_GRACE_MS = 3_000;
 
 export interface SpaceRecordWaitDeps {
+  reactivity: ReactivityPort;
   /** The dataset on screen, read reactively. */
   currentId: () => string | null;
   /** That dataset's `Space` record as this agent holds it — reactive — or undefined until it syncs. */
@@ -55,8 +56,16 @@ export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): {
   wait: (datasetId: string) => void;
   waiting: () => string | null;
 } {
-  const [waiting, setWaiting] = createSignal<string | null>(null);
-  const [graceOver, setGraceOver] = createSignal(false);
+  const { signal, effect, untrack, batch, onCleanup } = deps.reactivity;
+  const [waiting, writeWaiting] = signal<string | null>(null);
+  const [graceOver, writeGraceOver] = signal(false);
+  // Compared first: `stop` and `wait` rewrite both on every call, mostly with what they hold.
+  const setWaiting = (id: string | null) => {
+    if (untrack(waiting) !== id) writeWaiting(id);
+  };
+  const setGraceOver = (over: boolean) => {
+    if (untrack(graceOver) !== over) writeGraceOver(over);
+  };
   let patience: ReturnType<typeof setTimeout> | undefined;
   let grace: ReturnType<typeof setTimeout> | undefined;
   let choosing = false;
@@ -69,7 +78,7 @@ export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): {
   };
   onCleanup(stop);
 
-  createEffect(() => {
+  effect(() => {
     const id = waiting();
     if (!id || choosing) return;
     if (deps.currentId() !== id) {
@@ -97,14 +106,20 @@ export function createSpaceRecordWait(deps: SpaceRecordWaitDeps): {
   return {
     waiting,
     wait(datasetId) {
-      stop();
-      setGraceOver(false);
-      setWaiting(datasetId);
-      patience = setTimeout(() => {
-        if (untrack(waiting) !== datasetId) return;
+      /*
+        One update, so the effect first sees the wait whole — the old one stopped, the grace reset,
+        the limit running — rather than after each write, which is when a port may run it.
+      */
+      batch(() => {
         stop();
-        deps.settle(datasetId);
-      }, deps.patienceMs ?? SPACE_RECORD_PATIENCE_MS);
+        setGraceOver(false);
+        setWaiting(datasetId);
+        patience = setTimeout(() => {
+          if (untrack(waiting) !== datasetId) return;
+          stop();
+          deps.settle(datasetId);
+        }, deps.patienceMs ?? SPACE_RECORD_PATIENCE_MS);
+      });
     },
   };
 }
