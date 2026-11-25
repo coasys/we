@@ -20,8 +20,9 @@ import { activityRow, botRow, draftEnds, draftOf, draftProblem, grantInput, gran
 
 const OWNER = 'did:scid:coasys:1:QmScid';
 const BOT = 'did:key:z6MkBot';
-const SHARED = 'neighbourhood://QmShared';
-const SWAP = 'neighbourhood://QmSwap';
+// A grant names a space by its shared id, what `Space.url` holds.
+const SHARED = 'QmShared';
+const SWAP = 'QmSwap';
 
 const [ports, setPorts] = createSignal<{ identity?: { bots?: BotPort } } | null>(null);
 const [holdsMaster, setHoldsMaster] = createSignal(true);
@@ -52,7 +53,6 @@ vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({
     mySpaces: () => [
       { uuid: 'p-personal', url: null, name: 'Notes' },
-      // As `Space.url` keeps it: the CID alone. The grant names it by the whole URL.
       { uuid: 'p-shared', url: 'QmShared', name: 'Garden club' },
       { uuid: 'p-swap', url: 'QmSwap', name: 'Seed swap' },
     ],
@@ -77,7 +77,7 @@ function view(over: Partial<BotView['grant']> = {}): BotView {
   };
 }
 
-/** A bot port that keeps one grant the way the executor does: whole, versioned, revoked for good. */
+/** A bot port that keeps one grant the way a backend does: whole, versioned, revoked for good. */
 function fakePort(entries: BotActivityView[] = []) {
   let bot = view();
   const sent: BotGrantInput[] = [];
@@ -136,9 +136,9 @@ function mount(): BotStore {
 const entry = (id: number, allowed: boolean): BotActivityView => ({
   id,
   at: 1_760_000_000 + id,
-  method: 'perspective.addLink',
+  method: 'records.write',
   action: 'write',
-  space: allowed ? SHARED : 'p-other',
+  space: allowed ? SHARED : 'QmOther',
   reason: allowed ? 'Summarise the call' : null,
   allowed,
   refusal: allowed ? null : 'bot-grant',
@@ -350,16 +350,16 @@ describe('botStore', () => {
 });
 
 describe('botRows', () => {
-  it('offers only shared spaces, each named by its whole URL as the backend matches it', () => {
+  it('offers only shared spaces, each named by its shared id', () => {
     expect(
       grantSpaces([
-        { uuid: 'p1', url: 'QmShared', name: 'Garden club' },
-        { uuid: 'p2', url: null, name: 'Notes' },
-        { uuid: 'p3', url: 'neighbourhood://QmOther', name: ' ' },
+        { url: 'QmShared', name: 'Garden club' },
+        { url: null, name: 'Notes' },
+        { url: 'QmOther', name: ' ' },
       ]),
     ).toEqual([
-      { id: SHARED, uuid: 'p1', name: 'Garden club' },
-      { id: 'neighbourhood://QmOther', uuid: 'p3', name: 'Untitled space' },
+      { id: SHARED, name: 'Garden club' },
+      { id: 'QmOther', name: 'Untitled space' },
     ]);
   });
 
@@ -382,11 +382,17 @@ describe('botRows', () => {
     expect(draftEnds({ ...draft, expires: null }, null, 0)).toBe('No end set.');
   });
 
-  it('names the space of a join by its URL and of a write by its id, as the log records them', () => {
-    const spaces = grantSpaces([{ uuid: 'p-shared', url: 'QmShared', name: 'Garden club' }]);
+  it('names the space of a join and of a write by the shared id, as the log records both', () => {
+    const spaces = grantSpaces([{ url: 'QmShared', name: 'Garden club' }]);
     expect(activityRow({ ...entry(1, true), action: 'join', space: SHARED }, spaces).what).toBe('join in Garden club');
-    expect(activityRow({ ...entry(2, true), space: 'p-shared' }, spaces).what).toBe('write in Garden club');
-    expect(activityRow({ ...entry(3, true), space: 'p-elsewhere' }, spaces).what).toBe('write in p-elsewhere');
+    expect(activityRow({ ...entry(2, true), space: SHARED }, spaces).what).toBe('write in Garden club');
+    expect(activityRow({ ...entry(3, true), space: 'QmElsewhere' }, spaces).what).toBe('write in QmElsewhere');
+  });
+
+  it('never shows the backend’s name for a call outside every action', () => {
+    const row = activityRow({ ...entry(1, false), method: 'agent.status', action: null, space: null }, []);
+    expect(row.what).toBe('Another request');
+    expect(JSON.stringify(row)).not.toContain('agent.status');
   });
 
   it('words a write without a reason', () => {

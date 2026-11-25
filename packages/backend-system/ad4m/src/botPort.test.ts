@@ -18,7 +18,14 @@ const agent: BotAgent = {
   owner: 'did:scid:coasys:1:QmScid',
   offerId: 'o1',
   createdAt: 1_760_000_000,
-  grant: { spaces: ['space-a'], can: ['read', 'write'], expires: null, state: 'active', version: 2, updatedAt: 9 },
+  grant: {
+    spaces: ['neighbourhood://QmSpaceA'],
+    can: ['read', 'write'],
+    expires: null,
+    state: 'active',
+    version: 2,
+    updatedAt: 9,
+  },
   key: { keyId: 'd3', verdict: 'notInLog', can: ['read', 'write'], expires: 1_790_000_000 },
 };
 
@@ -46,7 +53,8 @@ describe('the AD4M bot port', () => {
       name: 'Test bot',
       owner: 'did:scid:coasys:1:QmScid',
       createdAt: 1_760_000_000,
-      grant: { spaces: ['space-a'], can: ['read', 'write'], expires: null, state: 'active', version: 2, updatedAt: 9 },
+      // A grant names a space by its neighbourhood URL; the port by the space's shared id.
+      grant: { spaces: ['QmSpaceA'], can: ['read', 'write'], expires: null, state: 'active', version: 2, updatedAt: 9 },
       key: { keyId: 'd3', verdict: 'not-in-log', can: ['read', 'write'], expires: 1_790_000_000 },
     });
   });
@@ -78,17 +86,20 @@ describe('the AD4M bot port', () => {
     });
   });
 
-  it('sends the whole grant with the version it replaces', async () => {
+  it('sends the whole grant with the version it replaces, naming each space by its neighbourhood URL', async () => {
     const client = botClient();
     const grant = {
-      spaces: ['space-a'],
+      spaces: ['QmSpaceA', 'QmSpaceB'],
       can: ['read' as const],
       expires: 1_800_000_000,
       state: 'paused' as const,
       version: 2,
     };
     await createAd4mBotPort(client).setGrant(BOT, grant);
-    expect(client.setGrant).toHaveBeenCalledWith(BOT, grant);
+    expect(client.setGrant).toHaveBeenCalledWith(BOT, {
+      ...grant,
+      spaces: ['neighbourhood://QmSpaceA', 'neighbourhood://QmSpaceB'],
+    });
   });
 
   it('turns a stale version into a conflict that names the version now', async () => {
@@ -136,7 +147,7 @@ describe('the AD4M bot port', () => {
         at: 30,
         method: 'perspective.addLink',
         action: 'write',
-        space: 'space-a',
+        space: 'neighbourhood://QmSpaceA',
         reason: 'Summarise the call',
         outcome: 'allowed',
       },
@@ -145,7 +156,7 @@ describe('the AD4M bot port', () => {
         at: 20,
         method: 'perspective.addLink',
         action: 'write',
-        space: 'space-b',
+        space: 'perspective-uuid',
         reason: 'Tidy up',
         outcome: 'bot-grant',
       },
@@ -161,6 +172,8 @@ describe('the AD4M bot port', () => {
       [5, false, 'not-in-can'],
     ]);
     expect(page[0].reason).toBe('Summarise the call');
+    // A shared space by its shared id; one with no neighbourhood by the id the executor gave.
+    expect(page.map((e) => e.space)).toEqual(['QmSpaceA', 'perspective-uuid', null]);
     await port.log(BOT);
     expect(client.log).toHaveBeenLastCalledWith(BOT, { before: undefined, limit: undefined });
   });
