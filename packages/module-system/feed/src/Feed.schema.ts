@@ -298,6 +298,7 @@ const composer = (scope: FeedScope): SchemaNode => ({
     lineComposer({
       placeholder: `Write to ${scope.of}…`,
       sendLabel: `Send to ${scope.of}`,
+      attach: { label: 'Attach files' },
       /*
         Each submit writes at once, drawn before the write resolves, and the composer empties
         itself on submit, so one submit does not send the same text twice. There is no in-flight
@@ -309,9 +310,14 @@ const composer = (scope: FeedScope): SchemaNode => ({
           condition: { $: replyHere(scope) },
           then: {
             $invoke: 'modules.feed.reply',
-            args: [{ $: 'modules.feed.replyingTo.id' }, { $: 'event.text' }, { $: 'event.marks' }],
+            args: [
+              { $: 'modules.feed.replyingTo.id' },
+              { $: 'event.text' },
+              { $: 'event.marks' },
+              { $: 'local.attachments' },
+            ],
           },
-          else: { $invoke: scope.send, args: [{ $: 'event.text' }, { $: 'event.marks' }] },
+          else: { $invoke: scope.send, args: [{ $: 'event.text' }, { $: 'event.marks' }, { $: 'local.attachments' }] },
         },
       },
     }),

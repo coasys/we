@@ -93,6 +93,32 @@ describe('one line, the Feed’s own actions', () => {
     expect(panel).toContain('"name":"keyboard"');
   });
 
+  it('offers to attach files in the space and in a call, and sends them with the words', () => {
+    for (const body of [view, callView]) {
+      const root = JSON.parse(body);
+      const upload = findNode(root, (n) => n.type === 'we-file-upload');
+      expect(upload?.props).toMatchObject({ multiple: true });
+      const composer = findNode(root, (n) => n.type === 'BlockComposer')!;
+      const sent = JSON.stringify(composer.props?.onSubmit);
+      // The send, and the reply, both take what is attached; the box lets go of it once each resolves.
+      expect(sent.match(/"\$invoke":"modules\.feed\.(reply|sendToFeed|sendToCallFeed)"/g)).toHaveLength(2);
+      expect(sent.match(/"onSuccess":\[/g)).toHaveLength(2);
+      expect(sent).toContain('"$setLocal":"attachments"');
+      // The attachments are the reply's fourth argument and the send's third.
+      const invokes = (node: unknown): { $invoke: string; args: unknown[] }[] =>
+        !node || typeof node !== 'object'
+          ? []
+          : [
+              ...('$invoke' in node ? [node as { $invoke: string; args: unknown[] }] : []),
+              ...Object.values(node).flatMap(invokes),
+            ];
+      const attached = { $: 'local.attachments' };
+      const calls = invokes(composer.props?.onSubmit);
+      expect(calls.find((c) => c.$invoke === 'modules.feed.reply')?.args[3]).toEqual(attached);
+      expect(calls.find((c) => /^modules\.feed\.sendTo(Call)?Feed$/.test(c.$invoke))?.args[2]).toEqual(attached);
+    }
+  });
+
   it('keeps its reply to itself, and asks nothing of transcription', () => {
     expect(panel).toContain('"$invoke":"modules.feed.startReply"');
     expect(panel).toContain(`"condition":{"$":"modules.feed.replyingTo.surface == 'feed'"}`);

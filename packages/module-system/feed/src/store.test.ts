@@ -215,6 +215,42 @@ describe('messages written from the Feed', () => {
     vi.useRealTimers();
   });
 
+  it('sends the files attached to a message in the message, in one group, in one write', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const agenda = new File(['ABC'], 'agenda.pdf', { type: 'application/pdf' });
+    await h.store.sendToFeed('the agenda', [], [agenda]);
+    expect(h.created).toHaveLength(1);
+    const [words, group] = (h.created[0].fields as { blocks: Record<string, unknown>[] }).blocks;
+    expect(words).toMatchObject({ _type: 'block', text: 'the agenda' });
+    expect(group).toMatchObject({
+      _type: 'collection',
+      kind: 'attachments',
+      content: [
+        {
+          _type: 'file',
+          name: 'agenda.pdf',
+          mimeType: 'application/pdf',
+          size: 3,
+          url: { data_base64: 'QUJD', name: 'agenda.pdf', file_type: 'application/pdf' },
+        },
+      ],
+    });
+    vi.useRealTimers();
+  });
+
+  it('refuses a file over the cap, and writes nothing', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const huge = new File(['x'], 'huge.bin');
+    Object.defineProperty(huge, 'size', { value: 26 * 1024 * 1024 });
+    await expect(h.store.sendToFeed('take this', [], [huge])).rejects.toThrow(/can't be attached: huge.bin/);
+    expect(h.created).toEqual([]);
+    vi.useRealTimers();
+  });
+
   it('hangs a reply off the line it answers, and puts the reply down once sent', async () => {
     const h = harness();
     h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });

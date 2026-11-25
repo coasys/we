@@ -8063,6 +8063,7 @@
         "copyGuestLink",
         "exportCallTranscript",
         "exportInterpretationLog",
+        "saveFileBlock",
         "removeSpaceFromGlobal"
       ],
       "ambient": [
@@ -8141,6 +8142,7 @@
         "copyGuestLink",
         "exportCallTranscript",
         "exportInterpretationLog",
+        "saveFileBlock",
         "removeSpaceFromGlobal"
       ]
     },

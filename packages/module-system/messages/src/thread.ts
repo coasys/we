@@ -82,7 +82,8 @@ export function lineContent(row: Row): Row[] | null {
       neither is parsed again here — parsing what is already blocks would read a literal `*` in a
       heading as emphasis. Its files come too, in the group they were attached in.
     */
-    const blocks = rowsToBlocks(parts).map((block) =>
+    // The files are drawn as the line's attachments (`attachmentsOf`), not as blocks.
+    const blocks = rowsToBlocks(parts.filter((part) => !isAttachments(part))).map((block) =>
       isTextBlock(block) ? { ...block, marks: withFoundLinks(block.text, block.marks ?? []) } : block,
     );
     return blocks.length ? (blocks as Row[]) : null;
@@ -109,6 +110,44 @@ export const isMessage = (row: Row): boolean => typeof row.textContent === 'stri
 function partsOf(row: Row): Row[] {
   if (!isMessage(row) || !Array.isArray(row.children)) return [];
   return (row.children as unknown[]).filter((c): c is Row => !!c && typeof c === 'object');
+}
+
+/** The group a message's files are in — see `messageBlocks`. */
+const isAttachments = (part: Row): boolean => part.kind === 'attachments';
+
+/** A file a line carries, as the line draws it: named and sized, its bytes fetched when saved. */
+export interface LineAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  /** The size as people read it — "2.4 MB". */
+  sizeLabel: string;
+}
+
+/** A size as people read it. */
+export function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The files in a message's attachment group, as its read handed them back. */
+export function attachmentsOf(row: Row): LineAttachment[] {
+  const group = partsOf(row).find(isAttachments);
+  const files = Array.isArray(group?.children) ? (group.children as unknown[]) : [];
+  return files
+    .filter((f): f is Row => !!f && typeof f === 'object' && typeof (f as Row).id === 'string')
+    .map((f) => {
+      const size = Number(f.size) || 0;
+      return {
+        id: f.id as string,
+        name: typeof f.name === 'string' && f.name ? f.name : typeof f.title === 'string' ? f.title : 'File',
+        mimeType: typeof f.mimeType === 'string' ? f.mimeType : '',
+        size,
+        sizeLabel: sizeLabel(size),
+      };
+    });
 }
 
 /** A line's words: a bare line's `text`, a message's `textContent`. */
@@ -194,6 +233,7 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
       // A message's words under the name a bare line has them, so what draws, quotes and edits a
       // line reads one field whichever it is.
       text: lineText(row),
+      attachments: attachmentsOf(row),
       ...(replyTo ? { replyTo } : {}),
       ...(content ? { content } : {}),
     });
@@ -203,11 +243,13 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
 }
 
 /**
- * The `include` that brings a message's parts: its blocks, and the blocks of a group inside it (the
- * files attached to it). Both untyped, each member read as the entity it is.
+ * The `include` that brings a message's parts: its blocks, and the files in the group inside it.
+ * Both untyped, each member read as the entity it is. A file by what draws it — its name, type and
+ * size — never its `url`, which for a stored file is the whole file: a page of lines would read
+ * every attachment's bytes on each refresh. They are fetched when somebody saves one.
  */
 export function partsInclude(): Record<string, unknown> {
-  return { children: { include: { children: true } } };
+  return { children: { include: { children: { select: ['name', 'title', 'mimeType', 'size'] } } } };
 }
 
 /** The `include` that brings each line's replies with it — its whole thread, at any depth — each with its parts. */

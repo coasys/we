@@ -26,7 +26,7 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
-import { lineContent, lineInclude, repliesInclude, SPOKEN, threadLines } from '@we/messages';
+import { type LineAttachment, lineContent, lineInclude, repliesInclude, SPOKEN, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 
 type Row = Record<string, unknown>;
@@ -64,6 +64,8 @@ export interface FeedLine {
   /** The line as the blocks a renderer draws, or `null` for a line with no words — see `lineContent`. */
   content: Record<string, unknown>[] | null;
   /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
+  /** The files sent with it, named and sized — see `attachmentsOf` in `@we/messages`. */
+  attachments: LineAttachment[];
   sending: boolean;
 }
 
@@ -180,6 +182,7 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    attachments: Array.isArray(row.attachments) ? (row.attachments as LineAttachment[]) : [],
     sending: false,
   };
 }

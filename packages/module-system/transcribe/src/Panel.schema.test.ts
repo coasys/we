@@ -273,7 +273,7 @@ describe('a transcript with nothing in it', () => {
     // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
     // Each line with its parts and its whole thread, each reply with its parts.
     expect(linesJson).toContain(
-      '"include":{"children":{"include":{"children":true}},"thread":{"include":{"children":{"include":{"children":true}}}}}',
+      '"include":{"children":{"include":{"children":{"select":["name","title","mimeType","size"]}}},"thread":{"include":{"children":{"include":{"children":{"select":["name","title","mimeType","size"]}}}}}}',
     );
   });
 

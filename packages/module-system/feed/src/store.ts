@@ -10,11 +10,12 @@
  * is what a message *is* (`@we/messages`): a `TextBlock` with its `source`, a reply linked from the
  * line it answers through `responses`, and a heard line turning `corrected` when somebody mends it.
  */
-import { correctLine, lineDocumentOptions, messageBlocks, TYPED } from '@we/messages';
+import { attachedFile, correctLine, lineDocumentOptions, messageBlocks, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import { ATTACH_MAX_BYTES } from '@we/schema-kit';
 
 import { watchBotMessages } from './botWatch';
-import { createFeed, type FeedHolder } from './feedStore';
+import { createFeed, type FeedHolder, filesOf } from './feedStore';
 
 /**
  * Where a reply was started: the space's Feed, or the Feed of one call. Both lists are this store's,
@@ -42,12 +43,27 @@ export function createFeedStore(deps: ModuleStoreDeps) {
    * answers. A message, written as a post is: a collection holding its blocks, whoever its marks
    * mention linked from it, and a reply threaded under its thread's subject in the same write.
    */
-  async function writeMessage(holder: FeedHolder, text: string, marks?: unknown) {
+  async function writeMessage(holder: FeedHolder, text: string, marks?: unknown, files: File[] = []) {
     const words = String(text ?? '').trim();
     const documents = records?.documents;
-    if (!words || !documents) return null;
+    if ((!words && !files.length) || !documents) return null;
+    const tooBig = files.filter((file) => file.size > ATTACH_MAX_BYTES);
+    if (tooBig.length)
+      throw new Error(
+        `Files over ${ATTACH_MAX_BYTES / (1024 * 1024)} MB can't be attached: ${tooBig.map((f) => f.name).join(', ')}`,
+      );
+    /*
+      The files go in the message, in one write with it: uploaded to the dataset's storage first, then
+      the message and its parts made together. A write that fails leaves nothing behind, so the sender
+      never sees a message everyone else has, or the reverse. The dataset is resolved once, as the
+      write starts, so somebody changing space during a slow upload does not move where it lands.
+    */
+    const attached = await Promise.all(files.map(attachedFile));
     const place = holder.relation === 'responses' ? { respondsTo: holder.id } : { container: holder.id };
-    const written = await documents.create(messageBlocks(words, marks, TYPED), lineDocumentOptions(place, TYPED));
+    const written = await documents.create(
+      messageBlocks(words, marks, TYPED, attached),
+      lineDocumentOptions(place, TYPED),
+    );
     return written?.id ?? null;
   }
 
@@ -231,7 +247,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       { ambient: true },
     ),
     cancelReply: action(() => setReply(null), 'Puts a reply down without sending it.', { ambient: true }),
-    reply: action(async (parentId: string, text: string, marks?: unknown) => {
+    reply: action(async (parentId: string, text: string, marks?: unknown, files?: unknown) => {
       if (!parentId) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;
@@ -240,12 +256,14 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       // Put down as the line is drawn, so the next message is not sent as a reply as well.
       if (reply === answering) setReply(null);
       const post = answering?.surface === 'callFeed' ? postToCall : postToFeed;
-      await post({ id: parentId, relation: 'responses' }, text, marks, {
-        id: parentId,
-        author: answering?.author ?? '',
-        text: answering?.text ?? '',
-      });
-    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+      await post(
+        { id: parentId, relation: 'responses' },
+        text,
+        marks,
+        { id: parentId, author: answering?.author ?? '', text: answering?.text ?? '' },
+        filesOf(files),
+      );
+    }, 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.'),
     /*
       Correct the words on a line. Anybody may, as in a transcript, and it is not hidden: a heard line
       becomes `corrected` (see `sourceAfterEdit`), so a mended line never reads as a verbatim quote.
@@ -298,7 +316,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     readCallFeedLive: action(call.readFeedLive, 'Re-anchors the call’s Feed at its newest line.', { ambient: true }),
     sendToCallFeed: action(
       call.sendToFeed,
-      'Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.',
+      'Writes a typed message into the call on screen — with its marks, when the composer gave any, and the files attached to it, when it was given any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.',
     ),
     timelineOrientation: state(
       () => (settings?.().timelineOrder === 'newestTop' ? 'newestTop' : 'newestBottom'),

@@ -3438,6 +3438,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
       ambient: [
@@ -3516,6 +3517,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
     },

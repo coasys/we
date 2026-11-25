@@ -15,13 +15,62 @@ import { CORRECTED, sourceAfterEdit, SPOKEN } from './source.ts';
  * way an agent's `write_post` parses them, so a reader draws the blocks as stored. Heard words are
  * one block of what was said: a recogniser writes no markdown.
  */
-export function messageBlocks(text: string, marks?: unknown, source?: string): ContentBlock[] {
+export function messageBlocks(
+  text: string,
+  marks?: unknown,
+  source?: string,
+  files: readonly AttachedFile[] = [],
+): ContentBlock[] {
   const words = String(text ?? '');
   const ownMarks = marksOf(marks);
-  if (source === SPOKEN || source === CORRECTED) {
-    return [{ _type: 'block', text: words, ...(ownMarks.length ? { marks: ownMarks } : {}) }];
-  }
-  return markdownToBlocks(words, ownMarks);
+  const said: ContentBlock[] =
+    source === SPOKEN || source === CORRECTED
+      ? [{ _type: 'block', text: words, ...(ownMarks.length ? { marks: ownMarks } : {}) }]
+      : words
+        ? markdownToBlocks(words, ownMarks)
+        : [];
+  if (!files.length) return said;
+  /*
+    The files go in one group after the words: a collection of kind `attachments`, a `FileBlock` each.
+    A group rather than loose blocks beside the text, so the files are one thing a reader can act on
+    (draw as a set, comment on, reuse) and each is still a record of its own. The bytes are uploaded
+    to the dataset's file storage as the message is written, in the same write.
+  */
+  return [
+    ...said,
+    {
+      _type: 'collection',
+      kind: ATTACHMENTS_KIND,
+      content: files.map((file) => ({
+        _type: 'file',
+        name: file.data.name,
+        mimeType: file.data.file_type,
+        size: file.size,
+        url: file.data,
+      })),
+    } as ContentBlock,
+  ];
+}
+
+/** The kind of the group a message's files are in. */
+export const ATTACHMENTS_KIND = 'attachments';
+
+/** A file attached to a message: its bytes as the file-storage language takes them, and its size. */
+export interface AttachedFile {
+  data: { data_base64: string; name: string; file_type: string };
+  size: number;
+}
+
+/** A browser file as a message carries it — see `AttachedFile`. */
+export async function attachedFile(file: Blob & { name: string }): Promise<AttachedFile> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // In slices: one `fromCharCode` over a large file overflows the call stack.
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return {
+    data: { data_base64: btoa(binary), name: file.name, file_type: file.type || 'application/octet-stream' },
+    size: file.size,
+  };
 }
 
 /** Where a line goes: in a collection (a call, a channel, the space), or answering another line. */
