@@ -6,7 +6,7 @@
  * Four audits have found the "writes to the current dataset" class, and P1-2 was its worst
  * instance: #161 made a call survive navigation, and every module write still resolved to
  * `datasetStore.currentDataset()`. Start a call in space A with recording on, open space B, keep
- * talking, and each utterance became a `TextBlock` in **B's** perspective carrying a `children`
+ * talking, and each utterance became a `TextBlock` in **B's** dataset carrying a `children`
  * link from a record id B does not hold — peers in A stopped seeing the transcript, B accumulated
  * orphans, and nothing anywhere reported a problem.
  *

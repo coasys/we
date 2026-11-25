@@ -218,10 +218,10 @@ export default function TemplateProvider() {
    * The space collection of a dataset — where its top-level records live. The space on screen
    * answers from the store; any other is read, since a call can outlive the view of its space.
    */
-  async function spaceRootOf(perspective: DatasetProxy): Promise<string> {
-    if (perspective === datasetStore.currentDataset()?.handle && spaceStore.root()) return spaceStore.root();
+  async function spaceRootOf(dataset: DatasetProxy): Promise<string> {
+    if (dataset === datasetStore.currentDataset()?.handle && spaceStore.root()) return spaceStore.root();
     try {
-      return (await readSpaceRoot(perspective))?.root ?? '';
+      return (await readSpaceRoot(dataset))?.root ?? '';
     } catch {
       return '';
     }
@@ -242,14 +242,13 @@ export default function TemplateProvider() {
   async function withCollectionDefaults(
     entity: string,
     fields: Record<string, unknown>,
-    perspective?: DatasetProxy,
+    dataset?: DatasetProxy,
   ): Promise<Record<string, unknown>> {
-    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !perspective)
-      return fields;
+    if (entity !== 'CollectionBlock' || fields.mode !== 'feed' || 'autoExtract' in fields || !dataset) return fields;
     const space =
-      perspective === datasetStore.currentDataset()?.handle
+      dataset === datasetStore.currentDataset()?.handle
         ? spaceStore.currentSpace()
-        : await Space.findOne(perspective).catch(() => null);
+        : await Space.findOne(dataset).catch(() => null);
     return withInterpretationDefaults(entity, fields, space);
   }
 
@@ -257,27 +256,27 @@ export default function TemplateProvider() {
    * A record written as a response is linked into its thread — see `completeResponse` in `@we/entities`. Not awaited:
    * the response exists, and the press that wrote it should not wait on the thread link.
    */
-  function threadResponse(perspective: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
+  function threadResponse(dataset: DatasetProxy, created: { id?: string } | undefined, options: unknown): void {
     const subject = respondsThrough(options);
-    if (subject && created?.id) void completeResponse(perspective, created.id, subject);
+    if (subject && created?.id) void completeResponse(dataset, created.id, subject);
   }
 
   /** `record.create`, against a resolved handle rather than a store path. */
   async function createInDataset(
     entity: string,
     fields: Record<string, unknown>,
-    perspective: DatasetProxy,
+    dataset: DatasetProxy,
     rest: Record<string, unknown>,
   ) {
-    const stamped = await withCollectionDefaults(entity, fields, perspective);
-    const created = await recordModel(entity).create(perspective, stamped, Object.keys(rest).length ? rest : undefined);
-    threadResponse(perspective, created, rest);
+    const stamped = await withCollectionDefaults(entity, fields, dataset);
+    const created = await recordModel(entity).create(dataset, stamped, Object.keys(rest).length ? rest : undefined);
+    threadResponse(dataset, created, rest);
     return created;
   }
 
   /** The same, for `record.update` — `recordActions` resolves a store *path*, and a module has a handle. */
-  function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, perspective: DatasetProxy) {
-    return recordModel(entity).update(perspective, id, fields);
+  function updateInDataset(entity: string, id: string, fields: Record<string, unknown>, dataset: DatasetProxy) {
+    return recordModel(entity).update(dataset, id, fields);
   }
 
   // The same capability schemas get as `record.create`, lent to module stores that must write
@@ -300,19 +299,19 @@ export default function TemplateProvider() {
         `DatasetTarget`.
       */
       createEntity: async (entity, fields, options) => {
-        const perspective = moduleTarget(options?.dataset);
-        if (!perspective) return null;
+        const dataset = moduleTarget(options?.dataset);
+        if (!dataset) return null;
         const { dataset: _dataset, topLevel, ...rest } = (options ?? {}) as Record<string, unknown>;
         if (topLevel && !rest.parent) {
-          const root = await spaceRootOf(perspective);
+          const root = await spaceRootOf(dataset);
           if (root) rest.parent = { id: root, relation: 'children', entity: 'CollectionBlock' };
         }
-        const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
+        const created = (await createInDataset(entity, fields, dataset, rest)) as { id?: string } | undefined;
         // A line written with marks mentions whoever they name — see `lineMentions`.
         if (created?.id) {
           await linkNewMentions(
             getEntity(entity) as unknown as MentionWriter,
-            perspective,
+            dataset,
             entity,
             created.id,
             fields,
@@ -322,8 +321,8 @@ export default function TemplateProvider() {
       },
 
       threadSubject: async (id, options) => {
-        const perspective = moduleTarget(options?.dataset);
-        return perspective ? threadSubject(perspective, id) : null;
+        const dataset = moduleTarget(options?.dataset);
+        return dataset ? threadSubject(dataset, id) : null;
       },
 
       // A post, from a module: always the space on screen. See `RecordsKernel.documents`.
@@ -361,7 +360,7 @@ export default function TemplateProvider() {
         const p = moduleTarget(options?.dataset);
         if (!p) return;
         const Model = getEntity(entity);
-        const instance = new (Model as unknown as new (perspective: unknown, base: string) => Record<string, unknown>)(
+        const instance = new (Model as unknown as new (dataset: unknown, base: string) => Record<string, unknown>)(
           p,
           id,
         );
@@ -532,8 +531,7 @@ export default function TemplateProvider() {
    * what the AI layer injects as `externalEntities`, where core entities would be a duplicate of what
    * the generated reference already documents. But an adapter resolving `scope` looks `via` up in
    * this same list, so with foreign models alone a drill-down through core vocabulary could never
-   * resolve: `{ anchor: 'CollectionBlock', via: 'children' }` failed with "no such relation in the
-   * current perspective's model manifest", and every existing `scope` in the templates happened to
+   * resolve: `{ anchor: 'CollectionBlock', via: 'children' }` failed with a "no such relation" refusal, and every existing `scope` in the templates happened to
    * be on a Flux entity, so nothing had caught it.
    *
    * Merged here, at the host, rather than inside an adapter: `DataBindingDeps` is declared in
@@ -545,8 +543,7 @@ export default function TemplateProvider() {
    *
    * Module-declared entities are the third source, and were missing for the same reason core was:
    * they are in neither of the other two. A module that declares a relation and then drills into it
-   * — the Pocket, reading a folder's contents — got "no such relation in the current perspective's
-   * model manifest" on a completely correct query. Behind core, since a module may not shadow the
+   * — the Pocket, reading a folder's contents — got a "no such relation" refusal on a completely correct query. Behind core, since a module may not shadow the
    * host's vocabulary.
    */
   const moduleEntries = createMemo(() => {

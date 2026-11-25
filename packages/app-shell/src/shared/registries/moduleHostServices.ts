@@ -615,7 +615,7 @@ export function createModuleStoreDeps(
         return run(collectionId);
       },
       // A named dataset that cannot be resolved refuses, as every targeted write does: registering the
-      // watch in whichever space is on screen would interpret a call into a perspective that does not
+      // watch in whichever space is on screen would interpret a call into a dataset that does not
       // hold it.
       watchCollection: async (collectionId, target) => {
         const start = services.watchCollection;

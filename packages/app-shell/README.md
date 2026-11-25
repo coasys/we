@@ -57,7 +57,7 @@ the same names templates use.
 The store surface a schema can reach through expressions and `$invoke` is documented in
 the generated reference (`CLAUDE.md`, "Stores" section) and kept honest by
 `@we/ai-context`'s extractor. The names to know: `sessionStore` (boot, agent
-identity — `sessionStore.me`), `datasetStore` (datasets/perspectives,
+identity — `sessionStore.me`), `datasetStore` (datasets,
 `currentDataset`, `rootDataset`), `spaceStore` (spaces, members, modules,
 posts), `templateStore` / `themeStore` (what renders and how it looks),
 `editorStore` (the editing surface + AI loop), `presenceStore`, `runtimeStore`

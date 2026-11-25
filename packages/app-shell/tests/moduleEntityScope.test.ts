@@ -13,7 +13,7 @@ import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
  * because the error message is a true statement that points away from the cause:
  *
  *     cannot resolve scope { anchor: "PocketFolder", via: "folders" }
- *     — no such relation in the current perspective's model manifest
+ *     — no such relation in the current dataset's model manifest
  *
  * The relation existed, was declared correctly, and had been installed. What it was not in was the
  * list an adapter resolves a scope against, which the host merged from foreign schemas and core
