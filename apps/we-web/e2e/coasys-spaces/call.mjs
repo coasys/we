@@ -20,7 +20,7 @@ import { until } from '@we/e2e/waits';
 
 import { inTheCall } from '../steps/space.mjs';
 import { timings } from './context.mjs';
-import { endWatches, markClick, ms, readMark, watchPage } from './probe.mjs';
+import { markClick, ms, readMark, watchPage } from './probe.mjs';
 
 /** The page's own live mark of a call: the "Live" tag on its row in the space's tree. */
 const LIVE = { selector: 'we-badge', texts: ['Live'] };
@@ -119,9 +119,13 @@ export async function typeIntoCall(who, perspective, callId, lines) {
  * `found.first` and `found.count#<n>` (the call's Interpretation button naming its first suggestion,
  * and the frame it first named each number of them). `lines` is the stub tier's typed lines; the real
  * tier names `heard`, the words only its recording says, in place of lines.
+ *
+ * The watches have no expiry of their own: a real model's result can arrive after any fixed time, so
+ * they read the page until the caller ends them with `endWatches`.
  */
-export async function watchSaid(page, { lines, heard, within }) {
+export async function watchSaid(page, { lines, heard }) {
   const said = lines ? { first: [lines[0]], last: [lines.at(-1)] } : { first: heard, last: heard };
+  const within = null;
   await watchPage(page, 'said.first', { texts: said.first, within });
   await watchPage(page, 'said.last', { texts: said.last, all: !lines, within });
   for (const [i, line] of (lines ?? []).entries()) await watchPage(page, `line.${i}`, { texts: [line], within });
@@ -145,8 +149,6 @@ export async function timeInterpretation(page, stored) {
       ms(await readMark(page, 'said.last'), await shown(`found.count#${stored}`)),
     );
   }
-  // The count's watch never ends by itself: nothing reads it after this.
-  await endWatches(page);
 }
 
 /**

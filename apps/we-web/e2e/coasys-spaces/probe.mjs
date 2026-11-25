@@ -28,7 +28,7 @@ function armWatch({ name, spec }) {
   delete probe.marks[name];
   // Arming a name again replaces the watch it had.
   const watches = (probe.watches ??= new Map());
-  watches.set(name, { spec, giveUp: performance.now() + (spec.within ?? 120_000) });
+  watches.set(name, { spec, giveUp: spec.within === null ? Infinity : performance.now() + (spec.within ?? 120_000) });
   if (probe.looping) return;
   probe.looping = true;
 
@@ -108,7 +108,7 @@ function armWatch({ name, spec }) {
  * taken when the page no longer shows it. With `spec.counted` there is no mark of `name`: the first
  * number in the text of a match is the count, and `name#<n>` is marked in the frame it first showed.
  * `spec.within` (default 120000) is how long the watch reads
- * the page. A spec that already holds is marked at once, before any start a caller takes after it, and
+ * the page; `null` is until {@link endWatches}. A spec that already holds is marked at once, before any start a caller takes after it, and
  * {@link ms} drops that.
  */
 export function watchPage(page, name, spec) {
@@ -154,10 +154,14 @@ export function ms(start, end) {
   return end - start;
 }
 
+/** How many inputs have been armed, for each one's token. */
+let armed = 0;
+
 /**
- * Times the next input of a kind to the change it makes. Resolves, once armed, with a function; make
- * the input with the page's mouse, then await that function for the milliseconds, or `null` if nothing
- * changed in `within` ms.
+ * Times the next input of a kind to the change it makes. Arms the page, runs `perform` (which makes
+ * the input with the page's mouse) and resolves with the milliseconds, or `null` if nothing changed
+ * in `within` ms after it. Whether it resolves or throws, the observer, the listener and the ports it
+ * armed are gone from the page.
  *
  * - `input` — the event type that starts the clock (`pointermove`, `pointerup`, `wheel`): its own
  *   `timeStamp`, when the browser took the input.
@@ -167,12 +171,13 @@ export function ms(start, end) {
  * The end is the first message after the frame that follows the change: the change has been painted,
  * as far as a page can know.
  */
-export async function timeInput(page, { input, change }, within = 3_000) {
-  const key = `${input}:${change.selector}:${change.attribute}`;
+export async function timeInput(page, { input, change }, perform, within = 3_000) {
+  // Each attempt has its own token, so what an attempt leaves in the page can never be read as another's.
+  const token = `${input}:${change.selector}:${change.attribute}:${++armed}`;
   await page.evaluate(
-    ({ key, input, change }) => {
+    ({ token, input, change }) => {
       const probe = (window.__spacesProbe ??= { marks: {}, inputs: {} });
-      probe.inputs[key] = { done: false, ms: null };
+      probe.inputs[token] = { done: false, ms: null };
       let started = null;
       const stop = new AbortController();
       window.addEventListener(
@@ -192,8 +197,7 @@ export async function timeInput(page, { input, change }, within = 3_000) {
         if (!hit || started === null) return;
         observer.disconnect();
         channel.port1.onmessage = () => {
-          probe.inputs[key] = { done: true, ms: performance.now() - started };
-          stop.abort();
+          probe.inputs[token] = { done: true, ms: performance.now() - started };
         };
         requestAnimationFrame(() => channel.port2.postMessage(0));
       });
@@ -202,16 +206,27 @@ export async function timeInput(page, { input, change }, within = 3_000) {
         attributes: true,
         attributeFilter: [change.attribute],
       });
+      (probe.cleanups ??= {})[token] = () => {
+        observer.disconnect();
+        stop.abort();
+        channel.port1.close();
+        channel.port2.close();
+        delete probe.inputs[token];
+        delete probe.cleanups[token];
+      };
     },
-    { key, input, change },
+    { token, input, change },
   );
-  return async () => {
-    const result = await page
-      .waitForFunction((k) => window.__spacesProbe.inputs[k]?.done, key, { timeout: within, polling: 'raf' })
-      .then(() => page.evaluate((k) => window.__spacesProbe.inputs[k].ms, key))
+  try {
+    await perform();
+    return await page
+      .waitForFunction((t) => window.__spacesProbe.inputs[t]?.done, token, { timeout: within, polling: 'raf' })
+      .then(() => page.evaluate((t) => window.__spacesProbe.inputs[t].ms, token))
       .catch(() => null);
-    return result;
-  };
+  } finally {
+    // Whatever ended the attempt, a timeout or a throw included, nothing of it is left running in the page.
+    await page.evaluate((t) => window.__spacesProbe?.cleanups?.[t]?.(), token).catch(() => {});
+  }
 }
 
 /**
@@ -260,23 +275,32 @@ export async function timeCanvas(page, report, rounds = 5) {
       return null;
     });
   const LAYER = { selector: '.we-graph__layer', attribute: 'style' };
+  // A drag with the button down for the length of `gesture`, and released when it throws too.
+  const pressed = async (at, gesture) => {
+    await page.mouse.move(at.x, at.y);
+    await page.mouse.down();
+    try {
+      return await gesture();
+    } finally {
+      await page.mouse.up();
+    }
+  };
 
   const bare = await ground();
   if (bare) {
     for (let i = 0; i < rounds; i++) {
-      const wait = await timeInput(page, { input: 'wheel', change: LAYER });
-      await page.mouse.move(bare.x, bare.y);
-      await page.mouse.wheel(0, i % 2 ? 120 : -120);
-      const t = await wait();
+      const t = await timeInput(page, { input: 'wheel', change: LAYER }, async () => {
+        await page.mouse.move(bare.x, bare.y);
+        await page.mouse.wheel(0, i % 2 ? 120 : -120);
+      });
       if (t !== null) report('zoom', t);
     }
     for (let i = 0; i < rounds; i++) {
-      await page.mouse.move(bare.x, bare.y);
-      await page.mouse.down();
-      const wait = await timeInput(page, { input: 'pointermove', change: LAYER });
-      await page.mouse.move(bare.x + (i % 2 ? -40 : 40), bare.y);
-      const t = await wait();
-      await page.mouse.up();
+      const t = await pressed(bare, () =>
+        timeInput(page, { input: 'pointermove', change: LAYER }, () =>
+          page.mouse.move(bare.x + (i % 2 ? -40 : 40), bare.y),
+        ),
+      );
       if (t !== null) report('pan', t);
     }
   }
@@ -284,15 +308,11 @@ export async function timeCanvas(page, report, rounds = 5) {
   if (held) {
     for (let i = 0; i < rounds; i++) {
       const at = (await node()) ?? held;
-      await page.mouse.move(at.x, at.y);
-      await page.mouse.down();
-      const wait = await timeInput(page, {
-        input: 'pointermove',
-        change: { selector: '.we-graph__node', attribute: 'style' },
-      });
-      await page.mouse.move(at.x + (i % 2 ? -30 : 30), at.y + 20);
-      const t = await wait();
-      await page.mouse.up();
+      const t = await pressed(at, () =>
+        timeInput(page, { input: 'pointermove', change: { selector: '.we-graph__node', attribute: 'style' } }, () =>
+          page.mouse.move(at.x + (i % 2 ? -30 : 30), at.y + 20),
+        ),
+      );
       if (t !== null) report('drag', t);
     }
     for (let i = 0; i < rounds; i++) {
@@ -300,12 +320,18 @@ export async function timeCanvas(page, report, rounds = 5) {
       const away = await ground();
       await page.mouse.move(at.x, at.y);
       await page.mouse.down();
-      const wait = await timeInput(page, {
-        input: 'pointerup',
-        change: { selector: '.we-graph__node', attribute: 'class', className: 'we-graph__node--selected' },
+      const t = await timeInput(
+        page,
+        {
+          input: 'pointerup',
+          change: { selector: '.we-graph__node', attribute: 'class', className: 'we-graph__node--selected' },
+        },
+        () => page.mouse.up(),
+      ).catch(async (error) => {
+        // The button is still down if arming failed before the release.
+        await page.mouse.up().catch(() => {});
+        throw error;
       });
-      await page.mouse.up();
-      const t = await wait();
       if (t !== null) report('select', t);
       // Back to nothing selected, so the next round selects again.
       if (away) await page.mouse.click(away.x, away.y);

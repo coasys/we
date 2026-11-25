@@ -22,7 +22,7 @@ import {
 } from './call.mjs';
 import { SLOW, STUB, timings, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
-import { markClick, ms, readMark } from './probe.mjs';
+import { endWatches, markClick, ms, readMark } from './probe.mjs';
 import { HEARD, LINES } from './stub-llm.mjs';
 import {
   acceptInInspector,
@@ -66,9 +66,10 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
   v.step('what is said lands in the transcript', async () => {
     const lines = Object.values(LINES);
     // The timings of what is said and what is found of it (README, "Timings"): the page marks when
-    // each shows, and the steps below read the marks.
+    // each shows, and the steps below read the marks. The watches last until the interpretation step
+    // ends them.
     await timings.attempt('transcript and interpretation', () =>
-      watchSaid(alice.page, STUB ? { lines, within: SLOW } : { heard: HEARD, within: SLOW }),
+      watchSaid(alice.page, STUB ? { lines } : { heard: HEARD }),
     );
     if (STUB) await watchCall(alice, perspective, callId);
     // Open on the call before a line is written: the line's time is then its write to the screen.
@@ -107,16 +108,21 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
   });
 
   v.step("interpretation makes records of the package's classes, linked to the call", async () => {
-    await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null);
-    if (STUB) {
-      const asked = (await world()).stub.passes().flatMap((p) => p.input.classes.map((c) => c.name));
-      for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `interpretation asked for ${cls.name}`);
+    try {
+      await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null);
+      if (STUB) {
+        const asked = (await world()).stub.passes().flatMap((p) => p.input.classes.map((c) => c.name));
+        for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `interpretation asked for ${cls.name}`);
+      }
+      // Every suggestion the scripted pass made is in; the real tier's model may still be writing more.
+      await timings.attempt('interpretation', async () => {
+        const stored = STUB ? (await alice.ports.interpretation.proposals(perspective)).length : 0;
+        await timeInterpretation(alice.page, stored);
+      });
+    } finally {
+      // The step's watches end with it, pass or fail.
+      await endWatches(alice.page);
     }
-    // Every suggestion the scripted pass made is in; the real tier's model may still be writing more.
-    await timings.attempt('interpretation', async () => {
-      const stored = STUB ? (await alice.ports.interpretation.proposals(perspective)).length : 0;
-      await timeInterpretation(alice.page, stored);
-    });
     const all = [...found.values()].flat();
     // The executor writes the records; the client that registered the watch links them to the call
     // when it hears the pass end, a moment later (`processed`, interpretationAdapter.ts).

@@ -141,7 +141,7 @@ export const timings = createTimings();
 
 /**
  * Writes the run's timings: `metrics.json` in the artifacts, and the metrics alone in
- * `PERF_RESULTS_DIR`. A failed write is said and does not fail the run: timing never decides a result.
+ * `PERF_RESULTS_DIR`. A failed write is said and does not fail the run.
  */
 function writeTimings({ llm, transcriber }) {
   try {
@@ -205,7 +205,10 @@ export function vertical(name, body) {
         }
         try {
           await fn(t);
+          // Only a step that passed keeps its timings.
+          timings.commit();
         } catch (error) {
+          timings.discard();
           v.failed = true;
           await snapshotAll(v, title);
           throw error;

@@ -44,6 +44,7 @@ describe('the timings of a run', () => {
   it('report the median of a metric, in ms, lower being better, with the run’s params', () => {
     const timings = createTimings();
     for (const v of [30, 10, 20]) timings.add('call.join_ms', v);
+    timings.commit();
     expect(timings.metrics(STUB)).toEqual([
       { metric: 'call.join_ms', value: 20, unit: 'ms', better: 'lower', params: STUB },
     ]);
@@ -53,6 +54,7 @@ describe('the timings of a run', () => {
     const timings = createTimings();
     for (const v of [4, 9, 5, 6, 5]) timings.add('graph.pan_ms', v);
     for (const v of [100, 300]) timings.add('call.leave_ms', v);
+    timings.commit();
     const by = Object.fromEntries(timings.metrics(STUB).map((m) => [m.metric, m.value]));
     expect(by).toEqual({ 'graph.pan_ms': 5, 'graph.pan_max_ms': 9, 'call.leave_ms': 200 });
   });
@@ -61,6 +63,7 @@ describe('the timings of a run', () => {
     const timings = createTimings();
     timings.add('call.join_ms', 800);
     for (const bad of [null, undefined, NaN, Infinity, -5, '12']) timings.add('graph.zoom_ms', bad);
+    timings.commit();
     expect(timings.metrics(STUB).map((m) => m.metric)).toEqual(['call.join_ms']);
     expect(createTimings().metrics(STUB)).toEqual([]);
   });
@@ -68,12 +71,14 @@ describe('the timings of a run', () => {
   it('keep a zero reading as a measurement', () => {
     const timings = createTimings();
     timings.add('graph.select_ms', 0);
+    timings.commit();
     expect(timings.metrics(STUB).map((m) => m.value)).toEqual([0, 0]);
   });
 
   it('round to a tenth of a millisecond', () => {
     const timings = createTimings();
     timings.add('call.join_ms', 812.3456);
+    timings.commit();
     expect(timings.metrics(STUB)[0].value).toBe(812.3);
   });
 
@@ -81,7 +86,39 @@ describe('the timings of a run', () => {
     const timings = createTimings();
     timings.add('transcript.line_ms', 10);
     timings.add('transcript.line_ms', 20);
+    timings.commit();
     expect(timings.samples()).toEqual({ 'transcript.line_ms': [10, 20] });
+  });
+
+  it('hold a step’s samples back until the step passes', () => {
+    const timings = createTimings();
+    timings.add('call.join_ms', 700);
+    expect(timings.metrics(STUB)).toEqual([]);
+    expect(timings.samples()).toEqual({});
+    timings.commit();
+    expect(timings.samples()).toEqual({ 'call.join_ms': [700] });
+  });
+
+  it('record nothing of a step that fails, and keep what earlier steps recorded', () => {
+    const timings = createTimings();
+    timings.add('call.join_ms', 700);
+    timings.commit();
+    timings.add('call.join_ms', 9_000);
+    timings.add('graph.zoom_ms', 5);
+    timings.discard();
+    // The next step starts clean: nothing of the failed one is carried into it.
+    timings.add('call.leave_ms', 300);
+    timings.commit();
+    expect(timings.samples()).toEqual({ 'call.join_ms': [700], 'call.leave_ms': [300] });
+    expect(timings.metrics(STUB).map((m) => m.metric)).toEqual(['call.join_ms', 'call.leave_ms']);
+  });
+
+  it('commit a step’s samples once', () => {
+    const timings = createTimings();
+    timings.add('call.join_ms', 700);
+    timings.commit();
+    timings.commit();
+    expect(timings.samples()).toEqual({ 'call.join_ms': [700] });
   });
 
   it('say a measurement that throws, and go on', async () => {
@@ -117,6 +154,7 @@ describe('the files a run writes', () => {
     const perf = join(mkdtempSync(join(tmpdir(), 'coasys-perf-')), 'out');
     const timings = createTimings();
     timings.add('call.join_ms', 700);
+    timings.commit();
     const metrics = timings.metrics(STUB);
     const detail = { params: STUB, samples: timings.samples() };
     writeMetrics({ dir, job: JOB, metrics, doc: { job: JOB, detail }, env: { PERF_RESULTS_DIR: perf } });

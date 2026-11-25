@@ -96,7 +96,9 @@ same kind of contract. The suite's own README (`apps/we-web/e2e/feed-scale/READM
 it measures and how it reads the numbers.
 
 **The coasys-spaces suite also reports timings.** It times the call, the transcript, the
-interpretation and the graph in V2 and V6 (its README, "Timings", lists each metric).
+interpretation and the graph in V2 and V6 (its README, "Timings", lists each metric). A step's
+timings are kept only if the step passes. Measuring does change what the steps do: V2 opens the call
+before it writes its lines, and V6's graph gestures move nodes on the canvas.
 
 **The `PERF_RESULTS_DIR` contract.** A suite that reports metrics calls `writeMetrics` from
 `@we/e2e`. It writes `metrics.json` in its own artifacts directory. When `PERF_RESULTS_DIR` is set,

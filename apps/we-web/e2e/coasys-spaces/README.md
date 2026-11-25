@@ -219,30 +219,41 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 The suite measures how long the product takes from a person's action to what the person sees. It
 adds no test of its own. It times the steps of V2 and V6 while they run.
 
-A metric is in milliseconds and lower is better. A step that fails or is skipped records nothing:
-its metrics are left out of the file. A metric is never written as 0. A timing that cannot be taken
-is said in the log and left out. Timing never decides if a step passes. A metric that repeats is
-reported as its median. Some also report the largest sample as `<name>_max_ms`.
+A metric is in milliseconds and lower is better. A step's samples are kept only when the step
+passes: a step that fails or is skipped records nothing, so its metrics are left out of the file. A
+metric is never written as 0. A timing that cannot be taken is said in the log and left out, and
+does not fail the step. A metric that repeats is reported as its median. Some also report the largest
+sample as `<name>_max_ms`.
+
+Measuring changes some steps, and a run that measures is not a run that does not:
+
+- Stub V2 opens the call's row before it writes the lines, so the lines stream into an open call. The
+  line's time is then its write to the screen.
+- V6's graph gestures change the canvas. The five drags move a node and can store a `Placement`. V6
+  has a space of its own, so no other vertical sees it.
 
 The page takes the times (`probe.mjs`). A watcher in the page marks the frame in which a thing
 shows. All the watchers of a page share one loop, which reads the page once a frame and stops when
-no watcher is left. A click starts the clock at the event's own time stamp. Where a step writes data from Node,
+no watcher is left. The interpretation watchers have no expiry: they last until the interpretation
+step ends, pass or fail, because a real model's result can come after any fixed time. A gesture's
+observer and listener are removed from the page when its timing ends, even on a timeout. A click starts the clock at the event's own time stamp. Where a step writes data from Node,
 the clock starts at that write.
 
-| Metric                                         | Start                                                       | End                                                      | Tier                                                                  |
-| ---------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------- |
-| `call.join_ms`                                 | The click on "Start a call".                                | The "Live" tag shows on the call's row in the tree.      | Both. Samples from V2 and V6.                                         |
-| `call.leave_ms`                                | The click on "Leave the call".                              | The "Live" tag is gone from the call's row.              | Both.                                                                 |
-| `transcript.line_ms`, `transcript.line_max_ms` | Stub: the suite writes a line into the call (one per line). | The line's text shows on the page.                       | Stub: the write-to-screen time of a line.                             |
-|                                                | Real: the click on "Unmute" (one sample).                   | The first heard word shows on the page.                  | Real: includes the recording, the speech model and the write.         |
-| `interpretation.first_record_ms`               | The first transcript line shows.                            | The Interpretation button names at least one suggestion. | Stub: the scripted model. Real: the language model named in `params`. |
-| `interpretation.all_records_ms`                | The last transcript line shows.                             | The button names all the suggestions that are stored.    | Stub only. The real model may still write more, so no total is known. |
-| `graph.first_node_ms`                          | The click on "Canvas".                                      | The first node is in the graph.                          | Both.                                                                 |
-| `graph.all_records_ms`                         | The click on "Canvas".                                      | The title of every record shows in the graph.            | Both.                                                                 |
-| `graph.zoom_ms`, `graph.zoom_max_ms`           | A wheel event (5 rounds).                                   | The frame after the graph layer's transform changes.     | Both.                                                                 |
-| `graph.pan_ms`, `graph.pan_max_ms`             | The first pointer move of a drag on bare ground (5 rounds). | The frame after the graph layer's transform changes.     | Both.                                                                 |
-| `graph.drag_ms`, `graph.drag_max_ms`           | The first pointer move of a drag on a node (5 rounds).      | The frame after the node's position changes.             | Both.                                                                 |
-| `graph.select_ms`, `graph.select_max_ms`       | The pointer up of a click on a node (5 rounds).             | The frame after the node gets its selected class.        | Both.                                                                 |
+| Metric                                         | Start                                                       | End                                                      | Tier                                                                                                |
+| ---------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `call.join_ms`                                 | The click on "Start a call".                                | The "Live" tag shows on the call's row in the tree.      | Both. Samples from V2 and V6.                                                                       |
+| `call.leave_ms`                                | The click on "Leave the call".                              | The "Live" tag is gone from the call's row.              | Both.                                                                                               |
+| `transcript.line_ms`, `transcript.line_max_ms` | Stub: the suite writes a line into the call (one per line). | The line's text shows on the page.                       | Stub: the write-to-screen time of a line.                                                           |
+|                                                | Real: the click on "Unmute" (one sample).                   | The first heard word shows on the page.                  | Real: includes the recording, the speech model and the write.                                       |
+| `interpretation.first_record_ms`               | The first transcript line shows.                            | The Interpretation button names at least one suggestion. | Stub: the scripted model. Real: the language model named in `params`.                               |
+| `interpretation.all_records_ms`                | The last transcript line shows.                             | The button names all the suggestions that are stored.    | Stub only. The real model may still write more, so no total is known.                               |
+| `graph.first_node_ms`                          | The click on "Canvas".                                      | The first node is in the graph.                          | Both.                                                                                               |
+| `graph.all_records_ms`                         | The click on "Canvas".                                      | The title of every record shows in the graph.            | Stub only: the scripted records are all expected.                                                   |
+| `graph.first_record_ms`                        | The click on "Canvas".                                      | The title of the first record the model found shows.     | Real only. The canvas draws only what is near the view, so a model's records are not all asked for. |
+| `graph.zoom_ms`, `graph.zoom_max_ms`           | A wheel event (5 rounds).                                   | The frame after the graph layer's transform changes.     | Both.                                                                                               |
+| `graph.pan_ms`, `graph.pan_max_ms`             | The first pointer move of a drag on bare ground (5 rounds). | The frame after the graph layer's transform changes.     | Both.                                                                                               |
+| `graph.drag_ms`, `graph.drag_max_ms`           | The first pointer move of a drag on a node (5 rounds).      | The frame after the node's position changes.             | Both.                                                                                               |
+| `graph.select_ms`, `graph.select_max_ms`       | The pointer up of a click on a node (5 rounds).             | The frame after the node gets its selected class.        | Both.                                                                                               |
 
 The graph gestures use the page's real mouse, because the graph captures the pointer. A gesture that
 changes nothing (no bare ground, or no node under the pointer) records nothing.

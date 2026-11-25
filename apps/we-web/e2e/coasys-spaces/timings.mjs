@@ -3,8 +3,9 @@
  * a person's action to what they see. The README's "Timings" section lists each one.
  *
  * A step measures while it runs (`probe.mjs` takes the times in the page) and hands each number to
- * {@link createTimings}. A step that fails or is skipped hands over nothing, so its metrics are left out of the
- * file: a metric is never written as 0. Timing never decides whether a step passes.
+ * {@link createTimings}, which holds them until the step has passed (`commit`) and drops them when it
+ * fails (`discard`). A step that fails or is skipped records nothing, so its metrics are left out of the
+ * file: a metric is never written as 0. A measurement that cannot be taken never fails a step.
  */
 import { max, median, round } from '@we/e2e/metrics';
 
@@ -30,11 +31,22 @@ export function paramsFor(tier, { llm, transcriber } = {}) {
 /** A collector of samples, by metric name, in milliseconds. */
 export function createTimings() {
   const samples = new Map();
+  // The running step's samples: in `samples` only once the step has passed.
+  let staged = [];
   return {
-    /** Keeps one sample. A value that is not a finite, non-negative number is not a measurement and is dropped. */
+    /** Stages one sample of the running step. A value that is not a finite, non-negative number is not a measurement and is dropped. */
     add(metric, value) {
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return;
-      samples.set(metric, [...(samples.get(metric) ?? []), value]);
+      staged.push([metric, value]);
+    },
+    /** The step passed: its staged samples are kept. */
+    commit() {
+      for (const [metric, value] of staged) samples.set(metric, [...(samples.get(metric) ?? []), value]);
+      staged = [];
+    },
+    /** The step failed: its staged samples are dropped. */
+    discard() {
+      staged = [];
     },
     /** What was measured, as metric records: the median of each metric's samples, and the largest where {@link WITH_MAX} says. */
     metrics(params) {
@@ -48,7 +60,7 @@ export function createTimings() {
     },
     /**
      * Runs a measurement. One that throws is said and left out, so measuring never fails the step it
-     * sits in: timing never decides whether a step passes.
+     * sits in.
      */
     async attempt(what, fn) {
       try {
@@ -57,7 +69,7 @@ export function createTimings() {
         console.log(`[coasys-spaces] not timed (${what}): ${error.message}`);
       }
     },
-    /** Every sample, for the run's `detail`. */
+    /** Every kept sample, for the run's `detail`. */
     samples() {
       return Object.fromEntries(samples);
     },
