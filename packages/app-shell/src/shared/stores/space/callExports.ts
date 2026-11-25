@@ -2,22 +2,24 @@
  * A call's two exports — its transcript as text and everything interpretation did with it as Markdown —
  * and what they share: one gather for the transcript, one label for each person, one report of the save.
  */
+import { displayName, type InterpretationPort } from '@we/backend-shared';
+import { saveFile, type SaveOutcome } from '@we/design-utils';
+import { CollectionBlock, type DatasetProxy, getEntityForDataset } from '@we/entities';
+
 import {
   type AmendmentEntry,
   exportFileName,
   formatInterpretationLog,
   type PassEntry,
   transcriptLine,
-} from '@shared/interpretation/callExport';
-import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
-import type { ProfileStore } from '@shared/stores/ProfileStore';
-import { displayName, type InterpretationPort } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
-import { saveFile, type SaveOutcome } from '@we/design-utils';
-import { CollectionBlock, type DatasetProxy, getEntityForDataset } from '@we/entities';
+} from '../../interpretation/callExport';
+import { gatherTranscriptTurns, type TurnRecord } from '../../interpretation/transcriptTurns';
+import type { Toasts } from '../../toasts';
+import type { ProfileStore } from '../ProfileStore';
 
 /** What the exports read from the space they are made in. */
 export interface CallExportDeps {
+  toasts: Toasts;
   /** The dataset of the space the call is in, or nothing outside a space. */
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
@@ -34,7 +36,7 @@ export interface CallExportDeps {
 }
 
 export function createCallExports(deps: CallExportDeps) {
-  const { profileStore } = deps;
+  const { profileStore, toasts } = deps;
 
   /**
    * A call's transcript, through the same gather extraction runs on rather than a second reading of
@@ -78,8 +80,8 @@ export function createCallExports(deps: CallExportDeps) {
    * A cancelled dialog says nothing, and a plain download is confirmed by the browser's own UI.
    */
   function reportSave(outcome: SaveOutcome, saved: string, empty: string): void {
-    if (outcome === 'saved') toastService.success(saved);
-    else if (outcome === 'empty') toastService.warning(empty);
+    if (outcome === 'saved') toasts.success(saved);
+    else if (outcome === 'empty') toasts.warning(empty);
   }
 
   /*
@@ -106,7 +108,7 @@ export function createCallExports(deps: CallExportDeps) {
       reportSave(outcome, 'Transcript exported.', 'This call has no transcript to export.');
     } catch (error) {
       console.error('SpaceStore: exportCallTranscript failed', error);
-      toastService.error('Could not export the transcript.');
+      toasts.error('Could not export the transcript.');
     }
   }
 
@@ -206,7 +208,7 @@ export function createCallExports(deps: CallExportDeps) {
       reportSave(outcome, 'Interpretation log exported.', 'No interpretation has run on this call yet.');
     } catch (error) {
       console.error('SpaceStore: exportInterpretationLog failed', error);
-      toastService.error('Could not export the interpretation log.');
+      toasts.error('Could not export the interpretation log.');
     }
   }
 

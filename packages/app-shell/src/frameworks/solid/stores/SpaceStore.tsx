@@ -39,6 +39,7 @@ import {
   type RoleView,
 } from '@shared/spaceRoles';
 import { removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/spaceSync';
+import { createCallExports } from '@shared/stores/space/callExports';
 import { createSpaceContext, withRow } from '@shared/stores/space/context';
 import { createSpaceExtraction } from '@shared/stores/space/extraction';
 import { createSpaceModules } from '@shared/stores/space/modules';
@@ -113,7 +114,6 @@ import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
 import { boardOptimism, involvementOptimism, signalOptimism, taskWorkflowLive } from '../hostState';
-import { createCallExports } from './space/callExports';
 import type { StoreRegistry } from './useStore';
 
 /*
@@ -699,6 +699,7 @@ export function createSpaceStore(
 
   // The lambdas are read at export time: the interpretation settings they name are declared further down.
   const callExports = createCallExports({
+    toasts: toastService,
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,
