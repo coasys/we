@@ -17,12 +17,23 @@
  * Its own module, with its input passed in, so it is tested against real signals rather than through
  * the session stack the template store sits on — as `spaceRecordWait.ts` is.
  */
-import { createSignal } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
 
 export const CHOOSING_GIVE_UP_MS = 10_000;
 
-export function createSpaceTemplateChoosing(deps: { currentId: () => string | null }) {
-  const [choosingFor, setChoosingFor] = createSignal<string | null>(null);
+export function createSpaceTemplateChoosing(deps: {
+  reactivity: Pick<ReactivityPort, 'signal' | 'untrack'>;
+  currentId: () => string | null;
+}) {
+  const { signal, untrack } = deps.reactivity;
+  const [choosingFor, writeChoosingFor] = signal<string | null>(null);
+  /*
+    Compared first: `done` is called on every template put up, nearly always with nothing waiting,
+    and whether an equal write wakes the readers of `choosing` is not something the port promises.
+  */
+  const setChoosingFor = (id: string | null) => {
+    if (untrack(choosingFor) !== id) writeChoosingFor(id);
+  };
   let giveUp: ReturnType<typeof setTimeout> | undefined;
   return {
     /** Arrived in this space with nothing put up for it. */
@@ -30,12 +41,12 @@ export function createSpaceTemplateChoosing(deps: { currentId: () => string | nu
       setChoosingFor(id);
       if (giveUp !== undefined) clearTimeout(giveUp);
       giveUp = setTimeout(() => {
-        if (choosingFor() === id) setChoosingFor(null);
+        if (untrack(choosingFor) === id) setChoosingFor(null);
       }, CHOOSING_GIVE_UP_MS);
     },
     /** A template was put up, or choosing for this space ended — `id` absent for any space. */
     done(id?: string) {
-      if (id === undefined || choosingFor() === id) setChoosingFor(null);
+      if (id === undefined || untrack(choosingFor) === id) setChoosingFor(null);
     },
     /** Whether the space on screen is still waiting for its template — reactive. */
     choosing() {

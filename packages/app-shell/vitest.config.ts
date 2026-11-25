@@ -39,6 +39,8 @@ const SOLID_TESTS = [
   'tests/followLive.test.ts',
   // And for a lookup of one signal per key: a write must wake the port's effects for its own key.
   'tests/keyedSignals.test.ts',
+  // And for the store helpers and stores converted after it, each run under both ports.
+  'tests/spaceTemplateChoosing.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',

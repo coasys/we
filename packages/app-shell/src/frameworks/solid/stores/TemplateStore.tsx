@@ -27,6 +27,7 @@ import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templat
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { latestPerSpace } from '@shared/stores/latestPerSpace';
+import { createSpaceTemplateChoosing } from '@shared/stores/spaceTemplateChoosing';
 import { reserveId } from '@shared/templateIdentity';
 import { withLibrary, withLibraryListed } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
@@ -71,7 +72,6 @@ import {
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
-import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
 import type { StoreRegistry } from './useStore';
 
@@ -1020,7 +1020,10 @@ export function createTemplateStore(
   };
 
   // A space arrived in with nothing put up for it yet — see `spaceTemplateChoosing.ts`.
-  const choosing = createSpaceTemplateChoosing({ currentId: () => datasetStore.currentDataset()?.id ?? null });
+  const choosing = createSpaceTemplateChoosing({
+    reactivity: solidReactivity,
+    currentId: () => datasetStore.currentDataset()?.id ?? null,
+  });
 
   // A space joined a moment ago may not have its own record yet — see `spaceRecordWait.ts`.
   const spaceRecord = createSpaceRecordWait({
