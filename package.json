@@ -61,8 +61,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@coasys/ad4m": "0.13.1-staging.20",
-      "@coasys/ad4m-connect": "0.13.1-staging.20",
+      "@coasys/ad4m": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@b4283675e57a1bcb59e2e304a6ba6ce079a4b646",
+      "@coasys/ad4m-connect": "https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@b4283675e57a1bcb59e2e304a6ba6ce079a4b646",
       "prettier": "3.9.10",
       "@xmldom/xmldom": ">=0.9.12",
       "plist": ">=3.1.1",
