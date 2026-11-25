@@ -20,7 +20,7 @@
  * (`BaseHost.isUnreachable`).
  */
 import type { BackendConnector } from '@shared/backend/types';
-import { svgDataUrl, WE_PRODUCT_NAME } from '@shared/bundles/brand';
+import { setCurrentProductName, svgDataUrl, WE_PRODUCT_NAME } from '@shared/bundles/brand';
 import { type BundlePieces } from '@shared/bundles/bundlePieces';
 import type { BaseConnection, BaseHost } from '@shared/platform/baseHost';
 import type { PlatformAdapter } from '@shared/platform/types';
@@ -168,6 +168,8 @@ export function BaseBoot(props: BaseBootProps): JSX.Element {
     failing to, and a place that could not be reached.
   */
   const brand = base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' };
+  // Words a host writes outside a template name the app too, before a session's stores can say it.
+  setCurrentProductName(brand.name);
   const store = createBaseStore(base ? host : { ...host, identity: undefined }, {
     brand,
     onHandOff: async (connection, how) => {
