@@ -13,6 +13,7 @@ import { createAppFrame } from '../../src/shared/registries/appFrame';
 import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { createPanelInstances } from '../../src/shared/registries/panelInstances';
 import { createShellArrangement } from '../../src/shared/stores/shell/arrangement';
+import { createShellDockDrag } from '../../src/shared/stores/shell/dockDrag';
 import { createShellDocks } from '../../src/shared/stores/shell/docks';
 import { createShellPrompts } from '../../src/shared/stores/shell/prompts';
 import { createShellViews } from '../../src/shared/stores/shell/views';
@@ -57,13 +58,15 @@ export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps
     prompts: ReturnType<typeof createShellPrompts>;
     arrangement: ReturnType<typeof createShellArrangement>;
     docks: ReturnType<typeof createShellDocks>;
+    drag: ReturnType<typeof createShellDockDrag>;
   };
   const dispose = reactivity.root(() => {
     const views = createShellViews({ reactivity });
     const prompts = createShellPrompts({ reactivity, platform });
     const arrangement = createShellArrangement({ reactivity, host });
     const docks = createShellDocks({ reactivity, host, views, arrangement });
-    parts = { views, prompts, arrangement, docks };
+    const drag = createShellDockDrag({ reactivity, arrangement, docks });
+    parts = { views, prompts, arrangement, docks, drag };
   });
   return { ...parts, host, dispose };
 }
