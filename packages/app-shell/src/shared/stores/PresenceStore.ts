@@ -1,7 +1,7 @@
 /**
  * PresenceStore — live presence for the spaces that need it.
  *
- * The Solid binding over the neutral presence core in `@we/schema-shared`. It owns three things the
+ * The store over the neutral presence core in `@we/backend-shared`. It owns three things the
  * core deliberately does not: **when** to start and stop (following the current perspective), **what**
  * to publish as this agent's focus (following the route), and the **join** from a bare `agentId` to a
  * displayable profile.
@@ -46,12 +46,17 @@
  * `$identities` and the `$agent` block already use. Flux's presence map *is* its profile cache, so it
  * re-hydrates every peer profile on every heartbeat — an N-peer `Promise.all` every five seconds.
  */
-import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '@shared/presenceScope';
-import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { createTabCoordinator } from '@shared/tabCoordinator';
-import { firstScreen } from '@solid/firstScreen';
-import type { AgentProfileSummary } from '@we/backend-shared';
-import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/backend-shared';
+import type {
+  Activity,
+  AgentProfileSummary,
+  DatasetRef,
+  EphemeralPort,
+  Focus,
+  FocusDepth,
+  Peer,
+  PresenceSource,
+  PresenceTone,
+} from '@we/backend-shared';
 import {
   applyFocusDepth,
   callRosters,
@@ -63,9 +68,31 @@ import {
   trace,
 } from '@we/backend-shared';
 import type { DatasetProxy } from '@we/entities';
-import { type Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import type { StoreRegistry } from './useStore';
+import type { FirstScreen } from '../firstScreen';
+import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '../presenceScope';
+import { provideModuleHostServices } from '../registries/moduleHostServices';
+import { createTabCoordinator } from '../tabCoordinator';
+import type { RouteStore } from './RouteStore';
+
+/** A dataset as presence reads it: where it is shared, and the handle a scope is opened on. */
+type PresenceDataset = Pick<DatasetRef, 'sharedUri'> & { handle: DatasetProxy };
+
+/** What the presence store reads of the stores it is built from. */
+export interface PresenceStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: no presence is opened until the first screen is up. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  sessionStore: { me: Accessor<{ did?: string } | undefined>; ephemeralPort: EphemeralPort };
+  datasetStore: {
+    datasets: Accessor<PresenceDataset[]>;
+    currentDataset: Accessor<PresenceDataset | null>;
+    currentDatasetUri: Accessor<string | undefined>;
+  };
+  profileStore: { profiles: Accessor<AgentProfileSummary[]>; fetchProfile: (did: string) => Promise<void> };
+  routeStore: Pick<RouteStore, 'page'>;
+}
 
 /**
  * A peer joined with whatever profile the agent cache holds, plus its derived appearance.
@@ -98,16 +125,21 @@ export interface PresenceStore {
   clearActivity: (type: string, id?: string) => void;
 }
 
-export function createPresenceStore(
-  deps: Pick<StoreRegistry, 'datasetStore' | 'profileStore' | 'routeStore' | 'sessionStore'>,
-): PresenceStore {
-  const session = deps.sessionStore;
-  const datasetStore = deps.datasetStore;
-  const profileStore = deps.profileStore;
-  const routeStore = deps.routeStore;
+export function createPresenceStore({
+  reactivity,
+  firstScreen,
+  sessionStore: session,
+  datasetStore,
+  profileStore,
+  routeStore,
+}: PresenceStoreDeps): PresenceStore {
+  const { signal, memo, effect, untrack, onCleanup } = reactivity;
 
   /** What each live source last reported, keyed by the space's uri. Unioned by {@link rawPeers}. */
-  const [peersByUri, setPeersByUri] = createSignal<Record<string, Peer[]>>({});
+  const [peersByUri, writePeersByUri] = signal<Record<string, Peer[]>>({});
+  // The port's setter takes a value, so each change is made to the record as it is now.
+  const setPeersByUri = (change: (prev: Record<string, Peer[]>) => Record<string, Peer[]>) =>
+    writePeersByUri(change(untrack(peersByUri)));
   /**
    * What this tab is participating in, by `type:id` — and, for each, the space it happens in.
    *
@@ -122,10 +154,23 @@ export function createPresenceStore(
    * opens later — or reopens — start already carrying it, rather than dropping the publish on the
    * floor because the space was not scoped yet.
    */
-  const [myActivities, setMyActivities] = createSignal<Record<string, { uri: string; activity: Activity }>>({});
+  type MyActivities = Record<string, { uri: string; activity: Activity }>;
+  const [myActivities, writeMyActivities] = signal<MyActivities>({});
+  const setMyActivities = (change: (prev: MyActivities) => MyActivities) =>
+    writeMyActivities(change(untrack(myActivities)));
   const activityKey = (type: string, id?: string) => `${type}:${id ?? ''}`;
-  const [focusDepth, setFocusDepth] = createSignal<FocusDepth>('route');
-  const [availability, setAvailabilitySignal] = createSignal<'available' | 'busy' | 'away' | 'invisible'>('available');
+  const [focusDepth, writeFocusDepth] = signal<FocusDepth>('route');
+  const [availability, writeAvailability] = signal<'available' | 'busy' | 'away' | 'invisible'>('available');
+  /*
+    Compared first. Each is published to every source when it changes, so setting what is already
+    set would send a beat about nothing; whether an equal write wakes the effects is not the port's to say.
+  */
+  const setFocusDepth = (depth: FocusDepth) => {
+    if (untrack(focusDepth) !== depth) writeFocusDepth(depth);
+  };
+  const setAvailabilitySignal = (value: 'available' | 'busy' | 'away' | 'invisible') => {
+    if (untrack(availability) !== value) writeAvailability(value);
+  };
 
   /** A running presence source for one space, with everything needed to shut it down again. */
   interface Lease {
@@ -154,9 +199,9 @@ export function createPresenceStore(
    * source, for no reason. Cheap to get wrong and visible in a trace as a `bye` moments after
    * arriving.
    */
-  const myDid = createMemo(() => session.me()?.did);
+  const myDid = memo(() => session.me()?.did);
 
-  const tabs = createMemo(() => {
+  const tabs = memo(() => {
     const did = myDid();
     if (!did) return null;
     const coordinator = createTabCoordinator({ scope: did });
@@ -174,9 +219,9 @@ export function createPresenceStore(
    * per-agent, so the same neighbourhood has a different one on every peer — broadcasting it produces
    * a focus nobody else can interpret. Fails silently across peers while looking fine locally.
    */
-  const datasetUri = createMemo(() => datasetStore.currentDatasetUri());
+  const datasetUri = memo(() => datasetStore.currentDatasetUri());
 
-  const myFocus = createMemo<Focus | undefined>(() =>
+  const myFocus = memo<Focus | undefined>(() =>
     applyFocusDepth({ datasetUri: datasetUri(), path: routeStore.page?.() }, focusDepth()),
   );
 
@@ -194,7 +239,7 @@ export function createPresenceStore(
    * already answer that question by querying the data instead. The set stays bounded by what is
    * *live*, which in practice is one call — see `MAX_LEASES`.
    */
-  const wanted = createMemo<string[]>(() =>
+  const wanted = memo<string[]>(() =>
     wantedUris(
       datasetUri(),
       Object.values(myActivities()).map((entry) => entry.uri),
@@ -322,7 +367,7 @@ export function createPresenceStore(
    * available yet — a call anchored in a space whose ref arrives a moment later — eventually opens.
    * Idempotent, so the extra runs cost a Map lookup each.
    */
-  createEffect(() => {
+  effect(() => {
     const did = myDid();
     /*
       No presence until the first screen is up (`shared/firstScreen.ts`): opening a source subscribes
@@ -359,7 +404,7 @@ export function createPresenceStore(
   });
 
   /** A transport exists for the space on screen. False in a personal space, which has no neighbourhood. */
-  const available = createMemo(() => {
+  const available = memo(() => {
     const uri = datasetUri();
     return !!uri && uri in peersByUri();
   });
@@ -378,12 +423,12 @@ export function createPresenceStore(
     at something else" is true and worth showing, where a focus frozen at the moment of leaving is
     simply wrong.
   */
-  createEffect(() => {
+  effect(() => {
     const focus = myFocus();
     eachSource((source) => source.update({ focus }));
   });
 
-  createEffect(() => {
+  effect(() => {
     const value = availability();
     eachSource((source) => source.update({ availability: value }));
   });
@@ -403,11 +448,11 @@ export function createPresenceStore(
    * reports are the same agent's state seen through different channels, so the later one is simply
    * the more current, and picking arbitrarily would make liveness flicker as the maps iterate.
    */
-  const rawPeers = createMemo<Peer[]>(() => unionPeers(peersByUri()));
+  const rawPeers = memo<Peer[]>(() => unionPeers(peersByUri()));
 
   // Join against the shared agent cache. `find` over `agents()` matches how SpaceStore.members
   // resolves its dids; both read the same cache that `fetchAgent` populates.
-  const peers = createMemo<PresentAgent[]>(() => {
+  const peers = memo<PresentAgent[]>(() => {
     const cached = profileStore.profiles();
     // Sorted most-present-first, with a stable tiebreak — without it, equal-liveness peers reorder
     // as the underlying Map iterates and the avatar row reshuffles on every heartbeat.
@@ -419,26 +464,26 @@ export function createPresenceStore(
 
   // Ask AD4M for any peer whose profile we have not cached. The effect re-runs as peers arrive, and
   // `fetchAgent` already deduplicates in-flight requests, so this is safe to call repeatedly.
-  createEffect(() => {
+  effect(() => {
     const cached = profileStore.profiles();
     for (const peer of rawPeers()) {
       if (!cached.some((a) => a.did === peer.agentId)) void profileStore.fetchProfile(peer.agentId);
     }
   });
 
-  const online = createMemo<PresentAgent[]>(() => {
+  const online = memo<PresentAgent[]>(() => {
     const uri = datasetUri();
     if (!uri) return [];
     return peersInDataset(peers(), uri) as PresentAgent[];
   });
 
-  const onlineHere = createMemo<PresentAgent[]>(() => {
+  const onlineHere = memo<PresentAgent[]>(() => {
     const path = routeStore.page?.();
     if (!path) return [];
     return online().filter((p) => p.focus?.path === path);
   });
 
-  const calls = createMemo(() => callRosters(online()) as Map<string, PresentAgent[]>);
+  const calls = memo(() => callRosters(online()) as Map<string, PresentAgent[]>);
 
   // Lend feature modules the activity slice of presence. Narrowed deliberately: a module has a
   // legitimate need to say "I am in this call" and to read who else is, but no business setting
@@ -486,7 +531,7 @@ export function createPresenceStore(
    * Refuse to hand publishing away while this tab is holding something that must keep being
    * published. The coordinator already resolves two pinned tabs deterministically.
    */
-  createEffect(() => tabs()?.setPinned(Object.keys(myActivities()).length > 0));
+  effect(() => tabs()?.setPinned(Object.keys(myActivities()).length > 0));
 
   onCleanup(
     provideModuleHostServices({

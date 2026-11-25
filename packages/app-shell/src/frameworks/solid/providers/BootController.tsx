@@ -22,6 +22,7 @@ import { createClockStore } from '@shared/stores/ClockStore';
 import { createDeviceStore } from '@shared/stores/DeviceStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createIdentityStore } from '@shared/stores/IdentityStore';
+import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -32,7 +33,6 @@ import { createBundleStore } from '../stores/BundleStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createEditorStore } from '../stores/EditorStore';
 import { createInterpretationStore } from '../stores/InterpretationStore';
-import { createPresenceStore } from '../stores/PresenceStore';
 import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
@@ -109,7 +109,14 @@ export function BootController(props: ParentProps) {
 
   // Presence follows the current dataset and the route. App-lifetime, not view-lifetime: it must
   // outlive navigation rather than being torn down with a view.
-  const presenceStore = createPresenceStore({ sessionStore, datasetStore, profileStore, routeStore });
+  const presenceStore = createPresenceStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    sessionStore,
+    datasetStore,
+    profileStore,
+    routeStore,
+  });
   // Beside presence, and for the same reasons: it follows the current dataset, reads the same
   // ephemeral port, and has to outlive the panel that started a pass — a call bar is still showing
   // an extraction after the transcript panel closes.

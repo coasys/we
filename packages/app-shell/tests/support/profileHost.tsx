@@ -27,7 +27,6 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
-import { createPresenceStore } from '../../src/frameworks/solid/stores/PresenceStore';
 import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
@@ -45,6 +44,7 @@ import { createAccountStore } from '../../src/shared/stores/AccountStore';
 import { createAppStore } from '../../src/shared/stores/AppStore';
 import { createChatStore } from '../../src/shared/stores/ChatStore';
 import { createClockStore } from '../../src/shared/stores/ClockStore';
+import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
@@ -486,7 +486,14 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       themeStore,
       shellStore,
     });
-    const presenceStore = createPresenceStore({ datasetStore, profileStore, routeStore, sessionStore });
+    const presenceStore = createPresenceStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      datasetStore,
+      profileStore,
+      routeStore,
+      sessionStore,
+    });
     startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     stores = {
       routeStore,
