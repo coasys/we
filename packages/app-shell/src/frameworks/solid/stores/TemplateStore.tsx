@@ -28,6 +28,7 @@ import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
 import { type AppDataset, canonicalSpaceId } from '@shared/stores/DatasetStore';
 import { latestPerSpace } from '@shared/stores/latestPerSpace';
+import { createLibraryFlow, type InstallDestination, type LibraryEntity } from '@shared/stores/libraryFlow';
 import { createSpaceRecordWait } from '@shared/stores/spaceRecordWait';
 import { createSpaceTemplateChoosing } from '@shared/stores/spaceTemplateChoosing';
 import { reserveId } from '@shared/templateIdentity';
@@ -39,11 +40,9 @@ import { toastService } from '@we/components/solid';
 import {
   AGENT_DEFAULT,
   asFileField,
-  compressImageToFileData,
   decodeTemplateFile,
   encodeTemplateFile,
   FOLLOW_SPACE,
-  ImageBlock,
   runEntityTransaction,
   SpacePreference,
   SpaceTemplatePreference,
@@ -535,10 +534,8 @@ export function createTemplateStore(
   const [spaceTemplateIdSet, setSpaceTemplateIdSet] = createSignal<Set<string>>(new Set());
   const [loading, setLoading] = createSignal(true);
   const [currentTemplate, setCurrentTemplate] = createStore<TemplateSchema>(initialTemplate);
-  const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
-  /** The install dialog's subject — see `requestInstall`. Non-null is what mounts the dialog. */
-  const [pendingInstall, setPendingInstall] = createSignal<PendingInstall | null>(null);
-  // Shell overlay: which shell view (if any) is currently shown above the active template
+  /** What a long action is doing: the library flow's (below), so every action says it the same way. */
+  const setOperationLoading = (key: string | null) => flow.setOperationLoading(key);
 
   /** Working copies of templates edited where another draws them — see `templateDrafts.ts`. */
   const { openDraft, updateDraft, closeDraft, draftOf } = createTemplateDrafts({
@@ -1627,58 +1624,43 @@ export function createTemplateStore(
     if (onScreen) await loadSpaceTemplates(dataset);
   }
 
-  async function performPersonalInstall(request: PendingInstall): Promise<void> {
+  /** Write a confirmed marketplace template into the agent's own library. */
+  async function applyPersonalInstall(request: PendingInstall): Promise<void> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
-    if (!rootPerspective) {
-      toastService.error('Cannot install: marketplace not connected');
-      return;
+    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const templateId = reserveTemplateId(
+      request.schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || request.marketplaceId,
+    );
+    const newVersion = request.version;
+    const schemaToInstall: TemplateSchema = {
+      ...deepClone(request.schema),
+      id: templateId,
+      templateVersion: newVersion,
+    };
+    const schemaBlob = encodeTemplateFile(schemaToInstall);
+
+    const existingLocal = savedTemplateMap.get(templateId);
+    if (existingLocal) {
+      // Already installed — update schema and version in place
+      existingLocal.schema = asFileField(schemaBlob);
+      existingLocal.version = newVersion;
+      noteOwnWrite(existingLocal);
+      await existingLocal.save();
+      toastService.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
+    } else {
+      const newTemplate = await createLibraryTemplate(rootPerspective, {
+        name: schemaToInstall.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: newVersion,
+        schema: asFileField(schemaBlob),
+        role: roleOf(schemaToInstall),
+      });
+      savedTemplateMap.set(templateId, newTemplate);
+      setInstalledIds((prev) => new Set([...prev, templateId]));
+      toastService.success(`"${schemaToInstall.meta.name}" installed`);
     }
-
-    const marketplaceTemplateId = request.marketplaceId;
-    setOperationLoading(`marketplace-install:${marketplaceTemplateId}`);
-    try {
-      const schema = request.schema;
-      const templateId = reserveTemplateId(
-        schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId,
-      );
-      const newVersion = request.version;
-      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId, templateVersion: newVersion };
-
-      const schemaBlob = encodeTemplateFile(schemaToInstall);
-
-      const existingLocal = savedTemplateMap.get(templateId);
-      if (existingLocal) {
-        // Already installed — update schema and version in place
-        existingLocal.schema = asFileField(schemaBlob);
-        existingLocal.version = newVersion;
-        noteOwnWrite(existingLocal);
-        await existingLocal.save();
-        toastService.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
-      } else {
-        const newTemplate = await createLibraryTemplate(rootPerspective, {
-          name: schemaToInstall.meta.name,
-          origin: 'marketplace',
-          slug: templateId,
-          version: newVersion,
-          schema: asFileField(schemaBlob),
-          role: roleOf(schemaToInstall),
-        });
-        savedTemplateMap.set(templateId, newTemplate);
-
-        setInstalledIds((prev) => {
-          const next = new Set(prev);
-          next.add(templateId);
-          return next;
-        });
-        toastService.success(`"${schemaToInstall.meta.name}" installed`);
-      }
-
-      await loadSavedTemplates();
-    } catch (error) {
-      toastService.error(explain(error, 'Could not install that template'));
-    } finally {
-      setOperationLoading(null);
-    }
+    await loadSavedTemplates();
   }
 
   // ────────────────────────────────────────────────────────────────
@@ -1840,48 +1822,30 @@ export function createTemplateStore(
     await loadSpaceTemplates(perspective);
   }
 
-  /** Write an already-inspected marketplace template into the current space, for every member. */
-  async function performSpaceInstall(request: PendingInstall): Promise<void> {
+  /** Write a confirmed marketplace template into the current space, for every member. */
+  async function applySpaceInstall(request: PendingInstall): Promise<void> {
     const spaceDs = datasetStore.currentDataset();
-    const spacePerspective = spaceDs?.handle;
-    if (!spacePerspective) {
-      toastService.error('Cannot install: no active space or marketplace not connected');
-      return;
-    }
-
-    const marketplaceTemplateId = request.marketplaceId;
-    setOperationLoading(`space-install:${marketplaceTemplateId}`);
-    try {
-      const schema = request.schema;
-      const templateId = reserveTemplateId(
-        schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || marketplaceTemplateId,
-      );
-      const schemaToInstall: TemplateSchema = { ...deepClone(schema), id: templateId };
-
-      const schemaBlob = encodeTemplateFile(schemaToInstall);
-
-      noteOwnWrite(
-        await Template.create(spacePerspective, {
-          name: schemaToInstall.meta.name,
-          origin: 'marketplace',
-          slug: templateId,
-          version: request.version,
-          schema: asFileField(schemaBlob),
-          role: roleOf(schemaToInstall),
-        }),
-      );
-
-      await loadSpaceTemplates(spaceDs);
-      toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
-    } catch (error) {
-      toastService.error(explain(error, 'Could not install that template into this space'));
-    } finally {
-      setOperationLoading(null);
-    }
+    if (!spaceDs) throw new Error('There is no space open');
+    const templateId = reserveTemplateId(
+      request.schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || request.marketplaceId,
+    );
+    const schemaToInstall: TemplateSchema = { ...deepClone(request.schema), id: templateId };
+    noteOwnWrite(
+      await Template.create(spaceDs.handle, {
+        name: schemaToInstall.meta.name,
+        origin: 'marketplace',
+        slug: templateId,
+        version: request.version,
+        schema: asFileField(encodeTemplateFile(schemaToInstall)),
+        role: roleOf(schemaToInstall),
+      }),
+    );
+    await loadSpaceTemplates(spaceDs);
+    toastService.success(`"${schemaToInstall.meta.name}" installed to space`);
   }
 
   /**
-   * Fetch a marketplace template, judge it, and raise the install dialog.
+   * Judge a marketplace template before the install dialog shows it.
    *
    * ## Why installing asks first
    *
@@ -1896,100 +1860,67 @@ export function createTemplateStore(
    * permission prompt in the OS sense — the tier is what actually bounds the template, and the
    * answer to this dialog cannot widen it — it is disclosure: this is what the thing you are about
    * to install will be able to do, before it can do any of it.
-   *
-   * The fetch and the judgement happen before the dialog rather than after the confirmation, so
-   * what the dialog shows is the template that will actually be written, not a promise about one.
    */
-  async function requestInstall(marketplaceTemplateId: string, destination: 'personal' | 'space'): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    if (!marketplacePerspective) {
-      toastService.error('Cannot install: marketplace not connected');
-      return;
+  function judgeListing(listing: Template, destination: InstallDestination): PendingInstall | { refused: string } {
+    const raw = decodeTemplateFile<TemplateSchema>(listing.schema);
+    if (!raw) return { refused: 'Could not read template data' };
+    // A deliberate install, so a refusal is worth a toast rather than a console line — the user
+    // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
+    // whatever it says about itself, and the tier is what makes it safe to press the button.
+    const accepted = acceptTemplate(raw, { origin: 'the marketplace', grants: SPACE_TIER });
+    if (!accepted.schema) {
+      console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
+      return { refused: 'That template is not a valid schema and was not installed' };
     }
-    if (destination === 'space' && !datasetStore.currentDataset()?.handle) {
-      toastService.error('Cannot install: no active space');
-      return;
-    }
-
-    setOperationLoading(`${destination === 'space' ? 'space' : 'marketplace'}-install:${marketplaceTemplateId}`);
-    try {
-      const marketplaceTemplate = await Template.findOne(marketplacePerspective, {
-        where: { id: marketplaceTemplateId },
-      });
-      if (!marketplaceTemplate) {
-        toastService.error('Template not found in marketplace');
-        return;
-      }
-
-      const raw = decodeTemplateFile<TemplateSchema>(marketplaceTemplate.schema);
-      if (!raw) {
-        toastService.error('Could not read template data');
-        return;
-      }
-
-      // A deliberate install, so a refusal is worth a toast rather than a console line — the user
-      // pressed a button and is owed an answer. Space tier: a marketplace template is a stranger's,
-      // whatever it says about itself, and the tier is what makes it safe to press the button.
-      const accepted = acceptTemplate(raw, { origin: 'the marketplace', grants: SPACE_TIER });
-      if (!accepted.schema) {
-        console.warn(describeAcceptance(accepted, 'the marketplace').join('\n'));
-        toastService.error('That template is not a valid schema and was not installed');
-        return;
-      }
-
-      setPendingInstall({
-        marketplaceId: marketplaceTemplateId,
-        destination,
-        schema: accepted.schema,
-        name: marketplaceTemplate.name || accepted.schema.meta.name || 'This template',
-        icon: accepted.schema.meta.icon || '',
-        version: marketplaceTemplate.version || 1,
-        capabilities: describeCapabilities(accepted.groups),
-        // Named rather than counted: "one reference is not allowed here" says nothing about which
-        // part of the template will be inert, and the path is the only thing that does.
-        blocked: [
-          ...new Set(accepted.blocked.map((reference) => reference.path)),
-          // And any element it may not mount — a `script`, an `iframe` — which will render nothing.
-          ...accepted.refusedElements.map((tag) => `<${tag}>`),
-        ],
-      });
-    } catch (error) {
-      toastService.error(explain(error, 'Could not read that template'));
-    } finally {
-      setOperationLoading(null);
-    }
+    return {
+      marketplaceId: listing.id,
+      destination,
+      schema: accepted.schema,
+      name: listing.name || accepted.schema.meta.name || 'This template',
+      icon: accepted.schema.meta.icon || '',
+      version: listing.version || 1,
+      capabilities: describeCapabilities(accepted.groups),
+      // Named rather than counted: "one reference is not allowed here" says nothing about which
+      // part of the template will be inert, and the path is the only thing that does.
+      blocked: [
+        ...new Set(accepted.blocked.map((reference) => reference.path)),
+        // And any element it may not mount — a `script`, an `iframe` — which will render nothing.
+        ...accepted.refusedElements.map((tag) => `<${tag}>`),
+      ],
+    };
   }
 
-  /** Install what the dialog is showing. */
-  async function confirmInstall(): Promise<void> {
-    const request = pendingInstall();
-    if (!request) return;
-    setPendingInstall(null);
-    if (request.blocked.length) {
-      toastService.warning('Installed, but parts of this template are not allowed to run here');
-    }
-    await (request.destination === 'space' ? performSpaceInstall(request) : performPersonalInstall(request));
-  }
-
-  /** Close the dialog without installing. */
-  function cancelInstall(): void {
-    setPendingInstall(null);
-  }
+  /*
+    Publishing, sharing and installing, written once for templates and themes — see `libraryFlow.ts`.
+    A template asks before it is installed: the dialog names what it will be able to do.
+  */
+  const flow = createLibraryFlow<Template, PendingInstall>({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    entity: Template as unknown as LibraryEntity<Template>,
+    noun: 'template',
+    marketplace: () => datasetStore.marketplaceDataset()?.handle,
+    space: () => datasetStore.currentDataset()?.handle,
+    datasetOf: (id) => datasetStore.datasets().find((d) => d.id === id)?.handle,
+    me: () => session.me()?.did,
+    judge: judgeListing,
+    asks: true,
+    confirmNote: (request) =>
+      request.blocked.length ? 'Installed, but parts of this template are not allowed to run here' : undefined,
+    apply: (request, destination) =>
+      destination === 'space' ? applySpaceInstall(request) : applyPersonalInstall(request),
+  });
 
   /**
-   * Copy a marketplace template into your own library — asking first. See {@link requestInstall}.
+   * Copy a marketplace template into your own library — asking first.
    *
    * The name and the signature are unchanged, because what a template writes in its schema should
    * not have to know that a dialog appeared between the click and the write.
    */
-  function installFromMarketplace(marketplaceTemplateId: string): Promise<void> {
-    return requestInstall(marketplaceTemplateId, 'personal');
-  }
+  const installFromMarketplace = (listingId: string) => flow.install(listingId, 'personal');
 
   /** The same, into the space on screen, so every member of that community gets it. */
-  function installToSpace(marketplaceTemplateId: string): Promise<void> {
-    return requestInstall(marketplaceTemplateId, 'space');
-  }
+  const installToSpace = (listingId: string) => flow.install(listingId, 'space');
 
   /** Set a template as the default (loaded on boot) */
   function setDefaultTemplate(templateId: string): Promise<boolean> {
@@ -2281,72 +2212,24 @@ export function createTemplateStore(
     }
   }
 
-  /** Copy the current template into a specific space perspective */
-  async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const targetDs = datasetStore.datasets().find((d) => d.id === perspectiveUuid);
-    if (!targetDs) {
-      toastService.error('Space not found');
-      return false;
-    }
-    const perspective = targetDs.handle;
-
+  /** Copy the current template into a joined space. */
+  function publishToSpace(datasetId: string, spaceName: string): Promise<boolean> {
     const schema = currentTemplate;
     const templateId = reserveTemplateId(schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-'));
-
-    const existing = await Template.findOne(perspective, { where: { slug: templateId } });
-    if (existing) {
-      toastService.error(`Template "${schema.meta.name}" is already in "${spaceName}"`);
-      return false;
-    }
-
-    setOperationLoading('publish-space');
-
-    const schemaBlob = encodeTemplateFile({ ...deepClone(schema), id: templateId });
-
-    try {
-      await Template.create(perspective, {
-        name: schema.meta.name,
-        origin: 'shared',
-        slug: templateId,
-        version: 1,
-        schema: asFileField(schemaBlob),
+    return flow.share({
+      datasetId,
+      spaceName,
+      name: schema.meta.name,
+      slug: templateId,
+      content: {
+        schema: asFileField(encodeTemplateFile({ ...deepClone(schema), id: templateId })),
         role: roleOf(schema),
-      });
-      toastService.success(`Template "${schema.meta.name}" shared to space "${spaceName}"`);
-      return true;
-    } catch (error) {
-      console.error('TemplateStore: publishToSpace error', error);
-      toastService.error('Failed to share template to space');
-      return false;
-    } finally {
-      setOperationLoading(null);
-    }
+      },
+    });
   }
 
-  /** Publish the current template to the marketplace perspective */
-  async function deleteMarketplaceTemplate(templateId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    if (!marketplacePerspective) {
-      toastService.error('Marketplace not connected');
-      return;
-    }
-    setOperationLoading(`marketplace-delete:${templateId}`);
-    try {
-      const template = await Template.findOne(marketplacePerspective, { where: { id: templateId } });
-      if (!template) {
-        toastService.error('Template not found');
-        return;
-      }
-      await template.delete();
-    } catch (error) {
-      console.error('TemplateStore: deleteMarketplaceTemplate error', error);
-      toastService.error('Failed to delete template');
-    } finally {
-      setOperationLoading(null);
-    }
-  }
-
-  async function publishToMarketplace(options: {
+  /** Publish the current template to the marketplace, updating this agent's own listing under its slug. */
+  function publishToMarketplace(options: {
     name: string;
     description: string;
     icon?: string;
@@ -2354,91 +2237,19 @@ export function createTemplateStore(
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    if (!marketplacePerspective) {
-      toastService.error('Marketplace not connected');
-      return false;
-    }
-
     const schema = currentTemplate;
     const localId = schema.id || schema.meta.name.toLowerCase().replace(/\s+/g, '-');
-    const slug = (options.slug || localId).trim().toLowerCase().replace(/\s+/g, '-');
-
-    const existing = await Template.findOne(marketplacePerspective, { where: { slug } });
-    if (existing && existing.author !== session.me()?.did) {
-      toastService.error(`A template with slug "${slug}" already exists in the marketplace by a different author`);
-      return false;
-    }
-
-    setOperationLoading('publish-marketplace');
-
-    const schemaBlob = encodeTemplateFile({ ...deepClone(schema), id: localId, author: session.me()?.did });
-
-    const templateIcon = options.icon ?? schema.meta?.icon ?? '';
-
-    try {
-      /*
-        The new pictures are uploaded *before* the old ones are let go.
-
-        This cleared the relation first — `setScreenshots([])`, then one `addScreenshots` per file —
-        so a compress or an upload that failed part way through landed in the catch below, reported
-        "Failed to publish", and left the listing with no screenshots at all. The listing that was
-        already there, working, was the thing destroyed by the attempt to update it.
-
-        Building the blocks first and assigning the whole list at once makes the failure lose nothing:
-        an upload that throws never reaches the assignment, and the existing screenshots are still
-        attached. Relation assignment replaces the set, so the old ones go exactly when the new ones
-        arrive rather than a round trip earlier.
-      */
-      const uploaded = await Promise.all(
-        options.screenshots.map(async (file) =>
-          ImageBlock.create(marketplacePerspective, {
-            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
-            altText: 'Screenshot',
-            version: 1,
-          }),
-        ),
-      );
-
-      if (existing) {
-        // Update existing marketplace entry in place — bump version, replace schema and screenshots
-        existing.name = options.name;
-        existing.description = options.description;
-        existing.icon = templateIcon;
-        existing.version = (existing.version || 1) + 1;
-        existing.schema = asFileField(schemaBlob);
-        if (options.themeId !== undefined) existing.themeId = options.themeId;
-        await existing.save();
-
-        // Only when there are new ones: publishing an update with no screenshots picked should keep
-        // the ones the listing has rather than silently stripping them.
-        if (uploaded.length) await existing.setScreenshots(uploaded);
-
-        toastService.success(`Template "${options.name}" updated in marketplace (v${existing.version})`);
-      } else {
-        const template = await Template.create(marketplacePerspective, {
-          name: options.name,
-          description: options.description,
-          icon: templateIcon,
-          origin: 'marketplace',
-          slug,
-          version: 1,
-          schema: asFileField(schemaBlob),
-          ...(options.themeId ? { themeId: options.themeId } : {}),
-        });
-
-        if (uploaded.length) await template.setScreenshots(uploaded);
-
-        toastService.success(`Template "${options.name}" published to marketplace`);
-      }
-      return true;
-    } catch (error) {
-      console.error('TemplateStore: publishToMarketplace error', error);
-      toastService.error('Failed to publish template to marketplace');
-      return false;
-    } finally {
-      setOperationLoading(null);
-    }
+    return flow.publish({
+      name: options.name,
+      description: options.description,
+      icon: options.icon ?? schema.meta?.icon ?? '',
+      slug: (options.slug || localId).trim().toLowerCase().replace(/\s+/g, '-'),
+      content: {
+        schema: asFileField(encodeTemplateFile({ ...deepClone(schema), id: localId, author: session.me()?.did })),
+        ...(options.themeId !== undefined ? { themeId: options.themeId } : {}),
+      },
+      screenshots: options.screenshots,
+    });
   }
 
   function isBuiltInTemplateId(templateId: string): boolean {
@@ -2564,10 +2375,10 @@ export function createTemplateStore(
     installTemplate,
     uninstallTemplate,
     installFromMarketplace,
-    pendingInstall,
-    confirmInstall,
-    cancelInstall,
-    deleteMarketplaceTemplate,
+    pendingInstall: flow.pendingInstall,
+    confirmInstall: flow.confirmInstall,
+    cancelInstall: flow.cancelInstall,
+    deleteMarketplaceTemplate: flow.removeListing,
     installToSpace,
     refreshSpaceTemplates,
     toggleInstalled,
@@ -2604,7 +2415,7 @@ export function createTemplateStore(
     leaveSafeModeInto,
 
     // Loading state
-    operationLoading,
+    operationLoading: flow.operationLoading,
 
     // Queries
     isBuiltInTemplateId,

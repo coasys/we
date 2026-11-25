@@ -5,18 +5,12 @@ import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
 import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
 import { getSeed } from '@shared/seedRegistry';
-import { explain } from '@shared/userMessage';
+import { createLibraryFlow, type InstallDestination, type LibraryEntity } from '@shared/stores/libraryFlow';
 import type { NewRecord } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/entities';
-import {
-  asFileField,
-  compressImageToFileData,
-  decodeFileAsString,
-  ImageBlock,
-  modelToThemeData,
-  Theme,
-} from '@we/entities';
+import { asFileField, decodeFileAsString, modelToThemeData, Theme } from '@we/entities';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -511,7 +505,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
 
   /*
     The theme an agent who has not chosen one wears: the one the app in use offers first, else what
-    this device last wore. Their own choice, once made, always wins — see \`UNCHOSEN_THEME_IDS\`.
+    this device last wore. Their own choice, once made, always wins — see `UNCHOSEN_THEME_IDS`.
   */
   const [appThemeLookup, setAppThemeLookup] = createSignal<() => string | undefined>(() => undefined);
   const provideAppTheme = (lookup: () => string | undefined) => setAppThemeLookup(() => lookup);
@@ -712,7 +706,6 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
 
   // ── History (delegated to the unified EditorStore history) ──
-  const [operationLoading, setOperationLoading] = createSignal<string | null>(null);
 
   let pendingSnapshot: EditingTheme | null = null;
   let applyingHistoryOp = false;
@@ -1566,85 +1559,99 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     }
   }
 
-  async function installFromMarketplace(marketplaceThemeId: string) {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    const rootPerspective = datasetStore.rootDataset()?.handle;
-    if (!marketplacePerspective || !rootPerspective) return;
+  /** A theme's two files, as a record holds them. */
+  const themeFiles = (overrides: string | null | undefined, css: string | null | undefined) => ({
+    overrides: overrides ? asFileField(encodeToFileData(overrides, 'overrides.json', 'application/json')) : null,
+    css: css ? asFileField(encodeToFileData(css, 'theme.css', 'text/css')) : null,
+  });
 
-    setOperationLoading(`marketplace-install:${marketplaceThemeId}`);
-    try {
-      const source = await Theme.findOne(marketplacePerspective, { where: { id: marketplaceThemeId } });
-      if (!source) {
-        toastService.error('Theme not found');
+  /*
+    Installing a marketplace theme: into the agent's library, updating the copy an earlier install
+    made, or into the space on screen for every member. A theme carries no grants to name, so nobody
+    is asked first; its CSS is filtered where it is injected, whichever way it arrived.
+  */
+  async function installTheme(source: Theme, destination: InstallDestination): Promise<void> {
+    const slug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
+    // Raw file-storage fields resolve to `data:<mime>;base64,...` strings, so they are decoded
+    // before re-encoding — otherwise the data URI itself becomes the new file's content.
+    const files = themeFiles(decodeFileAsString(source.overrides) || null, decodeFileAsString(source.css) || null);
+
+    if (destination === 'space') {
+      const space = datasetStore.currentDataset()?.handle;
+      if (!space) throw new Error('There is no space open');
+      if (await Theme.findOne(space, { where: { slug } })) {
+        toastService.error(`"${source.name}" is already in this space`);
         return;
       }
-
-      const sourceSlug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
-      // source.overrides/source.css are raw file-storage fields (always resolved to
-      // "data:<mime>;base64,..." strings) — decode to plain text before re-encoding,
-      // otherwise the data URI itself gets wrapped as the new file's content.
-      const sourceOverrides = decodeFileAsString(source.overrides) || null;
-      const sourceCss = decodeFileAsString(source.css) || null;
-
-      /*
-        Check if already installed by slug — update in place if so.
-
-        Constrained to models that are actually *installed*, which means the ones living in the root
-        perspective. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
-        this session and never pruned, so an unconstrained slug match could bind `existingRecord` to a
-        theme belonging to a *space* — and `save()` would then publish marketplace content into that
-        space, for every member, while the toast said "updated" and the installed list showed nothing
-        new. Slugs are not unique across perspectives and were never meant to be.
-      */
-      const installedIds = new Set(installedThemes().map((theme) => theme.id));
-      let existingRecord: NewRecord<Theme> | undefined;
-      for (const model of themeRecordMap.values()) {
-        if (installedIds.has(model.id) && model.slug === sourceSlug) {
-          existingRecord = model;
-          break;
-        }
-      }
-
-      if (existingRecord) {
-        existingRecord.name = source.name;
-        existingRecord.icon = source.icon;
-        existingRecord.version = source.version;
-        existingRecord.overrides = sourceOverrides
-          ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
-          : null;
-        existingRecord.css = sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null;
-        await existingRecord.save();
-        const updated = modelToThemeData(existingRecord);
-        setInstalledThemes((prev) => prev.map((t) => (t.id === existingRecord.id ? updated : t)));
-        toastService.success(`Theme "${source.name}" updated to v${source.version}`);
-        return;
-      }
-
-      const model = await Theme.create(rootPerspective, {
+      await Theme.create(space, {
         name: source.name,
+        description: source.description,
         icon: source.icon,
-        slug: sourceSlug,
-        origin: 'marketplace',
-        version: source.version,
-        overrides: sourceOverrides
-          ? asFileField(encodeToFileData(sourceOverrides, 'overrides.json', 'application/json'))
-          : null,
-        css: sourceCss ? asFileField(encodeToFileData(sourceCss, 'theme.css', 'text/css')) : null,
+        slug,
+        origin: 'shared',
+        version: source.version || 1,
+        ...files,
       });
-      themeRecordMap.set(model.id, model);
-      setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
-
-      const settings = datasetStore.agentSettings();
-      if (settings) await settings.addInstalledThemes(model);
-
-      toastService.success(`Theme "${source.name}" installed`);
-    } catch (e) {
-      console.error('ThemeStore: installFromMarketplace error', e);
-      toastService.error('Failed to install theme');
-    } finally {
-      setOperationLoading(null);
+      await loadSpaceThemes();
+      toastService.success(`"${source.name}" added to this space`);
+      return;
     }
+
+    const root = datasetStore.rootDataset()?.handle;
+    if (!root) throw new Error('Your library is not available yet');
+    /*
+      Already installed under this slug: updated in place.
+
+      Constrained to models that are actually *installed*, which means the ones living in the root
+      perspective. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
+      this session and never pruned, so an unconstrained slug match could bind the record to a theme
+      belonging to a *space* — and `save()` would then publish marketplace content into that space,
+      for every member, while the toast said "updated" and the installed list showed nothing new.
+      Slugs are not unique across perspectives and were never meant to be.
+    */
+    const installedIds = new Set(installedThemes().map((theme) => theme.id));
+    const existing = [...themeRecordMap.values()].find((model) => installedIds.has(model.id) && model.slug === slug);
+    if (existing) {
+      existing.name = source.name;
+      existing.icon = source.icon;
+      existing.version = source.version;
+      Object.assign(existing, files);
+      await existing.save();
+      const updated = modelToThemeData(existing);
+      setInstalledThemes((prev) => prev.map((t) => (t.id === existing.id ? updated : t)));
+      toastService.success(`Theme "${source.name}" updated to v${source.version}`);
+      return;
+    }
+    const model = await Theme.create(root, {
+      name: source.name,
+      icon: source.icon,
+      slug,
+      origin: 'marketplace',
+      version: source.version,
+      ...files,
+    });
+    themeRecordMap.set(model.id, model);
+    setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
+    const settings = datasetStore.agentSettings();
+    if (settings) await settings.addInstalledThemes(model);
+    toastService.success(`Theme "${source.name}" installed`);
   }
+
+  const flow = createLibraryFlow<Theme, Theme>({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    entity: Theme as unknown as LibraryEntity<Theme>,
+    noun: 'theme',
+    marketplace: () => datasetStore.marketplaceDataset()?.handle,
+    space: () => datasetStore.currentDataset()?.handle,
+    datasetOf: (id) => datasetStore.datasets().find((d) => d.id === id)?.handle,
+    me: () => session.me()?.did,
+    judge: (listing) => listing,
+    asks: false,
+    apply: installTheme,
+  });
+
+  const installFromMarketplace = (listingId: string) => flow.install(listingId, 'personal');
 
   async function writeLibraryTheme(theme: BundleTheme): Promise<string> {
     const rootPerspective = datasetStore.rootDataset()?.handle;
@@ -1694,28 +1701,6 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     return model.id;
   }
 
-  async function deleteMarketplaceTheme(themeId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    if (!marketplacePerspective) {
-      toastService.error('Marketplace not connected');
-      return;
-    }
-    setOperationLoading(`marketplace-delete:${themeId}`);
-    try {
-      const theme = await Theme.findOne(marketplacePerspective, { where: { id: themeId } });
-      if (!theme) {
-        toastService.error('Theme not found');
-        return;
-      }
-      await theme.delete();
-    } catch (error) {
-      console.error('ThemeStore: deleteMarketplaceTheme error', error);
-      toastService.error('Failed to delete theme');
-    } finally {
-      setOperationLoading(null);
-    }
-  }
-
   async function uninstallTheme(themeId: string) {
     const model = themeRecordMap.get(themeId);
     const settings = datasetStore.agentSettings();
@@ -1733,90 +1718,25 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     }
   }
 
-  async function publishToMarketplace(options: {
+  function publishToMarketplace(options: {
     name: string;
     description: string;
     icon?: string;
     slug?: string;
     screenshots: File[];
   }): Promise<boolean> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    if (!marketplacePerspective) {
-      toastService.error('Marketplace not connected');
-      return false;
-    }
-
-    const editing = editingTheme();
-    const base = editing ?? currentTheme();
-    const themeSlug = (options.slug || base.slug || options.name.toLowerCase().replace(/\s+/g, '-'))
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '-');
-    const themeIcon = options.icon ?? base.icon;
-
-    const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
-    if (existing && existing.author !== session.me()?.did) {
-      toastService.error(`A theme with slug "${themeSlug}" already exists in the marketplace by a different author`);
-      return false;
-    }
-
-    try {
-      /*
-        Uploaded before anything is let go — the same argument as `templateStore.publishToMarketplace`.
-
-        Clearing the relation and then adding one file at a time meant an upload that failed part
-        way through left the listing with no screenshots and a "Failed to publish" toast: the
-        working listing destroyed by the attempt to update it.
-      */
-      const uploaded = await Promise.all(
-        options.screenshots.map(async (file) =>
-          ImageBlock.create(marketplacePerspective, {
-            src: asFileField(await compressImageToFileData(file, `screenshot-${Date.now()}`)),
-            altText: 'Screenshot',
-            version: 1,
-          }),
-        ),
-      );
-
-      if (existing) {
-        existing.name = options.name;
-        existing.description = options.description;
-        existing.icon = themeIcon;
-        existing.version = (existing.version ?? 1) + 1;
-        existing.overrides = base.overrides
-          ? asFileField(encodeToFileData(base.overrides, 'overrides.json', 'application/json'))
-          : null;
-        existing.css = base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null;
-        await existing.save();
-
-        // The new pictures are already uploaded — see `uploaded` above. Clearing the relation first
-        // and adding one at a time meant a failed upload destroyed the listing's existing
-        // screenshots and then reported failure; the same shape as `templateStore`'s, fixed the same
-        // way. Only when there are new ones: an update with none picked keeps what is there.
-        if (uploaded.length) await existing.setScreenshots(uploaded);
-        toastService.success(`Theme "${options.name}" updated in marketplace (v${existing.version})`);
-      } else {
-        const theme = await Theme.create(marketplacePerspective, {
-          name: options.name,
-          description: options.description,
-          icon: themeIcon,
-          slug: themeSlug,
-          origin: 'marketplace',
-          version: 1,
-          overrides: base.overrides
-            ? asFileField(encodeToFileData(base.overrides, 'overrides.json', 'application/json'))
-            : null,
-          css: base.css ? asFileField(encodeToFileData(base.css, 'theme.css', 'text/css')) : null,
-        });
-        if (uploaded.length) await theme.setScreenshots(uploaded);
-        toastService.success(`Theme "${options.name}" published to marketplace`);
-      }
-      return true;
-    } catch (e) {
-      console.error('ThemeStore: publishToMarketplace error', e);
-      toastService.error('Failed to publish theme');
-      return false;
-    }
+    const base = editingTheme() ?? currentTheme();
+    return flow.publish({
+      name: options.name,
+      description: options.description,
+      icon: options.icon ?? base.icon,
+      slug: (options.slug || base.slug || options.name.toLowerCase().replace(/\s+/g, '-'))
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-'),
+      content: themeFiles(base.overrides, base.css),
+      screenshots: options.screenshots,
+    });
   }
 
   /**
@@ -1832,97 +1752,28 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * which is why `installFromMarketplace` sits at the chrome tier. A community template can offer
    * "give this space a theme" and cannot offer "put this in your library".
    */
-  async function installToSpace(marketplaceThemeId: string): Promise<void> {
-    const marketplacePerspective = datasetStore.marketplaceDataset()?.handle;
-    const spacePerspective = datasetStore.currentDataset()?.handle;
-    if (!marketplacePerspective || !spacePerspective) {
-      toastService.error('Cannot install: no active space or marketplace not connected');
-      return;
-    }
-
-    setOperationLoading(`space-install:${marketplaceThemeId}`);
-    try {
-      const source = await Theme.findOne(marketplacePerspective, { where: { id: marketplaceThemeId } });
-      if (!source) {
-        toastService.error('Theme not found in marketplace');
-        return;
-      }
-
-      const slug = source.slug || source.name.toLowerCase().replace(/\s+/g, '-');
-      const existing = await Theme.findOne(spacePerspective, { where: { slug } });
-      if (existing) {
-        toastService.error(`"${source.name}" is already in this space`);
-        return;
-      }
-
-      // Raw file-storage fields resolve to `data:<mime>;base64,...` strings, so they are decoded
-      // before re-encoding — otherwise the data URI itself becomes the new file's content.
-      const overrides = decodeFileAsString(source.overrides) || null;
-      const css = decodeFileAsString(source.css) || null;
-
-      await Theme.create(spacePerspective, {
-        name: source.name,
-        description: source.description,
-        icon: source.icon,
-        slug,
-        origin: 'shared',
-        version: source.version || 1,
-        overrides: overrides ? asFileField(encodeToFileData(overrides, 'overrides.json', 'application/json')) : null,
-        css: css ? asFileField(encodeToFileData(css, 'theme.css', 'text/css')) : null,
-      });
-
-      await loadSpaceThemes();
-      toastService.success(`"${source.name}" added to this space`);
-    } catch (error) {
-      toastService.error(explain(error, 'Could not add that theme to this space'));
-    } finally {
-      setOperationLoading(null);
-    }
+  function installToSpace(listingId: string): Promise<void> {
+    return flow.install(listingId, 'space');
   }
 
-  async function publishToSpace(perspectiveUuid: string, spaceName: string): Promise<boolean> {
-    const perspective = datasetStore.datasets().find((d) => d.id === perspectiveUuid)?.handle;
-    if (!perspective) {
-      toastService.error('Space not found');
-      return false;
-    }
-
+  async function publishToSpace(datasetId: string, spaceName: string): Promise<boolean> {
     const editing = editingTheme();
     if (!editing) {
       toastService.error('No theme is being edited');
       return false;
     }
-
-    const spaceSlug = editing.slug || editing.name.toLowerCase().replace(/\s+/g, '-');
-    const existing = await Theme.findOne(perspective, { where: { slug: spaceSlug } });
-    if (existing) {
-      toastService.error(`Theme "${editing.name}" is already in "${spaceName}"`);
-      return false;
-    }
-
-    try {
-      await Theme.create(perspective, {
-        name: editing.name,
-        icon: editing.icon,
-        slug: spaceSlug,
-        origin: 'shared',
-        version: 1,
-        overrides: editing.overrides
-          ? asFileField(encodeToFileData(editing.overrides, 'overrides.json', 'application/json'))
-          : null,
-        css: editing.css ? asFileField(encodeToFileData(editing.css, 'theme.css', 'text/css')) : null,
-      });
-      // Space themes are read on entering a space, not watched, so the open space's list is read
-      // again here — or the theme just shared is missing from its pickers until the next visit.
-      // Another space reads its own when it is next opened.
-      if (datasetStore.currentDataset()?.id === perspectiveUuid) await loadSpaceThemes();
-      toastService.success(`Theme "${editing.name}" shared to space "${spaceName}"`);
-      return true;
-    } catch (e) {
-      console.error('ThemeStore: publishToSpace error', e);
-      toastService.error('Failed to share theme to space');
-      return false;
-    }
+    const shared = await flow.share({
+      datasetId,
+      spaceName,
+      name: editing.name,
+      slug: editing.slug || editing.name.toLowerCase().replace(/\s+/g, '-'),
+      content: { icon: editing.icon, ...themeFiles(editing.overrides, editing.css) },
+    });
+    // Space themes are read on entering a space, not watched, so the open space's list is read
+    // again here — or the theme just shared is missing from its pickers until the next visit.
+    // Another space reads its own when it is next opened.
+    if (shared && datasetStore.currentDataset()?.id === datasetId) await loadSpaceThemes();
+    return shared;
   }
 
   const store: ThemeStore = {
@@ -1946,7 +1797,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     activeTemplateTheme,
     themeManagementList,
     editingTheme,
-    operationLoading,
+    operationLoading: flow.operationLoading,
     registerHistoryCallbacks,
     applySnapshot,
     setCurrentTheme,
@@ -1984,7 +1835,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     writeLibraryTheme,
     installToSpace,
     uninstallTheme,
-    deleteMarketplaceTheme,
+    deleteMarketplaceTheme: flow.removeListing,
     publishToMarketplace,
     publishToSpace,
     loadInstalledThemes,
