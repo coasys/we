@@ -241,10 +241,19 @@ export function createShellArrangement(deps: {
     Scoping the keys stops one template's decision leaking into another's; clearing on the switch is
     what stops the map growing for the life of the session, and is also the honest reading — a panel
     somebody closed in an arrangement that has been replaced is not a preference about the new one.
+
+    The scope is a plain read, so the effect follows every announcement of a declaration
+    (`panelsVersion`) and compares: it read the scope alone, which nothing re-runs, so it ran once at
+    creation and a closed panel stayed closed for the whole session. An announcement for the same
+    template — an edit re-declaring its panels — is not a switch, and forgets nothing.
   */
+  let closedFor = templatePanelScope();
   effect(() => {
-    templatePanelScope();
-    setClosedPanels({});
+    panelsVersion();
+    const scope = templatePanelScope();
+    if (scope === closedFor) return;
+    closedFor = scope;
+    untrack(() => setClosedPanels({}));
   });
   /**
    * The dock a declaration is about, or null when it names one that is not there.

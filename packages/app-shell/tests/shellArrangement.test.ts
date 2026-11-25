@@ -91,6 +91,22 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(arrangement.members.layoutDirty()).toBe(true);
   });
 
+  it('forgets what was closed when the template on screen changes', () => {
+    const arrangement = build();
+    arrangement.members.closeTemplatePanel('inspector');
+    setTemplatePanels([{ id: 'feed', title: 'Feed', node: { type: 'div' } }], 'another-template');
+    expect(arrangement.closedPanels()).toEqual({});
+    setTemplatePanels([{ id: 'inspector', title: 'Inspector', node: { type: 'div' } }], SCOPE);
+    expect(arrangement.closedPanels()).toEqual({});
+  });
+
+  it('keeps what was closed while the same template declares its panels again', () => {
+    const arrangement = build();
+    arrangement.members.closeTemplatePanel('inspector');
+    setTemplatePanels([{ id: 'inspector', title: 'Inspector (edited)', node: { type: 'div' } }], SCOPE);
+    expect(arrangement.closedPanels()).toEqual({ [`${SCOPE}::${PANEL}`]: true });
+  });
+
   it('keeps panel instances under the agent signed in, and shows the next agent none of them', () => {
     const arrangement = build();
     arrangement.members.provideAgentDid(() => 'did:a');
