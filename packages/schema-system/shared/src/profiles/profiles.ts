@@ -685,8 +685,9 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
           { name: 'moduleId', type: 'string' },
           { name: 'visible', type: 'boolean' },
         ],
-        description: 'Shows or hides a module for this person only, without changing what the community runs.',
-        events: ['space', 'settings'],
+        description:
+          'Shows or hides a module for this person only, without changing what the community runs. Nothing else in a profile reads which modules this person hides, so no event follows.',
+        events: [],
       },
       {
         path: 'spaceStore.setMyModuleSetting',

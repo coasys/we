@@ -163,7 +163,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 | `spaceStore.setSpaceDefaultTheme` | `themeId: string` | `space-settings` | no | `space` | Sets the theme members see when they enter the space on screen. |
 | `spaceStore.updateSpaceImage` | `field: 'avatar' \| 'coverImage'`, `image: File` | `space-settings` | no | `space` | Stores an image the person chose and sets it as the space’s avatar or cover image. |
 | `spaceStore.setViewVisible` | `viewId: string`, `visible: boolean` | `space-settings` | no | `space` | Shows or hides a section for this person only, without changing what the community has. The sections `navigation` lists follow (its `space` event). |
-| `spaceStore.setModuleVisible` | `moduleId: string`, `visible: boolean` | `space-settings` | no | `space`, `settings` | Shows or hides a module for this person only, without changing what the community runs. |
+| `spaceStore.setModuleVisible` | `moduleId: string`, `visible: boolean` | `space-settings` | no | — | Shows or hides a module for this person only, without changing what the community runs. Nothing else in a profile reads which modules this person hides, so no event follows. |
 | `spaceStore.setMyModuleSetting` | `group: string`, `key: string`, `value?: unknown` | `space-settings` | no | `settings` | Sets this person’s own value of one setting in the space on screen; with no value, clears it. |
 
 ### Events
