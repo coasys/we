@@ -671,7 +671,7 @@ export const themeNameDialog: SchemaNode = nameDialog({
       */
       {
         $if: {
-          condition: { $: 'result && datasetStore.currentDataset' },
+          condition: { $: 'result && currentDataset' },
           then: { $invoke: 'spaceStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
         },
       },

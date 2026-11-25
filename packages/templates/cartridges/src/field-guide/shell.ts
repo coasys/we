@@ -19,7 +19,7 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
         {
           type: '$if',
           props: {
-            condition: { $: 'datasetStore.currentDataset' },
+            condition: { $: 'currentDataset' },
             then: {
               // The height of the window, with the header fixed and the section scrolling below it:
               // a section is then given a height, which a map has to have to fill the page.

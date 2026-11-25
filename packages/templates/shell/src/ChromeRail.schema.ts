@@ -60,7 +60,7 @@ import { TEMPLATE_PICKER_OPEN, templatePicker, THEME_PICKER_OPEN, themePicker } 
  * nothing. The file already learned this one level down; there is a note below about "an empty rail
  * with a stray horizontal line in it" from gating the launchers and their divider apart.
  */
-const IN_SPACE = { $: 'datasetStore.currentDataset' };
+const IN_SPACE = { $: 'currentDataset' };
 
 /**
  * Whether a template is on screen for the design pickers to be about.
@@ -217,7 +217,7 @@ const dividerBeforeSettings: SchemaNode = {
   // Only when the pickers are above it and the gear below.
   type: '$if',
   props: {
-    condition: { $: 'datasetStore.currentDataset && !appStore.activeAppId && !shellStore.activeShellView' },
+    condition: { $: 'currentDataset && !appStore.activeAppId && !shellStore.activeShellView' },
     then: { type: 'we-divider', props: { width: '100%', my: '100' } },
   },
 };
@@ -264,7 +264,7 @@ export const chromeRail: SchemaNode = {
       it rendered — which is the same reason the dividers name what is on both sides of them.
     */
     condition: {
-      $: "sessionStore.bootState == 'ready' && (datasetStore.currentDataset || (!appStore.activeAppId && !shellStore.activeShellView))",
+      $: "sessionStore.bootState == 'ready' && (currentDataset || (!appStore.activeAppId && !shellStore.activeShellView))",
     },
     then: {
       type: 'Column',

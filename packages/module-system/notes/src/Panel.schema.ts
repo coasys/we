@@ -237,7 +237,7 @@ const noteCard: SchemaNode = {
               onClick: { $setLocal: 'confirmShareId', value: { $: 'note.id' } },
               // Nowhere to share into outside a space. Disabled rather than hidden, so the action is
               // discoverable before it is available.
-              disabled: { $: '!datasetStore.currentDataset' },
+              disabled: { $: '!currentDataset' },
               loading: { $: 'modules.notes.sharing == note.id' },
             }),
             iconAction({

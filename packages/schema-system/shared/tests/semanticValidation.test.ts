@@ -1141,13 +1141,13 @@ describe('WE-host-only store members', () => {
   it('reports the rest once for the schema, counted, naming a neutral equivalent where there is one', () => {
     const schema = template([
       { type: 'we-text', children: [{ $: 'sessionStore.bootState' }] },
-      { type: 'we-text', children: [{ $: "sessionStore.bootState == 'ready' ? sessionStore.me.did : ''" }] },
+      { type: 'we-text', children: [{ $: "sessionStore.bootState == 'ready' ? count(spaceStore.taskStates) : 0" }] },
     ]);
     const found = notes(schema);
     expect(found).toHaveLength(1);
     expect(found[0].path).toBe('');
     expect(found[0].message).toContain('3 uses of 2 store members');
-    expect(found[0].message).toContain('sessionStore.me → me');
+    expect(found[0].message).toContain("spaceStore.taskStates → a $query of 'TaskState'");
     expect(found[0].message).toContain('sessionStore.bootState ×2');
   });
 

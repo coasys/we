@@ -13,7 +13,6 @@
  */
 export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   // Host values every template has.
-  'sessionStore.me': 'me',
   'datasetStore.currentDataset': 'currentDataset',
 
   // Reads of the space's own records.

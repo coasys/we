@@ -87,7 +87,7 @@ export const spaceSettingsPanel: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: 'datasetStore.currentDataset' },
+        condition: { $: 'currentDataset' },
         /*
           Keyed on the open dataset, so this panel is always about where you are standing. That is
           what lets it survive walking between spaces: the `$each` re-points at the new row and the

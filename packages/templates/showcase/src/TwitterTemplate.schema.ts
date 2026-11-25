@@ -426,7 +426,7 @@ export const twitterTemplate: TemplateSchema = {
         collectionFeed({
           kind: KIND.post,
           as: 'post',
-          where: { author: { eq: { $: 'sessionStore.me.did' } } },
+          where: { author: { eq: { $: 'me.did' } } },
           include: { signals: true },
           empty: emptyState({ icon: 'user', label: 'posts of your own', delay: 0 }),
           children: [postCard({ clickable: true })],

@@ -27,7 +27,7 @@ export const sidebarLayout: TemplateSchema = {
         {
           type: '$if',
           props: {
-            condition: { $: 'datasetStore.currentDataset' },
+            condition: { $: 'currentDataset' },
             then: {
               type: '$if',
               props: {

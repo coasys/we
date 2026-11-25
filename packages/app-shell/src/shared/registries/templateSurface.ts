@@ -245,7 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loginLoading: state('session'),
     createAgentError: state('session'),
     createAgentLoading: state('session'),
-    me: state('identity'),
+    // The person signed in. Templates read the neutral host value `me`, which every host provides.
+    me: WIRING,
     host: state('session'),
     hostAccount: state('session'),
     isGuest: state('session'),

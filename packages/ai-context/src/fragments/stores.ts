@@ -13,7 +13,6 @@ export const storeEntries: StoreEntry[] = [
   {
     name: 'sessionStore',
     state: {
-      me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
       signInStep: { type: 'string' },
       bootError: { type: 'string' },
@@ -890,7 +889,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   sessionStore: {
     state: {
       client: 'the backend client handle | undefined',
-      me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
         "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",

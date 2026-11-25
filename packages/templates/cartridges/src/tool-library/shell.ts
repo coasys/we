@@ -20,7 +20,7 @@ export const toolLibraryShell: TemplateSchema & { id: string } = {
         {
           type: '$if',
           props: {
-            condition: { $: 'datasetStore.currentDataset' },
+            condition: { $: 'currentDataset' },
             then: {
               type: 'Row',
               props: { width: '100%', minHeight: '100dvh', ay: 'stretch' },
