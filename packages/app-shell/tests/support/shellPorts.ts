@@ -12,6 +12,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { createAppFrame } from '../../src/shared/registries/appFrame';
 import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { createPanelInstances } from '../../src/shared/registries/panelInstances';
+import { createShellArrangement } from '../../src/shared/stores/shell/arrangement';
 import { createShellPrompts } from '../../src/shared/stores/shell/prompts';
 import { createShellViews } from '../../src/shared/stores/shell/views';
 import { createShellStore, type ShellStore, type ShellStoreDeps } from '../../src/shared/stores/ShellStore';
@@ -53,11 +54,13 @@ export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps
   let parts!: {
     views: ReturnType<typeof createShellViews>;
     prompts: ReturnType<typeof createShellPrompts>;
+    arrangement: ReturnType<typeof createShellArrangement>;
   };
   const dispose = reactivity.root(() => {
     const views = createShellViews({ reactivity });
     const prompts = createShellPrompts({ reactivity, platform });
-    parts = { views, prompts };
+    const arrangement = createShellArrangement({ reactivity, host });
+    parts = { views, prompts, arrangement };
   });
   return { ...parts, host, dispose };
 }
