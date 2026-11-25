@@ -528,6 +528,16 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
       .catch(() => setForeignSpacePrefill(null));
   });
 
+  /**
+   * The uri each dataset the agent has held this session is shared at, by id — what a module holds
+   * for it, kept so a removal can still be told in those terms after the dataset has left the list.
+   * A plain map: nothing renders from it, and it only grows by what the agent has held.
+   */
+  const heldUris = new Map<string, string>();
+  effect(() => {
+    for (const ds of datasetStore.datasets()) if (ds.sharedUri) heldUris.set(ds.id, ds.sharedUri);
+  });
+
   /*
     Lend modules the ability to name a space and to go to one.
 
@@ -597,27 +607,17 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
           Removal, as an event, so a module can end what belongs to a dataset that is gone.
 
           Translated from the dataset id `onDatasetRemoved` reports into the uri a module actually
-          holds — a call anchors on `Focus.datasetUri`, and the two are different strings for the same
-          space. Resolved before the removal lands, because afterwards there is nothing left to
-          resolve it from.
+          holds — a call anchors on `Focus.datasetUri`, which is the dataset's own `sharedUri`, and the
+          two are different strings for the same space. By the time the removal is heard the dataset
+          has left the list, so the uri is the one remembered while it was held (`heldUris`). A
+          personal space has no uri and no module anchors to one, so answering nothing for it is
+          right rather than a gap.
         */
-        onRemoved: (cb: (datasetUri: string) => void) => {
-          const listener = (uuid: string) => {
-            /*
-              The uri, from whatever still remembers it.
-
-              `onDatasetRemoved` reports the dataset id; a module holds `Focus.datasetUri`, and for a
-              shared space those are different strings for the same thing. `mySpaces` is filtered by
-              the handler above, which runs first, so the Space record is already gone — the sidebar
-              list is not, and it carries the shared id. A personal space has no uri and no module
-              anchors to one, so answering nothing for it is right rather than a gap.
-            */
-            const row = spaces.members.orderedSidebarItems().find((item) => item.uuid === uuid);
-            const uri = row?.spaceId ? `neighbourhood://${row.spaceId}` : undefined;
+        onRemoved: (cb: (datasetUri: string) => void) =>
+          spaces.onRemoved((uuid) => {
+            const uri = heldUris.get(uuid);
             if (uri) cb(uri);
-          };
-          return spaces.onRemoved(listener);
-        },
+          }),
         // The host parses the reference and knows where a record's page is; a module holding one
         // should not have to restate either. See `ModuleDatasetAccess.openRef`.
         openRef: (ref: string) => void openRecordRef(ref),

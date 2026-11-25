@@ -9,6 +9,7 @@ import { Space } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createModuleStoreDeps, resetModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { createSpaceNavigation, type SpaceNavigation } from '../src/shared/stores/space/navigation';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
@@ -18,6 +19,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    resetModuleHostServices();
   });
 
   interface Built {
@@ -168,5 +170,20 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     // The space already on screen: its root, which is how the sidebar takes you home.
     await navigation.members.navigateToSpace('ds-a');
     expect(navigated.at(-1)).toBe('/space/ds-a');
+  });
+
+  it('tells a module which dataset went, by the uri it holds for it', async () => {
+    const { h } = await build();
+    await h.ports.lifecycle.publish('ds-a');
+    h.datasets.track(await h.datasets.get('ds-a'));
+    const uri = h.ctx.datasetStore.datasets().find((d) => d.id === 'ds-a')?.sharedUri;
+    expect(uri).toBeTruthy();
+    const heard: string[] = [];
+    const stop = createModuleStoreDeps(h.reactivity).datasets!.onRemoved!((removed) => void heard.push(removed));
+    await h.ctx.datasetStore.removeDataset('ds-a');
+    // A personal space has no uri, and no module anchors to one.
+    await h.ctx.datasetStore.removeDataset('ds-b');
+    expect(heard).toEqual([uri]);
+    stop();
   });
 });
