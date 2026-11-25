@@ -26,6 +26,7 @@ import { slotRegistry } from '@shared/registries/slotRegistry';
 import { devOnlyTemplateIds, templateRegistry } from '@shared/registries/templateRegistry';
 import { profileTemplate, settingsTemplate } from '@shared/schemas';
 import { getSeed } from '@shared/seedRegistry';
+import { latestPerSpace } from '@shared/stores/latestPerSpace';
 import { reserveId } from '@shared/templateIdentity';
 import { withLibrary, withLibraryListed } from '@shared/templateLists';
 import { explain } from '@shared/userMessage';
@@ -69,7 +70,6 @@ import {
   templateChanges,
 } from '../../../shared/templateSync';
 import { type AppDataset, canonicalSpaceId } from './DatasetStore';
-import { latestPerSpace } from './latestPerSpace';
 import { createSpaceRecordWait } from './spaceRecordWait';
 import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';

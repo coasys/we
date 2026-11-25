@@ -163,7 +163,7 @@ const app = vi.hoisted(() => ({
 vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
   const { createSignal, createEffect } = await import('solid-js');
   const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
-  const { latestPerSpace } = await import('../src/frameworks/solid/stores/latestPerSpace');
+  const { latestPerSpace } = await import('../src/shared/stores/latestPerSpace');
   const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
   app.use = setInUse;
   return {

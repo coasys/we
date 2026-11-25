@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { latestPerSpace } from '../src/frameworks/solid/stores/latestPerSpace';
+import { latestPerSpace } from '../src/shared/stores/latestPerSpace';
 
 describe('a tracker for each space', () => {
   it('lets a newer call for the same space supersede an older one', () => {
