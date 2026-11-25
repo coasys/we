@@ -60,6 +60,7 @@ const SOLID_TESTS = [
   'tests/shellArrangement.test.ts',
   'tests/shellDocks.test.ts',
   'tests/shellDockDrag.test.ts',
+  'tests/shellTemplatePanels.test.ts',
   'tests/templateDrafts.test.ts',
   'tests/editorStore.test.ts',
   // The record store's canvas, tree and connection writes, each under both ports.

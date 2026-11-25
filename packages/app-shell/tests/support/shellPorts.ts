@@ -16,6 +16,7 @@ import { createShellArrangement } from '../../src/shared/stores/shell/arrangemen
 import { createShellDockDrag } from '../../src/shared/stores/shell/dockDrag';
 import { createShellDocks } from '../../src/shared/stores/shell/docks';
 import { createShellPrompts } from '../../src/shared/stores/shell/prompts';
+import { createShellTemplatePanels } from '../../src/shared/stores/shell/templatePanels';
 import { createShellViews } from '../../src/shared/stores/shell/views';
 import { createShellStore, type ShellStore, type ShellStoreDeps } from '../../src/shared/stores/ShellStore';
 
@@ -59,6 +60,7 @@ export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps
     arrangement: ReturnType<typeof createShellArrangement>;
     docks: ReturnType<typeof createShellDocks>;
     drag: ReturnType<typeof createShellDockDrag>;
+    templatePanels: ReturnType<typeof createShellTemplatePanels>;
   };
   const dispose = reactivity.root(() => {
     const views = createShellViews({ reactivity });
@@ -66,7 +68,8 @@ export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps
     const arrangement = createShellArrangement({ reactivity, host });
     const docks = createShellDocks({ reactivity, host, views, arrangement });
     const drag = createShellDockDrag({ reactivity, arrangement, docks });
-    parts = { views, prompts, arrangement, docks, drag };
+    const templatePanels = createShellTemplatePanels({ reactivity, views, arrangement, docks });
+    parts = { views, prompts, arrangement, docks, drag, templatePanels };
   });
   return { ...parts, host, dispose };
 }
