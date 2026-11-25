@@ -27,7 +27,6 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   'spaceStore.upsertSignal': 'ops.core.upsertSignal, and ops.core.withdrawSignal to take one back',
   'spaceStore.setInvolvement': 'ops.core.setInvolvement',
   'spaceStore.respondTo': 'ops.core.respond',
-  'spaceStore.markRead': 'ops.core.markRead',
   'spaceStore.openBoardFor':
     'ops.core.openBoardFor, for a collection’s board (the space’s own board stays a store action)',
   'spaceStore.removeBoardColumn': 'ops.core.removeBoardColumn',
