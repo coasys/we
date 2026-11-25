@@ -24,7 +24,7 @@ import {
   toEndpointDraft,
   toModelDraft,
   withService,
-} from '../src/frameworks/solid/stores/aiModelDraft';
+} from '../src/shared/stores/aiModelDraft';
 
 function endpoint(overrides: Partial<AiEndpoint> = {}): AiEndpoint {
   return {

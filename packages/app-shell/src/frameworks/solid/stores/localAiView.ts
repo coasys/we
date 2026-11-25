@@ -4,6 +4,7 @@
  *
  * Pure, next to `aiModelDraft.ts`, so the sentences are checkable without a store or a backend.
  */
+import { MODEL_KIND_LABELS } from '@shared/stores/aiModelDraft';
 import type {
   AiEndpoint,
   AiModelKind,
@@ -13,8 +14,6 @@ import type {
   LocalAiRuntimeStatus,
   LocalAiStatus,
 } from '@we/backend-shared';
-
-import { MODEL_KIND_LABELS } from './aiModelDraft';
 
 /** "3.1 GB", or "480 MB" below a gigabyte — never "0 MB" for something that has a size. */
 export function sizeText(bytes: number): string {

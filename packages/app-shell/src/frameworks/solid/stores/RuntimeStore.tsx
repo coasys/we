@@ -30,7 +30,6 @@ import {
 } from '@shared/aiSetupStep';
 import type { ExecutorSettings } from '@shared/platform/types';
 import type { PlatformAdapter } from '@shared/platform/types';
-import { copyText } from '@shared/utils';
 import {
   AI_SERVICES,
   type AiDetectedView,
@@ -60,7 +59,8 @@ import {
   toEndpointDraft,
   toModelDraft,
   withService,
-} from '@solid/stores/aiModelDraft';
+} from '@shared/stores/aiModelDraft';
+import { copyText } from '@shared/utils';
 import { describeLocalAi, isManaged, type LocalAiView, reduceProgress } from '@solid/stores/localAiView';
 import type {
   AiDetectedEndpoint,
