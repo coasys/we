@@ -29,11 +29,11 @@ import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templa
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { createShellRouteStore } from '@shared/stores/ShellRouteStore';
+import { THEME_SCOPE_ATTRIBUTE } from '@shared/stores/ThemeStore';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
 import { ShellRouterRoot } from '@solid/layouts/ShellRouterRoot';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';

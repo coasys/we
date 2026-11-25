@@ -238,7 +238,7 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
   };
 });
 
-vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
+vi.mock('../src/shared/stores/ThemeStore', () => ({
   createThemeStore: () => ({
     allThemes: () => [],
     defaultThemeId: () => 'default',
@@ -262,7 +262,6 @@ import { createRecordStore, type RecordStore } from '../src/frameworks/solid/sto
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
-import { createThemeStore } from '../src/frameworks/solid/stores/ThemeStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
@@ -279,6 +278,7 @@ import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
+import { createThemeStore } from '../src/shared/stores/ThemeStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -353,7 +353,12 @@ function mountShell(): Stores {
       runtimeStore,
       accountStore,
     });
-    const themeStore = createThemeStore({ sessionStore, datasetStore });
+    const themeStore = createThemeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
     // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
     const appStore = createAppStore({ reactivity: solidReactivity });

@@ -7,10 +7,9 @@ import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registr
 import { getSeed } from '@shared/seedRegistry';
 import { createLibraryFlow, type InstallDestination, type LibraryEntity } from '@shared/stores/libraryFlow';
 import type { NewRecord } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import type { ThemeData } from '@we/entities';
 import { asFileField, decodeFileAsString, modelToThemeData, Theme } from '@we/entities';
-import { solidReactivity } from '@we/reactivity-solid';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
   applyThemeVars,
@@ -27,10 +26,12 @@ import {
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
-import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
-import { safeMode } from '../../../shared/safeMode';
-import type { StoreRegistry } from './useStore';
+import { distinctSignal } from '../distinctSignal';
+import { safeMode } from '../safeMode';
+import type { Toasts } from '../toasts';
+import type { DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
 
 const THEME_KEY = 'we.theme';
 /*
@@ -368,10 +369,10 @@ function seedAppThemeId(): string | undefined {
 export const SYSTEM_THEME_ID = 'system';
 
 /** Tracks `prefers-color-scheme` for as long as the app is open, not just at boot. */
-function createSystemScheme(): Accessor<'light' | 'dark'> {
+function createSystemScheme(reactivity: ReactivityPort): Accessor<'light' | 'dark'> {
   if (typeof window === 'undefined' || !window.matchMedia) return () => 'light';
   const query = window.matchMedia('(prefers-color-scheme: dark)');
-  const [scheme, setScheme] = createSignal<'light' | 'dark'>(query.matches ? 'dark' : 'light');
+  const [scheme, setScheme] = distinctSignal<'light' | 'dark'>(reactivity, query.matches ? 'dark' : 'light');
   const onChange = (e: MediaQueryListEvent) => setScheme(e.matches ? 'dark' : 'light');
   query.addEventListener('change', onChange);
   // Never removed: the store lives for the life of the document, and dropping it on an HMR pass
@@ -499,16 +500,31 @@ function populateMissingOverrides(
   return readThemeSettings(result, getComputedStyle(from));
 }
 
-export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore'>): ThemeStore {
+/** What the theme store reads off the stores composed before it. */
+export interface ThemeStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Toasts;
+  sessionStore: Pick<SessionStore, 'devTools' | 'me'>;
+  datasetStore: Pick<
+    DatasetStore,
+    'agentSettings' | 'updateAgentSettings' | 'currentDataset' | 'rootDataset' | 'marketplaceDataset' | 'datasets'
+  >;
+}
+
+export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
+  const { reactivity, toasts } = deps;
+  const { memo, effect, untrack, onCleanup } = reactivity;
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
+  /** A signal that skips a write equal to what it holds, as every signal here did under Solid. */
+  const signal = <T>(initial: T) => distinctSignal<T>(reactivity, initial);
 
   /*
     The theme an agent who has not chosen one wears: the one the app in use offers first, else what
     this device last wore. Their own choice, once made, always wins — see `UNCHOSEN_THEME_IDS`.
   */
-  const [appThemeLookup, setAppThemeLookup] = createSignal<() => string | undefined>(() => undefined);
-  const provideAppTheme = (lookup: () => string | undefined) => setAppThemeLookup(() => lookup);
+  const [appThemeLookup, setAppThemeLookup] = signal<() => string | undefined>(() => undefined);
+  const provideAppTheme = (lookup: () => string | undefined) => setAppThemeLookup(lookup);
   const chosenDefaultThemeId = (): string | undefined => {
     const own = datasetStore.agentSettings()?.defaultThemeId;
     return own && !UNCHOSEN_THEME_IDS.has(own) ? own : undefined;
@@ -558,7 +574,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    */
   const automaticThemes: Accessor<ThemeData[]> = () => [systemThemeEntry()];
 
-  const [installedThemes, setInstalledThemes] = createSignal<ThemeData[]>([]);
+  const [installedThemes, setInstalledThemes] = signal<ThemeData[]>([]);
   /**
    * Whether custom themes have been read from the root dataset yet.
    *
@@ -571,9 +587,9 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * wrong answer here is maximally visible: dark boot screen, white flash, then the real theme.
    * Intermittent, because it is a race — sometimes the records arrive first.
    */
-  const [themesLoaded, setThemesLoaded] = createSignal(false);
+  const [themesLoaded, setThemesLoaded] = signal(false);
   // IDs of custom themes visible in pickers (subset of installedThemes)
-  const [visibleThemeIds, setVisibleThemeIds] = createSignal<Set<string>>(new Set());
+  const [visibleThemeIds, setVisibleThemeIds] = signal<Set<string>>(new Set());
 
   /*
     The theme the app somebody is in was drawn with last time, until the installed themes have loaded
@@ -582,21 +598,21 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     Loading the real list replaces it; `themesLoaded` is left alone, so nothing else mistakes this
     for the answer.
   */
-  createEffect(() => {
+  effect(() => {
     if (themesLoaded()) return;
     const remembered = readBootSnapshot(session.me()?.did)?.themes;
     if (!remembered?.length) return;
     setInstalledThemes(remembered);
     setVisibleThemeIds(new Set(remembered.map((theme) => theme.id)));
   });
-  const [spaceThemes, setSpaceThemes] = createSignal<ThemeData[]>([]);
-  const systemScheme = createSystemScheme();
+  const [spaceThemes, setSpaceThemes] = signal<ThemeData[]>([]);
+  const systemScheme = createSystemScheme(reactivity);
 
   /*
     The side a two-sided theme is worn on. The agent's own setting once it has loaded; before that,
     what this device last wore, so the first paint does not flip sides when the settings land.
   */
-  const displayPreferences = createMemo<DisplayPreferences>(() => {
+  const displayPreferences = memo<DisplayPreferences>(() => {
     const settings = datasetStore.agentSettings();
     return settings ? displayFrom(settings.displayPreferences) : cachedDisplay();
   });
@@ -606,7 +622,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     cache, so the first paint already has them.
   */
   setDisplayPreferences(untrack(displayPreferences));
-  createEffect(() => setDisplayPreferences(displayPreferences()));
+  effect(() => setDisplayPreferences(displayPreferences()));
   function setDisplayPreference<K extends keyof DisplayPreferences>(
     key: K,
     value: DisplayPreferences[K] | null,
@@ -618,8 +634,8 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     // Nothing chosen is no value at all, so a later default for an axis reaches this person too.
     return datasetStore.updateAgentSettings({ displayPreferences: Object.keys(next).length ? next : null });
   }
-  const themeMode = createMemo<ThemeMode>(() => asThemeMode(displayPreferences().colorScheme));
-  const themeSide = createMemo<'light' | 'dark'>(() => {
+  const themeMode = memo<ThemeMode>(() => asThemeMode(displayPreferences().colorScheme));
+  const themeSide = memo<'light' | 'dark'>(() => {
     const mode = themeMode();
     return mode === 'system' ? systemScheme() : mode;
   });
@@ -630,10 +646,9 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   /*
     These three sit *after* `systemScheme` deliberately.
 
-    `createMemo` runs its computation on creation, so a memo reading `systemScheme` from above the
-    line that defines it throws `Cannot access before initialization` and takes the whole store with
-    it — a blank app, from an ordering mistake that typechecks and that no unit test sees, because
-    nothing but a browser actually constructs the store.
+    A memo may run its computation on creation, so one reading `systemScheme` from above the line
+    that defines it throws `Cannot access before initialization` and takes the whole store with it —
+    a blank app, from an ordering mistake that typechecks.
   */
   /**
    * Which theme "Follow system" currently means.
@@ -647,7 +662,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * has and exactly what this did before. The localStorage copies answer the frames before
    * AgentSettings arrives; without them the boot screen resolves the built-in and then swaps.
    */
-  const systemThemeId = createMemo(() => {
+  const systemThemeId = memo(() => {
     const prefs = datasetStore.agentSettings();
     const dark = systemScheme() === 'dark';
     const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
@@ -667,7 +682,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * and wrong about the control, since picking "Built-in" would then appear to do nothing at all.
    * `systemThemeId` is where the fallback belongs, and it is the only place it happens.
    */
-  const systemThemes = createMemo(() => {
+  const systemThemes = memo(() => {
     const prefs = datasetStore.agentSettings();
     const side = (polarity: 'light' | 'dark') => {
       const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
@@ -681,7 +696,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
   });
 
-  const [currentThemeId, setCurrentThemeId] = createSignal<string>(getInitialThemeId());
+  const [currentThemeId, setCurrentThemeId] = signal<string>(getInitialThemeId());
   /**
    * Whether a space's theme covers the whole window, or only the space's own content.
    *
@@ -697,13 +712,13 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * Everything downstream reads the derived value, so the toolbar, the settings page and the
    * clearing of an override all take the same path rather than each doing their own DOM work.
    */
-  const themeScopePreference = createMemo<'global' | 'scoped'>(() =>
+  const themeScopePreference = memo<'global' | 'scoped'>(() =>
     datasetStore.agentSettings()?.themeScope === 'global' ? 'global' : 'scoped',
   );
-  const [themeScopeOverride, setThemeScopeOverride] = createSignal<'global' | 'scoped' | null>(null);
-  const themeScope = createMemo<'global' | 'scoped'>(() => themeScopeOverride() ?? themeScopePreference());
+  const [themeScopeOverride, setThemeScopeOverride] = signal<'global' | 'scoped' | null>(null);
+  const themeScope = memo<'global' | 'scoped'>(() => themeScopeOverride() ?? themeScopePreference());
   // Space theme data for the template content area — only populated in scoped mode.
-  const [editingTheme, setEditingTheme] = createSignal<EditingTheme | null>(null);
+  const [editingTheme, setEditingTheme] = signal<EditingTheme | null>(null);
 
   // ── History (delegated to the unified EditorStore history) ──
 
@@ -778,7 +793,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    *
    * "Follow system" is excluded, being the thing this resolves.
    */
-  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = createMemo(() => [
+  const systemThemeOptions: Accessor<{ label: string; value: string }[]> = memo(() => [
     { label: 'Built-in light or dark', value: '' },
     ...allThemes()
       .filter((t) => t.id !== SYSTEM_THEME_ID)
@@ -846,12 +861,12 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   }
 
   // Load installed themes when root perspective is ready
-  createEffect(() => {
+  effect(() => {
     if (datasetStore.rootDataset()) void loadInstalledThemes();
   });
 
   // Load space themes when the current space perspective changes
-  createEffect(() => {
+  effect(() => {
     if (datasetStore.currentDataset()) void loadSpaceThemes();
     else setSpaceThemes([]);
   });
@@ -861,7 +876,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   // settings changes (e.g. currentTemplateId updates from template switches), which
   // would otherwise reset the theme to defaultThemeId mid-session.
   let lastAppliedDefaultThemeId: string | undefined;
-  createEffect(() => {
+  effect(() => {
     const prefs = datasetStore.agentSettings();
     if (!prefs) return;
     const defaultId = agentDefaultThemeId();
@@ -876,14 +891,14 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
 
   // Keep localStorage in sync with the agent's default theme so the bootscreen
   // can apply it immediately on next launch without waiting for AD4M to load.
-  createEffect(() => {
+  effect(() => {
     if (!datasetStore.agentSettings()) return;
     localStorage.setItem(THEME_KEY, agentDefaultThemeId());
   });
 
   // The same, for the two halves of "Follow system" — the boot screen has to resolve `system`
   // before AgentSettings exists, and resolving it to the built-in and then swapping is a flash.
-  createEffect(() => {
+  effect(() => {
     const prefs = datasetStore.agentSettings();
     if (!prefs) return;
     for (const [key, value] of [
@@ -901,14 +916,14 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * Prefers `AgentSettings` over `localStorage` so it is reactive; localStorage is the boot answer,
    * before AD4M has loaded, and an effect above keeps the two in step.
    */
-  const personalTheme = createMemo<ThemeData>(() => resolveThemeData(agentDefaultThemeId()));
+  const personalTheme = memo<ThemeData>(() => resolveThemeData(agentDefaultThemeId()));
 
   /**
    * Where the theme actually gets applied — two derived answers and one effect each, replacing
    * fourteen imperative `applyThemeToDOM` calls spread across six functions and three effects.
    *
    * Deriving is what fixes the flicker. The scope transition used to write a signal (which the
-   * wrapper renders on Solid's next flush) *and* documentElement (immediately), so for one frame the
+   * wrapper renders on the renderer's next flush) *and* documentElement (immediately), so for one frame the
    * whole window wore the personal theme before the wrapper caught up — the theme visibly went
    * forward, back, and forward again. Both surfaces now read the same signals, so they change in
    * the same flush and there is no intermediate state to paint.
@@ -916,22 +931,22 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * It also removes the class of bug where two of those writers disagreed about what should be on
    * screen: there is one answer now, and it is computed rather than remembered.
    */
-  const documentTheme = createMemo<ThemeData>(() =>
+  const documentTheme = memo<ThemeData>(() =>
     themeScope() === 'scoped' ? personalTheme() : (editingTheme() ?? currentTheme()),
   );
 
   /** The sides the theme on screen carries. See `ThemeStore.currentThemeSides`. */
-  const currentThemeSides = createMemo(() => themeSides(parseOverrides((editingTheme() ?? currentTheme()).overrides)));
+  const currentThemeSides = memo(() => themeSides(parseOverrides((editingTheme() ?? currentTheme()).overrides)));
 
   // The display needs, cached for the next first paint.
-  createEffect(() => {
+  effect(() => {
     const settings = datasetStore.agentSettings();
     if (!settings) return;
     localStorage.setItem(DISPLAY_KEY, JSON.stringify(displayFrom(settings.displayPreferences)));
   });
 
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
-  const activeTemplateTheme = createMemo<ThemeData | null>(() =>
+  const activeTemplateTheme = memo<ThemeData | null>(() =>
     themeScope() === 'scoped' ? (editingTheme() ?? currentTheme()) : null,
   );
 
@@ -948,10 +963,10 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     real match from a fallback. These mirror the branches in `documentTheme` and
     `activeTemplateTheme` — if either of those changes, these have to follow.
   */
-  const documentThemeId = createMemo(() =>
+  const documentThemeId = memo(() =>
     themeScope() === 'scoped' ? agentDefaultThemeId() : (editingTheme()?.id ?? currentThemeId()),
   );
-  const templateThemeId = createMemo(() => editingTheme()?.id ?? currentThemeId());
+  const templateThemeId = memo(() => editingTheme()?.id ?? currentThemeId());
 
   /**
    * True while the theme a surface wants cannot be resolved and might still arrive.
@@ -963,9 +978,9 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
    * Only until the records load. After that an unknown id really is unknown, a fallback is the
    * honest answer, and this stops holding anything back.
    */
-  const templateThemePending = createMemo(() => !themesLoaded() && !canResolveTheme(templateThemeId()));
+  const templateThemePending = memo(() => !themesLoaded() && !canResolveTheme(templateThemeId()));
 
-  createEffect(() => {
+  effect(() => {
     const theme = documentTheme();
     if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
     applyThemeToDOM(theme);
@@ -982,7 +997,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
 
     Cleared when returning to global mode (we-custom-theme-css handles it there).
   */
-  createEffect(() => {
+  effect(() => {
     const theme = activeTemplateTheme();
     injectCssString('we-scoped-theme-css', theme?.css ?? '', {
       scope: THEME_SCOPE_SELECTOR,
@@ -1010,20 +1025,18 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     Reactive rather than one-shot because `allThemes()` fills in over time: a space's themes arrive
     after the space does, so a name that resolves to nothing on the first pass resolves later.
   */
-  const [requestedThemeNames, setRequestedThemeNames] = createSignal<string[]>([]);
+  const [requestedThemeNames, setRequestedThemeNames] = signal<string[]>([]);
 
   function requestNamedThemes(schema: unknown) {
     const names = collectThemeNames(schema);
     if (!names.size) return;
-    setRequestedThemeNames((previous) => {
-      const next = new Set(previous);
-      const before = next.size;
-      for (const name of names) if (SAFE_THEME_ID.test(name)) next.add(name);
-      return next.size === before ? previous : [...next];
-    });
+    const next = new Set(untrack(requestedThemeNames));
+    const before = next.size;
+    for (const name of names) if (SAFE_THEME_ID.test(name)) next.add(name);
+    if (next.size !== before) setRequestedThemeNames([...next]);
   }
 
-  createEffect(() => {
+  effect(() => {
     const themes = allThemes();
     for (const name of requestedThemeNames()) {
       const theme = themes.find((candidate) => candidate.id === name || candidate.slug === name);
@@ -1079,14 +1092,14 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   /*
     A memo, not a bare accessor, and the distinction matters well beyond this store.
 
-    `agentSettings` is a `{ equals: false }` signal — it notifies on every write, because
+    `agentSettings` wakes its readers on every write, because
     `updateAgentSettings` mutates the settings object in place and re-sets it, so identity cannot be
     the test. A bare accessor passes that straight through: anything reading this inside an effect
     became a subscriber to every unrelated preference write. `spaceStore`'s theme resolution reads it,
     so toggling the theme scope switch re-ran the whole resolution and overwrote the theme the agent
     had just picked. Memoising collapses "settings changed" back to "*this* value changed".
   */
-  const defaultThemeId: Accessor<string> = createMemo(() => chosenDefaultThemeId() ?? appThemeLookup()() ?? 'light');
+  const defaultThemeId: Accessor<string> = memo(() => chosenDefaultThemeId() ?? appThemeLookup()() ?? 'light');
 
   const themeManagementList: Accessor<ThemeManagementItem[]> = () => {
     const defaultId = defaultThemeId();
@@ -1123,8 +1136,8 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     setThemeScopeOverride(scope);
   }
 
-  const themeScopeGlobal = createMemo(() => themeScopePreference() === 'global');
-  const themeScopePreviewing = createMemo(() => themeScopeOverride() !== null);
+  const themeScopeGlobal = memo(() => themeScopePreference() === 'global');
+  const themeScopePreviewing = memo(() => themeScopeOverride() !== null);
 
   /** Persist the agent's choice. Any active preview is dropped, since it would mask the new value. */
   async function setThemeScopeGlobal(global: boolean) {
@@ -1139,18 +1152,20 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     and the useful default is that a template designed for a particular look arrives in it. A plain
     truthiness read would make "never decided" mean off, which is the opposite.
   */
-  const useTemplateTheme = createMemo(() => datasetStore.agentSettings()?.useTemplateTheme !== false);
+  const useTemplateTheme = memo(() => datasetStore.agentSettings()?.useTemplateTheme !== false);
 
   async function setUseTemplateTheme(enabled: boolean) {
     await datasetStore.updateAgentSettings({ useTemplateTheme: enabled });
   }
 
   /*
-    `{ equals: false }` so the same role set twice still notifies — see `focusedRole` in the contract.
+    A fresh box per request, so the same role set twice still notifies — see `focusedRole` in the
+    contract. The port does not promise that an equal write wakes anything.
   */
-  const [focusedRole, setFocusedRole] = createSignal('', { equals: false });
+  const [focusRequest, setFocusRequest] = reactivity.signal({ role: '' });
+  const focusedRole = () => focusRequest().role;
   function focusRole(role: string) {
-    setFocusedRole(role);
+    setFocusRequest({ role });
   }
 
   function setDefaultTheme(themeId: string): Promise<boolean> {
@@ -1187,20 +1202,18 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     try {
       if (visible) {
         await prefs.addInstalledThemes(model);
-        setVisibleThemeIds((prev) => new Set([...prev, themeId]));
+        setVisibleThemeIds(new Set([...untrack(visibleThemeIds), themeId]));
       } else {
         await prefs.removeInstalledThemes(model);
-        setVisibleThemeIds((prev) => {
-          const next = new Set(prev);
-          next.delete(themeId);
-          return next;
-        });
+        const next = new Set(untrack(visibleThemeIds));
+        next.delete(themeId);
+        setVisibleThemeIds(next);
       }
     } catch (error) {
       // Was `.catch(() => {})`, which moved the switch and wrote nothing: the picker showed the new
       // state until the next boot restored the old one.
       console.error('ThemeStore: could not change theme visibility', error);
-      toastService.error('Could not save that change.');
+      toasts.error('Could not save that change.');
       throw error;
     }
   }
@@ -1314,34 +1327,29 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
 
   function updateEditingOverrides(patch: Partial<ThemeOverrides>) {
     captureSnapshot();
-    setEditingTheme((prev) => {
-      if (!prev) return prev;
-      const existing: ThemeOverrides = parseOverrides(prev.overrides);
-      // Stamped on write, not on read: `parseOverrides` migrates a theme in memory and leaves what
-      // is stored alone, so an installed theme nobody edits is never rewritten under them. The
-      // moment an author does change something, what they save is current.
-      const merged = { ...existing, ...patch, schemaVersion: THEME_SCHEMA_VERSION };
-      return { ...prev, overrides: JSON.stringify(merged), isDirty: true };
-    });
+    const prev = untrack(editingTheme);
+    if (!prev) return;
+    const existing: ThemeOverrides = parseOverrides(prev.overrides);
+    // Stamped on write, not on read: `parseOverrides` migrates a theme in memory and leaves what
+    // is stored alone, so an installed theme nobody edits is never rewritten under them. The
+    // moment an author does change something, what they save is current.
+    const merged = { ...existing, ...patch, schemaVersion: THEME_SCHEMA_VERSION };
+    setEditingTheme({ ...prev, overrides: JSON.stringify(merged), isDirty: true });
   }
 
   function updateEditingCss(css: string) {
     captureSnapshot();
-    setEditingTheme((prev) => {
-      if (!prev) return prev;
-      return { ...prev, css, isDirty: true };
-    });
+    const prev = untrack(editingTheme);
+    if (prev) setEditingTheme({ ...prev, css, isDirty: true });
   }
 
   function updateEditingMeta(fields: { name?: string; icon?: string }) {
     captureSnapshot();
-    setEditingTheme((prev) => {
-      if (!prev) return prev;
-      return { ...prev, ...fields, isDirty: true };
-    });
+    const prev = untrack(editingTheme);
+    if (prev) setEditingTheme({ ...prev, ...fields, isDirty: true });
   }
 
-  const [themeFork, setThemeFork] = createSignal<{ source: string; name: string; icon: string } | null>(null);
+  const [themeFork, setThemeFork] = signal<{ source: string; name: string; icon: string } | null>(null);
   function startThemeFork(sourceId?: string) {
     // Only a name is a theme: a button wired without `args` hands an action its click.
     const source = typeof sourceId === 'string' && sourceId ? allThemes().find((t) => t.id === sourceId) : undefined;
@@ -1358,7 +1366,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     const perspective =
       destination === 'space' ? datasetStore.currentDataset()?.handle : datasetStore.rootDataset()?.handle;
     if (!perspective) {
-      toastService.error(`Cannot save theme: no ${destination} perspective available`);
+      toasts.error(`Cannot save theme: no ${destination} perspective available`);
       return false;
     }
     try {
@@ -1401,10 +1409,10 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         // It lives in the space, so it joins the space's list, as a reload would put it. Added to
         // this agent's installed list instead, it showed under "My themes" and was missing from
         // the space's own pickers until the next load.
-        setSpaceThemes((prev) => [...prev, data]);
+        setSpaceThemes([...untrack(spaceThemes), data]);
       } else {
-        setInstalledThemes((prev) => [...prev, data]);
-        setVisibleThemeIds((prev) => new Set([...prev, model.id]));
+        setInstalledThemes([...untrack(installedThemes), data]);
+        setVisibleThemeIds(new Set([...untrack(visibleThemeIds), model.id]));
         const prefs = datasetStore.agentSettings();
         if (prefs) await prefs.addInstalledThemes(model).catch(() => {});
       }
@@ -1414,7 +1422,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       return true;
     } catch (e) {
       console.error('ThemeStore: createAndStartEditing error', e);
-      toastService.error('Failed to create theme');
+      toasts.error('Failed to create theme');
       return false;
     }
   }
@@ -1432,9 +1440,9 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     // the async save (triggered by ThemePanel.onCleanup) is still in-flight.
     if (editing) {
       if (spaceThemes().some((t) => t.id === editing.id)) {
-        setSpaceThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
+        setSpaceThemes(untrack(spaceThemes).map((t) => (t.id === editing.id ? editing : t)));
       } else if (installedThemes().some((t) => t.id === editing.id)) {
-        setInstalledThemes((prev) => prev.map((t) => (t.id === editing.id ? editing : t)));
+        setInstalledThemes(untrack(installedThemes).map((t) => (t.id === editing.id ? editing : t)));
       }
     }
 
@@ -1479,11 +1487,12 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
           css: current?.css ?? editing.css,
         };
         if (spaceThemes().some((t) => t.id === saved.id)) {
-          setSpaceThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+          setSpaceThemes(untrack(spaceThemes).map((t) => (t.id === saved.id ? saved : t)));
         } else {
-          setInstalledThemes((prev) => prev.map((t) => (t.id === saved.id ? saved : t)));
+          setInstalledThemes(untrack(installedThemes).map((t) => (t.id === saved.id ? saved : t)));
         }
-        setEditingTheme((prev) => (prev ? { ...prev, isDirty: false } : prev));
+        const still = untrack(editingTheme);
+        if (still) setEditingTheme({ ...still, isDirty: false });
         // Don't call setCurrentTheme here — the DOM is driven by the editingTheme reactive
         // effect while editing, making this call redundant. More importantly, calling it
         // after the await is unsafe: the user may have switched spaces or exited editing
@@ -1494,7 +1503,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       }
     } catch (e) {
       console.error('ThemeStore: saveEditingTheme error', e);
-      toastService.error('Failed to save theme');
+      toasts.error('Failed to save theme');
       return null;
     }
   }
@@ -1529,14 +1538,14 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         overrides: editing.overrides,
         css: editing.css,
       };
-      setInstalledThemes((prev) => [...prev, data]);
+      setInstalledThemes([...untrack(installedThemes), data]);
       setEditingTheme({ ...data, isDirty: false });
       setCurrentTheme(data.id);
-      toastService.success(`Theme "${name}" saved`);
+      toasts.success(`Theme "${name}" saved`);
       return data;
     } catch (e) {
       console.error('ThemeStore: saveEditingThemeAs error', e);
-      toastService.error('Failed to save theme');
+      toasts.error('Failed to save theme');
       return null;
     }
   }
@@ -1547,15 +1556,15 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
     try {
       await model.delete();
       themeRecordMap.delete(themeId);
-      setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
+      setInstalledThemes(untrack(installedThemes).filter((t) => t.id !== themeId));
       // A space theme lives in spaceThemes, not installedThemes — drop it from
       // both lists so the deletion is visible without reloading the space.
-      setSpaceThemes((prev) => prev.filter((t) => t.id !== themeId));
+      setSpaceThemes(untrack(spaceThemes).filter((t) => t.id !== themeId));
       if (currentThemeId() === themeId) setCurrentTheme('light');
-      toastService.success('Theme deleted');
+      toasts.success('Theme deleted');
     } catch (e) {
       console.error('ThemeStore: deleteTheme error', e);
-      toastService.error('Failed to delete theme');
+      toasts.error('Failed to delete theme');
     }
   }
 
@@ -1580,7 +1589,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       const space = datasetStore.currentDataset()?.handle;
       if (!space) throw new Error('There is no space open');
       if (await Theme.findOne(space, { where: { slug } })) {
-        toastService.error(`"${source.name}" is already in this space`);
+        toasts.error(`"${source.name}" is already in this space`);
         return;
       }
       await Theme.create(space, {
@@ -1593,7 +1602,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
         ...files,
       });
       await loadSpaceThemes();
-      toastService.success(`"${source.name}" added to this space`);
+      toasts.success(`"${source.name}" added to this space`);
       return;
     }
 
@@ -1618,8 +1627,8 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       Object.assign(existing, files);
       await existing.save();
       const updated = modelToThemeData(existing);
-      setInstalledThemes((prev) => prev.map((t) => (t.id === existing.id ? updated : t)));
-      toastService.success(`Theme "${source.name}" updated to v${source.version}`);
+      setInstalledThemes(untrack(installedThemes).map((t) => (t.id === existing.id ? updated : t)));
+      toasts.success(`Theme "${source.name}" updated to v${source.version}`);
       return;
     }
     const model = await Theme.create(root, {
@@ -1631,15 +1640,15 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       ...files,
     });
     themeRecordMap.set(model.id, model);
-    setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
+    setInstalledThemes([...untrack(installedThemes), modelToThemeData(model)]);
     const settings = datasetStore.agentSettings();
     if (settings) await settings.addInstalledThemes(model);
-    toastService.success(`Theme "${source.name}" installed`);
+    toasts.success(`Theme "${source.name}" installed`);
   }
 
   const flow = createLibraryFlow<Theme, Theme>({
-    reactivity: solidReactivity,
-    toasts: toastService,
+    reactivity,
+    toasts,
     entity: Theme as unknown as LibraryEntity<Theme>,
     noun: 'theme',
     marketplace: () => datasetStore.marketplaceDataset()?.handle,
@@ -1674,8 +1683,8 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       existing.css = css;
       await existing.save();
       const updated = modelToThemeData(existing);
-      setInstalledThemes((prev) => prev.map((t) => (t.id === existing.id ? updated : t)));
-      setVisibleThemeIds((prev) => new Set([...prev, existing.id]));
+      setInstalledThemes(untrack(installedThemes).map((t) => (t.id === existing.id ? updated : t)));
+      setVisibleThemeIds(new Set([...untrack(visibleThemeIds), existing.id]));
       return existing.id;
     }
     const model = await Theme.create(rootPerspective, {
@@ -1688,14 +1697,14 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       css,
     });
     themeRecordMap.set(model.id, model);
-    setInstalledThemes((prev) => [...prev, modelToThemeData(model)]);
+    setInstalledThemes([...untrack(installedThemes), modelToThemeData(model)]);
     /*
       Visible as well as installed. Once anything is on the visible list, a theme that is not on it is
       left out of `allThemes`, which is where every theme id is looked up — so an app's templates
       named a theme nothing could find, and fell back to the agent's own until a reload re-read the
       list. A marketplace install does the same, for the same reason.
     */
-    setVisibleThemeIds((prev) => new Set([...prev, model.id]));
+    setVisibleThemeIds(new Set([...untrack(visibleThemeIds), model.id]));
     const settings = datasetStore.agentSettings();
     if (settings) await settings.addInstalledThemes(model);
     return model.id;
@@ -1709,12 +1718,12 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
       await settings.removeInstalledThemes(model);
       await model.delete();
       themeRecordMap.delete(themeId);
-      setInstalledThemes((prev) => prev.filter((t) => t.id !== themeId));
+      setInstalledThemes(untrack(installedThemes).filter((t) => t.id !== themeId));
       if (currentThemeId() === themeId) setCurrentTheme('light');
-      toastService.success('Theme uninstalled');
+      toasts.success('Theme uninstalled');
     } catch (e) {
       console.error('ThemeStore: uninstallTheme error', e);
-      toastService.error('Failed to uninstall theme');
+      toasts.error('Failed to uninstall theme');
     }
   }
 
@@ -1759,7 +1768,7 @@ export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'ses
   async function publishToSpace(datasetId: string, spaceName: string): Promise<boolean> {
     const editing = editingTheme();
     if (!editing) {
-      toastService.error('No theme is being edited');
+      toasts.error('No theme is being edited');
       return false;
     }
     const shared = await flow.share({

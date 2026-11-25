@@ -26,6 +26,7 @@ import type { RouteStore } from '@shared/stores/RouteStore';
 import type { RuntimeStore } from '@shared/stores/RuntimeStore';
 import type { SessionStore } from '@shared/stores/SessionStore';
 import type { ShapeStore } from '@shared/stores/ShapeStore';
+import type { ThemeStore } from '@shared/stores/ThemeStore';
 import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
@@ -34,7 +35,6 @@ import type { RecordStore } from './RecordStore';
 import type { ShellStore } from './ShellStore';
 import type { SpaceStore } from './SpaceStore';
 import type { TemplateStore } from './TemplateStore';
-import type { ThemeStore } from './ThemeStore';
 
 /** Every app-lifetime store the host composes, by name, and the edit target composed with them. */
 export interface StoreRegistry {

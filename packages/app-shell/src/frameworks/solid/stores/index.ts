@@ -8,7 +8,7 @@ export { type RuntimeStore, createRuntimeStore } from '../../../shared/stores/Ru
 export { type ShapeStore, createShapeStore } from '../../../shared/stores/ShapeStore';
 export { type RecordStore, createRecordStore } from './RecordStore';
 export { type SpaceStore, createSpaceStore } from './SpaceStore';
-export { type ThemeStore, type EditingTheme, createThemeStore } from './ThemeStore';
+export { type ThemeStore, type EditingTheme, createThemeStore } from '../../../shared/stores/ThemeStore';
 export { type TemplateStore, createTemplateStore } from './TemplateStore';
 export { type EditorStore, createEditorStore } from './EditorStore';
 export { type AppStore, createAppStore } from '../../../shared/stores/AppStore';

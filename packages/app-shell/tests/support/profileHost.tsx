@@ -32,7 +32,6 @@ import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../../src/frameworks/solid/stores/TemplateStore';
-import { createThemeStore } from '../../src/frameworks/solid/stores/ThemeStore';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
@@ -48,6 +47,7 @@ import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 import { createShapeStore } from '../../src/shared/stores/ShapeStore';
+import { createThemeStore } from '../../src/shared/stores/ThemeStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
 
@@ -506,7 +506,12 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       runtimeStore,
       accountStore,
     });
-    const themeStore = createThemeStore({ sessionStore, datasetStore });
+    const themeStore = createThemeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({

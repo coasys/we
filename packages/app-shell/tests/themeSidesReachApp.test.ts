@@ -14,7 +14,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-const APPLIERS = ['src/frameworks/solid/stores/ThemeStore.tsx', 'src/frameworks/solid/layouts/TemplateLayout.tsx'];
+const APPLIERS = ['src/shared/stores/ThemeStore.ts', 'src/frameworks/solid/layouts/TemplateLayout.tsx'];
 
 describe('a theme reaches the app with both sides', () => {
   it.each(APPLIERS)('%s does not fold a theme to one side before applying it', (file) => {
