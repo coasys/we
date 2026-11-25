@@ -294,6 +294,15 @@ the first, and the shape the rest copy:
   `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
   store: an equal write is skipped by comparing first, a function is stored as the value.
+- A backend read is followed through `followLive` (`app-shell/src/shared/followLive.ts`), called in
+  the effect that owns it, or held whole as signals with `followRows`. It disposes the handle with
+  its owner, drops anything for an input the store has moved on from, says when the rows are in,
+  and reads the stored rows once when the handle cannot open and an empty answer would mean
+  something (`stored`). A store does not keep its own `stopped` flag.
+- A list is handed out plain, rebuilt freely, with an `id` on every row. The renderer keeps a list's
+  rows by `id` (`keepRows` in `@we/schema-solid`), so a row whose fields change keeps its mount; a
+  store does not reconcile a list to keep its rows. A lookup that must wake only the readers of one
+  key is a signal per key (`app-shell/src/shared/keyedSignals.ts`), not a nested store.
 
 A Pattern B package with a neutral core and a Solid binding says which exports are which with
 `"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its
