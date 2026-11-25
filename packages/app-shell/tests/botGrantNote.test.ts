@@ -2,7 +2,7 @@
  * Settings → Bots says, where a bot's grant is edited, that other apps can change it.
  *
  * Widening a grant or resuming a paused bot does not open the identity window: any app the person
- * let manage their identity may do it, as the executor's `bot.setGrant` allows. The page has to say
+ * let manage their identity may do it, as the backend that runs the bot allows. The page has to say
  * so, or the person reads the grant as theirs alone to change.
  */
 import * as shell from '@we/template-shell';

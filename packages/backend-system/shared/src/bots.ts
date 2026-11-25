@@ -35,7 +35,11 @@ export type BotGrantState = 'active' | 'paused' | 'revoked';
 export type BotKeyVerdict = 'valid' | 'revoked' | 'expired' | 'not-in-log';
 
 export interface BotGrantView {
-  /** The spaces the bot may act in, as the backend names them. */
+  /**
+   * The shared spaces the bot may act in, by their shared id (`DatasetRef.sharedId`, what a
+   * `Space.url` holds). A bot is an agent of its own and reaches a space through its own copy, so
+   * only a shared space can be in a grant.
+   */
   spaces: string[];
   can: BotAction[];
   /** Unix seconds; `null` for no end but the key's. */
@@ -102,6 +106,10 @@ export interface BotActivityView {
   method: string;
   /** `null` for a call outside every action. */
   action: BotAction | null;
+  /**
+   * The space the call named: its shared id for a shared space; for one that is not shared, the
+   * backend's own id for it, which matches nothing the person has.
+   */
   space: string | null;
   /** The reason the bot gave. */
   reason: string | null;

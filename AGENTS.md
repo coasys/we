@@ -3053,7 +3053,7 @@ BotStore:
   - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now
   - loaded: boolean — the list has been read once
   - error: string — why the last read or change failed, or empty
-  - created: { name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated
+  - created: { name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on
   - createError: string — why making the bot failed, or empty
   - creating: boolean — making the bot is under way
   - selected: the row of the bot open in the editor (as in `bots`), or null for the list
@@ -3068,7 +3068,7 @@ BotStore:
   - refresh(): reads the bots again
   - addBot(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome
   - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made
-  - dismissCreated(): lets the credential go
+  - dismissCreated(): lets the bot just made go
   - select(did: string): opens that bot in the grant editor and reads its activity
   - close(): back to the list
   - toggleSpace(id: string): adds that space to the draft grant, or takes it out
@@ -3158,7 +3158,7 @@ DeviceStore:
   - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
   - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
-  - canRemoveMaster: boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"
+  - canRemoveMaster: boolean — this computer keeps the master key and another device keeps it too: on log out, ask "Remove master key from this computer?" (false where this is the only copy, which cannot be removed)
   - masterWaiting: boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"
   - encMismatch: boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names and nothing the record says of the master key then; the warning on a revoked row, read from the key log, stays). Show a warning that says to revoke this computer from a device that holds the master key, then link it again
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')

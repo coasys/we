@@ -258,6 +258,12 @@ export interface ShellStore {
    */
   rememberShellPath: (path: string) => void;
   /**
+   * The page the open overlay is on, as its router last reported it (`rememberShellPath`), without
+   * the query; null while no overlay is open. Host wiring: what a store reads to let go of
+   * something a page shows only while it is on screen, since a schema has no unmount hook.
+   */
+  shellPage: Accessor<string | null>;
+  /**
    * Whether the create-space modal is open.
    *
    * Shell state rather than a page's `$localState`, because more than one place opens it: the
@@ -1180,6 +1186,8 @@ export function ShellStoreProvider(props: ParentProps) {
    * making it reactive would only invite an effect to depend on it.
    */
   const lastShellPath: Record<string, string> = {};
+  /** Where the open overlay is now: the reactive half of `lastShellPath`, read by `shellPage`. */
+  const [standing, setStanding] = createSignal<string | null>(null);
   const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
   const [joinSpaceOpen, setJoinSpaceOpen] = createSignal(false);
 
@@ -3350,6 +3358,7 @@ export function ShellStoreProvider(props: ParentProps) {
       // An explicit path wins; otherwise the view reopens where it was last left, which is what a
       // person expects of somewhere they were half-way through configuring.
       setPendingPath(path ?? lastShellPath[id] ?? null);
+      setStanding(null);
       setActiveShellView(id);
     },
     closeShellView: () => setActiveShellView(null),
@@ -3451,7 +3460,9 @@ export function ShellStoreProvider(props: ParentProps) {
     rememberShellPath: (path: string) => {
       const id = activeShellView();
       if (id) lastShellPath[id] = path;
+      setStanding(path.split('?')[0]);
     },
+    shellPage: () => (activeShellView() ? standing() : null),
     scrollToId: (id: string) => {
       document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },

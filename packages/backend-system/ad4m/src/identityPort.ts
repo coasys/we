@@ -93,8 +93,11 @@ export interface Ad4mCustodyState {
    * and kind. Absent on the desktop, where the custody service and the executor share a computer.
    */
   thisDevice?: { keyId: string | null; kind: string } | null;
-  /** The key log lists an enc key for this computer other than the one the custody service keeps. */
-  encMismatch: boolean;
+  /**
+   * The key log lists an enc key for this computer other than the one the custody service keeps.
+   * Absent from a custody service that predates it.
+   */
+  encMismatch?: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -182,7 +185,7 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     requests,
     masterWaiting: value.masterWaiting === true,
     thisDevice: readCustodyDevice(value.thisDevice),
-    encMismatch: value.encMismatch,
+    encMismatch: value.encMismatch === true,
   };
 }
 

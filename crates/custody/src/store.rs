@@ -244,9 +244,19 @@ fn anchors(name: &str) -> Vec<String> {
 const ENC_PREFIX: &str = "coasys.custody.enc/";
 
 /// The custody enc key's name for the executor whose device key is `device_key` (its signing
-/// multikey, base58 like a scid).
-pub fn enc_item_name(device_key: &str) -> String {
-    format!("{ENC_PREFIX}{device_key}")
+/// multikey, base58 like a scid). The device key is reported by the executor, and the name becomes
+/// a file name in the custody folder, so anything other than a base58 string of a key's length is
+/// refused rather than kept.
+pub fn enc_item_name(device_key: &str) -> Result<String, VaultError> {
+    const BASE58: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    let sane =
+        (1..=128).contains(&device_key.len()) && device_key.chars().all(|c| BASE58.contains(c));
+    if !sane {
+        return Err(VaultError::Unavailable(
+            "the executor reported a device key that is not a base58 multikey".into(),
+        ));
+    }
+    Ok(format!("{ENC_PREFIX}{device_key}"))
 }
 
 // ─── File ───────────────────────────────────────────────────────────────────────
@@ -278,7 +288,7 @@ impl FileStore {
         use std::io::Write;
         let mut tag = [0u8; 8];
         rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut tag);
-        let aside = path.with_extension(format!("{}.claim", bs58::encode(tag).into_string()));
+        let aside = path.with_extension(format!("{}.tmp", bs58::encode(tag).into_string()));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
@@ -364,25 +374,15 @@ impl SecretStore for FileStore {
     }
 
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
-        use std::io::Write;
+        // Written whole to a new 0600 file under a name nobody else uses, then renamed over the
+        // item, so a file or link planted at a fixed temp name is never opened.
         std::fs::create_dir_all(&self.dir).map_err(io)?;
         let path = self.path(name);
-        // Beside the whole file name, not in place of its extension: `<device key>.enc` would
-        // otherwise share `<device key>.bin.tmp` with a kept item's.
-        let mut tmp = path.clone().into_os_string();
-        tmp.push(".tmp");
-        let tmp = PathBuf::from(tmp);
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let mut file = options.open(&tmp).map_err(io)?;
-        file.write_all(bytes).map_err(io)?;
-        file.sync_all().map_err(io)?;
-        std::fs::rename(&tmp, &path).map_err(io)?;
+        let aside = self.written_aside(&path, bytes)?;
+        std::fs::rename(&aside, &path).map_err(|e| {
+            let _ = std::fs::remove_file(&aside);
+            io(e)
+        })?;
         // `Ok` means durable: the name too, not only the bytes.
         sync_dir(&self.dir).map_err(io)
     }
@@ -1705,6 +1705,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_device_key_that_is_not_base58_names_no_item() {
+        assert!(enc_item_name("z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK").is_ok());
+        for bad in [
+            "",
+            "../../escaped",
+            "..",
+            "z6Mk/x",
+            "z6Mk\\x",
+            "z6Mk.x",
+            "z6Mk0OIl",
+        ] {
+            assert!(enc_item_name(bad).is_err(), "{bad:?} refused");
+        }
+        assert!(enc_item_name(&"z".repeat(129)).is_err(), "too long");
+    }
+
+    /// A file or link planted where a fixed temp name would be is never written through: the
+    /// item is written to a fresh 0600 file and renamed into place.
+    #[cfg(unix)]
+    #[test]
+    fn put_never_writes_through_a_planted_temp_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let store = FileStore::new(dir.path());
+        let name = item_name("QmScid");
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::write(&elsewhere, b"untouched").unwrap();
+        std::os::unix::fs::symlink(&elsewhere, dir.path().join("QmScid.bin.tmp")).unwrap();
+        store.put(&name, b"secret").unwrap();
+        assert_eq!(std::fs::read(&elsewhere).unwrap(), b"untouched");
+        let path = dir.path().join("QmScid.bin");
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        // Replacing it goes the same way, and leaves no temp file behind.
+        store.put(&name, b"again").unwrap();
+        assert_eq!(store.get(&name).unwrap().as_deref(), Some(&b"again"[..]));
+        let left: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| n.ends_with(".tmp") && n != "QmScid.bin.tmp")
+            .collect();
+        assert!(left.is_empty(), "{left:?}");
+    }
+
+    #[test]
     fn the_claim_lock_lets_one_claimer_through_at_a_time() {
         // Check-then-create with a gap between, as a Secret Service claim is: without the lock,
         // every claimer sees nothing there and creates. Each claimer opens the lock file itself,
@@ -1872,7 +1918,7 @@ mod tests {
         let (kept, staged, enc) = (
             item_name("QmSame"),
             staged_name("QmSame"),
-            enc_item_name("QmSame"),
+            enc_item_name("QmSame").unwrap(),
         );
         assert_eq!(&store.claim_secret(&enc, b"enc").unwrap()[..], b"enc");
         assert!(!store.contains(&kept).unwrap());
@@ -1904,7 +1950,7 @@ mod tests {
             item_name("QmSame"),
             staged_name("QmSame"),
             vault_id_name("QmSame"),
-            enc_item_name("QmSame"),
+            enc_item_name("QmSame").unwrap(),
         ];
         assert!(store.claim_public(&names[2], b"vault").unwrap());
         assert_eq!(&store.claim_secret(&names[3], b"enc").unwrap()[..], b"enc");
@@ -1949,12 +1995,12 @@ mod tests {
         let keyring = Keyring::new(true);
         let store = keyring.store(dir.path());
         store
-            .claim_secret(&enc_item_name("QmSame"), b"enc")
+            .claim_secret(&enc_item_name("QmSame").unwrap(), b"enc")
             .unwrap();
         // A store that never reached the service: the one above keeps its connection.
         keyring.set_up(false);
         let down = keyring.store(dir.path());
-        assert!(down.contains(&enc_item_name("QmSame")).is_err());
+        assert!(down.contains(&enc_item_name("QmSame").unwrap()).is_err());
         assert!(!down.contains(&item_name("QmSame")).unwrap());
         assert!(!down.contains(&staged_name("QmSame")).unwrap());
     }
@@ -2315,7 +2361,7 @@ mod tests {
             )
         };
         let (down, back) = (process(false), process(true));
-        let name = enc_item_name("z6MkDevice");
+        let name = enc_item_name("z6MkDevice").unwrap();
         let (a, b) = std::thread::scope(|scope| {
             let a = scope.spawn(|| down.claim_secret(&name, b"claimed in the file").unwrap());
             let b = scope.spawn(|| back.claim_secret(&name, b"claimed in the keyring").unwrap());

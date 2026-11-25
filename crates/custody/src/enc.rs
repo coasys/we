@@ -40,7 +40,7 @@ impl CustodyEncKey {
     /// none is kept. Create if absent, never replace ([`SecretStore::claim_secret`]): two callers
     /// at once get the same key.
     pub fn for_device(store: Arc<dyn SecretStore>, device_key: &str) -> Result<Self, VaultError> {
-        let name = enc_item_name(device_key);
+        let name = enc_item_name(device_key)?;
         let mut fresh = Zeroizing::new([0u8; 32]);
         rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, fresh.as_mut());
         let kept = store.claim_secret(&name, fresh.as_ref())?;
@@ -101,8 +101,8 @@ mod tests {
     use ad4m_identity_core::inbox::{seal, sign_payload, InboxBody};
     use ad4m_identity_core::link::SignedBy;
 
-    const DEVICE: &str = "z6MkDeviceKeyOfThisExecutor";
-    const OTHER_DEVICE: &str = "z6MkDeviceKeyOfAnotherExecutor";
+    const DEVICE: &str = "z6MkDeviceKeyFromThisExecutor";
+    const OTHER_DEVICE: &str = "z6MkDeviceKeyFromAnotherExecutor";
 
     fn file_vault(dir: &std::path::Path) -> DesktopVault {
         DesktopVault::new(
@@ -233,13 +233,15 @@ mod tests {
         ));
 
         // The item gone: the message stays unopened rather than taken for someone else's.
-        store.delete(&enc_item_name(DEVICE)).unwrap();
+        store.delete(&enc_item_name(DEVICE).unwrap()).unwrap();
         assert!(matches!(
             key.open(&address, &sealed),
             Err(EncOpenError::Unavailable(_))
         ));
         // Replaced by another key under the same name: the same.
-        store.put(&enc_item_name(DEVICE), &[9u8; 32]).unwrap();
+        store
+            .put(&enc_item_name(DEVICE).unwrap(), &[9u8; 32])
+            .unwrap();
         assert!(matches!(
             key.open(&address, &sealed),
             Err(EncOpenError::Unavailable(_))
