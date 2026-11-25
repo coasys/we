@@ -224,6 +224,22 @@ describe('botStore', () => {
     expect(store.editor()?.changed).toBe(false);
   });
 
+  it('counts a state that differs from the grant as read as a change', async () => {
+    const fake = fakePort();
+    setPorts({ identity: { bots: fake.port } });
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    expect(store.editor()?.changed).toBe(false);
+    // Paused elsewhere and read again without the draft being reset: saving it would resume it.
+    fake.elsewhere({ state: 'paused' });
+    await store.refresh();
+    expect(store.selected()?.paused).toBe(true);
+    expect(store.editor()?.changed).toBe(true);
+    store.resetDraft();
+    expect(store.editor()?.changed).toBe(false);
+  });
+
   it('refuses to save a grant beyond the key, before asking', async () => {
     const fake = fakePort();
     setPorts({ identity: { bots: fake.port } });

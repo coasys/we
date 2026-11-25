@@ -251,6 +251,7 @@ export function BotStoreProvider(props: ParentProps) {
       problem: draftProblem(d, bot.key),
       changed:
         d.days.trim() !== '' ||
+        d.state !== read.state ||
         d.spaces.length !== read.spaces.length ||
         d.spaces.some((s) => !read.spaces.includes(s)) ||
         d.can.join() !== read.can.join(),
