@@ -105,3 +105,17 @@ export function createSpaceContext(deps: {
     isCurrent: (ds) => datasetStore.currentDataset()?.id === ds.id,
   };
 }
+
+/**
+ * Records with what an operation wrote to one of them laid over it, or that one added — held without
+ * reading every record of the kind again. A record laid over is a new object of its own class, so a
+ * reader keyed on identity sees the change.
+ */
+export function withRow<T extends { id: string }>(rows: readonly T[], written: Partial<T> | undefined): T[] {
+  const id = written?.id;
+  if (!id) return [...rows];
+  if (!rows.some((r) => r.id === id)) return [...rows, written as T];
+  return rows.map((r) =>
+    r.id === id ? (Object.assign(Object.create(Object.getPrototypeOf(r) as object | null), r, written) as T) : r,
+  );
+}

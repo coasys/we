@@ -77,6 +77,7 @@ const SOLID_TESTS = [
   'tests/spaceList.test.ts',
   'tests/spaceNavigation.test.ts',
   'tests/spaceWrites.test.ts',
+  'tests/spaceModules.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
