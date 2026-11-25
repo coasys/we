@@ -25,3 +25,7 @@ packages/ai-context/src/schemaContext.ts
 
 # Map data shipped as-is: minified on purpose, and formatting it would multiply its size.
 packages/module-system/globe/layers/assets/*.geojson
+
+# The capability profiles' listing, printed by @we/schema-shared's build from the definitions.
+docs/spec/profiles/members.md
+docs/spec/profiles/profiles.json

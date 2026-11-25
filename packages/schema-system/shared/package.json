@@ -4,11 +4,12 @@
   "description": "Framework-agnostic schema types, validators, and prop resolvers for WE",
   "type": "module",
   "scripts": {
-    "build:steps": "tsup",
+    "build:steps": "tsx src/cli/generate-profile-spec.ts && tsup",
     "build": "we-build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "coverage": "vitest run --coverage",
+    "generate:profiles": "tsx src/cli/generate-profile-spec.ts",
     "validate": "tsx src/cli/we-validate-schemas.ts ../../app-shell/src/shared/schemas/ ../../templates/shell/src/ ../../templates/default/src/ ../../templates/views/src/ ../../templates/showcase/src/ ../../module-system/",
     "surface-audit": "tsx src/cli/surface-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system",
     "role-audit": "tsx src/cli/role-audit.ts ../../templates ../../app-shell/src/shared/schemas ../../module-system --code ../../editor/src ../../graph-system ../../app-shell/src ../../design-system ../../module-system",

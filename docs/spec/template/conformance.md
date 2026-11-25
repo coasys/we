@@ -77,8 +77,8 @@ each step against the host's navigation: `open { href }`, `navigate { to, option
 value on mount), `back`, `forward`. After each, compare `{ href, pageIdentity, depth, index,
 resolved? }`: the address as path, query and hash; the page's identity (its path and its `id` query
 value); the script's own history depth and position; and, for `local_read`, the value it read. The
-path and local-state rules these pin are the format's; the operations are WE's navigation profile,
-which a host maps onto its own router.
+path and local-state rules these pin are the format's; the operations are the
+[navigation profile](../profiles/members.md#navigation)'s, which a host maps onto its own router.
 
 **query-compile.** `{ id, note, op, … }`: `op: "query"` resolves `query` to `descriptor` (entity,
 params, subscribe, dataset, include, when); `op: "where"` prunes `where` to `pruned`

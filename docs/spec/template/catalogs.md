@@ -75,8 +75,9 @@ holds `modules`, a list of module ids: every module whose store, part or panel t
   modules reports a required module it lacks.
 
 > **Planned.** `meta.requires` for the other extension catalogs (engines, host functions, foreign
-> elements) and for capability profiles, each with the version the template was written against, so
-> a host can refuse or warn before rendering rather than degrading part by part.
+> elements) and for the [capability profiles](../profiles/README.md), each with the version the
+> template was written against, so a host can refuse or warn before rendering rather than degrading
+> part by part.
 
 ---
 
@@ -89,12 +90,14 @@ Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared
 ## Profiles
 
 A **profile** is the part of a host's bag that is neither a store of a module nor the core library:
-the person viewing (`me`), the dataset on screen (`currentDataset`), the address (`routeStore`), the
-person's profile as `$agent` binds it, and the actions on records (`record.*`). In this version they
-are WE's host catalog, classified into the [capability groups](safety.md#capability-grants), and a
-template naming them depends on a host that provides them by those names.
+the host state and actions a template reaches beyond records, queries and operations. Five are
+specified, each a versioned member list with change events, in
+[Capability profiles](../profiles/README.md): `navigation`, `view-state`, `presence`, `identity` and
+`space-settings`. Each member keeps the [capability group](safety.md#capability-grants) that grants
+it.
 
-> **Planned.** Five versioned capability profiles (navigation, view state, presence, identity and
-> space settings), each a member list with a language-neutral description and vectors, so a second
-> host tests its own against them. A template will name the profiles it needs in `meta.requires`,
-> and everything outside every profile will be marked as WE-host-only.
+Beside them are the host values every host provides by name (`me`, the person viewing;
+`currentDataset`, the dataset on screen; the person's profile as `$agent` binds it) and the actions on
+records (`record.*`), specified with the format itself. A member a host offers outside every profile
+is [host-only](../profiles/README.md#we-host-only): a template naming one depends on that host, and a
+validator says so.

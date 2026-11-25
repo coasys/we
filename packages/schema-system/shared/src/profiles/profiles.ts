@@ -645,7 +645,8 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
           { name: 'viewId', type: 'string' },
           { name: 'visible', type: 'boolean' },
         ],
-        description: 'Shows or hides a section for this person only, without changing what the community has.',
+        description:
+          'Shows or hides a section for this person only, without changing what the community has. The sections `navigation` lists follow (its `space` event).',
         events: ['space'],
       },
       {

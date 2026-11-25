@@ -264,7 +264,7 @@ Pinned by: render vector `render.panels.outlet`.
 
 Asks the host for the profile of the person `did` names, and draws all of its children, in order,
 with it bound once it has arrived. Draws nothing while `did` is not text or the profile has not
-arrived. What a profile holds is the identity profile's ([Catalogs](catalogs.md#profiles)).
+arrived. What a profile holds is the [identity profile](../profiles/members.md#identity)'s.
 
 ---
 
