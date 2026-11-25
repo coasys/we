@@ -73,6 +73,8 @@ const SOLID_TESTS = [
   'tests/recordTree.test.ts',
   'tests/recordForms.test.ts',
   'tests/recordDrops.test.ts',
+  // The space store's parts, each under both ports.
+  'tests/spaceList.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
