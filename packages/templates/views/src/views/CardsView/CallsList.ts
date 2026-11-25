@@ -63,7 +63,11 @@ const CALL_IS_LIVE = 'call.id in modules.call.liveCalls.map(c, c.recordId)';
 const UTTERANCE_CAP = 200;
 
 const utterancesQuery = {
-  entity: 'TextBlock',
+  // The call's lines: messages, each a collection holding its blocks — see `@we/messages`. Read
+  // by kind, which also leaves out what extraction parented on the call.
+  entity: 'CollectionBlock',
+  where: { kind: 'message' },
+  select: ['id'],
   scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
   /*
     Bounded, because this is one query PER CARD in a list of up to twenty.
@@ -939,7 +943,10 @@ export const callsList: SchemaNode = {
                               props: {
                                 items: {
                                   $query: {
-                                    entity: 'TextBlock',
+                                    // Its messages, by their words (`textContent`, the words of their parts).
+                                    entity: 'CollectionBlock',
+                                    where: { kind: 'message' },
+                                    select: ['author', 'createdAt', 'textContent'],
                                     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'call.id' } },
                                     order: { createdAt: 'asc' },
                                     /*
@@ -975,7 +982,11 @@ export const callsList: SchemaNode = {
                                   // block is flushed as the speaker finishes.
                                   timestamp: { $: 'utterance.createdAt' },
                                   children: [
-                                    { type: 'we-text', props: { color: 'text' }, children: [{ $: 'utterance.text' }] },
+                                    {
+                                      type: 'we-text',
+                                      props: { color: 'text' },
+                                      children: [{ $: 'utterance.textContent' }],
+                                    },
                                   ],
                                 }),
                               ],

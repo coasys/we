@@ -1468,6 +1468,7 @@ export const contextData: ContextData = {
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'editorState', type: 'string', predicate: 'we://editor_state', required: false, default: 'null' },
         { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
+        { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
         { name: 'sourceRef', type: 'string', predicate: 'we://source_ref', required: false },
         { name: 'sourceName', type: 'string', predicate: 'we://source_name', required: false },
@@ -4669,7 +4670,7 @@ export const contextData: ContextData = {
         {
           name: 'threadLines',
           params: ['options'],
-          doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
+          doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A line is a message: a CollectionBlock (kind message, or reply) holding its blocks, the files attached to it in a group among them. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { children: { include: { children: true } }, thread: { include: { children: { include: { children: true } } } } }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each line carries `text` (its words), `content` (the blocks a BlockRenderer draws it from, files included), and a reply `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it. A bare TextBlock line, from a writer that knows nothing of messages, is drawn the same way from its own text. Options: rows (the page), newestFirst (boolean).',
           example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
         },
       ],

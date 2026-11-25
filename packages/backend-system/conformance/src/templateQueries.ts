@@ -42,6 +42,7 @@ export const TEMPLATE_QUERY_CASES = [
   'queries.newest-in-a-channel',
   'queries.newest-reply-under-a-post',
   'queries.transcript-lines-with-replies',
+  'queries.transcript-lines-with-parts',
   'queries.boards-in-a-channel',
   'queries.columns-of-a-board',
   'queries.tasks-in-a-channel',
@@ -90,7 +91,9 @@ type Key =
   | 'link1'
   | 'call'
   | 'line1'
+  | 'line1Text'
   | 'lineReply'
+  | 'lineReplyText'
   | 'callAbout'
   | 'board'
   | 'column1'
@@ -151,9 +154,16 @@ async function seed(dataset: DatasetHandle): Promise<Record<Key, string>> {
 
   await channel.addChildren(await make('call', 'CollectionBlock', { kind: 'call', title: 'Standup' }));
   // A line said in the call, and a reply to it: the reply answers the line and is in its thread, and
-  // is no child of the call's — what was said in a room is its children plus their threads.
-  await made.call.addChildren(await make('line1', 'TextBlock', { text: 'lunch at 1?' }));
-  await made.line1.addResponses(await make('lineReply', 'TextBlock', { text: 'yes' }));
+  // is no child of the call's — what was said in a room is its children plus their threads. Each is a
+  // message, a collection holding its words as a text block.
+  await made.call.addChildren(
+    await make('line1', 'CollectionBlock', { kind: 'message', textContent: 'lunch at 1?', source: 'spoken' }),
+  );
+  await made.line1.addChildren(await make('line1Text', 'TextBlock', { text: 'lunch at 1?' }));
+  await made.line1.addResponses(
+    await make('lineReply', 'CollectionBlock', { kind: 'reply', textContent: 'yes', source: 'typed' }),
+  );
+  await made.lineReply.addChildren(await make('lineReplyText', 'TextBlock', { text: 'yes' }));
   await made.line1.addThread(made.lineReply);
   const board = await make('board', 'CollectionBlock', { kind: 'board', title: 'Work' });
   await channel.addChildren(board);
@@ -336,13 +346,30 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
     // since it is a child of nothing. One page carries the whole conversation.
     from: 'module-system/transcribe/src/Panel.schema.ts',
     query: (k) => ({
-      entity: 'TextBlock',
+      entity: 'CollectionBlock',
+      where: { kind: 'message' },
       scope: { anchor: 'CollectionBlock', via: 'children', anchorId: k.call },
       order: { createdAt: 'desc' },
       limit: 50,
       include: { thread: true },
     }),
     expect: { field: 'thread', values: { line1: 1 } },
+  },
+  'queries.transcript-lines-with-parts': {
+    // Each line's parts, and each reply's in its thread: two untyped relations, one nested in the
+    // other, every member read as the entity it is. What a transcript draws its lines from.
+    from: 'module-system/messages/src/thread.ts',
+    query: (k) => ({
+      entity: 'CollectionBlock',
+      where: { kind: 'message' },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: k.call },
+      limit: 50,
+      include: {
+        children: { include: { children: true } },
+        thread: { include: { children: { include: { children: true } } } },
+      },
+    }),
+    expect: { field: 'children', values: { line1: 1 } },
   },
   'queries.boards-in-a-channel': {
     from: 'templates/views/src/views/BoardsView/index.ts',

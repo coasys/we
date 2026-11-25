@@ -606,17 +606,22 @@ contextually narrows it to the \`true\` literal, so it needs no \`as const\`.
 
 ### Parents by relation name
 
-A record created under another — a signal on a node, a message in a channel, a reply to a post —
+A record created under another — a signal on a node, a card on a board, a reply to a post —
 names where it goes by the RELATION it joins, as the parent entity declares it, never by how a
 backend stores that relation:
 \`\`\`ts
 await Signal.create(dataset, { signalTypeId, value }, {
   parent: { id: nodeId, relation: 'signals' },
 });
-await TextBlock.create(dataset, { text }, {
-  parent: { id: channelId, relation: 'children', entity: 'CollectionBlock' },
+await TaskBlock.create(dataset, { title }, {
+  parent: { id: boardId, relation: 'children', entity: 'CollectionBlock' },
 });
 \`\`\`
+
+A message is not made this way. A line in a channel or a call is a composition — a CollectionBlock of
+kind \`message\` holding its blocks — written as a post is: \`writePost\` / \`core.createPost\` in the
+app, \`documents.create(blocks, { kind: 'message', container, fields: { source }, storeDocument: false })\`
+from a module (\`lineDocumentOptions\` in \`@we/messages\` builds those options).
 
 Add \`entity\` where the name alone does not decide — \`children\` is declared on more than one
 entity, so name \`CollectionBlock\`. \`signals\` and \`responses\` live on \`WeNode\` and mean the same

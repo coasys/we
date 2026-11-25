@@ -45,6 +45,14 @@ describe('transcriptScopeQuery', () => {
     expect(query()).toContain('<we://flag> <we://text_block>');
   });
 
+  it('takes a message by its words, the words of its parts, and its speaker off that link', () => {
+    // A line is a message — a collection of kind message, or reply in a thread — whose words are
+    // `we://text_content`. A board or a call in a call has neither kind, and is left out.
+    expect(query()).toContain('?m <we://kind> ?kind');
+    expect(query()).toContain('FILTER(?kind IN ("message", "reply"))');
+    expect(query()).toContain('<<( ?m <we://text_content> ?text )>>');
+  });
+
   it('orders by time, because a transcript out of order is a different conversation', () => {
     expect(query().trimEnd()).toMatch(/ORDER BY \?timestamp$/);
   });

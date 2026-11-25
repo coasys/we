@@ -59,6 +59,10 @@
           "type": "string",
           "default": ""
         },
+        "source": {
+          "type": "string",
+          "default": ""
+        },
         "sourceName": {
           "type": "string",
           "default": ""

@@ -40,13 +40,19 @@ function queries(node: unknown, found: Record<string, unknown>[] = []): Record<s
   return found;
 }
 
+/** A transcript read: a call's lines, which are messages — see `@we/messages`. */
+const transcriptsOf = (node: unknown) =>
+  queries(node).filter(
+    (q) => q.entity === 'CollectionBlock' && (q.where as { kind?: unknown } | undefined)?.kind === 'message',
+  );
+
 describe('the calls list', () => {
   /**
    * Every read of a transcript is bounded — including the hoisted one, which is the expensive one
    * because it runs per card rather than per opened card.
    */
   it('bounds every transcript it reads', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = transcriptsOf(callsList);
     expect(transcripts.length).toBeGreaterThan(0);
     for (const q of transcripts) expect(q.limit).toBeTypeOf('number');
   });
@@ -59,7 +65,7 @@ describe('the calls list', () => {
    * names the one call that is running, by record, so a list of past calls subscribes to nothing.
    */
   it('subscribes only to a call that is running', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = transcriptsOf(callsList);
     for (const q of transcripts) {
       expect(q.subscribe).toEqual({ $: 'call.id in modules.call.liveCalls.map(c, c.recordId)' });
     }
@@ -97,7 +103,7 @@ describe('the calls list', () => {
    * quietly swap the cheap wrong count back in.
    */
   it('counts the transcript rather than everything parented to the call', () => {
-    const transcripts = queries(callsList).filter((q) => q.entity === 'TextBlock');
+    const transcripts = transcriptsOf(callsList);
     expect(transcripts.length).toBeGreaterThan(0);
     expect(json).not.toContain('count(call.children)');
   });

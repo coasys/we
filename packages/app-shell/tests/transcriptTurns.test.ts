@@ -133,3 +133,40 @@ describe('how a turn came to be', () => {
     expect(turns[0].source).toBe('typed');
   });
 });
+
+describe('gatherTranscriptTurns over messages', () => {
+  it('reads a conversation’s messages, by their words, with the replies in their threads, beside any bare line', async () => {
+    const asked: { entity: string; where?: unknown }[] = [];
+    const message = {
+      id: 'm',
+      kind: 'message',
+      textContent: 'Data, can you take the notes?',
+      author: 'did:a',
+      createdAt: 1_000,
+      source: 'spoken',
+      thread: [{ id: 'r', kind: 'reply', textContent: 'on it', author: 'did:b', createdAt: 3_000, source: 'typed' }],
+    };
+    const bare = { id: 't', text: 'running late', author: 'did:c', createdAt: 2_000, source: 'typed' };
+    const turns = await gatherTranscriptTurns(
+      {
+        modelFor: (entity: string) => ({
+          async findAll(_handle: unknown, options: Record<string, unknown>) {
+            asked.push({ entity, where: options.where });
+            return entity === 'CollectionBlock' ? [message] : entity === 'TextBlock' ? [bare] : [];
+          },
+        }),
+        handle: {},
+      },
+      'call-1',
+    );
+    expect(asked).toEqual([
+      { entity: 'CollectionBlock', where: { kind: 'message' } },
+      { entity: 'TextBlock', where: undefined },
+    ]);
+    expect(turns.map((t) => [t.text, t.source])).toEqual([
+      ['Data, can you take the notes?', 'spoken'],
+      ['running late', 'typed'],
+      ['on it', 'typed'],
+    ]);
+  });
+});

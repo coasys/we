@@ -462,10 +462,11 @@ A $-prefixed projection (below) works at any level, so a count rides on each inc
 { "include": { "conversations": { "include": { "$messageCount": { "from": "messages", "count": true } } } } }
 Below an UNTYPED relation each member answers it for its own type, and a member whose type has no
 such relation simply carries no count.
-One limit, silent rather than refused, so keep clear of it: below an UNTYPED relation (see "include
-works with an UNTYPED relation" below), only a TYPED relation can be nested. Nesting another untyped
-one fails the whole query the moment any member has something in it — so it works on an empty board
-and breaks on the first card.
+An UNTYPED relation nests inside another (see "include works with an UNTYPED relation" below): each
+member is read as the entity it is, at every depth, so a page of messages is read with their parts
+and each reply with its own — { "children": { "include": { "children": true } }, "thread": { "include":
+{ "children": { "include": { "children": true } } } } } — in one query. The backend conformance case
+'queries.transcript-lines-with-parts' holds every backend to it.
 
 Count projection — add a derived numeric field:
 { "$query": { "entity": "Post", "include": { "$likeCount": { "from": "likes", "count": true } } } }
@@ -588,6 +589,17 @@ said in a room is its children PLUS THEIR THREADS: read the children with
 and draw each row's thread beside it (threadLines does this for a transcript or a feed). Children
 alone are the top-level items, with no filter needed. The same three links — child, response,
 thread — hold for a single chat feed and for a forum of channels; only the arrangement differs.
+
+A LINE IS A MESSAGE. Everything said in a room — a typed message, a bot's, a reply, a spoken line in
+a call — is a composition like a post: a CollectionBlock of kind 'message' (or 'reply', in a
+thread) holding its blocks, the files attached to it in a group among them. Its words are
+"textContent", how it arrived is "source" ('spoken', 'typed', 'corrected'), and it keeps no stored
+editorState: draw it from its parts. So a room's lines are read as
+  { "entity": "CollectionBlock", "where": { "kind": "message" }, "include": { "children": { "include":
+  { "children": true } }, "thread": { "include": { "children": { "include": { "children": true } } } } } }
+and threadLines gives each row "text" (its words) and "content" (its blocks, for a BlockRenderer).
+A bare TextBlock in a room is a line from a writer that knows nothing of messages; threadLines draws
+it the same way, from its own text.
 
 Local state (scoped ephemeral state):
 Declare on any node: "$localState": { "name": { "type": "string", "initial": "" } }
