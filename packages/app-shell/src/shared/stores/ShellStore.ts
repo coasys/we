@@ -77,7 +77,8 @@ import {
   withChromeCovered,
 } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE, isAppPanel } from '@shared/panelScope';
-import type { ScreenSource } from '@shared/platform/types';
+import { type PlatformAdapter, type ScreenSource } from '@shared/platform/types';
+import { type AppFrameState } from '@shared/registries/appFrame';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -91,9 +92,15 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { HOME_SECTION_ATTR, homeLanes } from '@shared/registries/homeLanes';
+import { HOME_SECTION_ATTR, homeLanes, type LaneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
-import { declaredPanelOf, instanceDockId, instanceKeyOf, type PanelInstance } from '@shared/registries/panelInstances';
+import {
+  declaredPanelOf,
+  instanceDockId,
+  instanceKeyOf,
+  type PanelInstance,
+  type PanelInstances,
+} from '@shared/registries/panelInstances';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import {
@@ -104,10 +111,19 @@ import {
   templatePanelScope,
 } from '@shared/registries/templatePanels';
 import { DRAGGING_ATTR } from '@we/drag';
-import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
-import type { Accessor, ReactivityPort } from '@we/reactivity';
-import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
-import { hasGesture } from '@we/schema-shared';
+import { type ChromeReserve, type DockAspect, type DockEdge, type DockSize } from '@we/module-shared';
+import { type Accessor, type ReactivityPort } from '@we/reactivity';
+import {
+  hasGesture,
+  type PanelFrame,
+  type SchemaNode,
+  type TemplatePanel,
+  type TemplateSchema,
+} from '@we/schema-shared';
+
+import { describeDestructive, type DestructiveFacts } from '../destructiveWording';
+import { distinctSignal } from '../distinctSignal';
+import { createShellViews } from './shell/views';
 
 /**
  * What `saveArrangementAsTemplate` needs from outside this store: the schema on screen, and a
@@ -117,14 +133,6 @@ export interface TemplateSaver {
   current: () => TemplateSchema | undefined;
   save: (schema: TemplateSchema) => Promise<boolean>;
 }
-
-import type { PlatformAdapter } from '@shared/platform/types';
-import type { AppFrameState } from '@shared/registries/appFrame';
-import type { LaneFrames } from '@shared/registries/homeLanes';
-import type { PanelInstances } from '@shared/registries/panelInstances';
-
-import { describeDestructive, type DestructiveFacts } from '../destructiveWording';
-import { distinctSignal } from '../distinctSignal';
 
 /**
  * The host state the shell reads and publishes but does not hold — the app's frame and its edges'
@@ -146,14 +154,64 @@ export interface ShellStoreDeps {
   host: ShellHostState;
 }
 
-/** How long the host waits for what a delete takes with it before asking without it. */
-const FACTS_WAIT_MS = 500;
+/** A destructive action a template asked for, as the host's own dialog puts it. */
 
 export interface PendingDestructive {
   /** The store path — `spaceStore.deleteCollection`. Shown as the small print, so it is always true. */
   path: string;
   title: string;
   body: string;
+}
+
+/** How long the host waits for what a delete takes with it before asking without it. */
+const FACTS_WAIT_MS = 500;
+
+/**
+ * Read one of a dock's declared store keys.
+ *
+ * A store publishes accessors, so the value has to be *called* — and reading it inside a memo is
+ * what makes dock geometry track a panel opening, moving or resizing with no subscription wiring
+ * between the module and the shell. Which store: the entry's own plumbing where the registry built
+ * one (every module panel), else the module's store, else the host's own for a dock the host
+ * contributed — the editor's panels are docks and the editor is not a module. See `DockEntry.store`
+ * and `hostDockStores`. A key the store does not have resolves to undefined and falls back, because a
+ * dock whose module is absent must render nothing rather than throw at boot.
+ */
+function readDockKey(entry: { moduleId: string; store?: Record<string, unknown> }, key: string | undefined): unknown {
+  if (!key) return undefined;
+  const store = (entry.store ?? moduleStores[entry.moduleId] ?? hostDockStores[entry.moduleId]) as
+    Record<string, unknown> | undefined;
+  const value = store?.[key];
+  return typeof value === 'function' ? (value as () => unknown)() : value;
+}
+
+/**
+ * What the frame takes off a panel before its content sees the box, measured off the two elements.
+ *
+ * The titlebar, its padding and border, and the frame's own border. This was a constant, and the
+ * constant drifted by eleven pixels the day the titlebar gained padding to clear the panel's corner
+ * radius. That sounds negligible and was not: "fit to content" shortens the panel by whatever it
+ * thinks the chrome is, so understating it leaves the content short — and tiles that go
+ * height-limited hand the difference back on the *other* axis, multiplied by their aspect ratio.
+ * Three 16:9 videos across turned eleven missing pixels into a fifty-four pixel band down each side.
+ *
+ * `undefined` when the panel is not on screen — a fit invoked from a keyboard shortcut before the
+ * frame mounts — and `fitPlacement` falls back to the constants, which are correct as of writing.
+ */
+function measureDockChrome(id: string): { x: number; y: number } | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+  const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
+  const content = document.querySelector(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
+  if (!frame || !content) return undefined;
+
+  const outer = frame.getBoundingClientRect();
+  const inner = content.getBoundingClientRect();
+  // A panel mid-transition measures as something neither box ever is, and a negative or absurd
+  // answer is worse than the constant it would replace.
+  const x = outer.width - inner.width;
+  const y = outer.height - inner.height;
+  return x >= 0 && y >= 0 && x < outer.width && y < outer.height ? { x, y } : undefined;
 }
 
 /** Module ids already reported, so a memo re-running does not repeat itself every frame. */
@@ -188,6 +246,255 @@ function warnAmbiguousSupply(moduleId: string, count: number): void {
       'A panel entry names a module, so there is no way to tell which one is meant — none is supplied, ' +
       "and each keeps the module's own contents.",
   );
+}
+
+/**
+ * Where panels are remembered, and why it is localStorage rather than the URL.
+ *
+ * Position and size are preferences about somebody's own window: sending a link should not impose
+ * where the sender happened to park their video. The same reasoning `$localState`'s `persist` tier
+ * carries, applied to state the host owns rather than a template.
+ *
+ * A read that fails is not worth a broken boot — a corrupt or foreign value simply means nobody has
+ * moved anything yet, and every panel falls back to its module's bid.
+ */
+const PLACEMENTS_KEY = 'we-local:shell.dockPlacements';
+
+/**
+ * Drop a stored `thickness`, which no longer means anything.
+ *
+ * It was one number for both axes, so a width solved for a side edge became a height on a top one,
+ * and — until `fitPlacement` learned to decline — it could hold a value larger than any screen. Both
+ * are fixed at the writing end, and neither fix reaches a number already in someone's browser: the
+ * field is persisted, invisible while the panel floats, and applied the instant it docks again.
+ *
+ * Dropped rather than migrated onto an axis, because the two things a migration would have to know
+ * are exactly the two that made it wrong. Which axis it was solved for is not recorded, and whether
+ * the value is sane cannot be told from the number — the case that prompted this was 2378px, well
+ * inside a 4K region and absurd on any edge. Falling back to the card is the documented behaviour and
+ * the one people expect: a panel dragged to an edge keeps the width it had and gains the height.
+ *
+ * Costs a deliberately-resized dock its width, once. The field is a week old, one drag restores it,
+ * and the alternative is carrying a number nothing can validate for as long as the browser keeps it.
+ */
+function stripLegacyThickness(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
+  return Object.fromEntries(
+    Object.entries(placements).map(([id, placement]) => {
+      if (!placement || typeof placement !== 'object' || !('thickness' in placement)) return [id, placement];
+      const { thickness: _legacy, ...rest } = placement as FloatPlacement & { thickness?: number };
+      return [id, rest];
+    }),
+  );
+}
+
+/**
+ * Move a displacing panel's stored `order` onto `band`, which is what it always meant there.
+ *
+ * Before lanes, one number answered both of an edge's questions and `displace` chose which: a
+ * displacing panel's `order` was *how far inboard*, a floating one's was *where along the edge*. Only
+ * the first of those moved — `order` still means the second, everywhere — so a stored arrangement has
+ * to be re-read in the coordinate that now owns it.
+ *
+ * Read as `order`, a strip somebody had arranged would come back as one lane of panels sharing the
+ * edge's height: two full-height sidebars becoming two half-height ones, on next launch, with nothing
+ * on screen explaining it. Migrated rather than dropped because unlike the legacy `thickness` this is
+ * unambiguous — the number is a position, the flag beside it says which axis it was a position on,
+ * and both are in the same record.
+ *
+ * Floating placements are untouched: their `order` already means what it still means.
+ */
+function bandLegacyOrder(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
+  return Object.fromEntries(
+    Object.entries(placements).map(([id, placement]) => {
+      if (!placement || typeof placement !== 'object') return [id, placement];
+      if (!placement.displace || placement.band !== undefined || placement.order === undefined) return [id, placement];
+      // `order: 0` afterwards, not absent: it is alone in the lane it just named, and leaving it
+      // absent would sort it after any lane-mate it later gains.
+      return [id, { ...placement, band: placement.order, order: 0 }];
+    }),
+  );
+}
+
+function loadPlacements(): Record<string, FloatPlacement> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(PLACEMENTS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, FloatPlacement>) : {};
+    return parsed && typeof parsed === 'object' ? bandLegacyOrder(stripLegacyThickness(parsed)) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * The write, deferred to the end of the frame.
+ *
+ * ## Why it cannot be synchronous
+ *
+ * `writePlacement` runs on every `pointermove` of a drag or a resize, which is once per frame — and
+ * each call serialised the whole placement map and wrote it to localStorage. `setItem` is
+ * synchronous and hits the disk, so a drag was doing blocking I/O at 60Hz, at the exact moment the
+ * app is trying to track a cursor. Nothing about it needs to be immediate: the value being persisted
+ * is where a panel *ended up*, and every frame but the last is a position nobody asked to keep.
+ *
+ * A microtask rather than a debounce, so a single write is still on disk before the next turn of the
+ * event loop and nothing has to reason about how long the tail is. Coalescing means a drag of 300
+ * frames writes once when it settles.
+ */
+let pendingPlacements: Record<string, FloatPlacement> | null = null;
+
+function flushPlacements(): void {
+  const placements = pendingPlacements;
+  pendingPlacements = null;
+  if (!placements || typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(PLACEMENTS_KEY, JSON.stringify(placements));
+  } catch {
+    // A full or disabled store costs the user their layout next boot, and nothing else.
+  }
+}
+
+/**
+ * How recently each panel was touched, by placement key — the whole of z-order.
+ *
+ * Beside the placements rather than inside them, because it is not a placement: a placement says
+ * *where*, and `layoutPinned` reads the existence of one as "somebody moved this away from what the
+ * template asked for". A click is not that. Held in a map of its own, raising a panel pins nothing.
+ *
+ * Persisted, so a reload keeps the stacking — and, once seats can hold several panels, which tab
+ * was showing. Written straight through rather than coalesced: a click is one write, not a drag.
+ */
+const ACTIVATION_KEY = 'we-local:shell.dockActivation';
+
+function loadActivation(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ACTIVATION_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveActivation(activation: Record<string, number>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVATION_KEY, JSON.stringify(activation));
+  } catch {
+    // Lost stacking order on next boot, and nothing else.
+  }
+}
+
+/**
+ * Named arrangements, by template scope and then by name — see `saveLayout`.
+ *
+ * A layout is a snapshot of everything the three-rung chain holds for one interface: its panels'
+ * placements, which tab of each seat was showing, and which panels were closed. Keyed under the
+ * scope the placements themselves are keyed under, so "Recording" for the Workshop is not offered
+ * while the Timeline is on screen.
+ */
+const LAYOUTS_KEY = 'we-local:shell.dockLayouts';
+
+interface SavedLayout {
+  placements: Record<string, FloatPlacement>;
+  activation: Record<string, number>;
+  closed: Record<string, boolean>;
+  /** Home lanes' widths and folds. Absent in a layout saved before lanes could be resized. */
+  lanes?: Record<string, LaneState>;
+}
+
+/**
+ * A home lane as the reader has left it: dragged to a width, or folded away. Keyed like placements,
+ * `<template scope>::<lane>`, so one template's sidebar width is not another's.
+ */
+interface LaneState {
+  width?: number;
+  collapsed?: boolean;
+}
+
+const LANES_KEY = 'we-local:shell.lanes';
+
+/** Every interface's open panel instances, by interface — see `PanelInstance`. */
+const INSTANCES_KEY = 'we-local:shell.panelInstances';
+
+/*
+ * Instances are kept under the agent's DID: an app-scope chat carries a perspective id, and a
+ * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
+ * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
+ */
+function loadInstances(did: string): Record<string, Record<string, PanelInstance>> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, Record<string, Record<string, PanelInstance>>>)
+        : {};
+    const mine = perAgent[did];
+    return mine && typeof mine === 'object' && !Array.isArray(mine) ? mine : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveInstances(did: string, all: Record<string, Record<string, PanelInstance>>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : {};
+    if (Object.keys(all).length) perAgent[did] = all;
+    else delete perAgent[did];
+    localStorage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
+  } catch {
+    // The instances open now stay open; a reload starts without them.
+  }
+}
+
+function loadLanes(): Record<string, LaneState> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LANES_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, LaneState>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLanes(lanes: Record<string, LaneState>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LANES_KEY, JSON.stringify(lanes));
+  } catch {
+    // A lane back at its template's width on next boot, and nothing else.
+  }
+}
+
+type SavedLayouts = Record<string, Record<string, SavedLayout>>;
+
+function loadLayouts(): SavedLayouts {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as SavedLayouts) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLayouts(layouts: SavedLayouts): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(layouts));
+  } catch {
+    // Lost named layouts on next boot, and nothing else.
+  }
+}
+
+function savePlacements(placements: Record<string, FloatPlacement>): void {
+  const first = pendingPlacements === null;
+  pendingPlacements = placements;
+  if (first) queueMicrotask(flushPlacements);
 }
 
 export interface ShellStore {
@@ -805,339 +1112,12 @@ export interface ShellStore {
   provideTemplateSaver: (saver: TemplateSaver) => void;
 }
 
-/**
- * The overlay to open at boot: the landing page, unless the URL already points somewhere.
- *
- * Opening it unconditionally meant every refresh covered whatever route was showing, so a deep
- * link never reached its destination — the routing beneath it worked fine and nobody could tell.
- * That also made shared links useless, since the only way to arrive at one is by URL.
- *
- * Anything other than `/` is a destination someone asked for, so the landing page would be in the
- * way rather than a starting point.
- */
-function initialShellView(): string | null {
-  if (typeof window === 'undefined') return 'landing-page';
-  return window.location.pathname === '/' ? 'landing-page' : null;
-}
-
-/**
- * Read one of a dock's declared store keys.
- *
- * A store publishes accessors, so the value has to be *called* — and reading it inside a memo is
- * what makes dock geometry track a panel opening, moving or resizing with no subscription wiring
- * between the module and the shell. Which store: the entry's own plumbing where the registry built
- * one (every module panel), else the module's store, else the host's own for a dock the host
- * contributed — the editor's panels are docks and the editor is not a module. See `DockEntry.store`
- * and `hostDockStores`. A key the store does not have resolves to undefined and falls back, because a
- * dock whose module is absent must render nothing rather than throw at boot.
- */
-function readDockKey(entry: { moduleId: string; store?: Record<string, unknown> }, key: string | undefined): unknown {
-  if (!key) return undefined;
-  const store = (entry.store ?? moduleStores[entry.moduleId] ?? hostDockStores[entry.moduleId]) as
-    Record<string, unknown> | undefined;
-  const value = store?.[key];
-  return typeof value === 'function' ? (value as () => unknown)() : value;
-}
-
-/**
- * Where panels are remembered, and why it is localStorage rather than the URL.
- *
- * Position and size are preferences about somebody's own window: sending a link should not impose
- * where the sender happened to park their video. The same reasoning `$localState`'s `persist` tier
- * carries, applied to state the host owns rather than a template.
- *
- * A read that fails is not worth a broken boot — a corrupt or foreign value simply means nobody has
- * moved anything yet, and every panel falls back to its module's bid.
- */
-const PLACEMENTS_KEY = 'we-local:shell.dockPlacements';
-
-/**
- * What the frame takes off a panel before its content sees the box, measured off the two elements.
- *
- * The titlebar, its padding and border, and the frame's own border. This was a constant, and the
- * constant drifted by eleven pixels the day the titlebar gained padding to clear the panel's corner
- * radius. That sounds negligible and was not: "fit to content" shortens the panel by whatever it
- * thinks the chrome is, so understating it leaves the content short — and tiles that go
- * height-limited hand the difference back on the *other* axis, multiplied by their aspect ratio.
- * Three 16:9 videos across turned eleven missing pixels into a fifty-four pixel band down each side.
- *
- * `undefined` when the panel is not on screen — a fit invoked from a keyboard shortcut before the
- * frame mounts — and `fitPlacement` falls back to the constants, which are correct as of writing.
- */
-function measureDockChrome(id: string): { x: number; y: number } | undefined {
-  if (typeof document === 'undefined') return undefined;
-  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
-  const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
-  const content = document.querySelector(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
-  if (!frame || !content) return undefined;
-
-  const outer = frame.getBoundingClientRect();
-  const inner = content.getBoundingClientRect();
-  // A panel mid-transition measures as something neither box ever is, and a negative or absurd
-  // answer is worse than the constant it would replace.
-  const x = outer.width - inner.width;
-  const y = outer.height - inner.height;
-  return x >= 0 && y >= 0 && x < outer.width && y < outer.height ? { x, y } : undefined;
-}
-
-/**
- * Drop a stored `thickness`, which no longer means anything.
- *
- * It was one number for both axes, so a width solved for a side edge became a height on a top one,
- * and — until `fitPlacement` learned to decline — it could hold a value larger than any screen. Both
- * are fixed at the writing end, and neither fix reaches a number already in someone's browser: the
- * field is persisted, invisible while the panel floats, and applied the instant it docks again.
- *
- * Dropped rather than migrated onto an axis, because the two things a migration would have to know
- * are exactly the two that made it wrong. Which axis it was solved for is not recorded, and whether
- * the value is sane cannot be told from the number — the case that prompted this was 2378px, well
- * inside a 4K region and absurd on any edge. Falling back to the card is the documented behaviour and
- * the one people expect: a panel dragged to an edge keeps the width it had and gains the height.
- *
- * Costs a deliberately-resized dock its width, once. The field is a week old, one drag restores it,
- * and the alternative is carrying a number nothing can validate for as long as the browser keeps it.
- */
-function stripLegacyThickness(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
-  return Object.fromEntries(
-    Object.entries(placements).map(([id, placement]) => {
-      if (!placement || typeof placement !== 'object' || !('thickness' in placement)) return [id, placement];
-      const { thickness: _legacy, ...rest } = placement as FloatPlacement & { thickness?: number };
-      return [id, rest];
-    }),
-  );
-}
-
-/**
- * Move a displacing panel's stored `order` onto `band`, which is what it always meant there.
- *
- * Before lanes, one number answered both of an edge's questions and `displace` chose which: a
- * displacing panel's `order` was *how far inboard*, a floating one's was *where along the edge*. Only
- * the first of those moved — `order` still means the second, everywhere — so a stored arrangement has
- * to be re-read in the coordinate that now owns it.
- *
- * Read as `order`, a strip somebody had arranged would come back as one lane of panels sharing the
- * edge's height: two full-height sidebars becoming two half-height ones, on next launch, with nothing
- * on screen explaining it. Migrated rather than dropped because unlike the legacy `thickness` this is
- * unambiguous — the number is a position, the flag beside it says which axis it was a position on,
- * and both are in the same record.
- *
- * Floating placements are untouched: their `order` already means what it still means.
- */
-function bandLegacyOrder(placements: Record<string, FloatPlacement>): Record<string, FloatPlacement> {
-  return Object.fromEntries(
-    Object.entries(placements).map(([id, placement]) => {
-      if (!placement || typeof placement !== 'object') return [id, placement];
-      if (!placement.displace || placement.band !== undefined || placement.order === undefined) return [id, placement];
-      // `order: 0` afterwards, not absent: it is alone in the lane it just named, and leaving it
-      // absent would sort it after any lane-mate it later gains.
-      return [id, { ...placement, band: placement.order, order: 0 }];
-    }),
-  );
-}
-
-function loadPlacements(): Record<string, FloatPlacement> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(PLACEMENTS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Record<string, FloatPlacement>) : {};
-    return parsed && typeof parsed === 'object' ? bandLegacyOrder(stripLegacyThickness(parsed)) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * The write, deferred to the end of the frame.
- *
- * ## Why it cannot be synchronous
- *
- * `writePlacement` runs on every `pointermove` of a drag or a resize, which is once per frame — and
- * each call serialised the whole placement map and wrote it to localStorage. `setItem` is
- * synchronous and hits the disk, so a drag was doing blocking I/O at 60Hz, at the exact moment the
- * app is trying to track a cursor. Nothing about it needs to be immediate: the value being persisted
- * is where a panel *ended up*, and every frame but the last is a position nobody asked to keep.
- *
- * A microtask rather than a debounce, so a single write is still on disk before the next turn of the
- * event loop and nothing has to reason about how long the tail is. Coalescing means a drag of 300
- * frames writes once when it settles.
- */
-let pendingPlacements: Record<string, FloatPlacement> | null = null;
-
-function flushPlacements(): void {
-  const placements = pendingPlacements;
-  pendingPlacements = null;
-  if (!placements || typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(PLACEMENTS_KEY, JSON.stringify(placements));
-  } catch {
-    // A full or disabled store costs the user their layout next boot, and nothing else.
-  }
-}
-
-/**
- * How recently each panel was touched, by placement key — the whole of z-order.
- *
- * Beside the placements rather than inside them, because it is not a placement: a placement says
- * *where*, and `layoutPinned` reads the existence of one as "somebody moved this away from what the
- * template asked for". A click is not that. Held in a map of its own, raising a panel pins nothing.
- *
- * Persisted, so a reload keeps the stacking — and, once seats can hold several panels, which tab
- * was showing. Written straight through rather than coalesced: a click is one write, not a drag.
- */
-const ACTIVATION_KEY = 'we-local:shell.dockActivation';
-
-function loadActivation(): Record<string, number> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(ACTIVATION_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveActivation(activation: Record<string, number>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(ACTIVATION_KEY, JSON.stringify(activation));
-  } catch {
-    // Lost stacking order on next boot, and nothing else.
-  }
-}
-
-/**
- * Named arrangements, by template scope and then by name — see `saveLayout`.
- *
- * A layout is a snapshot of everything the three-rung chain holds for one interface: its panels'
- * placements, which tab of each seat was showing, and which panels were closed. Keyed under the
- * scope the placements themselves are keyed under, so "Recording" for the Workshop is not offered
- * while the Timeline is on screen.
- */
-const LAYOUTS_KEY = 'we-local:shell.dockLayouts';
-
-interface SavedLayout {
-  placements: Record<string, FloatPlacement>;
-  activation: Record<string, number>;
-  closed: Record<string, boolean>;
-  /** Home lanes' widths and folds. Absent in a layout saved before lanes could be resized. */
-  lanes?: Record<string, LaneState>;
-}
-
-/**
- * A home lane as the reader has left it: dragged to a width, or folded away. Keyed like placements,
- * `<template scope>::<lane>`, so one template's sidebar width is not another's.
- */
-interface LaneState {
-  width?: number;
-  collapsed?: boolean;
-}
-
-const LANES_KEY = 'we-local:shell.lanes';
-
-/** Every interface's open panel instances, by interface — see `PanelInstance`. */
-const INSTANCES_KEY = 'we-local:shell.panelInstances';
-
-/*
- * Instances are kept under the agent's DID: an app-scope chat carries a perspective id, and a
- * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
- * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
- */
-function loadInstances(did: string): Record<string, Record<string, PanelInstance>> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
-    const perAgent =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? (parsed as Record<string, Record<string, Record<string, PanelInstance>>>)
-        : {};
-    const mine = perAgent[did];
-    return mine && typeof mine === 'object' && !Array.isArray(mine) ? mine : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveInstances(did: string, all: Record<string, Record<string, PanelInstance>>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
-    const perAgent =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : {};
-    if (Object.keys(all).length) perAgent[did] = all;
-    else delete perAgent[did];
-    localStorage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
-  } catch {
-    // The instances open now stay open; a reload starts without them.
-  }
-}
-
-function loadLanes(): Record<string, LaneState> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LANES_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, LaneState>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLanes(lanes: Record<string, LaneState>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(LANES_KEY, JSON.stringify(lanes));
-  } catch {
-    // A lane back at its template's width on next boot, and nothing else.
-  }
-}
-
-type SavedLayouts = Record<string, Record<string, SavedLayout>>;
-
-function loadLayouts(): SavedLayouts {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' ? (parsed as SavedLayouts) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveLayouts(layouts: SavedLayouts): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(layouts));
-  } catch {
-    // Lost named layouts on next boot, and nothing else.
-  }
-}
-
-function savePlacements(placements: Record<string, FloatPlacement>): void {
-  const first = pendingPlacements === null;
-  pendingPlacements = placements;
-  if (first) queueMicrotask(flushPlacements);
-}
-
 export function createShellStore(deps: ShellStoreDeps): ShellStore {
   const { reactivity } = deps;
   const { signal, memo, effect, untrack, onCleanup } = reactivity;
   const { appFrame, appEdgeFrames, laneFrames, publishPanelInstances } = deps.host;
-  const [activeShellView, setActiveShellView] = distinctSignal<string | null>(reactivity, initialShellView());
-  const [pendingPath, setPendingPath] = distinctSignal<string | null>(reactivity, null);
-  /**
-   * Where each shell view was last standing, so it can be put back after a remount.
-   *
-   * The overlay's `MemoryRouter` — and the store that mirrors it — both live *inside*
-   * `TemplateLayout`, which is the main Router's root. So anything that rebuilds the main route
-   * table takes the overlay down with it, and a `MemoryRouter` coming back up starts at `/`: you
-   * were on a space's settings page and you are now on the account page, having asked for neither.
-   *
-   * A plain object rather than a signal: nothing renders from it, it is read once on mount, and
-   * making it reactive would only invite an effect to depend on it.
-   */
-  const lastShellPath: Record<string, string> = {};
-  const [createSpaceOpen, setCreateSpaceOpen] = distinctSignal(reactivity, false);
-  const [joinSpaceOpen, setJoinSpaceOpen] = distinctSignal(reactivity, false);
-
+  const views = createShellViews({ reactivity });
+  const { activeShellView, setActiveShellView } = views;
   /*
     Which screen to share, when the OS will not ask.
 
@@ -1168,28 +1148,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     setPendingScreenSources([]);
     screens?.choose(sourceId);
   }
-  const [spaceSettingsOpen, setSpaceSettingsOpen] = distinctSignal(reactivity, false);
-  // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
-  // controlled value — see `spaceSettingsTab`.
-  const [spaceSettingsTab, setSpaceSettingsTab] = distinctSignal(reactivity, 'about');
-  const [spaceSettingsFocus, setSpaceSettingsFocus] = distinctSignal(reactivity, '');
-
-  /**
-   * Scroll to a vocabulary row once it exists. The panel mounts and its rows arrive from queries after
-   * the press, so the element is not there yet when it is asked for; it is looked for until it is, for
-   * a few seconds, and then given up on — a record that never draws a row has nowhere to scroll to.
-   */
-  let focusSearch: ReturnType<typeof setTimeout> | undefined;
-  function scrollWhenDrawn(id: string, tries = 40): void {
-    clearTimeout(focusSearch);
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
-  }
-
   const [pendingDestructive, setPendingDestructive] = signal<PendingDestructive | null>(null);
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
   let answerDestructive: ((ok: boolean) => void) | null = null;
@@ -1236,7 +1194,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     setPendingDestructive(null);
     answer?.(ok);
   }
-
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
   const [viewportSize, setViewport] = signal({
@@ -1257,7 +1214,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     appFrame();
     return viewportSize();
   };
-
   /**
    * Where each panel has been put, by dock id. Empty until somebody moves or resizes one.
    *
@@ -1387,7 +1343,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
    */
   let clickUnfolded: { id: string; at: number } | null = null;
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-
   const [activation, setActivation] = signal<Record<string, number>>(loadActivation());
   // Seeded from what was stored, so the first raise after a reload lands above everything that was
   // raised before it rather than restarting the count underneath.
@@ -1484,7 +1439,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
    * panel is *not* moved out of the seat until the drop, exactly as every tab strip behaves.
    */
   let tabGesture: { id: string; x: number; y: number; dragging: boolean } | null = null;
-
   /**
    * The middle of a seated panel, as the target for stacking behind it.
    *
@@ -1512,7 +1466,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
       index,
     }));
   };
-
   /**
    * The snap a drop would take, once the places that are already occupied are struck out.
    *
@@ -1553,7 +1506,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
 
   const takenSnapPoints = (moving: string | null) =>
     takenSnapsOf(dockRequests(), laneSeating().hidden, moving ? [moving, ...movingSeat()] : []);
-
   const [layouts, setLayouts] = signal<SavedLayouts>(loadLayouts());
   /**
    * The named layout the arrangement on screen is, or `''` once it has been changed since.
@@ -1573,7 +1525,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
       setPlacements(merged);
     }
   };
-
   /**
    * Fold or unfold a panel and every tab stacked with it.
    *
@@ -1715,7 +1666,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     if (declared) return placementFromDeclaration(declared, viewport());
     return seedPlacement(request, viewport());
   };
-
   /**
    * The panels the interface on screen declares, and which of them the reader has closed.
    *
@@ -1866,7 +1816,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     templatePanelScope();
     setClosedPanels({});
   });
-
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
 
@@ -1876,7 +1825,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
   */
   const [dockRegistryVersion, setDockRegistryVersion] = signal(0);
   onCleanup(onDockRegistryChanged(() => setDockRegistryVersion(untrack(dockRegistryVersion) + 1)));
-
   /**
    * The dock a declaration is about, or null when it names one that is not there.
    *
@@ -1930,7 +1878,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     }
     return byDock;
   });
-
   /**
    * Whether a module's chrome renders here at all — injected, because only `SpaceStore` knows.
    *
@@ -1948,13 +1895,11 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
    * Defaults to "everything is active", so a host that never injects behaves exactly as before.
    */
   const [moduleGate, setModuleGate] = signal<(moduleId: string) => boolean>(() => true);
-
   /**
    * What "save this arrangement as a template" needs and this store cannot see: the schema on
    * screen, and a library to put a copy in. Injected, for the reason `moduleGate` is.
    */
   const [templateSaver, setTemplateSaver] = signal<TemplateSaver | null>(null);
-
   const dockRequests = memo<DockRequest[]>(() => {
     dockRegistryVersion();
     return (
@@ -2522,7 +2467,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     const band = railBand(viewport(), inset(), topChrome());
     document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
   });
-
   /**
    * How long chrome should take to follow the dock — nothing, while it is being dragged.
    *
@@ -2536,7 +2480,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
     if (typeof document === 'undefined') return;
     document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
   });
-
   /*
     Turn the declarations that carry their own content into real docks.
 
@@ -2742,7 +2685,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
       setModulePanel(dockId, false);
     }
   });
-
   /**
    * Show where a **tab** would land, and move nothing.
    *
@@ -2778,27 +2720,13 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
   };
 
   const store: ShellStore = {
-    activeShellView,
-    openShellView: (id: string, path?: string) => {
-      // An explicit path wins; otherwise the view reopens where it was last left, which is what a
-      // person expects of somewhere they were half-way through configuring.
-      setPendingPath(path ?? lastShellPath[id] ?? null);
-      setActiveShellView(id);
-    },
-    closeShellView: () => setActiveShellView(null),
-    createSpaceOpen,
-    setCreateSpaceOpen,
-    joinSpaceOpen,
-    setJoinSpaceOpen,
+    ...views.members,
     pendingScreenSources,
     chooseScreenSource,
     pendingDestructive,
     confirmDestructive: () => settleDestructive(true),
     cancelDestructive: () => settleDestructive(false),
     requestDestructive,
-    spaceSettingsOpen,
-    spaceSettingsTab,
-    spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     provideModuleGate: setModuleGate,
     provideSpaceGate: setSpaceGate,
     provideAgentDid: setDidOf,
@@ -2837,38 +2765,6 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
         what an arrangement is for than be handed a suffix.
       */
       return saver.save({ ...schema, meta: { ...schema.meta, panels: arranged } });
-    },
-    toggleSpaceSettings: () => {
-      setSpaceSettingsFocus('');
-      setSpaceSettingsOpen(!untrack(spaceSettingsOpen));
-    },
-    openSpaceSettings: (tab?: string, focus?: string) => {
-      // Only a name is a tab. A button wired without `args` hands an action the click, and the About
-      // view's pencil did, so the panel was asked to open on a MouseEvent.
-      setSpaceSettingsTab(typeof tab === 'string' && tab ? tab : 'about');
-      const about = typeof focus === 'string' ? focus : '';
-      setSpaceSettingsFocus(about);
-      setSpaceSettingsOpen(true);
-      if (about) scrollWhenDrawn(`vocab-${about}`);
-    },
-    closeSpaceSettings: () => {
-      setSpaceSettingsFocus('');
-      setSpaceSettingsOpen(false);
-    },
-    spaceSettingsFocus,
-    takePendingPath: () => {
-      const path = pendingPath();
-      setPendingPath(null);
-      // Not cleared from `lastShellPath`: a remount asks again with nothing pending, and the answer
-      // has to survive to be given.
-      return path ?? lastShellPath[activeShellView() ?? ''] ?? null;
-    },
-    rememberShellPath: (path: string) => {
-      const id = activeShellView();
-      if (id) lastShellPath[id] = path;
-    },
-    scrollToId: (id: string) => {
-      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
     dockGeometry,
     contentInset: inset,
@@ -4205,12 +4101,12 @@ export function createShellStore(deps: ShellStoreDeps): ShellStore {
 
     Safe despite this being the store that *resolves* docks: `dockRequests` reads the accessor and
     the accessor writes nothing, so the dependency runs one way. It matters that the registration is
-    here, after `store` exists and after `onDockRegistryChanged` is subscribed above — announcing
-    into a listener that has not been added yet would leave the memo with nothing to re-run for,
-    which is the failure the registry's own docblock describes.
+    here, after `store` exists and after the docks have subscribed to the registry — announcing into
+    a listener that has not been added yet would leave them with nothing to re-run for, which is the
+    failure the registry's own docblock describes.
   */
   registerHostDockStore(SHELL_DOCK_STORE_ID, store as unknown as Record<string, unknown>);
-  onCleanup(() => unregisterHostDockStore(SHELL_DOCK_STORE_ID));
+  reactivity.onCleanup(() => unregisterHostDockStore(SHELL_DOCK_STORE_ID));
 
   return store;
 }
