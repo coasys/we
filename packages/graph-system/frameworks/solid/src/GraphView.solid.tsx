@@ -35,7 +35,6 @@ import {
   defaultMetrics,
   dispatchPointer,
   distanceToEdge,
-  edgeBounds,
   edgeVisual,
   endOf,
   FOLD_BUNDLE,
@@ -91,6 +90,7 @@ import {
   CONTENT_FRAME_BUDGET_MS,
   CONTENT_GRANT_CHUNK,
   NODE_CULL_MARGIN,
+  routeBox,
   sameSet,
 } from './cull';
 import { createFocusFollow } from './focusFollow';
@@ -1452,6 +1452,49 @@ export function GraphView(props: GraphViewProps) {
     return [...engine.getLayoutRegions()];
   });
 
+  /**
+   * The world the camera shows, grown by `margin` of its own size on every side — or `null` before
+   * the surface has been measured.
+   *
+   * The whole viewport rather than `visibleWorldRect`, which leaves out what an overlay covers: a card
+   * under a panel is still on screen, and culling it would leave a hole the moment the panel moved.
+   *
+   * `null` is the answer that keeps everything drawn. Before the first measurement there is no view to
+   * cull against, and a graph drawn into a surface that never measures — a test's DOM, a hidden tab —
+   * draws exactly what it always did.
+   */
+  function viewBounds(margin: number): Bounds | null {
+    const { x, y, zoom: scale, width, height } = engine.viewport.get();
+    if (!(width > 0 && height > 0 && scale > 0)) return null;
+    const w = width / scale;
+    const h = height / scale;
+    const minX = -x / scale;
+    const minY = -y / scale;
+    return {
+      minX: minX - w * margin,
+      minY: minY - h * margin,
+      maxX: minX + w * (1 + margin),
+      maxY: minY + h * (1 + margin),
+    };
+  }
+
+  /**
+   * The cards near enough the view to be drawn: what the camera shows plus half a screen each way, so
+   * a pan reveals cards that are already there rather than ones mounting under the pointer.
+   *
+   * Asked of the engine's spatial index, which is what picking uses, so a card is drawn wherever it
+   * can be pressed. Kept as the same set while it has not changed — most frames of a pan move no card
+   * across the margin, and an unchanged set is what lets everything below skip the frame.
+   */
+  const nodeView = createMemo<ReadonlySet<string> | null>((previous) => {
+    viewportVersion();
+    version();
+    const bounds = viewBounds(NODE_CULL_MARGIN);
+    if (!bounds) return null;
+    const next = new Set(engine.index.within(bounds));
+    return previous && sameSet(previous, next) ? previous : next;
+  });
+
   const nodes = createMemo(() => {
     version();
     const placed = engine.getPositions();
@@ -1524,6 +1567,17 @@ export function GraphView(props: GraphViewProps) {
   const nodeRows = createMemo(() => {
     const fresh = nodes();
     const seen = new Set<string>();
+    /*
+      Only the rows that can be seen, or that something else reads, are brought up to date.
+
+      Reconciling is a deep walk of the entry, and on a canvas of thousands it was most of the cost of
+      every drag frame — paid for cards with no DOM. A row off screen keeps what it last said and is
+      reconciled when it comes back into view. The ones that cannot wait are those read away from the
+      cards' own layer: the selection (its chrome and its drag items), the card in the hand, the
+      hovered one, a card wearing a fold count, and one in mid-fold.
+    */
+    const view = nodeView();
+    const hover = hovered();
     const rows = fresh.map((entry) => {
       const id = entry.node.id;
       seen.add(id);
@@ -1532,7 +1586,17 @@ export function GraphView(props: GraphViewProps) {
         const [store, set] = createStore(entry);
         row = { entry: store, set };
         rowsById.set(id, row);
-      } else {
+      } else if (
+        !view ||
+        view.has(id) ||
+        entry.selected ||
+        entry.held ||
+        id === hover ||
+        entry.foldedCount > 0 ||
+        entry.foldScale !== 1 ||
+        row.entry.selected ||
+        row.entry.foldedCount > 0
+      ) {
         row.set(reconcile(entry));
       }
       return row;
@@ -1865,7 +1929,19 @@ export function GraphView(props: GraphViewProps) {
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
-      return [{ edge, route, path: pathFrom(route, gap), visual }];
+      // Built when drawn rather than here: on a canvas of thousands most lines are culled, and the
+      // path — trimming a cubic to its arrowhead — was the dearest part of every drag frame.
+      let path: string | undefined;
+      return [
+        {
+          edge,
+          route,
+          get path() {
+            return (path ??= pathFrom(route, gap));
+          },
+          visual,
+        },
+      ];
     });
   });
 
@@ -2199,49 +2275,6 @@ export function GraphView(props: GraphViewProps) {
   // ─── Culling ─────────────────────────────────────────────────────────────────
 
   /**
-   * The world the camera shows, grown by `margin` of its own size on every side — or `null` before
-   * the surface has been measured.
-   *
-   * The whole viewport rather than `visibleWorldRect`, which leaves out what an overlay covers: a card
-   * under a panel is still on screen, and culling it would leave a hole the moment the panel moved.
-   *
-   * `null` is the answer that keeps everything drawn. Before the first measurement there is no view to
-   * cull against, and a graph drawn into a surface that never measures — a test's DOM, a hidden tab —
-   * draws exactly what it always did.
-   */
-  function viewBounds(margin: number): Bounds | null {
-    const { x, y, zoom: scale, width, height } = engine.viewport.get();
-    if (!(width > 0 && height > 0 && scale > 0)) return null;
-    const w = width / scale;
-    const h = height / scale;
-    const minX = -x / scale;
-    const minY = -y / scale;
-    return {
-      minX: minX - w * margin,
-      minY: minY - h * margin,
-      maxX: minX + w * (1 + margin),
-      maxY: minY + h * (1 + margin),
-    };
-  }
-
-  /**
-   * The cards near enough the view to be drawn: what the camera shows plus half a screen each way, so
-   * a pan reveals cards that are already there rather than ones mounting under the pointer.
-   *
-   * Asked of the engine's spatial index, which is what picking uses, so a card is drawn wherever it
-   * can be pressed. Kept as the same set while it has not changed — most frames of a pan move no card
-   * across the margin, and an unchanged set is what lets everything below skip the frame.
-   */
-  const nodeView = createMemo<ReadonlySet<string> | null>((previous) => {
-    viewportVersion();
-    version();
-    const bounds = viewBounds(NODE_CULL_MARGIN);
-    if (!bounds) return null;
-    const next = new Set(engine.index.within(bounds));
-    return previous && sameSet(previous, next) ? previous : next;
-  });
-
-  /**
    * The rows actually drawn.
    *
    * A card off screen has no DOM. Mounting all of them was what made a canvas of thousands slow to
@@ -2266,16 +2299,16 @@ export function GraphView(props: GraphViewProps) {
   /**
    * The lines drawn: those whose route comes near the view, by the box around its points.
    *
-   * The box is the route's own, sampled along the curve, so a line crossing the screen between two
-   * cards that are both off it is still drawn.
+   * The box is the route's control points, which a curve never leaves, so a line crossing the screen
+   * between two cards that are both off it is still drawn.
    */
-  const edgeBoxes = createMemo(() => new Map(edges().map((entry) => [entry, edgeBounds(entry.route)] as const)));
+  const edgeBoxes = createMemo(() => new Map(edges().map((entry) => [entry, routeBox(entry.route)] as const)));
   const drawnEdges = createMemo(() => {
     const all = edges();
     const view = nodeView();
     const bounds = view && viewBounds(NODE_CULL_MARGIN);
     if (!bounds) return all;
-    // Boxes worked out once per layout rather than per pan: sampling every route is the dear part.
+    // Boxes worked out once per layout rather than per pan.
     const boxes = edgeBoxes();
     return all.filter((entry) => boxMeets(boxes.get(entry)!, bounds));
   });

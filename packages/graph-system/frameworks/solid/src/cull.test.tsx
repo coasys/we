@@ -11,7 +11,7 @@ import { createSignal } from 'solid-js';
 import { render } from 'solid-js/web';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { boxMeets, sameSet } from './cull';
+import { boxMeets, routeBox, sameSet } from './cull';
 import { GraphView } from './GraphView.solid';
 
 let dispose: (() => void) | undefined;
@@ -156,6 +156,43 @@ describe('culling a canvas larger than its screen', () => {
     expect(new Set(counts).size).toBeGreaterThan(2);
   });
 
+  it('brings a card that changed while off screen up to date when it comes into view', async () => {
+    vi.useFakeTimers();
+    measured();
+    const [label, setLabel] = createSignal('before');
+    const [region, setRegion] = createSignal<Region>(null);
+    const host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(
+      () => (
+        <GraphView
+          width="1000px"
+          height="800px"
+          seeds={{
+            literal: true,
+            nodes: nodes.map((node, i) => (i === LAST ? { ...node, label: label() } : node)),
+            edges: [],
+          }}
+          layout={{ type: 'manual' }}
+          region={region()}
+          nodeStyle={[{ style: { shape: 'card', width: 200, height: 120 } }] as never}
+        />
+      ),
+      host,
+    );
+    await vi.advanceTimersByTimeAsync(100);
+    setRegion({ x: 0, y: 0, width: 1000, height: 800 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(drawn(host)).not.toContain('before');
+
+    setLabel('after');
+    await vi.advanceTimersByTimeAsync(100);
+    setRegion({ x: (SIDE - 4) * GAP, y: (SIDE - 4) * GAP, width: 1000, height: 800 });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(drawn(host)).toContain('after');
+    expect(drawn(host)).not.toContain('before');
+  });
+
   it('draws everything on a surface that has never been measured', async () => {
     vi.useFakeTimers();
     const { host } = await mount(null);
@@ -168,6 +205,17 @@ describe('cull helpers', () => {
     expect(sameSet(new Set([1, 2]), new Set([2, 1]))).toBe(true);
     expect(sameSet(new Set([1, 2]), new Set([1, 3]))).toBe(false);
     expect(sameSet(new Set([1]), new Set([1, 2]))).toBe(false);
+  });
+
+  it('bounds a route by all of its points', () => {
+    expect(
+      routeBox({
+        from: { x: 0, y: 0 },
+        to: { x: 10, y: 0 },
+        control: { x: 5, y: -20 },
+        segments: [{ control2: { x: 30, y: 4 }, to: { x: 12, y: 1 } }],
+      }),
+    ).toEqual({ minX: 0, minY: -20, maxX: 30, maxY: 4 });
   });
 
   it('counts touching boxes as meeting', () => {
