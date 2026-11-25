@@ -329,8 +329,23 @@ export class GraphEngine {
   /** A refresh is running. See {@link refresh} for why a second one queues rather than joining in. */
   private refreshing = false;
   private refreshPending = false;
+  /** A refresh queued behind the running one asked for its reads to be fetched — see {@link refresh}. */
+  private refreshFetches = false;
   /** Live watches held on the types the seeds read, keyed by entity and dataset. */
   private readonly watchers = new Map<string, () => void>();
+  /**
+   * The latest answer to each watched read: what it fetched, or what its watch last delivered.
+   *
+   * What a refresh set off by a watch answers its reads from — see {@link loadSeeds}. Held only for
+   * reads with a live watch, since a watch is what keeps the answer current, and dropped with it.
+   */
+  private readonly watchedRows = new Map<string, readonly Record<string, unknown>[]>();
+  /**
+   * How many answers each watch has delivered. A fetch notes it before asking and keeps what it got
+   * only if no newer answer arrived meanwhile — or a slow read finishing after a watch delivered
+   * would put the older answer back, and the next refresh would draw it.
+   */
+  private readonly watchDeliveries = new Map<string, number>();
   private watchTimer?: ReturnType<typeof setTimeout>;
   /** What the last seed load read, so watches can be re-synced without re-running the queries. */
   private lastSeedReads: ReadonlyMap<string, WatchTarget> = new Map();
@@ -717,27 +732,33 @@ export class GraphEngine {
    * it can arrive from a subscription while they are reading — and a viewport that jumps whenever a
    * peer writes something would make a shared graph unusable.
    */
-  async refresh(): Promise<void> {
+  async refresh(options?: { watched?: boolean }): Promise<void> {
     if (this.disposed) return;
+    const watched = options?.watched === true;
     // A second request while one is running becomes one more pass at the end, rather than a
-    // concurrent pair racing to reconcile against each other's half-applied state.
+    // concurrent pair racing to reconcile against each other's half-applied state. That pass fetches
+    // if any request folded into it asked to: a watch's rows cannot stand in for a reload.
     if (this.refreshing) {
       this.refreshPending = true;
+      if (!watched) this.refreshFetches = true;
       return;
     }
     this.refreshing = true;
+    let fromWatches = watched;
     try {
       do {
         this.refreshPending = false;
-        await this.refreshOnce();
+        this.refreshFetches = false;
+        await this.refreshOnce(fromWatches);
+        fromWatches = !this.refreshFetches;
       } while (this.refreshPending && !this.disposed);
     } finally {
       this.refreshing = false;
     }
   }
 
-  private async refreshOnce(): Promise<void> {
-    const fragment = await this.loadSeeds();
+  private async refreshOnce(fromWatches = false): Promise<void> {
+    const fragment = await this.loadSeeds(fromWatches);
     // As in `start`: a load that was replaced must not reconcile its rows into the graph that
     // replaced it.
     if (this.disposed || !fragment) return;
@@ -844,8 +865,16 @@ export class GraphEngine {
    * becomes live for free; the alternative — the engine parsing `options.entity` — would work for
    * exactly the sources that happen to spell it that way and silently fail for the rest.
    */
-  /** What the seeds found, or `null` when this load was replaced before it finished. */
-  private async loadSeeds(): Promise<GraphFragment | null> {
+  /**
+   * What the seeds found, or `null` when this load was replaced before it finished.
+   *
+   * With `fromWatches`, a read the graph is watching is answered with what its watch last delivered
+   * rather than asked again. That is the refresh a watch sets off: the backend has just re-run that
+   * read to find it had changed, and on a canvas asking every read again cost seconds per write. A
+   * read with no watch, or one whose question changed — the lines, once the cards are different — is
+   * still asked.
+   */
+  private async loadSeeds(fromWatches = false): Promise<GraphFragment | null> {
     const specs = this.spec.seeds ? (Array.isArray(this.spec.seeds) ? this.spec.seeds : [this.spec.seeds]) : [];
     const nodes: GraphNode[] = [];
     const edges: GraphEdge[] = [];
@@ -882,8 +911,20 @@ export class GraphEngine {
         // The whole read, less the signal — a standing watch must not hold the abort signal of the
         // load that happened to make the read.
         const { signal: _signal, ...target } = request;
-        read.set(watchKey(target), target);
-        return this.context.query(request);
+        const key = watchKey(target);
+        read.set(key, target);
+        const answered = fromWatches && this.watchers.has(key) ? this.watchedRows.get(key) : undefined;
+        if (answered) {
+          this.context.trace?.('read:watched', { entity: target.entity, rows: answered.length });
+          return Promise.resolve([...answered]);
+        }
+        const asked = this.watchDeliveries.get(key) ?? 0;
+        return this.context.query(request).then((rows) => {
+          if (this.watching() && !superseded() && (this.watchDeliveries.get(key) ?? 0) === asked) {
+            this.watchedRows.set(key, rows);
+          }
+          return rows;
+        });
       },
     };
 
@@ -994,6 +1035,11 @@ export class GraphEngine {
    * the two spec paths already mean different things — one reloads, one restyles — and this is a
    * third: nothing about the graph changes, only whether it keeps listening.
    */
+  /** Whether this graph follows its reads at all. */
+  private watching(): boolean {
+    return this.spec.live !== false && typeof this.context.watch === 'function';
+  }
+
   setLive(live: boolean): void {
     if ((this.spec.live !== false) === live) return;
     this.spec = { ...this.spec, live };
@@ -1009,20 +1055,28 @@ export class GraphEngine {
    * or when the template asked for a graph that does not move.
    */
   private syncWatchers(read: ReadonlyMap<string, WatchTarget>): void {
-    const enabled = this.spec.live !== false && typeof this.context.watch === 'function';
-    const wanted = enabled ? read : new Map<string, WatchTarget>();
+    const wanted = this.watching() ? read : new Map<string, WatchTarget>();
 
     for (const [key, stop] of this.watchers) {
       if (wanted.has(key)) continue;
       stop();
       this.watchers.delete(key);
     }
+    // An answer nothing keeps current any more is not one to answer from.
+    for (const key of this.watchedRows.keys()) if (!wanted.has(key)) this.watchedRows.delete(key);
+    for (const key of this.watchDeliveries.keys()) if (!wanted.has(key)) this.watchDeliveries.delete(key);
 
     for (const [key, target] of wanted) {
       if (this.watchers.has(key)) continue;
       this.watchers.set(
         key,
-        this.context.watch!(target, () => this.onDataChanged()),
+        this.context.watch!(target, (rows) => {
+          // A watch that brings no rows leaves this read to be asked again.
+          this.watchDeliveries.set(key, (this.watchDeliveries.get(key) ?? 0) + 1);
+          if (rows) this.watchedRows.set(key, rows);
+          else this.watchedRows.delete(key);
+          this.onDataChanged();
+        }),
       );
     }
   }
@@ -1040,7 +1094,7 @@ export class GraphEngine {
     if (this.watchTimer) clearTimeout(this.watchTimer);
     this.watchTimer = setTimeout(() => {
       this.watchTimer = undefined;
-      void this.refresh();
+      void this.refresh({ watched: true });
     }, WATCH_DEBOUNCE_MS);
   }
 
@@ -1056,6 +1110,8 @@ export class GraphEngine {
     // from a backend subscription, which is the shape of leak that only shows up as a slow app.
     for (const stop of this.watchers.values()) stop();
     this.watchers.clear();
+    this.watchedRows.clear();
+    this.watchDeliveries.clear();
     this.layout?.stop?.();
     this.listeners.clear();
   }
