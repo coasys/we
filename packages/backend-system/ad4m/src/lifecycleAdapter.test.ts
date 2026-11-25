@@ -54,6 +54,14 @@ const templateData = (client: ReturnType<typeof mockClient>) =>
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
+describe('sharedIdOf', () => {
+  it('names the bare id a neighbourhood URL carries, and leaves a bare id as it is', () => {
+    const lifecycle = createAd4mDatasetLifecycle(mockClient([]) as unknown as Ad4mClient);
+    expect(lifecycle.sharedIdOf('neighbourhood://Qm-hood')).toBe('Qm-hood');
+    expect(lifecycle.sharedIdOf('Qm-hood')).toBe('Qm-hood');
+  });
+});
+
 describe('sharingOptions', () => {
   it('reads an older executor that lists bare addresses, and drops anything with none', async () => {
     const client = mockClient([HOLOCHAIN]);

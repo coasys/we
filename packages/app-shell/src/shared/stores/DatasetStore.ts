@@ -368,18 +368,22 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
     return [...ordered, ...appended];
   });
 
-  // Seed URLs are backend-native deployment values (full URIs); correlating them with
-  // scheme-less shared ids is the one sanctioned strip in the shell, defined here once.
+  /*
+    Seed URLs are backend-native deployment values (full URIs). Which shared id one names is the
+    backend's to say — its spelling of a URI is its own — so the shell asks it rather than parsing.
+    Until a backend is reached the URL stands for itself.
+  */
   const globalSpaceConfigured = () => !!getSeed().globalSpaceUrl;
   const marketplaceConfigured = () => !!getSeed().marketplaceUrl;
+  const sharedIdOf = (url: string): string => session.lifecycle()?.sharedIdOf(url) ?? url;
   /** The scheme-less shared id for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
     const url = getSeed().globalSpaceUrl;
-    return url ? url.replace('neighbourhood://', '') : null;
+    return url ? sharedIdOf(url) : null;
   };
   const marketplaceId = (): string | null => {
     const url = getSeed().marketplaceUrl;
-    return url ? url.replace('neighbourhood://', '') : null;
+    return url ? sharedIdOf(url) : null;
   };
   const marketplaceJoined = memo(() => {
     const id = marketplaceId();

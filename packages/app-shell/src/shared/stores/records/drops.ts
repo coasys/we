@@ -81,7 +81,7 @@ export function createRecordDrops(deps: RecordDropsDeps): RecordDrops {
   function heldDataset(key: string): AppDataset | undefined {
     const id = datasetIdOf(key);
     if (datasetKindOf(key) === 'personal') return datasetStore.datasets().find((d) => d.id === id);
-    return datasetStore.datasets().find((d) => d.sharedId === id || d.sharedUri === `neighbourhood://${id}`);
+    return datasetStore.datasets().find((d) => d.sharedId === id);
   }
 
   /**

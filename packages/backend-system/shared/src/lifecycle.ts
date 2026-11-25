@@ -89,6 +89,12 @@ export interface DatasetLifecyclePort {
    */
   list(options?: { fresh?: boolean }): Promise<DatasetRef[]>;
   get(id: string): Promise<DatasetRef | null>;
+  /**
+   * The scheme-less shared id a shared dataset's full URI names — the `sharedId` a ref for it
+   * carries. For a URI a deployment was configured with before anything is joined, which the shell
+   * compares with what records and refs hold; a string that is already a bare id comes back as it is.
+   */
+  sharedIdOf(uri: string): string;
   create(name: string): Promise<DatasetRef>;
   remove(id: string): Promise<void>;
   /**
