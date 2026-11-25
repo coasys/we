@@ -141,7 +141,7 @@ export interface CanvasSeedOptions {
    * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
    * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
    * cards — the layout positions them — and the walk repeats down the tree until it stops producing
-   * new cards or `max` nodes is hit. Cycle-safe by the same set the canvas dedups with.
+   * new cards or it has pulled in `max` of them. Cycle-safe by the same set the canvas dedups with.
    *
    * Untyped relations are left alone: one without a declared target could point at anything, and
    * walking `children`-of-anything or `respondsTo` under every card is the tangle the entity
@@ -152,7 +152,14 @@ export interface CanvasSeedOptions {
     | {
         /** Pull in unplaced children — records that point at a drawn card — recursively. Default true. */
         children?: boolean;
-        /** The most nodes the graph may hold once the pull is done, placements included. Default 500. */
+        /**
+         * The most cards the pull may add, on top of what the canvas already draws. Default 500.
+         *
+         * Counted apart from the canvas's own cards, which have caps of their own. It used to bound the
+         * whole graph, which was the same thing while a canvas drew at most a few hundred cards; once
+         * one could draw thousands, a canvas past 500 never took a step of the walk and warned that it
+         * had stopped.
+         */
         max?: number;
       };
   /**
@@ -1003,7 +1010,9 @@ export function canvasSeed(): SeedSource {
           row: Record<string, unknown>;
         }
         const pending = new Map<string, Found>();
-        while (frontier.length && nodes.length + pending.size < maxNodes) {
+        // What the canvas holds before the walk adds anything, which `max` is counted on top of.
+        const budget = nodes.length + maxNodes;
+        while (frontier.length && nodes.length + pending.size < budget) {
           const next: { id: string; type: string }[] = [];
           const found: Found[] = [];
           const level: RelationLink[] = [];
@@ -1033,7 +1042,9 @@ export function canvasSeed(): SeedSource {
                   (relation) => relation.target === type && heldByChild(relation) && !hiddenTypes.has(relation.holder),
                 ),
                 include: pullInclude,
-                limit: maxNodes,
+                // One past what can be drawn, so the id order below picks the survivors rather than
+                // whichever rows the backend happened to return first, and a cut is seen as one.
+                limit: maxNodes + 1,
                 signal,
               }).then(({ rows, links }) => {
                 found.push(...rows);
@@ -1053,7 +1064,7 @@ export function canvasSeed(): SeedSource {
             five hundred.
           */
           for (const [id, { entity, row }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-            if (nodes.length >= maxNodes) break;
+            if (nodes.length >= budget) break;
             pending.delete(id);
             const node = rowToNode(
               row,
@@ -1080,9 +1091,13 @@ export function canvasSeed(): SeedSource {
           for (const link of level) addRelationEdge(link);
           frontier = next;
         }
-        if (nodes.length + pending.size >= maxNodes) {
+        /*
+          Only when something was left: a card found and not drawn, or a level not asked because the
+          budget ran out. A walk that ended on its own says nothing, however large the canvas.
+        */
+        if (pending.size || (frontier.length && nodes.length >= budget)) {
           context.warn(
-            `canvas: stopped at ${maxNodes} cards while pulling in what points at them — ` +
+            `canvas: stopped after pulling in ${maxNodes} cards that point at what is drawn — ` +
               `raise the seed's \`relations.max\` to see the rest.`,
           );
         }

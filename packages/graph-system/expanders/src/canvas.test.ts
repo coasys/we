@@ -1773,8 +1773,55 @@ describe('canvasSeed — model relations', () => {
 
     const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
 
-    expect(nodes).toHaveLength(2);
-    expect(warnings.some((m) => m.includes('stopped at 2'))).toBe(true);
+    // The placed card, and two of the three that point at it.
+    expect(nodes).toHaveLength(3);
+    expect(warnings.some((m) => m.includes('pulling in 2 cards'))).toBe(true);
+  });
+
+  it('pulls children in on a canvas already holding more cards than the cap', async () => {
+    /*
+      `max` bounds what the pull adds, not the whole canvas. Counted against the whole canvas, one
+      drawing more placed cards than `max` never took a step: no child came in, and the canvas warned
+      that it had stopped, every time the tree was opened.
+    */
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+        { id: 'p3', node: 't3', nodeType: 'DiscussionTopic', x: 0, y: 80 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+        { id: 't3', title: 'Three' },
+      ],
+      Position: [{ id: 'pos1', text: 'a', about: 't1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toContain(position('pos1'));
+    expect(edges.some((e) => e.type === 'relation' && e.target === position('pos1'))).toBe(true);
+    expect(warnings.filter((m) => m.includes('pulling in'))).toEqual([]);
+  });
+
+  it('says nothing when the walk ends on its own, however large the canvas', async () => {
+    const { context: ctx, warnings } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+        { id: 'p3', node: 't3', nodeType: 'DiscussionTopic', x: 0, y: 80 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two' },
+        { id: 't3', title: 'Three' },
+      ],
+    });
+
+    await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 1 } }, ctx);
+
+    expect(warnings.filter((m) => m.includes('pulling in'))).toEqual([]);
   });
 
   it('always leaves the same cards standing when the cap cuts the pull short', async () => {
@@ -1793,7 +1840,7 @@ describe('canvasSeed — model relations', () => {
       ],
     });
 
-    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 1 } }, ctx);
 
     expect(nodes.map((n) => n.id)).toEqual([
       'we-graph://entity/ds/DiscussionTopic/t1',
