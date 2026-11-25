@@ -21,6 +21,7 @@ import { type Ad4mClient, type Apps, capSentence, type RuntimeConfig } from '@co
 import type { AuthorizedApp, ExecutorConfig, ExecutorConfigEntry, RuntimeAdminPort } from '@we/backend-shared';
 
 import type { Ad4mCapability } from './capabilities';
+import { refusalReason } from './keySession';
 import { missingExecutorMethods, onMissingMethod } from './missingMethods';
 import { formatNetworkMetrics } from './networkMetrics';
 import { toPeerRecords } from './peerRecords';
@@ -422,9 +423,17 @@ export function createAd4mRuntimeAdmin(backendClient: unknown, options: Ad4mRunt
       };
     },
 
-    /** `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. */
+    /**
+     * `runtime.restart`: answers, then exits 75, and the app supervising it starts it again. The
+     * executor answers `local-only` to a caller off its machine; that is a refusal, not a failure.
+     */
     async restartExecutor() {
-      await client.runtime.restart();
+      try {
+        await client.runtime.restart();
+      } catch (error) {
+        if (refusalReason(error) === 'local-only') return { refused: 'off-machine' as const };
+        throw error;
+      }
     },
 
     async executorLogTail(lines) {

@@ -264,9 +264,12 @@ describe("the executor's own process", () => {
     // A path on the server's disk is nothing this computer can name.
     expect(port.exportDatabase).toBeUndefined();
     expect(port.importDatabase).toBeUndefined();
-    // The server says what it refuses from off its machine; the port passes the refusal on.
+    // The server refuses a restart from off its machine; the port says so in the contract's words.
     runtime.restart.mockRejectedValueOnce(Object.assign(new Error('RPC error 403: local-only'), { status: 403 }));
-    await expect(port.restartExecutor!()).rejects.toThrow(/local-only/);
+    await expect(port.restartExecutor!()).resolves.toEqual({ refused: 'off-machine' });
+    // Anything else is a failure, and still throws.
+    runtime.restart.mockRejectedValueOnce(Object.assign(new Error('RPC error 500: disk full'), { status: 500 }));
+    await expect(port.restartExecutor!()).rejects.toThrow(/disk full/);
   });
 
   it('says nothing of where it runs for a node on this machine', () => {
