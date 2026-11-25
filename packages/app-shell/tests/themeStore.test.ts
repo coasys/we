@@ -38,7 +38,9 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
   let installedRefs: string[];
   const disposers: (() => void)[] = [];
 
-  async function mount(options: { space?: boolean; spaceTheme?: string; spaceTemplate?: string } = {}) {
+  async function mount(
+    options: { space?: boolean; spaceTheme?: string; spaceTemplate?: string; settingsLate?: boolean } = {},
+  ) {
     const [spaceRecord, setSpaceRecord] = reactivity.signal({
       uuid: 'space',
       defaultThemeId: options.spaceTheme ?? '',
@@ -90,13 +92,16 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
         store.provideSpaceAppearance(appearance);
       }),
     );
-    setSettings(record({ defaultThemeId: '' }));
-    await flush();
+    const settingsArrive = async (fields: Record<string, unknown> = { defaultThemeId: '' }) => {
+      setSettings(record(fields));
+      await flush();
+    };
+    if (!options.settingsLate) await settingsArrive();
     if (options.space) {
       setCurrent({ id: 'space', name: 'Space', handle: handles.space });
       await flush();
     }
-    return { store, setCurrent, appearance, setSpaceRecord, setOnScreen };
+    return { store, setCurrent, appearance, setSpaceRecord, setOnScreen, settingsArrive };
   }
 
   beforeEach(async () => {
@@ -283,6 +288,27 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
       setCurrent(null);
       await flush();
       expect(store.currentThemeId()).not.toBe('retro');
+    });
+
+    it('keeps the space’s theme when the agent’s settings arrive after they entered it', async () => {
+      const { store, settingsArrive } = await mount({ space: true, spaceTheme: 'retro', settingsLate: true });
+      expect(store.currentThemeId()).toBe('retro');
+      await settingsArrive({ defaultThemeId: 'cyberpunk' });
+      expect(store.currentThemeId()).toBe('retro');
+    });
+
+    it('wears a new default of the agent’s in a space that follows it, and outside any space', async () => {
+      const { store, setCurrent, appearance, settingsArrive } = await mount({ space: true, spaceTheme: 'retro' });
+      await appearance.setOverride('space', 'theme', AGENT_DEFAULT);
+      await flush();
+      await settingsArrive({ defaultThemeId: 'cyberpunk' });
+      expect(store.currentThemeId()).toBe('cyberpunk');
+      await settingsArrive({ defaultThemeId: 'dark' });
+      expect(store.currentThemeId()).toBe('dark');
+      setCurrent(null);
+      await flush();
+      await settingsArrive({ defaultThemeId: 'retro' });
+      expect(store.currentThemeId()).toBe('retro');
     });
 
     it('lets a template on screen bring its theme, unless it is the space’s own pair', async () => {

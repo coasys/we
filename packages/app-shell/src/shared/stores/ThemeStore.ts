@@ -763,6 +763,11 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   const themeScope = memo<'global' | 'scoped'>(() => themeScopeOverride() ?? themeScopePreference());
   // Space theme data for the template content area — only populated in scoped mode.
   const [editingTheme, setEditingTheme] = signal<EditingTheme | null>(null);
+  /**
+   * The spaces' records and this agent's overrides, lent by the space store once it exists. Declared
+   * ahead of the effects, since the one applying the agent's default reads it.
+   */
+  const [appearance, setAppearance] = signal<SpaceAppearance | null>(null);
 
   // ── History (delegated to the unified EditorStore history) ──
 
@@ -923,10 +928,16 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   // explicitly changes their default theme. Guard against re-firing on unrelated
   // settings changes (e.g. currentTemplateId updates from template switches), which
   // would otherwise reset the theme to defaultThemeId mid-session.
+  //
+  // Only outside a space. In one, which theme applies is the space resolution's to say (below), and
+  // the agent's default reaches it there as the resolution's last word. Applied in a space as well,
+  // settings arriving after the agent had entered one put their default over the space's theme, and
+  // the resolution, seeing its own answer unchanged, never put it back.
   let lastAppliedDefaultThemeId: string | undefined;
   effect(() => {
     const prefs = datasetStore.agentSettings();
     if (!prefs) return;
+    if (appearance() && datasetStore.currentDataset()) return;
     const defaultId = agentDefaultThemeId();
     // Don't override currentThemeId while the user is actively editing a theme —
     // agentSettings can update (e.g. when a theme save triggers the backend's subscriptions)
@@ -1842,8 +1853,6 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   // The theme a space is seen in
   // ────────────────────────────────────────────────────────────────
 
-  /** The spaces' records and this agent's overrides, lent by the space store once it exists. */
-  const [appearance, setAppearance] = signal<SpaceAppearance | null>(null);
   const overrideFor = (datasetId: string): SpaceOverride =>
     appearance()?.overrideFor(datasetId) ?? { template: FOLLOW_SPACE, theme: FOLLOW_SPACE };
 
