@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Screen, StepInput } from './screens';
 
-const confirm = (error: string | null = null): Screen => ({
+const confirm = (error: string | null = null, rotate = false): Screen => ({
   screen: 'revoke-confirm',
   keyId: 'd2',
   name: null,
   mayHoldMaster: false,
-  rotate: false,
+  rotate,
   passphrase: true,
   error,
 });
@@ -206,6 +206,35 @@ describe('the revoke confirm screen', () => {
       name: 'Desk',
       since: new Date(2026, 10, 20, 8, 0).getTime(),
     });
+  });
+});
+
+describe('"Also replace master key"', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const note = () =>
+    Array.from(document.querySelectorAll<HTMLElement>('p.note')).find((p) =>
+      p.textContent?.includes('recovery phrase next'),
+    )!;
+
+  it('says the recovery phrase comes next only while it is ticked', async () => {
+    await openOn([]);
+    const rotate = document.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    expect(rotate.checked).toBe(false);
+    expect(note().hidden).toBe(true);
+
+    rotate.checked = true;
+    rotate.dispatchEvent(new Event('change'));
+    expect(note().hidden).toBe(false);
+
+    rotate.checked = false;
+    rotate.dispatchEvent(new Event('change'));
+    expect(note().hidden).toBe(true);
+  });
+
+  it('says it from the start on a screen sent with it ticked', async () => {
+    await openOn([], confirm(null, true));
+    expect(note().hidden).toBe(false);
   });
 });
 

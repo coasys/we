@@ -471,14 +471,18 @@ function body(screen: Screen): Child[] {
           p ? [p.input] : [],
         );
       };
+      // What replacing the master key adds, said only while it is ticked: unticked, no phrase is asked.
+      const rotateNote = el('p', {
+        className: 'note',
+        textContent:
+          "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
+      });
+      rotateNote.hidden = !rotate.checked;
+      rotate.addEventListener('change', () => (rotateNote.hidden = !rotate.checked));
       return [
         since.label,
         el('label', { className: 'check' }, rotate, 'Also replace master key'),
-        el('p', {
-          className: 'note',
-          textContent:
-            "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
-        }),
+        rotateNote,
         ...(p ? [p.label] : []),
         problem.line,
         el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
