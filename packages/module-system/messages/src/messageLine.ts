@@ -596,6 +596,49 @@ export function messageLine(opts: {
                       },
                     },
                   },
+                  /*
+                    The files sent with it — a line of the transcript has none, and draws nothing.
+
+                    Named and sized from what the line read, and no more: the bytes of a stored file are
+                    not held with the line (a long page of attachments would be all of them in memory).
+                    The host fetches them when the button is pressed. Until the write has stored the
+                    file (no id yet) there is nothing to fetch, and it is only named.
+                  */
+                  {
+                    type: '$each',
+                    props: { items: { $: `${as}.attachments ?? []` }, as: 'file' },
+                    children: [
+                      {
+                        type: 'Row',
+                        props: { gap: '200', ay: 'center' },
+                        children: [
+                          { type: 'we-icon', props: { name: 'paperclip', color: 'text-muted', size: 'sm' } },
+                          { type: 'we-text', props: { truncate: true }, children: [{ $: 'file.name' }] },
+                          {
+                            type: 'we-text',
+                            props: { variant: 'footnote', color: 'text-muted' },
+                            children: [{ $: 'file.sizeLabel' }],
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: 'file.id' },
+                              then: {
+                                type: 'we-button',
+                                props: {
+                                  size: 'xs',
+                                  variant: 'ghost',
+                                  label: 'Save file',
+                                  onClick: { $invoke: 'spaceStore.saveFileBlock', args: [{ $: 'file.id' }] },
+                                },
+                                children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
+                              },
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
                 ],
               },
             },
