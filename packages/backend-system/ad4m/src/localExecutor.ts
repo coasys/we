@@ -133,7 +133,11 @@ export function createLocalAd4mConnector(
         }),
         connection: {
           port: Number(remote.port) || (remote.protocol === 'https:' ? 443 : 80),
-          token: session.token(),
+          // A getter, because the session renews its token about hourly: whoever reads this later
+          // (the embed bridge, handing it to a hosted app) gets the current one.
+          get token() {
+            return session.token();
+          },
           url: session.address,
         },
         host: { id: session.address, name, url: session.address },

@@ -978,6 +978,24 @@ describe('the desktop connector, with a server chosen', () => {
     expect(view.problem).toBe("Can't use home, so this computer is in use. The host didn't let you sign in.");
   });
 
+  it('hands over the token in force when it is read, not the one the session started with', async () => {
+    vi.useFakeTimers();
+    try {
+      const server = fakeServer();
+      const result = await connector(server, fakeHost([{ address: ADDRESS, name: 'home' }], ADDRESS)).initialize(ctx);
+      const first = result.connection.token;
+
+      // The session renews five minutes before the hour is up; the embed bridge reads after that.
+      server.advance(3300);
+      await vi.advanceTimersByTimeAsync(3300 * 1000);
+
+      expect(result.connection.token).not.toBe(first);
+      expect(result.connection.token).toBe(server.clients.at(-1)?.token?.());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('gives an agent the server serves no settings of the server', async () => {
     const result = await connector(
       fakeServer({ role: 'tenant' }),

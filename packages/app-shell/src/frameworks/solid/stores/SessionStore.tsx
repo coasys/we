@@ -33,7 +33,7 @@ import {
   useContext,
 } from 'solid-js';
 
-import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
+import type { BackendAccountInfo, BackendConnectionDetails, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
@@ -267,7 +267,11 @@ export function SessionStoreProvider(props: ParentProps) {
   const [lifecycle, setLifecycle] = createSignal<DatasetLifecyclePort | null>(null);
   const [me, setMe] = createSignal<SessionIdentity | undefined>(undefined);
   const [port, setPort] = createSignal<number | undefined>(undefined);
-  const [token, setToken] = createSignal<string | undefined>(undefined);
+  // The connection details as the connector handed them over, kept whole rather than copied out:
+  // a connector whose token renews defines `token` as a getter (see BackendConnectionDetails), so
+  // `token()` reads it each time it is asked and an embedded app never gets a token that has expired.
+  const [connectionDetails, setConnectionDetails] = createSignal<BackendConnectionDetails | undefined>(undefined);
+  const token = (): string | undefined => connectionDetails()?.token;
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
   const [isGuest, setIsGuest] = createSignal(false);
   const [identityCapabilities, setIdentityCapabilities] = createSignal(NO_IDENTITY_CAPABILITIES);
@@ -413,7 +417,7 @@ export function SessionStoreProvider(props: ParentProps) {
         // flush effect reads all three), so url must be in place before port/token trigger it.
         if (connection.url) setServerUrl(connection.url);
         setPort(connection.port);
-        setToken(connection.token);
+        setConnectionDetails(connection);
       }
 
       trace('boot', 'connected', {
