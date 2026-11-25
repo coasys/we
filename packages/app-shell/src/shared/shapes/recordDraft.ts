@@ -405,6 +405,36 @@ export function withPlace(draft: RecordDraft, detail: unknown): RecordDraft | nu
 }
 
 /**
+ * A place a `we-location-picker` reports, as the fields of a location record still to be made inline
+ * for a relation — and the chip's label — or `null` when the detail is not a place.
+ *
+ * Only what the target declares: a picker reporting a field the model lacks is not a write. The entry's
+ * `existing` fields are kept beneath, so a name the author typed survives moving the pin; otherwise the
+ * place names itself after its city or address. With no name at all, the label is the coordinate.
+ */
+export function placeEntry(
+  target: EntitySchema,
+  existing: Record<string, unknown> | undefined,
+  detail: unknown,
+): { fields: Record<string, unknown>; label: string } | null {
+  if (!detail || typeof detail !== 'object') return null;
+  const picked = detail as Record<string, unknown>;
+  if (typeof picked.latitude !== 'number' || typeof picked.longitude !== 'number') return null;
+
+  const fields: Record<string, unknown> = { ...(existing ?? {}) };
+  for (const key of ['latitude', 'longitude', 'city', 'country', 'countryCode', 'address']) {
+    if (target.properties[key] && picked[key] !== undefined) fields[key] = picked[key];
+  }
+  if (target.properties.name && !(typeof fields.name === 'string' && fields.name.trim())) {
+    const named = picked.city ?? picked.address;
+    if (typeof named === 'string' && named) fields.name = named;
+  }
+  const label =
+    (typeof fields.name === 'string' && fields.name) || `${picked.latitude.toFixed(4)}, ${picked.longitude.toFixed(4)}`;
+  return { fields, label };
+}
+
+/**
  * What is stopping this draft being saved.
  *
  * Only the checks the declaration actually supports. A `required` property with nothing in it is

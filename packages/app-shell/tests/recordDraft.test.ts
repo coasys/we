@@ -13,6 +13,7 @@ import {
   entryLabel,
   fieldsFor,
   humanise,
+  placeEntry,
   recordDraftChanged,
   recordDraftErrors,
   recordDraftFields,
@@ -343,5 +344,36 @@ describe('starting values and controls', () => {
   it('picks an icon with the icon picker, and a closed vocabulary with a select', () => {
     expect(controlFor({ type: 'string', control: 'icon' })).toBe('icon');
     expect(controlFor({ type: 'string', options: ['info', 'warning'] })).toBe('select');
+  });
+});
+
+describe('placeEntry', () => {
+  const location = {
+    properties: {
+      latitude: { type: 'number' },
+      longitude: { type: 'number' },
+      city: { type: 'string' },
+      name: { type: 'string' },
+    },
+    relations: {},
+  } as unknown as EntitySchema;
+
+  it('takes only the fields the target declares, and names the place after its city', () => {
+    expect(placeEntry(location, undefined, { latitude: 1, longitude: 2, city: 'Oslo', countryCode: 'NO' })).toEqual({
+      fields: { latitude: 1, longitude: 2, city: 'Oslo', name: 'Oslo' },
+      label: 'Oslo',
+    });
+  });
+
+  it('keeps a name the author typed when the pin moves, and labels a nameless place by its coordinate', () => {
+    expect(placeEntry(location, { name: 'Cabin' }, { latitude: 1, longitude: 2, city: 'Oslo' })?.label).toBe('Cabin');
+    expect(
+      placeEntry({ properties: {}, relations: {} } as never, undefined, { latitude: 1, longitude: 2 })?.label,
+    ).toBe('1.0000, 2.0000');
+  });
+
+  it('is not a place without both coordinates', () => {
+    expect(placeEntry(location, undefined, { latitude: 1 })).toBeNull();
+    expect(placeEntry(location, undefined, 'Oslo')).toBeNull();
   });
 });
