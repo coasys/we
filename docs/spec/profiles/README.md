@@ -29,13 +29,13 @@ template can rely on, never how a host is built.
 
 ## The profiles
 
-| Profile                                       | What it covers                                                                                                                                     |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`navigation`](members.md#navigation)         | The address and moving around it: the path, its query, the person's spaces, the sections of the one on screen.                                     |
-| [`view-state`](members.md#view-state)         | What is on screen and never stored in a space: the panels a template declared, the theme shown, named clocks.                                      |
-| [`presence`](members.md#presence)             | Who else is in the space right now, and what this person says about themselves to them.                                                            |
-| [`identity`](members.md#identity)             | Who people are, as their profiles say: the person viewing, the people of the space, anybody named by a DID, and whom the person viewing has muted. |
-| [`space-settings`](members.md#space-settings) | The space a template is drawn in and what a template may change about it: its look, its defaults, what this person sees.                           |
+| Profile                                       | What it covers                                                                                                                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`navigation`](members.md#navigation)         | The address and moving around it: the path, its query, the person's spaces, the sections of the one on screen.                                                             |
+| [`view-state`](members.md#view-state)         | What is on screen and never stored in a space: the panels a template declared, the theme shown, named clocks.                                                              |
+| [`presence`](members.md#presence)             | Who else is in the space right now, and what this person says about themselves to them.                                                                                    |
+| [`identity`](members.md#identity)             | Who people are, as their profiles say: the person viewing, the people of the space, anybody named by a DID, and whom the person viewing has muted and what they have read. |
+| [`space-settings`](members.md#space-settings) | The space a template is drawn in and what a template may change about it: its look, its defaults, what this person sees.                                                   |
 
 The listing in [Members](members.md) and [`profiles.json`](profiles.json) is normative; the
 descriptions in it are part of each member's meaning.

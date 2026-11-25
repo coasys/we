@@ -9,7 +9,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 | [Navigation](#navigation) | 1.0.0 | 12 |
 | [View state](#view-state) | 1.0.0 | 21 |
 | [Presence](#presence) | 1.0.0 | 7 |
-| [Identity](#identity) | 1.0.0 | 5 |
+| [Identity](#identity) | 1.0.0 | 6 |
 | [Space settings](#space-settings) | 1.0.0 | 11 |
 
 ## navigation
@@ -119,7 +119,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## identity
 
-**Identity, version 1.0.0.** Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted. Profiles only — never keys, devices or accounts.
+**Identity, version 1.0.0.** Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.
 
 ### State
 
@@ -130,6 +130,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 | `profileStore.profiles` | `AgentProfileSummary[]` | `identity` | `profiles` | Every profile the host holds, each { did, name, firstName, lastName, handle, bio, avatar, coverImage, location }. Look one up by DID; `$agent` asks for one the host does not hold yet. |
 | `spaceStore.memberDids` | `string[]` | `identity` | `members` | The DIDs of everybody in the space on screen, the viewing person included. |
 | `spaceStore.mutedDids` | `string[]` | `content` | `muted` | The DIDs the viewing person has muted, in every space. Theirs alone: a template hides what these people wrote on this person’s screen, and nothing is removed for anybody else. |
+| `spaceStore.readMarkers` | `{ nodeId: string, lastReadAt: string }[]` | `content` | `read` | When the viewing person last read each node, one row per node they have opened, in every space. Theirs alone, like the mute list. No row means never read. A list rather than a map keyed by node id: find the row with find(spaceStore.readMarkers, { nodeId: … }). |
 
 ### Events
 
@@ -138,6 +139,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 | `profiles` | `profileStore.ownProfile`, `profileStore.ownProfileLoaded`, `profileStore.profiles` | A profile arrived or changed. |
 | `members` | `spaceStore.memberDids` | Somebody joined or left the space on screen, or a different space is on screen. |
 | `muted` | `spaceStore.mutedDids` | The viewing person muted or unmuted somebody. |
+| `read` | `spaceStore.readMarkers` | The viewing person opened a node, so its read marker moved forward. |
 
 ## space-settings
 

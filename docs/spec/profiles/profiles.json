@@ -689,7 +689,7 @@
       "id": "identity",
       "version": "1.0.0",
       "title": "Identity",
-      "description": "Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted. Profiles only — never keys, devices or accounts.",
+      "description": "Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.",
       "members": [
         {
           "path": "profileStore.ownProfile",
@@ -740,6 +740,16 @@
           "events": [
             "muted"
           ]
+        },
+        {
+          "path": "spaceStore.readMarkers",
+          "kind": "state",
+          "group": "content",
+          "shape": "{ nodeId: string, lastReadAt: string }[]",
+          "description": "When the viewing person last read each node, one row per node they have opened, in every space. Theirs alone, like the mute list. No row means never read. A list rather than a map keyed by node id: find the row with find(spaceStore.readMarkers, { nodeId: … }).",
+          "events": [
+            "read"
+          ]
         }
       ],
       "events": [
@@ -765,6 +775,13 @@
             "spaceStore.mutedDids"
           ],
           "description": "The viewing person muted or unmuted somebody."
+        },
+        {
+          "name": "read",
+          "changes": [
+            "spaceStore.readMarkers"
+          ],
+          "description": "The viewing person opened a node, so its read marker moved forward."
         }
       ]
     },

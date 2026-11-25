@@ -508,7 +508,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     version: '1.0.0',
     title: 'Identity',
     description:
-      'Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted. Profiles only — never keys, devices or accounts.',
+      'Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.',
     members: [
       {
         path: 'profileStore.ownProfile',
@@ -554,6 +554,15 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
           'The DIDs the viewing person has muted, in every space. Theirs alone: a template hides what these people wrote on this person’s screen, and nothing is removed for anybody else.',
         events: ['muted'],
       },
+      {
+        path: 'spaceStore.readMarkers',
+        kind: 'state',
+        group: 'content',
+        shape: '{ nodeId: string, lastReadAt: string }[]',
+        description:
+          'When the viewing person last read each node, one row per node they have opened, in every space. Theirs alone, like the mute list. No row means never read. A list rather than a map keyed by node id: find the row with find(spaceStore.readMarkers, { nodeId: … }).',
+        events: ['read'],
+      },
     ],
     events: [
       {
@@ -570,6 +579,11 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         name: 'muted',
         changes: ['spaceStore.mutedDids'],
         description: 'The viewing person muted or unmuted somebody.',
+      },
+      {
+        name: 'read',
+        changes: ['spaceStore.readMarkers'],
+        description: 'The viewing person opened a node, so its read marker moved forward.',
       },
     ],
   },
