@@ -116,6 +116,18 @@ export interface PropertySchema {
    * live. Absent means "whatever the type implies", which is right for most properties.
    */
   control?: 'textarea' | 'date' | 'datetime' | 'color' | 'url' | 'icon';
+
+  /**
+   * The names this property answers to in vocabularies other apps share, by vocabulary:
+   * `{ TextContent: 'text' }` says this is the record's text to any reader of text, whatever WE calls
+   * it here. A backend that has such shared vocabularies maps the property into them; one that has
+   * none ignores it.
+   *
+   * What it is for is a reader that knows nothing of WE. A collection's `textContent` is the words of
+   * its parts, so a message read by a generic transcript or a mention watcher is read as one thing
+   * with its words, rather than not at all.
+   */
+  alias?: Record<string, string>;
 }
 
 /**
@@ -683,6 +695,7 @@ const propertySchema = z.object({
   identity: z.boolean().optional(),
   options: z.array(z.union([z.string(), z.number()])).optional(),
   control: z.enum(['textarea', 'date', 'datetime', 'color', 'url', 'icon']).optional(),
+  alias: z.record(z.string(), z.string()).optional(),
 });
 const relationSchema = z.object({
   target: z.string(),

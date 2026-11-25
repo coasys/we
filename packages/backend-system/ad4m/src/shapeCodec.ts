@@ -320,6 +320,8 @@ interface RawProperty {
   transform?: unknown;
   interpretation_hint?: string;
   identity?: boolean;
+  /** `{ abstractClass: name }`, from one `ad4m://alias` link. */
+  alias?: Record<string, string>;
   target_class_name?: string;
   in?: unknown;
 }
@@ -473,6 +475,7 @@ export function readShape({ shape, links }: HeldShape): ReadShape | null {
       ...(defaultLink !== undefined ? { default: decode(defaultLink) as string | number | boolean | null } : {}),
       ...(raw.interpretation_hint !== undefined ? { interpretationHint: raw.interpretation_hint } : {}),
       ...(raw.identity ? { identity: true } : {}),
+      ...(raw.alias && Object.keys(raw.alias).length ? { alias: { ...raw.alias } } : {}),
       ...(options !== undefined ? { options: options as (string | number)[] } : {}),
       ...(value(node, ANNOTATION.vocabulary) !== undefined
         ? { vocabulary: value(node, ANNOTATION.vocabulary) as string }

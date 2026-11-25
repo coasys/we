@@ -206,6 +206,9 @@ export function buildEntityFromEntry(
         // exactly the path TaskBlock's do.
         ...(p.interpretationHint !== undefined ? { interpretationHint: p.interpretationHint } : {}),
         ...(p.identity ? { identity: true } : {}),
+        // Which shared vocabularies this property answers in: AD4M's abstract classes read a
+        // record through the alias (`TextContent`'s `text` through `textContent`).
+        ...(p.alias ? { alias: p.alias } : {}),
         // The closed value set, written as `sh:in`. Entries only carry this where the property has
         // no `vocabulary` — the suppression lives in the projection (see options.ts).
         ...(p.options !== undefined ? { options: p.options } : {}),
@@ -315,6 +318,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
             ...(spec.default !== undefined ? { default: spec.default } : {}),
             ...(spec.interpretationHint !== undefined ? { interpretationHint: spec.interpretationHint } : {}),
             ...(spec.identity ? { identity: true } : {}),
+            ...(spec.alias && Object.keys(spec.alias).length ? { alias: { ...spec.alias } } : {}),
             ...(options !== undefined ? { options } : {}),
             // datetime/json have no SHACL datatype of their own — stored as strings, like the
             // hand-written models store timestamps.

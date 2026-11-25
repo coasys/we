@@ -127,7 +127,22 @@ export const CollectionBlock: CoreEntityDef = {
       // A composed document — a post, a note. A feed (a call, a channel) has no stored document;
       // its content is its children.
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
-      textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      /**
+       * The words of the children, for search, preview, and any reader that knows nothing of blocks.
+       *
+       * Answers as `text` in the shared vocabulary of text, so a generic transcript reader or a
+       * mention watcher reads a message as one thing with its words — under its own id, in its own
+       * place — rather than finding only its text block, a part, one level down.
+       */
+      textContent: { type: 'string', predicate: 'we://text_content', default: '', alias: { TextContent: 'text' } },
+      /**
+       * How a message arrived: `'typed'`, `'spoken'` (what a microphone heard) or `'corrected'` (spoken,
+       * then edited by its speaker). The same word and predicate as `TextBlock.source`, set on the
+       * message rather than on its parts because it is a fact about the whole line — readers filter
+       * and draw by it (spoken text is drawn as said, never parsed as markdown). Empty on everything
+       * that is not a message, and on a message a bot or another app wrote.
+       */
+      source: { type: 'string', predicate: 'we://text_source', options: ['spoken', 'typed', 'corrected'], default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
       // ── Provenance ────────────────────────────────────────────────────────────────────
       // A post brought in from another space.
