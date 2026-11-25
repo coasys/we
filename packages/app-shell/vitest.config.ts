@@ -65,6 +65,7 @@ const SOLID_TESTS = [
   'tests/recordCanvas.test.ts',
   'tests/recordTree.test.ts',
   'tests/recordForms.test.ts',
+  'tests/recordDrops.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',

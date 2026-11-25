@@ -484,7 +484,7 @@ export function createWorkflowStore(deps: WorkflowStoreDeps): WorkflowStore {
    * The property that names a record of each of the space's models. A model the space adopted is named
    * as it declares (`namePropertyOf` reads `display.title` first), and wins over the foreign snapshot,
    * which carries no declaration and so only ever gives the guess — the same precedence as
-   * `RecordStore.schemaFor`.
+   * `kindSchemaOf` (`shared/shapes/creatableKinds.ts`).
    */
   const nameProperties = memo(() => {
     const out = new Map<string, string>();

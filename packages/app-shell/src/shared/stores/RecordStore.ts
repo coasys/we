@@ -8,12 +8,20 @@
  * a wizard whose draft is a list of field declarations has nothing in common with a form whose
  * draft is a list of values.
  *
- * ## Why the draft lives in a store rather than in `$localState`
+ * ## Its parts
  *
- * Because the fields come from data. `$localState` names are fixed when a template is written, so a
- * form over a model chosen at runtime has no names to declare, and no `$setLocal` can address a
- * field nobody knew about. That is the same wall the shape wizard hit, and it is why `shapeDraft`
- * sits in a store too — not a preference about where state goes.
+ * Templates read one `recordStore`; behind it are six jobs, each a factory of its own in
+ * `./records/`, composed here:
+ *
+ * - **kinds** — what can be made and shown here, how each is laid out, and the space's key over that.
+ * - **connections** — a line drawn before its write lands, and the dedup key every connection carries.
+ * - **canvas** — where each card sits and how it looks, routes, cards taken off, and the undo history.
+ * - **tree** — a card dragged within a canvas read as a hierarchy, written as the structure it means.
+ * - **forms** — the draft of a record being made, and the records filled in inline for its relations.
+ * - **drops** — something dragged in from elsewhere, copied or quoted into the space on screen.
+ *
+ * What is left here is the one surface over them, where content lives (lent by the space store), and
+ * an inspector's edit of one field.
  *
  * ## Why it does not create posts
  *
@@ -22,26 +30,22 @@
  * A surface that offers both should offer the composer for that case and this for the rest — one
  * entry point, two bodies. Folding a document editor into a generated form would serve neither.
  */
-import { datasetIdOf, datasetKey, datasetKindOf, formatRef, HERE } from '@we/backend-shared';
-import { copyableContent, createBlock, deleteBlocks, writePost } from '@we/block-shared';
-import { CollectionBlock } from '@we/entities';
-import { type HistoryState } from '@we/history';
+import type { HistoryState } from '@we/history';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../bringIn';
+import { type BringInItem } from '../bringIn';
 import type { PendingConnectionWrites } from '../canvas/connectionHolds';
 import { hostSlot } from '../hostSlot';
-import { notifyCopiedIn } from '../registries/moduleHostServices';
 import { type CreatableEntity } from '../shapes/creatableKinds';
 import { type TypePresentation } from '../shapes/presentation';
-import { type RecordDisplay } from '../shapes/recordDisplay';
+import { fieldEditValue, type RecordDisplay } from '../shapes/recordDisplay';
 import { type RecordDraft } from '../shapes/recordDraft';
 import { type Spine } from '../sources/treeSpines';
 import type { Toasts } from '../toasts';
-import type { AppDataset } from './DatasetStore';
 import { createRecordCanvas } from './records/canvas';
 import { createRecordConnections } from './records/connections';
 import { operationRunner, type RecordDatasets, RELATIONSHIP } from './records/context';
+import { createRecordDrops } from './records/drops';
 import { createRecordForms } from './records/forms';
 import { createRecordKinds } from './records/kinds';
 import { createRecordTree } from './records/tree';
@@ -577,7 +581,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const context = { reactivity, toasts, sessionStore: session, datasetStore, runOp };
 
   const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
-  const { creatableEntities, displays, schemaFor, titleField } = kinds;
+  const { creatableEntities, displays, titleField } = kinds;
   const connections = createRecordConnections({ ...context, kinds });
   const { pendingConnections, observeConnections, rekeyConnection } = connections;
 
@@ -587,152 +591,16 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     canvas ? (contentHomes.get()?.forCanvas(canvas) ?? canvas) : contentHomes.get()?.root() || undefined;
 
   const onCanvas = createRecordCanvas({ ...context, connections, contentHome });
-  const { placeOnCanvas, retargetOnCanvas } = onCanvas;
   const tree = createRecordTree({ ...context, shapeStore: deps.shapeStore, kinds, connections, canvas: onCanvas });
   const forms = createRecordForms({ ...context, kinds, connections, canvas: onCanvas, contentHome });
-
-  async function dropOnCanvas(
-    canvas: string,
-    payload: { entity: string; id: string; dataset?: string; x: number; y: number },
-  ): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !canvas || !payload?.id || !payload.entity) return;
-    // The same spelling a stored reference uses for this dataset, so a row gathered here and dragged
-    // back out compares equal to the space it came from.
-    const here = datasetKey({ cid: dataset.sharedUri, uuid: dataset.id });
-    const from = payload.dataset ?? '';
-    if (from && from !== HERE && from !== here) {
-      /*
-        Something from elsewhere becomes a post here first — a copy or a quote, the rule every drop
-        into a space follows — and that post is what goes on the canvas. A canvas can only draw this
-        space's records, and placing a coordinate for a record in another dataset drew nothing.
-
-        A single block is brought in *alone* — a copy of the picture, or a lone embed — and belongs to
-        the canvas the way a card composed on it does. A post holding one picture was a card around
-        nothing. A whole post or note still arrives as a post.
-      */
-      const brought = await bringOne(
-        { ...payload, ref: { entity: payload.entity, id: payload.id, dataset: from } },
-        { canvas },
-      );
-      /*
-        `writePlacement` rather than `placeOnCanvas`, so this leaves no undo entry.
-
-        Bringing something in from another space *creates* a record here, and the canvas history is
-        arrangement only — an entry for it would undo by removing the placement, which leaves the new
-        record behind, loose and usually parked back in the corner by the tray. The act already has
-        its own way back: `bringOne` raises a toast with Undo that deletes what it made.
-      */
-      if (brought) await onCanvas.writePlacement(canvas, brought.id, brought.entity, payload.x, payload.y);
-      return;
-    }
-    if (!schemaFor(payload.entity)) {
-      toasts.error('That is not something a canvas can hold.');
-      return;
-    }
-    // A record that is already in this space is only being *placed*, which is an arrangement act
-    // like a drag — so it is undoable, and undoing it takes the card off the canvas again.
-    await placeOnCanvas(canvas, payload.id, payload.entity, payload.x, payload.y);
-  }
-
-  /** The dataset a reference's key names, if this agent holds it. */
-  function heldDataset(key: string): AppDataset | undefined {
-    const id = datasetIdOf(key);
-    if (datasetKindOf(key) === 'personal') return datasetStore.datasets().find((d) => d.id === id);
-    return datasetStore.datasets().find((d) => d.sharedId === id || d.sharedUri === `neighbourhood://${id}`);
-  }
-
-  /**
-   * One dropped thing into the space on screen, with its undo and its announcement.
-   *
-   * The decision is `shared/bringIn.ts`; this is the store's half — reading and writing through the
-   * datasets it holds, and telling modules, since a note shared by dragging is shared as surely as
-   * one shared with the button.
-   */
-  async function bringOne(item: BringInItem, into: { canvas?: string } = {}): Promise<BroughtIn | null> {
-    const here = datasetStore.currentDataset();
-    if (!here) return null;
-    const hereKey = datasetKey({ cid: here.sharedUri, uuid: here.id });
-    try {
-      const result = await decideBringIn(
-        item,
-        {
-          hereKey,
-          me: session.me()?.did,
-          held: (key) => {
-            const ds = heldDataset(key);
-            return ds ? { handle: ds.handle, name: ds.name } : null;
-          },
-          readPost: async (handle, id) => {
-            const post = await CollectionBlock.findOne(handle, { where: { id } });
-            return post ? { author: post.author, editorState: post.editorState } : null;
-          },
-          copyable: (handle, editorState, only) => copyableContent(handle, editorState, only),
-          write: async (blocks, fields) => {
-            const invoker = session.me()?.did;
-            if (!invoker) return null;
-            const home = contentHome();
-            const id = await writePost(here.handle, blocks, {
-              invoker,
-              kind: 'post',
-              fields,
-              ...(home ? { container: home } : {}),
-            });
-            return id ? { id } : null;
-          },
-          // Owned by the canvas, as a card composed on it is — deleting the canvas takes it.
-          writeBlock: into.canvas
-            ? async (block) =>
-                (await createBlock(here.handle, block, {
-                  anchor: {
-                    id: contentHome(into.canvas) ?? into.canvas!,
-                    relation: 'children',
-                    entity: 'CollectionBlock',
-                  },
-                })) ?? null
-            : undefined,
-        },
-        { alone: !!into.canvas },
-      );
-      if (!result) return null;
-
-      // Posts only: a block written alone is not a post that arrived, and a note's share is the note.
-      if (result.entity === 'CollectionBlock') {
-        const to = formatRef({ datasetKey: hereKey, entity: 'CollectionBlock', id: result.id });
-        notifyCopiedIn({ from: result.from, to, mode: result.mode, spaceName: here.name });
-      }
-      const message =
-        result.mode === 'quote' ? 'Quoted here' : result.entity === 'CollectionBlock' ? 'Posted here' : 'Added here';
-      toasts.success(message, 8000, {
-        label: 'Undo',
-        run: () => void deleteBlocks(here.handle, result.id).catch(() => toasts.error('Could not undo that.')),
-      });
-      return result;
-    } catch (error) {
-      console.error('RecordStore: bringing something into the space failed', error);
-      toasts.error('Could not add that here.');
-      return null;
-    }
-  }
-
-  async function bringIn(payload: { items?: BringInItem[] } | undefined): Promise<void> {
-    for (const item of payload?.items ?? []) {
-      if (item?.ref?.entity && item.ref.id) await bringOne(item);
-    }
-  }
+  const drops = createRecordDrops({ ...context, kinds, canvas: onCanvas, contentHome });
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !entity || !id || !field) return;
-    const raw = value !== null && typeof value === 'object' && 'detail' in value ? value.detail : value;
     const kind = displays()[entity]?.fields.find((row) => row.name === field)?.kind;
-    let next: unknown = raw;
-    if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
-    else if (kind === 'boolean') next = Boolean(raw);
-    // An object (a component's event detail, say) is kept as JSON rather than stored as "[object Object]".
-    else if (raw !== null && typeof raw === 'object') next = JSON.stringify(raw);
-    else if (typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') next = String(raw);
-    if (next === undefined || (typeof next === 'number' && Number.isNaN(next))) return;
+    const next = fieldEditValue(kind, value);
+    if (next === undefined) return;
     try {
       await runOp('core.editRecord', { entity, id, fields: { [field]: next } }, dataset.handle);
     } catch (error) {
@@ -749,25 +617,27 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     else if (field === titleField(entity)) await connections.rekeyConnectionsOf(dataset.handle, id);
   }
 
+  /*
+    One surface over the parts. The forms, the tree and the drops hand back public members only, so
+    they are spread; the kinds, the connections and the canvas also lend the other parts what they
+    need, so only their public members are named here.
+  */
   const store: RecordStore = {
+    ...forms,
+    ...tree,
+    ...drops,
     creatableEntities,
-    recordDraft: forms.recordDraft,
-    recordDraftDirty: forms.recordDraftDirty,
     displays,
     kinds: kinds.kinds,
     plumbingClasses: kinds.plumbingClasses,
     provideVocabularies: kinds.provideVocabularies,
-    provideContentHomes: contentHomes.provide,
-    recordErrors: forms.recordErrors,
-    savingRecord: forms.savingRecord,
-    lastCreatedId: forms.lastCreatedId,
-    pendingLink: forms.pendingLink,
-    connectNodesNow: forms.connectNodesNow,
-    openRecordForm: forms.openRecordForm,
-    connectNodes: forms.connectNodes,
-    createOnCanvas: forms.createOnCanvas,
+    setSpaceTypeColor: kinds.setSpaceTypeColor,
+    setSpaceTypePresentation: kinds.setSpaceTypePresentation,
+    pendingConnections,
+    observeConnections,
+    rekeyConnection,
     createCardOnCanvas: onCanvas.createCardOnCanvas,
-    placeOnCanvas,
+    placeOnCanvas: onCanvas.placeOnCanvas,
     dragOnCanvas: onCanvas.dragOnCanvas,
     removeFromCanvas: onCanvas.removeFromCanvas,
     deleteRecords: onCanvas.deleteRecords,
@@ -776,40 +646,15 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     redoCanvas: onCanvas.redoCanvas,
     pendingCardStyle: onCanvas.pendingCardStyle,
     confirmPending: onCanvas.confirmPending,
-    pendingConnections,
-    observeConnections,
     previewCardStyle: onCanvas.previewCardStyle,
     resizeOnCanvas: onCanvas.resizeOnCanvas,
     anchorOnCanvas: onCanvas.anchorOnCanvas,
     rerouteOnCanvas: onCanvas.rerouteOnCanvas,
-    retargetOnCanvas,
-    arrangeOnTree: tree.arrangeOnTree,
+    retargetOnCanvas: onCanvas.retargetOnCanvas,
     setCardStyle: onCanvas.setCardStyle,
     setTypeColor: onCanvas.setTypeColor,
-    setSpaceTypeColor: kinds.setSpaceTypeColor,
-    setSpaceTypePresentation: kinds.setSpaceTypePresentation,
-    dropOnCanvas,
-    bringIn,
+    provideContentHomes: contentHomes.provide,
     updateRecordField,
-    rekeyConnection,
-    setRecordEntity: forms.setRecordEntity,
-    setRecordField: forms.setRecordField,
-    setRecordPlace: forms.setRecordPlace,
-    relationDraft: forms.relationDraft,
-    relationErrors: forms.relationErrors,
-    openRelationForm: forms.openRelationForm,
-    setRelationField: forms.setRelationField,
-    saveRelationForm: forms.saveRelationForm,
-    cancelRelationForm: forms.cancelRelationForm,
-    pickRelation: forms.pickRelation,
-    removeRelationEntry: forms.removeRelationEntry,
-    setRelationLocation: forms.setRelationLocation,
-    setRelationEntryField: forms.setRelationEntryField,
-    addRelationImage: forms.addRelationImage,
-    relationshipKind: forms.relationshipKind,
-    setRelationshipKind: forms.setRelationshipKind,
-    cancelRecordForm: forms.cancelRecordForm,
-    saveRecord: forms.saveRecord,
   };
 
   return store;

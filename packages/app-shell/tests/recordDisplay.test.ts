@@ -2,7 +2,7 @@ import type { EntitySchema } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
-import { displayFor, kindFor, modelLabel } from '../src/shared/shapes/recordDisplay';
+import { displayFor, fieldEditValue, kindFor, modelLabel } from '../src/shared/shapes/recordDisplay';
 
 const sighting: EntitySchema = {
   properties: {
@@ -311,5 +311,17 @@ describe("a node's own relations", () => {
     const event = displayFor({ entity: 'EventBlock', schema: CORE_MANIFEST.entities.EventBlock, authorable: false });
     const relations = event.fields.filter((f) => f.kind === 'relation').map((f) => f.name);
     expect(relations).toEqual(['location']);
+  });
+});
+
+describe('fieldEditValue', () => {
+  it('unwraps a picker’s detail and coerces by the field’s kind', () => {
+    expect(fieldEditValue('number', { detail: '12' })).toBe(12);
+    expect(fieldEditValue('number', '')).toBeUndefined();
+    expect(fieldEditValue('number', 'twelve')).toBeUndefined();
+    expect(fieldEditValue('boolean', 'yes')).toBe(true);
+    expect(fieldEditValue('text', { a: 1 })).toBe('{"a":1}');
+    expect(fieldEditValue('text', 7)).toBe('7');
+    expect(fieldEditValue(undefined, 'kept')).toBe('kept');
   });
 });

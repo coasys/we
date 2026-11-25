@@ -8,7 +8,7 @@
  * registry` while the rows sat in the space. In the Feed, which asks for each extraction target
  * through this kernel inside one `Promise.all`, that one class was the whole feed.
  * `getEntityForDataset` prefers WE's own classes and falls back to the dataset's own — the same
- * lookup the renderer's `$getEntityForDataset` and `RecordStore.entityClass` make — so a module's
+ * lookup the renderer's `$getEntityForDataset` and the record kinds' `entityClass` make — so a module's
  * read sees exactly the classes a template rendering the same space could.
  */
 import type { LivePage as Page, LiveQuery } from '@we/backend-shared';
