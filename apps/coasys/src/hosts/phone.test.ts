@@ -60,7 +60,7 @@ describe('the phone identity source', () => {
     const source = phoneIdentitySource(plugin(), nav(), () => false);
     const view = await source.state();
     expect(view.did).toBe(DID);
-    expect(view.thisDevice).toEqual({ keyId: 'p1', kind: 'phone-app' });
+    expect(view.thisDevice).toEqual({ keyId: 'p1', kind: 'phone-app', form: 'phone' });
   });
 
   /*
