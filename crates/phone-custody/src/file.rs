@@ -40,8 +40,8 @@ pub struct Joined {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
     /// The store the offer that added this phone was at: where its log, inbox and record are.
-    /// Absent in a file a phone wrote before phase 2b, which then uses the store the app is
-    /// built with.
+    /// Absent in a file a phone wrote before it ran its identity through the store, which then
+    /// uses the store the app is built with.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub store: Option<String>,
 }

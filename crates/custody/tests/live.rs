@@ -1649,7 +1649,7 @@ async fn log_ops(node: &Node, did: &str) -> Vec<String> {
         .collect()
 }
 
-/// The holder's side of the phone app's emulator run (`apps/we-mobile`, phase 2a): an identity made
+/// The holder's side of the phone app's emulator run for the device key (`apps/we-mobile`): an identity made
 /// on executor A, an offer for the phone, and the `add` that lists the phone's device key once its
 /// claim matches. The phone is driven by hand or by script meanwhile; this case only waits.
 ///
@@ -1805,13 +1805,14 @@ async fn poll_state<T>(
     }
 }
 
-/// The computers' side of the phone app's phase 2b emulator run (`apps/we-mobile/docs/phase-2b.md`).
+/// The computers' side of the phone app's emulator run for the master key on the phone
+/// (`apps/we-mobile/docs/phase-2b.md`).
 /// Executor A, with this computer's custody service as "Desktop A", makes an identity; the phone
 /// joins it by its offer link and asks for the master key, which A sends; the phone takes it
 /// behind its biometric. Then the phone is the holder: it adds desktop B by the code B shows, B
 /// asks it for the master key, and the phone answers behind its biometric again.
 ///
-/// Skipped unless `CUSTODY_PHONE_2B_DIR` names a folder. The case writes a file there at each
+/// Skipped unless `CUSTODY_PHONE_MASTER_DIR` names a folder. The case writes a file there at each
 /// point the phone takes over and waits for the phone's file after it:
 ///
 /// | writes | the phone then | and writes |
@@ -1824,8 +1825,8 @@ async fn poll_state<T>(
 /// | `b-taken.json` | is done | `done` |
 #[tokio::test(flavor = "multi_thread")]
 async fn a_phone_keeps_the_master_key_and_answers_for_it() {
-    let Ok(out) = std::env::var("CUSTODY_PHONE_2B_DIR").map(PathBuf::from) else {
-        eprintln!("skipped: set CUSTODY_PHONE_2B_DIR (see a_phone_keeps_the_master_key_and_answers_for_it)");
+    let Ok(out) = std::env::var("CUSTODY_PHONE_MASTER_DIR").map(PathBuf::from) else {
+        eprintln!("skipped: set CUSTODY_PHONE_MASTER_DIR (see a_phone_keeps_the_master_key_and_answers_for_it)");
         return;
     };
     let Some((_one, world)) = set_up().await else {

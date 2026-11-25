@@ -46,7 +46,7 @@ import uniffi.we_phone_custody.StoreConfig
  * [MasterKeystoreKey]. Only public keys, the identity's DID, signed statements, match codes and
  * progress come back; nothing here takes or returns a secret.
  *
- * Phase 2a, the device key:
+ * The device key and key login:
  *
  *   status()                        → {keys, identity, pending, protection}
  *   create()                        → {sign, enc, didKey, protection}
@@ -54,7 +54,7 @@ import uniffi.we_phone_custody.StoreConfig
  *   waitJoined({seconds?})          → {progress}
  *   signSession({purpose, executor, url, challenge, grant?}) → {statement, sig}
  *
- * Phase 2b, the identity through the store (every call needs a joined phone):
+ * The identity through the store (every call needs a joined phone):
  *
  *   identityStatus()                → {did, keyId, fingerprint, revoked, masterIndex, protection, store, head, biometrics}
  *   takeMaster()                    → {taken: {did, index, note} | null}      (one prompt)

@@ -17,8 +17,8 @@ import javax.crypto.SecretKeyFactory
  * accepted, and [protectionOf] reports the one it has. The seeds it seals are software keys made
  * in Rust; only this key can be in secure hardware. It needs no user
  * authentication (`setUserAuthenticationRequired(false)`): the phone signs its logins without
- * asking, as a computer's executor does with its own key. The master key, when phase 2b lets a
- * phone keep one, is sealed by a different, biometric-gated key; this one never opens it.
+ * asking, as a computer's executor does with its own key. The master key, when the phone keeps
+ * one, is sealed by a different, biometric-gated key; this one never opens it.
  */
 object KeystoreKey {
   const val ALIAS = "org.coasys.app.device-seeds.v1"
