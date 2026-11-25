@@ -12,12 +12,13 @@
 import { buildRoutes } from '@solid/utils/buildRoutes';
 import { Route, Router, useLocation, useNavigate } from '@solidjs/router';
 import { fireEvent, render, waitFor } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { type SchemaNode, SPACE_ROUTE_DEPTH, SPACE_ROUTE_PATH } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createEffect, onCleanup, type ParentProps } from 'solid-js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createRouteStore, type RouteStore } from '../src/frameworks/solid/stores/RouteStore';
+import { createRouteStore, type RouteStore } from '../src/shared/stores/RouteStore';
 
 const go = (id: string, to: string): SchemaNode => ({
   type: 'button',
@@ -51,7 +52,7 @@ const template: SchemaNode = {
 function mount(): RouteStore {
   let routeStore!: RouteStore;
   function Grab() {
-    routeStore = createRouteStore();
+    routeStore = createRouteStore({ reactivity: solidReactivity });
     return null;
   }
   const stores = () => ({ routeStore }) as never;

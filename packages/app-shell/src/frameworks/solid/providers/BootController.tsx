@@ -15,7 +15,9 @@
  * is already unlocked, and again after login().
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
 import { firstScreen } from '../firstScreen';
@@ -33,7 +35,6 @@ import { createInterpretationStore } from '../stores/InterpretationStore';
 import { createPresenceStore } from '../stores/PresenceStore';
 import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
-import { createRouteStore } from '../stores/RouteStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
 import { createSessionStore } from '../stores/SessionStore';
 import { createShapeStore } from '../stores/ShapeStore';
@@ -51,7 +52,7 @@ export function BootController(props: ParentProps) {
   const backend = useBackend();
 
   // Depends on nothing: the app's address, read by templates, the space store and presence.
-  const routeStore = createRouteStore();
+  const routeStore = createRouteStore({ reactivity: solidReactivity });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
   const clockStore = createClockStore();
   const shellStore = createShellStore({ platform });

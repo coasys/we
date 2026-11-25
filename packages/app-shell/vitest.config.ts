@@ -32,7 +32,9 @@ const SOLID_TESTS = [
   // build, where `createEffect` never runs again — so every count would be 1 and the test would
   // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
   'tests/profileIndex.test.tsx',
-  'tests/routeStore.test.tsx',
+  // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
+  // so the Solid port's effects re-run at all.
+  'tests/routeStore.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',

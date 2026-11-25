@@ -280,6 +280,21 @@ checks) holds them to it:
   not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
   when you add it.
 
+**How a neutral store is written and composed.** `RouteStore` (`app-shell/src/shared/stores/`) is
+the first, and the shape the rest copy:
+
+- The factory takes one object: `reactivity` (the port) and the stores it reads, by the registry's
+  names — `createXStore({ reactivity, sessionStore, datasetStore })`. Nothing is looked up.
+- `BootController` is the composition point. It builds every store once, in dependency order,
+  passing `solidReactivity` and the stores already built; a store needing a later one is lent it
+  through a method afterwards (`provideSpaceLookup`), never by reordering.
+- Components reach the result through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`),
+  the only Solid piece. A second framework writes its own hook over the same composed instances.
+- Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
+  `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
+  for free and the port does not — a signal's `equals`, an updater setter — is written out in the
+  store: an equal write is skipped by comparing first, a function is stored as the value.
+
 A Pattern B package with a neutral core and a Solid binding says which exports are which with
 `"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its
 `./signals` and `./step-words`. Importing a listed export from a neutral place is fine; any other

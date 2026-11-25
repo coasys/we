@@ -123,7 +123,7 @@ const navigate = vi.fn();
  * would be asserting what the route effect made of it.
  */
 const route = vi.hoisted(() => ({ go: (_to: string) => {} }));
-vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
+vi.mock('../src/shared/stores/RouteStore', async () => {
   const { createSignal } = await import('solid-js');
   const [href, setHref] = createSignal('/');
   route.go = setHref;
@@ -263,7 +263,6 @@ import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
-import { createRouteStore } from '../src/frameworks/solid/stores/RouteStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/frameworks/solid/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
@@ -278,6 +277,7 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
+import { createRouteStore } from '../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -301,7 +301,7 @@ function mountShell(): Stores {
   function Shell() {
     const platform = usePlatform();
     const backend = useBackend();
-    const routeStore = createRouteStore();
+    const routeStore = createRouteStore({ reactivity: solidReactivity });
     const shellStore = createShellStore({ platform });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
     // BootController builds it.

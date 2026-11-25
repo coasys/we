@@ -15,9 +15,9 @@ import { createMemoryHistory, MemoryRouter, Route } from '@solidjs/router';
 import { render, waitFor } from '@solidjs/testing-library';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
 import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { RouteStore } from '../src/shared/stores/RouteStore';
 
 /** A stand-in for the store above the overlay, mutable so a test can steer it. */
 const shellMock = {

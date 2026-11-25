@@ -1,8 +1,17 @@
-import { useNavigate } from '@solidjs/router';
+/**
+ * RouteStore — the address on screen, and the way to change it.
+ *
+ * Written against the reactivity port and nothing else, so it runs under any host: the router is
+ * the host's, lent through `setNavigateFunction`, and reports back through `setCurrentPath`.
+ */
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import { resolvePath, SPACE_ROUTE_DEPTH } from '@we/schema-shared';
-import { Accessor, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
-type NavigateFunction = ReturnType<typeof useNavigate>;
+/**
+ * The host router's own navigation: a path (or, for a router that keeps history, a delta) and the
+ * router's options. Typed here rather than taken from a router, so the store names none.
+ */
+export type NavigateFunction = (to: string | number, options?: Record<string, unknown>) => void;
 
 export interface RouteStore {
   // State
@@ -119,13 +128,6 @@ export function resolveNavigation(to: string, here: string, root: number, base?:
 }
 
 /**
- * Query values as a query string, without its `?`. Empty values are left out.
- *
- * `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
- * them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
- * ways, depending on whether a link or `setParam` wrote it. Every reader decodes either form alike.
- */
-/**
  * A query value as the text the address carries. A list is comma-joined, which is what `split()`
  * reads back; an object is written as JSON rather than as "[object Object]".
  */
@@ -136,6 +138,13 @@ function paramText(value: unknown): string {
   return JSON.stringify(value) ?? '';
 }
 
+/**
+ * Query values as a query string, without its `?`. Empty values are left out.
+ *
+ * `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
+ * them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
+ * ways, depending on whether a link or `setParam` wrote it. Every reader decodes either form alike.
+ */
 export function queryString(values: URLSearchParams | Record<string, unknown>): string {
   const search = new URLSearchParams();
   const entries = values instanceof URLSearchParams ? [...values] : Object.entries(values);
@@ -150,32 +159,47 @@ function readParams(search?: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(search ?? window.location.search));
 }
 
-export function createRouteStore(): RouteStore {
-  const [currentPath, setCurrentPathSignal] = createSignal('');
-  const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
+/** Two query records with the same parameters, each holding the same value. */
+function sameParams(a: Record<string, string>, b: Record<string, string>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
+}
+
+/**
+ * The app's route store, built where the host composes its stores.
+ *
+ * Its listener on the browser's history is registered with the owner it is built under, and goes
+ * when that owner is disposed.
+ */
+export function createRouteStore({ reactivity }: { reactivity: ReactivityPort }): RouteStore {
+  const { signal, memo, untrack, onCleanup } = reactivity;
+  const [currentPath, setCurrentPathSignal] = signal('');
+  const [navigateFunction, setNavigateFunction] = signal<NavigateFunction | null>(null);
 
   /** Lend a `navigate`, and take it back again — but only if it is still the one that was lent. */
   function provideNavigate(navigate: NavigateFunction): () => void {
-    setNavigateFunction(() => navigate);
-    return () => setNavigateFunction((current) => (current === navigate ? null : current));
+    setNavigateFunction(navigate);
+    return () => {
+      if (untrack(navigateFunction) === navigate) setNavigateFunction(null);
+    };
   }
+  const [params, writeParams] = signal<Record<string, string>>(readParams());
   /*
-    Equal when every parameter is, so a write that changes nothing wakes nothing. Pressing a card that
-    is already selected writes the same two parameters again, and every reader of `params` — each
-    query naming the selection among them — re-ran and resubscribed for it.
+    Written only when a parameter differs, so a write that changes nothing wakes nothing. Pressing a
+    card that is already selected writes the same two parameters again, and every reader of `params`
+    — each query naming the selection among them — re-ran and resubscribed for it. Compared here
+    rather than left to the signal, because whether an equal write wakes anything is not something
+    the port promises.
   */
-  const [params, setParamsSignal] = createSignal<Record<string, string>>(readParams(), {
-    equals: (a, b) => {
-      const keys = Object.keys(a);
-      return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
-    },
-  });
-  const segments = createMemo(() => currentPath().split('/').filter(Boolean));
-  const page = createMemo(() => {
+  function setParamsSignal(next: Record<string, string>) {
+    if (!sameParams(untrack(params), next)) writeParams(next);
+  }
+  const segments = memo(() => currentPath().split('/').filter(Boolean));
+  const page = memo(() => {
     const id = params().id;
     return id ? `${currentPath()}?${queryString({ id })}` : currentPath();
   });
-  const templateSegments = createMemo(() => {
+  const templateSegments = memo(() => {
     const all = segments();
     return all[0] === 'space' ? all.slice(SPACE_ROUTE_DEPTH) : all;
   });

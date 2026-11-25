@@ -20,6 +20,7 @@
  * either end, as a real browser does at the edge of its session.
  */
 import { render } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 
 // Source-relative, never the package's dist — a sabotage in shared/src is what the vectors see.
 // (The vitest configs that run this also alias @we/schema-shared to src, which is what makes
@@ -30,7 +31,7 @@ import {
   resolveLocalInitial,
   type RouteParamsBinding,
 } from '../../../schema-system/shared/src/index.ts';
-import { createRouteStore, type RouteStore } from '../../src/frameworks/solid/stores/RouteStore';
+import { createRouteStore, type RouteStore } from '../../src/shared/stores/RouteStore';
 
 /** One step of a navigation script. `args` are decoded JSON — see the ops below. */
 export interface NavigationStep {
@@ -127,7 +128,7 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
   // Render mounts once and is left to the test environment's cleanup — same convention as the
   // app-shell suite (each script's store is a fresh mount whose signals stay private).
   render(() => {
-    store = createRouteStore();
+    store = createRouteStore({ reactivity: solidReactivity });
     return null;
   });
   store.setNavigateFunction(((to: string | number, options?: Record<string, unknown>) => {

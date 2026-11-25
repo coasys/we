@@ -15,11 +15,11 @@ import { render, waitFor } from '@solidjs/testing-library';
 import { createSignal, Show } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
-import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { RouteStore } from '../src/shared/stores/RouteStore';
 
 /**
  * Mount the overlay under a key we control, standing in for the main Router's `routeKey`.

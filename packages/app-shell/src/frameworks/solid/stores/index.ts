@@ -1,4 +1,5 @@
 export { type StoreKey, type StoreRegistry, useStore } from './useStore';
+export { type RouteStore, createRouteStore } from '../../../shared/stores/RouteStore';
 export { type AccountStore, createAccountStore } from './AccountStore';
 export { type SessionStore, type BootState, createSessionStore } from './SessionStore';
 export { type DatasetStore, createDatasetStore } from './DatasetStore';
@@ -9,7 +10,6 @@ export { type RecordStore, createRecordStore } from './RecordStore';
 export { type SpaceStore, createSpaceStore } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, createThemeStore } from './ThemeStore';
 export { type TemplateStore, createTemplateStore } from './TemplateStore';
-export { type RouteStore, createRouteStore } from './RouteStore';
 export { type EditorStore, createEditorStore } from './EditorStore';
 export { type AppStore, createAppStore } from './AppStore';
 export { type ClockStore, type ClockView, createClockStore } from './ClockStore';

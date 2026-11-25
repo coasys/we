@@ -34,10 +34,16 @@
  *   <MemoryRouter root={(p) => <ShellRouterRoot store={shellRouteStore}>…</ShellRouterRoot>}>…</MemoryRouter>
  *   // pass shellRouteStore as routeStore in shellStores bag
  */
+import {
+  type NavigateFunction,
+  type NavigateOptions,
+  queryString,
+  resolveNavigation,
+  type RouteStore,
+} from '@shared/stores/RouteStore';
 import { useLocation, useNavigate } from '@solidjs/router';
 import { createEffect, createMemo, createSignal, JSX, onCleanup, onMount, ParentProps, untrack } from 'solid-js';
 
-import { type NavigateOptions, queryString, resolveNavigation, type RouteStore } from './RouteStore';
 import { useStore } from './useStore';
 
 /**
@@ -59,10 +65,10 @@ interface ShellRouteStore extends RouteStore {
 export function createShellRouteStore(): ShellRouteStore {
   const [currentPath, setCurrentPath] = createSignal('/');
   const [search, setSearch] = createSignal('');
-  const [navigateFunction, setNavigateFunction] = createSignal<ReturnType<typeof useNavigate> | null>(null);
+  const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
 
   /** Lend the overlay router's `navigate`, and take it back — see `RouteStore.setNavigateFunction`. */
-  function provideNavigate(navigate: ReturnType<typeof useNavigate>): () => void {
+  function provideNavigate(navigate: NavigateFunction): () => void {
     setNavigateFunction(() => navigate);
     return () => setNavigateFunction((current) => (current === navigate ? null : current));
   }
@@ -78,7 +84,7 @@ export function createShellRouteStore(): ShellRouteStore {
   // needs and what the store's public `navigate` deliberately does not offer.
   function go(to: string | number, options?: Record<string, unknown>) {
     const nav = navigateFunction();
-    if (nav) nav(to as string, options);
+    if (nav) nav(to, options);
     else console.warn('ShellRouteStore: navigate called before router was ready');
   }
 

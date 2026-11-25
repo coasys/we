@@ -10,6 +10,7 @@
  * `{ $: 'spaceStore.x' }`, the store bag (`Stores`) and the template surface list `spaceStore`, and
  * the AI context describes `spaceStore`. One name per store, whichever side reaches for it.
  */
+import type { RouteStore } from '@shared/stores/RouteStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { AccountStore } from './AccountStore';
@@ -25,7 +26,6 @@ import type { InterpretationStore } from './InterpretationStore';
 import type { PresenceStore } from './PresenceStore';
 import type { ProfileStore } from './ProfileStore';
 import type { RecordStore } from './RecordStore';
-import type { RouteStore } from './RouteStore';
 import type { RuntimeStore } from './RuntimeStore';
 import type { SessionStore } from './SessionStore';
 import type { ShapeStore } from './ShapeStore';
