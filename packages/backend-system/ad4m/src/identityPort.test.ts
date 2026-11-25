@@ -144,6 +144,8 @@ describe('the AD4M identity port', () => {
       ['d2', false, null, 2],
       ['d3', false, 4, null],
     ]);
+    // Each device carries the DID its links are authored under, so the shell never builds one.
+    expect(devices.map((d) => d.author)).toEqual(['did:key:z6MkOne', 'did:key:z6MkTwo', 'did:key:z6MkThree']);
   });
 
   it('turns the key log and devices on against an executor that answers', async () => {

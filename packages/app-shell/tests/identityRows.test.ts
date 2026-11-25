@@ -52,10 +52,26 @@ describe('keyLogRows', () => {
 describe('deviceRows', () => {
   it('puts valid keys first and this computer on top, and offers revoke for the others only', () => {
     const rows = deviceRows([
-      { keyId: 'd4', sign: 'z', thisDevice: false, addedSeq: 4, unlinkedSeq: 5, revokedSeq: null },
-      { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 3, unlinkedSeq: null, revokedSeq: null },
-      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: 2, revokedSeq: 3 },
-      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+      { keyId: 'd4', sign: 'z', author: 'did:key:z', thisDevice: false, addedSeq: 4, unlinkedSeq: 5, revokedSeq: null },
+      {
+        keyId: 'd3',
+        sign: 'z',
+        author: 'did:key:z',
+        thisDevice: false,
+        addedSeq: 3,
+        unlinkedSeq: null,
+        revokedSeq: null,
+      },
+      { keyId: 'd2', sign: 'z', author: 'did:key:z', thisDevice: false, addedSeq: 1, unlinkedSeq: 2, revokedSeq: 3 },
+      {
+        keyId: 'd1',
+        sign: 'z',
+        author: 'did:key:z',
+        thisDevice: true,
+        addedSeq: 0,
+        unlinkedSeq: null,
+        revokedSeq: null,
+      },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canUnlink, r.canRevoke])).toEqual([
       ['d1', 'This computer', 'Active', false, false],

@@ -5,7 +5,7 @@
 import { evaluateExpression, parseExpression } from '@we/schema-shared';
 import { describe, expect, it, vi } from 'vitest';
 
-import { deviceDid, selfAcrossDevices } from '../src/shared/selfAcrossDevices';
+import { selfAcrossDevices } from '../src/shared/selfAcrossDevices';
 
 const PERSON = 'did:scid:coasys:1:QmTestPerson';
 const DESKTOP_KEY = 'z6MkTestDesktop';
@@ -15,18 +15,13 @@ const LAPTOP = `did:key:${LAPTOP_KEY}`;
 
 const device = (sign: string, thisDevice: boolean, revokedSeq: number | null = null) => ({
   keyId: sign,
-  sign,
+  // The raw key and the author id are the backend's to relate; the shell reads `author` only.
+  sign: `raw-${sign}`,
+  author: `did:key:${sign}`,
   thisDevice,
   addedSeq: 0,
   unlinkedSeq: null,
   revokedSeq,
-});
-
-describe('deviceDid', () => {
-  it('writes a key-log multikey as the DID a record carries in author', () => {
-    expect(deviceDid(LAPTOP_KEY)).toBe(LAPTOP);
-    expect(deviceDid(LAPTOP)).toBe(LAPTOP);
-  });
 });
 
 describe('selfAcrossDevices', () => {
