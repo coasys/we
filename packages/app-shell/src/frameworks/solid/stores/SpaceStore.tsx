@@ -1,7 +1,7 @@
-import { createBoardActions } from '@shared/boards';
 import { type SpaceAppearance } from '@shared/spaceAppearance';
 import { removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/spaceSync';
 import { createCallExports } from '@shared/stores/space/callExports';
+import { createSpaceContent } from '@shared/stores/space/content';
 import { createSpaceContext } from '@shared/stores/space/context';
 import { createSpaceExtraction } from '@shared/stores/space/extraction';
 import { createSpaceInvolvements } from '@shared/stores/space/involvements';
@@ -10,32 +10,15 @@ import { createSpaceNavigation } from '@shared/stores/space/navigation';
 import { createSpaceRoles } from '@shared/stores/space/roles';
 import { createSpaceList, SPACE_AVATAR_PX } from '@shared/stores/space/spaces';
 import { createSpaceTaskStates } from '@shared/stores/space/taskStates';
-import type { CreatePostOptions, SpaceListEntry, SpaceMetaUpdate } from '@shared/stores/space/types';
+import type { SpaceListEntry, SpaceMetaUpdate } from '@shared/stores/space/types';
 import { createSpaceUnread } from '@shared/stores/space/unread';
 import { createSpaceWrites } from '@shared/stores/space/writes';
 import type { SpaceStore } from '@shared/stores/SpaceStore';
-import { uploadOf } from '@shared/uploadOf';
 import type { AgentProfileSummary } from '@we/backend-shared';
-import type { ContentInput } from '@we/block-shared';
-import {
-  contentHash,
-  decodeEditorState,
-  deleteBlocks,
-  isContentDocument,
-  reconcileBlocks,
-  writePost,
-} from '@we/block-shared';
 import { toastService } from '@we/components/solid';
-import {
-  CollectionBlock,
-  compressImageToFileData,
-  type DatasetProxy,
-  dataURIToFileData,
-  LocationBlock,
-  Space,
-} from '@we/entities';
+import { compressImageToFileData, LocationBlock, Space } from '@we/entities';
 import { solidReactivity } from '@we/reactivity-solid';
-import { createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import { createEffect, createMemo, createSignal } from 'solid-js';
 
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
@@ -144,10 +127,9 @@ export function createSpaceStore(
       spaceViews: () => spaceViews(),
       usesSectionsFor: (uuid) => usesSectionsFor(uuid),
     },
-    ensureBoardFor: (collectionId, dataset) => boards.ensureBoardFor(collectionId, dataset),
+    ensureBoardFor: (collectionId, dataset) => content.members.ensureBoardFor(collectionId, dataset),
   });
-  const { currentSpace, root: spaceRoot, landmarks: spaceLandmarks } = navigation.members;
-  const { reloadSpaceStructure } = navigation;
+  const { currentSpace } = navigation.members;
 
   // Who stands where in each space and what its rules allow, and the write check that holds them.
   const roles = createSpaceRoles({ ...ctx, spaces, navigation });
@@ -184,7 +166,7 @@ export function createSpaceStore(
     writes,
     canAdministerCurrentSpace,
     taskWorkflowLive,
-    addStateToSpaceBoard: (slug, name) => boards.addStateToSpaceBoard(slug, name),
+    addStateToSpaceBoard: (slug, name) => content.members.addStateToSpaceBoard(slug, name),
   });
 
   // Who is on what in each space, and what each person gave.
@@ -197,6 +179,9 @@ export function createSpaceStore(
 
   // What is new to this agent in each space, and who it has muted.
   const unread = createSpaceUnread(ctx);
+
+  // What people make in each space: posts, boards and files, and where content with no other home lives.
+  const content = createSpaceContent({ ...ctx, recordStore, navigation, taskStates, boardOptimism });
 
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each
@@ -230,122 +215,6 @@ export function createSpaceStore(
   };
   templateStore.provideSpaceAppearance(appearance);
   themeStore.provideSpaceAppearance(appearance);
-
-  async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
-    const p = datasetStore.currentDataset()?.handle;
-    const me = session.me()?.did;
-    if (!p || !me) return;
-
-    // The anchor is what makes one action serve every composed artifact. A post has none — it sits
-    // in the space. A message names its channel through `children`; a reply names whatever it
-    // answers through `responses`. Both arrive from a schema as ids, which is all a template
-    // has, and both are `$each`/route values rather than anything the store could derive.
-    // With no anchor named, a post goes in the space collection — the space's top level — rather than
-    // nowhere. Read at the call, not destructured as a default, so a space entered after this store
-    // was built still gets its own.
-    const { kind = 'post', relation = 'children' } = options;
-    const parentId = options.parentId ?? (spaceRoot() || undefined);
-
-    // The action arrives from a schema as unknown; the composer produced it, so it is a content
-    // document. The writes, threading a reply included, are `core.createPost`'s, as an agent's are.
-    return writePost(p, json as ContentInput, {
-      invoker: me,
-      kind,
-      ...(parentId && (relation === 'responses' ? { respondsTo: parentId } : { container: parentId })),
-    });
-  }
-
-  async function updatePost(postId: string, json: unknown): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    const existingRoot = await CollectionBlock.findOne(p, { where: { id: postId } });
-    if (!existingRoot) return;
-    const document = json as ContentInput;
-
-    // Somebody else may have saved this post while it was open here. A peer-to-peer store cannot
-    // refuse the second writer — a write that has not arrived is invisible — so what it can do is
-    // notice: the document carries a hash of the content as loaded, and the stored blob says what
-    // is there now. Their blocks survive the save either way (reconcileBlocks keeps what the author
-    // never loaded); a paragraph both agents edited resolves to whichever write is later, and that
-    // is the one thing worth saying out loud.
-    const loadedHash = isContentDocument(document) ? document.baseHash : undefined;
-    const storedHash = loadedHash ? contentHash(decodeEditorState(existingRoot.editorState) ?? []) : undefined;
-    const changedMeanwhile = !!loadedHash && !!storedHash && loadedHash !== storedHash;
-
-    await reconcileBlocks(p, existingRoot, document);
-
-    if (changedMeanwhile) {
-      toastService.warning(
-        'This post was changed by someone else while you were editing. Your version of anything you both changed was kept.',
-        8000,
-      );
-    }
-  }
-
-  /**
-   * The dataset a board write means: the one named, or the space on screen.
-   *
-   * Named rather than assumed, because a board is not always made where the reader is looking — the
-   * extraction hook runs wherever the election landed. It resolves the same dataset
-   * `interpretCollection` does, which is the one the pass just wrote its records into, so a board
-   * cannot land somewhere its own cards did not.
-   */
-  function datasetFor(uri?: string): DatasetProxy | undefined {
-    if (!uri) return datasetStore.currentDataset()?.handle;
-    return datasetStore.datasets().find((d) => d.sharedUri === uri || d.id === uri)?.handle;
-  }
-
-  /*
-    The board writes, from `@shared/boards`.
-
-    Ten actions over one shape, and what they decide is the board design rather than anything about
-    this store: which list to store, what a drop means, and the invariant that a board's children are
-    columns. They moved out because they are a subsystem rather than because this file is long — the
-    ordering itself is the executor's, so what is left in them is meaning, and meaning reads better
-    beside the rest of its own meaning.
-
-    The store stays their **surface**: a template names `spaceStore.moveCardToColumn`, and where the
-    implementation sits is not a template author's business. Only three things reach outside the
-    module, and they arrive as arguments — which dataset, what the community's states are, and how a
-    failure reaches the person who caused it. `offeredStates` is wrapped rather than passed, since the
-    memo it names is declared further down this file.
-  */
-  const boards = createBoardActions({
-    dataset: datasetFor,
-    invoker: () => session.me()?.did,
-    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
-    // board reports when the data has overtaken it. See that module for why nothing releases on
-    // success.
-    ...boardOptimism.ports,
-    offeredStates: () => taskStates.offeredTaskStates(),
-    notify: (message) => toastService.error(message),
-    landmarksChanged: () => void reloadSpaceStructure(),
-    workflow: taskStates.boardWorkflow,
-    /*
-      A staged suggestion for one property, dropped — see `BoardDeps.resolveSuggestion`. Checked
-      against the proposal list first rather than rejected blind, since a reject on a record with no
-      overlay is refused, and most moves are of cards nobody proposed. Best-effort throughout: the
-      move is the thing that matters, and a suggestion that survives is visible on the card.
-    */
-    resolveSuggestion: async (recordId, property) => {
-      const port = session.backendPorts()?.interpretation;
-      const dataset = datasetStore.currentDataset()?.handle;
-      if (!port || !dataset) return;
-      try {
-        const pending = await port.proposals(dataset);
-        if (!pending.some((proposal) => proposal.id === recordId && property in proposal.values)) return;
-        await port.reject(dataset, recordId, property);
-      } catch (error) {
-        console.warn('SpaceStore: could not settle a staged suggestion before a move', error);
-      }
-    },
-  });
-
-  async function deleteCollection(collectionId: string): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    if (!p) return;
-    await deleteBlocks(p, collectionId);
-  }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
@@ -431,7 +300,6 @@ export function createSpaceStore(
     }
   }
 
-  // The lambdas are read at export time: the interpretation settings they name are declared further down.
   const callExports = createCallExports({
     toasts: toastService,
     dataset: () => datasetStore.currentDataset(),
@@ -439,51 +307,6 @@ export function createSpaceStore(
     profileStore,
     exportMeta: extraction.collectionInterpretationFor,
   });
-
-  /*
-    Where content lives: the space collection, for anything made on the space's own canvas and for
-    anything made with no other home. See `provideContentHomes` — injected for the reason the
-    vocabularies are, since RecordStore mounts above this one.
-  */
-  onCleanup(
-    recordStore.provideContentHomes({
-      forCanvas: (canvas) => (canvas === spaceLandmarks().canvas && spaceRoot() ? spaceRoot() : canvas),
-      root: () => spaceRoot(),
-    }),
-  );
-
-  /**
-   * Store a file and return the URL that points at it.
-   *
-   * Images are compressed on the way through, for the reason the profile and space-image paths
-   * already do it: a phone photo is several megabytes, and a space's content syncs to every member.
-   * Anything else is stored as-is.
-   */
-  const readAsDataURI = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      // `readAsDataURL` always yields a string.
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-      reader.readAsDataURL(file);
-    });
-
-  async function uploadFile(file: File, name?: string): Promise<string | null> {
-    const profiles = session.backendPorts()?.profiles;
-    if (!profiles) return null;
-    try {
-      const fileData = file.type.startsWith('image/')
-        ? await compressImageToFileData(file, name ?? file.name)
-        : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
-          // ends with, so both arrive at the port in one shape.
-          dataURIToFileData(await readAsDataURI(file), name ?? file.name);
-      return await profiles.uploadFile(uploadOf(fileData));
-    } catch (error) {
-      console.error('SpaceStore: upload failed', error);
-      toastService.error('Could not upload that file.');
-      return null;
-    }
-  }
 
   /*
     And the other thing the shell cannot see for itself: the template on screen and a library to
@@ -614,6 +437,7 @@ export function createSpaceStore(
     ...taskStates.members,
     ...involvements.members,
     ...unread.members,
+    ...content.members,
     // State
     memberDids,
     members,
@@ -622,11 +446,6 @@ export function createSpaceStore(
     spaceList,
 
     // Actions
-    createPost,
-    updatePost,
-    ...boards,
-    uploadFile,
-    deleteCollection,
     updateSpaceImage,
     updateSpaceMeta,
     setSpaceDefaultTemplate,
