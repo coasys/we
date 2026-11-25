@@ -314,7 +314,7 @@ export interface ShapeStoreDeps {
 
 export function createShapeStore(deps: ShapeStoreDeps): ShapeStore {
   const { reactivity, toasts } = deps;
-  const { memo, effect, untrack, batch } = reactivity;
+  const { memo, effect, untrack, batch, onCleanup } = reactivity;
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
   // Every write skips a value the signal already holds, so a reader wakes only for a change.
@@ -371,10 +371,14 @@ export function createShapeStore(deps: ShapeStoreDeps): ShapeStore {
       setBackendLlm(false);
       return;
     }
+    // Only the backend still connected answers: a slow answer from the one before it would say
+    // whether a model is there on a node this session has left.
+    let asking = true;
+    onCleanup(() => (asking = false));
     void port
       .available()
-      .then(setBackendLlm)
-      .catch(() => setBackendLlm(false));
+      .then((available) => asking && setBackendLlm(available))
+      .catch(() => asking && setBackendLlm(false));
   });
 
   /** The transport a generation should run on right now, or null while the backend has no model. */

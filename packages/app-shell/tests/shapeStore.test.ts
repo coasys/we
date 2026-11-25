@@ -48,6 +48,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   let gates: Map<string, Promise<void>>;
   let setDataset: Setter<AppDataset | null>;
   let setWeSpace: Setter<boolean>;
+  let setPorts: Setter<object>;
 
   const schemas = {
     shapes: {
@@ -90,10 +91,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     let store!: ShapeStore;
     const [dataset, writeDataset] = reactivity.signal<AppDataset | null>(space('garden'));
     const [weSpace, writeWeSpace] = reactivity.signal(true);
-    const [ports] = reactivity.signal({
+    const [ports, writePorts] = reactivity.signal<object>({
       schemas,
       languageModel: { available: async () => llm },
     });
+    setPorts = writePorts;
     setDataset = writeDataset;
     setWeSpace = writeWeSpace;
     disposers.push(
@@ -331,5 +333,17 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     const second = mount();
     await flush();
     expect(second.aiAvailable()).toBe(true);
+  });
+
+  it('does not take a slow answer about a backend it has left', async () => {
+    let answer!: (available: boolean) => void;
+    const store = mount();
+    setPorts({ schemas, languageModel: { available: () => new Promise<boolean>((r) => (answer = r)) } });
+    await flush();
+    setPorts({ schemas, languageModel: { available: async () => false } });
+    await flush();
+    answer(true);
+    await flush();
+    expect(store.aiAvailable()).toBe(false);
   });
 });
