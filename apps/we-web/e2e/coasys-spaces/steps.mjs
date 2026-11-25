@@ -82,8 +82,9 @@ export async function enableTargets(page, names, perspective) {
     const drawn = page.locator('we-switch').filter({ has: toggle });
     if (!(await toggle.isChecked())) await drawn.click();
     // Each switch writes the whole list. The store publishes the merged list before that write
-    // (SpaceStore.tsx `setInterpretationTarget`), and this waits until the stored row has caught up:
-    // the check below reads storage, which shows a class only once its write has landed.
+    // (`setInterpretationTarget` in the space store's extraction part), and this waits until the
+    // stored row has caught up: the check below reads storage, which shows a class only once its
+    // write has landed.
     await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's interpretation targets` });
   }
   const all = await stored();

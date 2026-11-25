@@ -7,8 +7,7 @@ export { type ProfileStore, createProfileStore } from '../../../shared/stores/Pr
 export { type RuntimeStore, createRuntimeStore } from '../../../shared/stores/RuntimeStore';
 export { type ShapeStore, createShapeStore } from '../../../shared/stores/ShapeStore';
 export { type RecordStore, createRecordStore } from '../../../shared/stores/RecordStore';
-export { type SpaceStore } from '../../../shared/stores/SpaceStore';
-export { createSpaceStore } from './SpaceStore';
+export { createSpaceStore, type SpaceStore } from '../../../shared/stores/SpaceStore';
 export { type ThemeStore, type EditingTheme, createThemeStore } from '../../../shared/stores/ThemeStore';
 export { type TemplateStore, createTemplateStore } from '../../../shared/stores/TemplateStore';
 export { type EditorStore, createEditorStore } from '../../../shared/stores/EditorStore';

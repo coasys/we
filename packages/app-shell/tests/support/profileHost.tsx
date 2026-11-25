@@ -27,10 +27,9 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
-import { shellHost } from '../../src/frameworks/solid/hostState';
+import { shellHost, spaceHost } from '../../src/frameworks/solid/hostState';
 import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
@@ -48,6 +47,7 @@ import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 import { createShapeStore } from '../../src/shared/stores/ShapeStore';
 import { createShellStore } from '../../src/shared/stores/ShellStore';
+import { createSpaceStore } from '../../src/shared/stores/SpaceStore';
 import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../../src/shared/stores/ThemeStore';
 
@@ -531,6 +531,10 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      firstScreen,
+      host: spaceHost,
       sessionStore,
       datasetStore,
       shapeStore,

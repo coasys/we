@@ -15,6 +15,7 @@ import { createAppFrame } from '../../shared/registries/appFrame';
 import { createLaneFrames } from '../../shared/registries/homeLanes';
 import { createPanelInstances } from '../../shared/registries/panelInstances';
 import { createSignalOptimism } from '../../shared/signalOptimism';
+import { signalOrder } from '../../shared/signalOrder';
 import { createTaskWorkflowLive } from '../../shared/taskWorkflowLive';
 
 /** Cards drawn where they were dropped, ahead of the data. See `shared/boardOptimism.ts`. */
@@ -34,3 +35,6 @@ export const { pretendPeople, pretendSettings, actingAs, setPretendCount, actAs,
 
 /** What the shell store reads and publishes of the host state above — see `ShellHostState`. */
 export const shellHost = { appFrame, appEdgeFrames, laneFrames, publishPanelInstances };
+
+/** What the space store writes of the host state above — see `SpaceHostState`. */
+export const spaceHost = { boardOptimism, involvementOptimism, signalOptimism, signalOrder, taskWorkflowLive };

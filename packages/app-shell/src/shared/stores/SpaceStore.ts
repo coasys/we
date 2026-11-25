@@ -1,25 +1,46 @@
 /**
  * What `spaceStore` offers a template: the spaces the agent holds, the one on screen and how to go to
  * one, what each space runs and shows, its task states, involvements, roles and policy, what it
- * extracts, and what is unread in it.
+ * extracts, what people make in it, and what is unread in it.
  *
- * Several jobs over one surface. Each is a part of its own under `space/`, composed into the one store
- * templates read; this file is the surface they are composed into, which the generated context and
- * the template surface read every `*Store` interface from.
+ * Several jobs over one surface. Each is a part of its own under `space/`, a factory over the
+ * reactivity port; this file is the surface they are composed into — which the generated context and
+ * the template surface read every `*Store` interface from — and the composition, built once at
+ * `BootController`.
  */
 import type { AgentProfileSummary } from '@we/backend-shared';
 import type { InvolvementSemantic, MutedAgent, Space } from '@we/entities';
-import type { Accessor } from '@we/reactivity';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { ResolvedView } from '@we/schema-shared';
 
+import type { BoardOptimism } from '../boardOptimism';
+import type { FirstScreen } from '../firstScreen';
+import type { InvolvementOptimism } from '../involvementOptimism';
 import type { InvolvementTypeView } from '../involvements';
 import type { SettingRow, SettingValue } from '../moduleSettings';
 import type { ModuleSurface } from '../registries/moduleRegistry';
 import type { SharingPickerOption } from '../sharingOptions';
+import type { SignalOptimism } from '../signalOptimism';
+import type { signalOrder } from '../signalOrder';
+import type { SpaceAppearance } from '../spaceAppearance';
 import type { PolicyPreset, SpacePolicyView } from '../spacePolicy';
 import type { RoleView } from '../spaceRoles';
 import type { LocationData } from '../spaceSync';
+import type { TaskWorkflowLive } from '../taskWorkflowLive';
+import type { Toasts } from '../toasts';
 import type { AppDataset } from './DatasetStore';
+import type { ShellStore } from './ShellStore';
+import { createCallExports } from './space/callExports';
+import { createSpaceContent, type SpaceContentDeps } from './space/content';
+import { createSpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
+import { createSpaceDetails, type SpaceDetailsDeps } from './space/details';
+import { createSpaceExtraction, type SpaceExtractionDeps } from './space/extraction';
+import { createSpaceInvolvements } from './space/involvements';
+import { createSpaceModules, type SpaceModulesDeps } from './space/modules';
+import { createSpaceNavigation, type SpaceNavigationDeps } from './space/navigation';
+import { createSpaceRoles } from './space/roles';
+import { createSpaceList, type SpaceListDeps } from './space/spaces';
+import { createSpaceTaskStates, type SpaceTaskStatesDeps } from './space/taskStates';
 import type {
   CreatePostOptions,
   LauncherRow,
@@ -28,6 +49,10 @@ import type {
   StarterOption,
   TaskStateView,
 } from './space/types';
+import { createSpaceUnread } from './space/unread';
+import { createSpaceWrites } from './space/writes';
+import type { TemplateStore } from './TemplateStore';
+import type { ThemeStore } from './ThemeStore';
 
 export interface SpaceStore {
   // State
@@ -597,4 +622,241 @@ export interface SpaceStore {
   prepareSpaceAt: (path: string, datasets: readonly AppDataset[]) => Promise<void>;
 
   // Testing
+}
+
+/**
+ * The pieces of host state the space store writes and the host's surfaces draw from — each one the
+ * app keeps a single copy of, made over the same reactivity port as the stores.
+ */
+export interface SpaceHostState {
+  /** Cards drawn where they were dropped, ahead of the data. */
+  boardOptimism: BoardOptimism;
+  /** People put on or taken off a record, ahead of the data. */
+  involvementOptimism: InvolvementOptimism;
+  /** Reactions drawn ahead of the data. */
+  signalOptimism: SignalOptimism;
+  /** The order each record's reactions settled into, forgotten with the space. */
+  signalOrder: Pick<typeof signalOrder, 'reset'>;
+  /** The space's task workflow as the board draws it. */
+  taskWorkflowLive: TaskWorkflowLive;
+}
+
+/** What the space store is built from: the port, and what it reads and lends of the stores before it. */
+export interface SpaceStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Toasts;
+  firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
+  sessionStore: SpaceSession;
+  datasetStore: SpaceDatasets;
+  appStore: SpaceModulesDeps['appStore'];
+  profileStore: SpaceDetailsDeps['profileStore'];
+  recordStore: SpaceTaskStatesDeps['recordStore'] & SpaceContentDeps['recordStore'];
+  routeStore: SpaceListDeps['routeStore'] & SpaceNavigationDeps['routeStore'];
+  shapeStore: SpaceListDeps['shapeStore'] & SpaceExtractionDeps['shapeStore'];
+  shellStore: SpaceNavigationDeps['shellStore'] &
+    SpaceModulesDeps['shellStore'] &
+    Pick<ShellStore, 'provideTemplateSaver'>;
+  templateStore: SpaceListDeps['templateStore'] &
+    SpaceNavigationDeps['templateStore'] &
+    SpaceModulesDeps['templateStore'] &
+    Pick<TemplateStore, 'provideSpaceAppearance' | 'saveTemplateAs'>;
+  themeStore: SpaceDetailsDeps['themeStore'] & Pick<ThemeStore, 'provideSpaceAppearance'>;
+  host: SpaceHostState;
+}
+
+/*
+  The parts, in the order they are built: the spaces held, how a setting on a space is written, where
+  the agent is, who stands where, what a space runs and shows, what it extracts, its task states, who
+  is on what, what is unread, what people make, and the space's own record. Each is handed what it
+  reads of the ones before. A part reaches a later one only through a function it calls after the
+  store is built — never while it is being built, so no part reads one that does not exist yet,
+  whichever port runs the effects.
+*/
+export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
+  const {
+    reactivity,
+    toasts,
+    firstScreen,
+    sessionStore: session,
+    datasetStore,
+    appStore,
+    profileStore,
+    recordStore,
+    routeStore,
+    shapeStore,
+    shellStore,
+    templateStore,
+    themeStore,
+    host,
+  } = deps;
+  const ctx = createSpaceContext({ reactivity, toasts, firstScreen, sessionStore: session, datasetStore });
+
+  /*
+    The spaces this agent holds. Built first: every other part reads the records it holds. What a new
+    space is given by the later jobs — a section, its first admin, its starting policy — is reached
+    through them when a space is made, by which time all of them are built.
+  */
+  const spaces = createSpaceList({
+    ...ctx,
+    routeStore,
+    templateStore,
+    shapeStore,
+    newSpace: {
+      enableView: (viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId),
+      writeAdminGrant: (dataset) => roles.writeAdminGrant(dataset),
+      writeStartingPolicy: (dataset, starter) => roles.writeStartingPolicy(dataset, starter),
+    },
+  });
+
+  /*
+    How a setting on a space record is written and shown. Before the navigation part, which shows a
+    setting still being saved over the live read; the space on screen is reached only when a write is
+    made, by which time the navigation part is built.
+  */
+  const writes = createSpaceWrites({
+    ...ctx,
+    spaces,
+    onScreen: {
+      current: () => navigation.members.currentSpace(),
+      show: (ds, fields) => navigation.showOnScreen(ds, fields),
+    },
+  });
+
+  /*
+    Where the agent is. The sections a space has are the modules-and-views part's, and its boards the
+    content part's, both composed after this one and read only when somebody goes somewhere.
+  */
+  const navigation = createSpaceNavigation({
+    ...ctx,
+    routeStore,
+    templateStore,
+    shellStore,
+    spaces,
+    writes,
+    sections: {
+      routableViews: () => modules.members.routableViews(),
+      spaceViews: () => modules.members.spaceViews(),
+      usesSectionsFor: (uuid) => modules.usesSectionsFor(uuid),
+    },
+    ensureBoardFor: (collectionId, dataset) => content.members.ensureBoardFor(collectionId, dataset),
+  });
+
+  // Who stands where in each space and what its rules allow, and the write check that holds them.
+  const roles = createSpaceRoles({ ...ctx, spaces, navigation });
+  const { canAdministerSpace, canAdministerCurrentSpace } = roles.members;
+
+  // What each space runs and shows, and this agent's own choices about each.
+  const modules = createSpaceModules({ ...ctx, templateStore, appStore, shellStore, spaces, navigation, writes });
+
+  // What each space extracts, and the extraction runtime modules reach.
+  const extraction = createSpaceExtraction({
+    ...ctx,
+    shapeStore,
+    spaces,
+    navigation,
+    writes,
+    canAdministerCurrentSpace,
+  });
+
+  // The states the space's work moves through, and the workflow that counts agreement between them.
+  const taskStates = createSpaceTaskStates({
+    ...ctx,
+    recordStore,
+    navigation,
+    writes,
+    canAdministerCurrentSpace,
+    taskWorkflowLive: host.taskWorkflowLive,
+    addStateToSpaceBoard: (slug, name) => content.members.addStateToSpaceBoard(slug, name),
+  });
+
+  // Who is on what in each space, and what each person gave.
+  const involvements = createSpaceInvolvements({
+    ...ctx,
+    involvementOptimism: host.involvementOptimism,
+    signalOptimism: host.signalOptimism,
+    signalOrder: host.signalOrder,
+  });
+
+  // What is new to this agent in each space, and who it has muted.
+  const unread = createSpaceUnread(ctx);
+
+  // What people make in each space: posts, boards and files, and where content with no other home lives.
+  const content = createSpaceContent({
+    ...ctx,
+    recordStore,
+    navigation,
+    taskStates,
+    boardOptimism: host.boardOptimism,
+  });
+
+  // Each space's own record — its picture, name and place, defaults, thread mode — and its members.
+  const details = createSpaceDetails({ ...ctx, profileStore, themeStore, spaces, navigation, writes });
+
+  /*
+    The spaces list: one row per joined dataset the agent can act on, its columns answered by each
+    job — whether this agent administers the space (its roles), what it runs and shows and this
+    agent's own choices about it (the modules part). A plain list, rebuilt whenever anything in it
+    changes. What keeps a row's mount — a half-typed name, the settings page's scroll — is the
+    renderer, which keeps the rows of a list by `id`; each row's is its dataset's.
+  */
+  const spaceList = reactivity.memo<SpaceListEntry[]>(() =>
+    datasetStore.orderedDatasets().map((ds) =>
+      spaces.listRow(ds, (space) => ({
+        canAdminister: space ? canAdministerSpace(space.uuid) : false,
+        ...modules.listColumns(ds.id, space),
+      })),
+    ),
+  );
+
+  /*
+    The template and theme stores are composed before this one and cannot read it — lend them the
+    spaces' records and this agent's overrides, which they resolve which template and theme apply
+    from (see `spaceAppearance.ts`). The overrides are this agent's own, written to the root dataset.
+  */
+  const appearance: SpaceAppearance = {
+    spaces: spaces.members.mySpaces,
+    spaceFor: spaces.spaceForUuid,
+    overrideFor: modules.overrideFor,
+    setOverride: (uuid, which, id) =>
+      which === 'template'
+        ? modules.writeSpacePreference('setSpaceTemplateOverride', uuid, { template: id })
+        : modules.writeSpacePreference('setSpaceThemeOverride', uuid, { theme: id }),
+  };
+  templateStore.provideSpaceAppearance(appearance);
+  themeStore.provideSpaceAppearance(appearance);
+
+  // A call's transcript and its interpretation log, read for the dataset each export names.
+  const callExports = createCallExports({
+    toasts,
+    dataset: () => datasetStore.currentDataset(),
+    interpretation: () => session.backendPorts()?.interpretation,
+    profileStore,
+    exportMeta: extraction.collectionInterpretationFor,
+  });
+
+  /*
+    The other thing the shell cannot see for itself: the template on screen and a library to save
+    into, for "save this arrangement as a template".
+  */
+  shellStore.provideTemplateSaver({
+    current: () => templateStore.currentTemplate,
+    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
+  });
+
+  return {
+    ...spaces.members,
+    ...navigation.members,
+    ...modules.members,
+    ...extraction.members,
+    ...roles.members,
+    ...taskStates.members,
+    ...involvements.members,
+    ...unread.members,
+    ...content.members,
+    ...details.members,
+    spaceList,
+    firstScreenOpen: () => firstScreen.open(),
+    exportCallTranscript: callExports.exportCallTranscript,
+    exportInterpretationLog: callExports.exportInterpretationLog,
+  };
 }

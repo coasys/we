@@ -34,6 +34,7 @@ import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { createShapeStore } from '@shared/stores/ShapeStore';
 import { createShellStore } from '@shared/stores/ShellStore';
+import { createSpaceStore } from '@shared/stores/SpaceStore';
 import { createTemplateStore } from '@shared/stores/TemplateStore';
 import { createThemeStore } from '@shared/stores/ThemeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
@@ -44,10 +45,9 @@ import type { ParentProps } from 'solid-js';
 
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { shellHost } from '../hostState';
+import { shellHost, spaceHost } from '../hostState';
 import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { createSpaceStore } from '../stores/SpaceStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
@@ -165,6 +165,10 @@ export function BootController(props: ParentProps) {
   });
   const appStore = createAppStore({ reactivity: solidReactivity });
   const spaceStore = createSpaceStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    firstScreen,
+    host: spaceHost,
     sessionStore,
     datasetStore,
     shapeStore,
