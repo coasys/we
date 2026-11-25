@@ -5,13 +5,12 @@
  * dock registry; where the lanes are on screen is the browser harness's (`dockLanes`).
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
-import { declareAppEdges } from '../src/frameworks/solid/hostState';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { declareAppEdges, shellHost } from '../src/frameworks/solid/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import {
   DOCK_FRAME_ATTR,
@@ -23,6 +22,8 @@ import {
 import { provideChromeBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 const HOST = 'edge-test';
 const ID = `${HOST}:panel`;
@@ -54,7 +55,7 @@ afterEach(() => {
 function mount() {
   let store!: ShellStore;
   render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return (
       <StoreRegistryContext.Provider value={{ shellStore: store }}>

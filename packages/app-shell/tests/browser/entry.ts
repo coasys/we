@@ -28,13 +28,14 @@ import { provideChromeBag } from '@shared/registries/templateBag';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { createShellStore, type ShellStore } from '@shared/stores/ShellStore';
 import { EdgeLanes } from '@solid/components/EdgeLanes';
 import { PanelHost } from '@solid/components/PanelHost';
 import PanelLane from '@solid/components/PanelLane';
 import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
+import { shellHost } from '@solid/hostState';
 import { componentRegistry } from '@solid/registries/componentRegistry';
-import { createShellStore, type ShellStore } from '@solid/stores/ShellStore';
 import { StoreRegistryContext } from '@solid/stores/useStore';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
@@ -53,6 +54,7 @@ import {
   SuppliedPanelNote,
   ThemePanel,
 } from '@we/editor';
+import { solidReactivity } from '@we/reactivity-solid';
 import {
   EDIT_SURFACE_ATTR,
   installGestureTracking,
@@ -1118,7 +1120,7 @@ function dockProbeOpen(id: string): void {
  * `useStore` as the app's components do.
  */
 function withShellStore(build: (shellStore: ShellStore) => JSX.Element): JSX.Element {
-  const shellStore = createShellStore();
+  const shellStore = createShellStore({ reactivity: solidReactivity, host: shellHost });
   return createComponent(StoreRegistryContext.Provider, {
     value: { shellStore },
     get children() {

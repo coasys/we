@@ -7,6 +7,7 @@
  */
 import { currentProductName } from '@shared/bundles/brand';
 import type { DatasetStore } from '@shared/stores/DatasetStore';
+import type { ShellStore } from '@shared/stores/ShellStore';
 import type { TemplateStore } from '@shared/stores/TemplateStore';
 import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
@@ -17,7 +18,6 @@ import { HOST_PARTS } from '../../../shared/registries/hostParts';
 import { openPart, openPartPath } from '../../../shared/registries/moduleParts';
 import { moduleRegistry, type RegisteredPart } from '../../../shared/registries/moduleRegistry';
 import { viewRegistry } from '../../../shared/registries/viewRegistry';
-import type { ShellStore } from '../stores/ShellStore';
 import type { SpaceStore } from '../stores/SpaceStore';
 
 /** Template data is JSON; copied that way because a store hands over proxies `structuredClone` refuses. */

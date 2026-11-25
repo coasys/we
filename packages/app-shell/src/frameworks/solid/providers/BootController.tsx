@@ -33,6 +33,7 @@ import { createRouteStore } from '@shared/stores/RouteStore';
 import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { createShapeStore } from '@shared/stores/ShapeStore';
+import { createShellStore } from '@shared/stores/ShellStore';
 import { createTemplateStore } from '@shared/stores/TemplateStore';
 import { createThemeStore } from '@shared/stores/ThemeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
@@ -43,9 +44,9 @@ import type { ParentProps } from 'solid-js';
 
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
+import { shellHost } from '../hostState';
 import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
@@ -59,7 +60,7 @@ export function BootController(props: ParentProps) {
   const routeStore = createRouteStore({ reactivity: solidReactivity });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
   const clockStore = createClockStore({ reactivity: solidReactivity });
-  const shellStore = createShellStore({ platform });
+  const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
   const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The

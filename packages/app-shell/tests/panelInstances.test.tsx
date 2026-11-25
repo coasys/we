@@ -4,20 +4,21 @@
  * store, a template's lane and the panel host.
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { runWithGesture } from '@we/schema-shared';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
-import { panelInstances, publishPanelInstances } from '../src/frameworks/solid/hostState';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { panelInstances, publishPanelInstances, shellHost } from '../src/frameworks/solid/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { APP_PANEL_SCOPE } from '../src/shared/panelScope';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 let release: (() => void)[] = [];
 
@@ -48,7 +49,7 @@ afterEach(() => {
 function mount() {
   let store!: ShellStore;
   const { container } = render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     // The store keeps instances under a DID — as SessionStore provides it in the app.
     store.provideAgentDid(() => 'did:test:me');
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));

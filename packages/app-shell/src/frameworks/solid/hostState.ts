@@ -31,3 +31,6 @@ export const { declareLaneFrame, laneFrames } = createLaneFrames(solidReactivity
 export const { panelInstances, publishPanelInstances } = createPanelInstances(solidReactivity);
 export const { pretendPeople, pretendSettings, actingAs, setPretendCount, actAs, answerAs, forgetPretendAnswers } =
   createPretendPeople(solidReactivity);
+
+/** What the shell store reads and publishes of the host state above — see `ShellHostState`. */
+export const shellHost = { appFrame, appEdgeFrames, laneFrames, publishPanelInstances };

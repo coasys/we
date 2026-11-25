@@ -27,9 +27,9 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
+import { shellHost } from '../../src/frameworks/solid/hostState';
 import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
@@ -47,6 +47,7 @@ import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 import { createShapeStore } from '../../src/shared/stores/ShapeStore';
+import { createShellStore } from '../../src/shared/stores/ShellStore';
 import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../../src/shared/stores/ThemeStore';
 
@@ -465,7 +466,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     window.addEventListener('popstate', report);
     report();
     const clockStore = createClockStore({ reactivity: solidReactivity });
-    const shellStore = createShellStore({ platform });
+    const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
     const sessionStore = createSessionStore({

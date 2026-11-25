@@ -34,6 +34,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { createEffect, createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { shellHost } from '../src/frameworks/solid/hostState';
 import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -273,7 +274,6 @@ import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
@@ -292,6 +292,7 @@ import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 import { createTemplateStore } from '../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../src/shared/stores/ThemeStore';
 
@@ -319,7 +320,7 @@ function mountShell(): Stores {
     const platform = usePlatform();
     const backend = useBackend();
     const routeStore = createRouteStore({ reactivity: solidReactivity });
-    const shellStore = createShellStore({ platform });
+    const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
     // BootController builds it.
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });

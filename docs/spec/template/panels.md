@@ -79,8 +79,10 @@ makes a module do anything (a call module's opener joins a call).
 
 Implemented by: [`templatePanels.ts`](../../../packages/app-shell/src/shared/registries/templatePanels.ts),
 [`dockGeometry.ts`](../../../packages/app-shell/src/shared/dockGeometry.ts),
-[`ShellStore.tsx`](../../../packages/app-shell/src/frameworks/solid/stores/ShellStore.tsx).
-Pinned by: [`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts).
+[`ShellStore.ts`](../../../packages/app-shell/src/shared/stores/ShellStore.ts).
+Pinned by: [`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
+dock layout's recorded vectors ([`dockLayout.json`](../../../packages/app-shell/src/shared/kernels/vectors/dockLayout.json),
+the functions named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
 
 ## Home lanes
 

@@ -19,14 +19,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coasysApp } from '../../templates/cartridges/src/coasys/app';
 import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHost';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { shellHost } from '../src/frameworks/solid/hostState';
 import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateSurface';
 import { createChatStore } from '../src/shared/stores/ChatStore';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 let agentChatMounts = 0;
 
@@ -86,7 +87,7 @@ function mount() {
   /** The space tier's bag — what a synced template's calls go through. */
   let bag!: { shellStore: ShellStore };
   const { container } = render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     store.provideAgentDid(() => 'did:test:me');
     bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.

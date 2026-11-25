@@ -430,8 +430,10 @@ keep a card's heading.
 
 - `packages/app-shell/src/shared/dockGeometry.ts` — every rule above, as pure functions over a
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
-- `packages/app-shell/src/frameworks/solid/stores/ShellStore.tsx` — the state, the drag handling,
-  and the custom properties.
+  `src/shared/kernels/dockLayout.ts` names the functions a second host reproduces the layout with,
+  against the recorded vectors beside it (`vectors/dockLayout.json`).
+- `packages/app-shell/src/shared/stores/ShellStore.ts` — the state, the drag handling,
+  and the custom properties, on the reactivity port.
 - `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in
   (`frameBox`), over the window or filling its seat in an edge lane.
 - `packages/app-shell/src/frameworks/solid/components/PanelHost.tsx` — every panel's content, drawn

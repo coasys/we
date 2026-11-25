@@ -52,8 +52,8 @@ const SOLID_TESTS = [
   'tests/shapeStore.test.ts',
   'tests/distinctSignal.test.ts',
   'tests/shellRouterRoot.test.tsx',
-  'tests/shellPathMemory.test.tsx',
-  'tests/spaceSettingsTab.test.tsx',
+  'tests/shellPathMemory.test.ts',
+  'tests/spaceSettingsTab.test.ts',
   'tests/templateDrafts.test.ts',
   'tests/editorStore.test.ts',
   // The record store's canvas, tree and connection writes, each under both ports.
@@ -94,7 +94,7 @@ const SOLID_TESTS = [
   'tests/threadDepth.test.tsx',
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
-  'tests/dockStowAndReveal.test.tsx',
+  'tests/dockStowAndReveal.test.ts',
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',

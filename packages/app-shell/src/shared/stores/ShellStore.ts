@@ -1,11 +1,15 @@
 /**
  * ShellStore — shell chrome state: which shell overlay (profile, settings, schema-tests,
- * landing-page) is open, plus small shell-level UI utilities.
+ * landing-page) is open, the panels and docks and how they are arranged, and the prompts the host
+ * raises itself.
  *
  * Lived in TemplateStore historically, but which overlay is open is shell state, not template
  * state — the overlay registry itself is in TemplateLayout. Kept separate from ShellRouteStore,
  * which is the *overlay-scoped* memory router mounted inside the overlay; this store is
  * app-level, because the controls that open an overlay render outside it.
+ *
+ * Written against the reactivity port. The geometry is `dockGeometry.ts`, pure; this store reads the
+ * registry, the window and its own signals, and hands their values to it.
  */
 import { dockIsOffered } from '@shared/dockGating';
 import {
@@ -101,11 +105,10 @@ import {
 } from '@shared/registries/templatePanels';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import { hasGesture } from '@we/schema-shared';
-import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
-/** A destructive action a template asked for, as the host's own dialog puts it. */
 /**
  * What `saveArrangementAsTemplate` needs from outside this store: the schema on screen, and a
  * library to put a copy in. See `provideTemplateSaver`.
@@ -116,9 +119,32 @@ export interface TemplateSaver {
 }
 
 import type { PlatformAdapter } from '@shared/platform/types';
+import type { AppFrameState } from '@shared/registries/appFrame';
+import type { LaneFrames } from '@shared/registries/homeLanes';
+import type { PanelInstances } from '@shared/registries/panelInstances';
 
-import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
-import { appEdgeFrames, appFrame, laneFrames, publishPanelInstances } from '../hostState';
+import { describeDestructive, type DestructiveFacts } from '../destructiveWording';
+import { distinctSignal } from '../distinctSignal';
+
+/**
+ * The host state the shell reads and publishes but does not hold — the app's frame and its edges'
+ * frames, the template lanes' frames, and the panel instances on screen. One of each per app
+ * (`frameworks/solid/hostState.ts`); a test builds its own over its port.
+ */
+export type ShellHostState = Pick<AppFrameState, 'appFrame' | 'appEdgeFrames'> &
+  Pick<LaneFrames, 'laneFrames'> &
+  Pick<PanelInstances, 'publishPanelInstances'>;
+
+export interface ShellStoreDeps {
+  reactivity: ReactivityPort;
+  /**
+   * The platform is optional, because this store can work without one. The shell's layout is built
+   * on its own in tests, and a host that offers no screen picking is the ordinary case anyway (the
+   * web, and every desktop whose OS draws its own). So a missing platform reads as "no capability".
+   */
+  platform?: Pick<PlatformAdapter, 'screenSources'>;
+  host: ShellHostState;
+}
 
 /** How long the host waits for what a delete takes with it before asking without it. */
 const FACTS_WAIT_MS = 500;
@@ -1091,9 +1117,12 @@ function savePlacements(placements: Record<string, FloatPlacement>): void {
   if (first) queueMicrotask(flushPlacements);
 }
 
-export function createShellStore(deps: { platform?: PlatformAdapter } = {}): ShellStore {
-  const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
-  const [pendingPath, setPendingPath] = createSignal<string | null>(null);
+export function createShellStore(deps: ShellStoreDeps): ShellStore {
+  const { reactivity } = deps;
+  const { signal, memo, effect, untrack, onCleanup } = reactivity;
+  const { appFrame, appEdgeFrames, laneFrames, publishPanelInstances } = deps.host;
+  const [activeShellView, setActiveShellView] = distinctSignal<string | null>(reactivity, initialShellView());
+  const [pendingPath, setPendingPath] = distinctSignal<string | null>(reactivity, null);
   /**
    * Where each shell view was last standing, so it can be put back after a remount.
    *
@@ -1106,8 +1135,8 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * making it reactive would only invite an effect to depend on it.
    */
   const lastShellPath: Record<string, string> = {};
-  const [createSpaceOpen, setCreateSpaceOpen] = createSignal(false);
-  const [joinSpaceOpen, setJoinSpaceOpen] = createSignal(false);
+  const [createSpaceOpen, setCreateSpaceOpen] = distinctSignal(reactivity, false);
+  const [joinSpaceOpen, setJoinSpaceOpen] = distinctSignal(reactivity, false);
 
   /*
     Which screen to share, when the OS will not ask.
@@ -1121,13 +1150,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     capability where it is needed, and Electron only *asks* on the branch the system picker did not
     take. So an empty list here is the ordinary state, and the prompt is simply never raised.
   */
-  const [pendingScreenSources, setPendingScreenSources] = createSignal<ScreenSource[]>([]);
-  /*
-    The platform is optional, because this store can work without one. The shell's layout is built
-    on its own in tests, and a host that offers no screen picking is the ordinary case anyway (the
-    web, and every desktop whose OS draws its own). So a missing platform reads as "no capability",
-    which is a state this already has to handle, rather than as a failure to construct the shell.
-  */
+  const [pendingScreenSources, setPendingScreenSources] = signal<ScreenSource[]>([]);
   const screens = deps.platform?.screenSources;
   if (screens) {
     const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
@@ -1145,11 +1168,11 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     setPendingScreenSources([]);
     screens?.choose(sourceId);
   }
-  const [spaceSettingsOpen, setSpaceSettingsOpen] = createSignal(false);
+  const [spaceSettingsOpen, setSpaceSettingsOpen] = distinctSignal(reactivity, false);
   // Where the panel starts, for a caller that knows which setting it is sending somebody to. Not a
   // controlled value — see `spaceSettingsTab`.
-  const [spaceSettingsTab, setSpaceSettingsTab] = createSignal('about');
-  const [spaceSettingsFocus, setSpaceSettingsFocus] = createSignal('');
+  const [spaceSettingsTab, setSpaceSettingsTab] = distinctSignal(reactivity, 'about');
+  const [spaceSettingsFocus, setSpaceSettingsFocus] = distinctSignal(reactivity, '');
 
   /**
    * Scroll to a vocabulary row once it exists. The panel mounts and its rows arrive from queries after
@@ -1167,7 +1190,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
   }
 
-  const [pendingDestructive, setPendingDestructive] = createSignal<PendingDestructive | null>(null);
+  const [pendingDestructive, setPendingDestructive] = signal<PendingDestructive | null>(null);
   /** Resolves the promise `requestDestructive` handed back. Null when no question is outstanding. */
   let answerDestructive: ((ok: boolean) => void) | null = null;
 
@@ -1216,7 +1239,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
 
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
-  const [viewportSize, setViewport] = createSignal({
+  const [viewportSize, setViewport] = signal({
     width: typeof window === 'undefined' ? 1440 : window.innerWidth,
     height: typeof window === 'undefined' ? 900 : window.innerHeight,
   });
@@ -1243,19 +1266,21 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * clamped into the viewport on resolve, so one saved on a monitor cannot leave a panel off-screen
    * on a laptop.
    */
-  const [placements, setPlacements] = createSignal<Record<string, FloatPlacement>>(loadPlacements());
-  const [dockResizing, setDockResizing] = createSignal(false);
+  const [placements, setPlacements] = signal<Record<string, FloatPlacement>>(loadPlacements());
+  const [dockResizing, setDockResizing] = distinctSignal(reactivity, false);
   /**
    * The panel that has just joined or left a seat — see `settling` on `DockGeometry`.
    *
    * Cleared on the next frame rather than by a timer: what it has to outlast is exactly one geometry
    * recompute, so the panel lands in its new box with no transition and eases normally from there.
    */
-  const [settling, setSettling] = createSignal('');
+  const [settling, setSettling] = distinctSignal(reactivity, '');
   const landInPlace = (id: string) => {
     setSettling(id);
     if (typeof requestAnimationFrame === 'function')
-      requestAnimationFrame(() => setSettling((was) => (was === id ? '' : was)));
+      requestAnimationFrame(() => {
+        if (untrack(settling) === id) setSettling('');
+      });
     else setSettling('');
   };
 
@@ -1269,7 +1294,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * enough to be seen — and the fade out is the strip's own transition, a theme animation token, so a
    * reduced-motion setting still decides.
    */
-  const [landedTab, setLandedTab] = createSignal('');
+  const [landedTab, setLandedTab] = distinctSignal(reactivity, '');
   let landedTimer: ReturnType<typeof setTimeout> | undefined;
   let landedFlash = 0;
   const flashTab = (id: string) => {
@@ -1280,7 +1305,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       setLandedTab(id);
       landedTimer = setTimeout(() => {
         landedTimer = undefined;
-        setLandedTab((was) => (was === id ? '' : was));
+        if (untrack(landedTab) === id) setLandedTab('');
       }, 1800);
     };
     if (typeof requestAnimationFrame !== 'function') return light();
@@ -1298,8 +1323,8 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * top — reading as part of the workshop rather than as somewhere else. Opening one is already the end
    * of template editing; it is now the end of the panels being on screen, until it closes.
    */
-  const [panelsHiddenByUser, setPanelsHiddenByUser] = createSignal(false);
-  const panelsAway = createMemo(() => panelsHiddenByUser() || activeShellView() !== null);
+  const [panelsHiddenByUser, setPanelsHiddenByUser] = distinctSignal(reactivity, false);
+  const panelsAway = memo(() => panelsHiddenByUser() || activeShellView() !== null);
 
   /**
    * Where the panels are in going away or coming back — so they fade rather than vanish.
@@ -1309,12 +1334,13 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * back mid-fade reverses from wherever the fade had got to. Starts `away` rather than fading out, for
    * the boot that opens on the landing page.
    */
-  const [awayPhase, setAwayPhase] = createSignal<'shown' | 'leaving' | 'away' | 'arriving'>(
+  const [awayPhase, setAwayPhase] = distinctSignal<'shown' | 'leaving' | 'away' | 'arriving'>(
+    reactivity,
     panelsAway() ? 'away' : 'shown',
   );
   let awayTimer: ReturnType<typeof setTimeout> | undefined;
   let wasAway = untrack(panelsAway);
-  createEffect(() => {
+  effect(() => {
     const away = panelsAway();
     if (away === wasAway) return;
     wasAway = away;
@@ -1323,12 +1349,14 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       setAwayPhase('leaving');
       awayTimer = setTimeout(() => {
         awayTimer = undefined;
-        setAwayPhase((phase) => (phase === 'leaving' ? 'away' : phase));
+        if (untrack(awayPhase) === 'leaving') setAwayPhase('away');
       }, 340);
       return;
     }
     setAwayPhase('arriving');
-    const show = () => setAwayPhase((phase) => (phase === 'arriving' ? 'shown' : phase));
+    const show = () => {
+      if (untrack(awayPhase) === 'arriving') setAwayPhase('shown');
+    };
     if (typeof requestAnimationFrame !== 'function') return show();
     requestAnimationFrame(() => requestAnimationFrame(show));
   });
@@ -1340,7 +1368,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * The lane a resize drag has pulled past `STOW_DRAG_PX`, which letting go will collapse — by the id
    * of the panel being dragged. Null otherwise. See `resizeDock`.
    */
-  const [stowPending, setStowPending] = createSignal<string | null>(null);
+  const [stowPending, setStowPending] = distinctSignal<string | null>(reactivity, null);
   /** The lane's thickness when that drag began, which a collapse puts back so the lane reopens at it. */
   let stowFrom: number | null = null;
 
@@ -1360,7 +1388,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   let clickUnfolded: { id: string; at: number } | null = null;
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-  const [activation, setActivation] = createSignal<Record<string, number>>(loadActivation());
+  const [activation, setActivation] = signal<Record<string, number>>(loadActivation());
   // Seeded from what was stored, so the first raise after a reload lands above everything that was
   // raised before it rather than restarting the count underneath.
   let activationClock = Math.max(0, ...Object.values(untrack(activation)));
@@ -1378,11 +1406,12 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       other effect to lose.
     */
     if (activation()[key] === activationClock) return;
-    setActivation((prev) => {
+    {
+      const prev = untrack(activation);
       const next = { ...prev, [key]: ++activationClock };
       saveActivation(next);
-      return next;
-    });
+      setActivation(next);
+    }
   };
   /**
    * Room taken by host chrome that is not a dock — the editor's rails and panels, today.
@@ -1391,7 +1420,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * package this one knows nothing about, and its widths live in `editorStore`. One number in, and
    * every panel's geometry clears it.
    */
-  const [movingDock, setMovingDock] = createSignal<string | null>(null);
+  const [movingDock, setMovingDock] = distinctSignal<string | null>(reactivity, null);
   /**
    * What a tab drag is carrying, since the panel itself stays in its seat. Null for every other
    * gesture and between drags. See `previewDrop`.
@@ -1401,9 +1430,9 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * mean parsing them back. `dragGhost` derives the CSS from it, so the outline on screen and the
    * box the targets are measured against cannot drift apart.
    */
-  const [dragCarry, setDragCarry] = createSignal<{ box: Rect; title: string } | null>(null);
+  const [dragCarry, setDragCarry] = signal<{ box: Rect; title: string } | null>(null);
   /** The outline following the cursor, for a drag that cannot carry the panel. See `previewDrop`. */
-  const dragGhost = createMemo(() => {
+  const dragGhost = memo(() => {
     const carry = dragCarry();
     if (!carry) return null;
     return {
@@ -1414,8 +1443,8 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       title: carry.title,
     };
   });
-  const [activeSnap, setActiveSnap] = createSignal<SnapPoint | null>(null);
-  const [activeInsert, setActiveInsert] = createSignal<string | null>(null);
+  const [activeSnap, setActiveSnap] = distinctSignal<SnapPoint | null>(reactivity, null);
+  const [activeInsert, setActiveInsert] = distinctSignal<string | null>(reactivity, null);
   /** The rect a drag started from, so every move is measured against one fixed origin. */
   let dragOrigin: FloatPlacement | null = null;
   /**
@@ -1433,7 +1462,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * and the mates ride along hidden rather than being left standing in a lane the leader has gone
    * from. `seatOrigins` is what they are put back to when a drag ends nowhere they can all land.
    */
-  const [movingSeat, setMovingSeat] = createSignal<string[]>([]);
+  const [movingSeat, setMovingSeat] = signal<string[]>([]);
   /**
    * What the stack in the air is called, while it is in the air.
    *
@@ -1525,7 +1554,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   const takenSnapPoints = (moving: string | null) =>
     takenSnapsOf(dockRequests(), laneSeating().hidden, moving ? [moving, ...movingSeat()] : []);
 
-  const [layouts, setLayouts] = createSignal<SavedLayouts>(loadLayouts());
+  const [layouts, setLayouts] = signal<SavedLayouts>(loadLayouts());
   /**
    * The named layout the arrangement on screen is, or `''` once it has been changed since.
    *
@@ -1533,15 +1562,16 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * somebody touch it", which is cheaper to remember than to re-derive, and a layout applied and
    * then dragged is no longer that layout whatever the pixels happen to say.
    */
-  const [activeLayout, setActiveLayout] = createSignal('');
+  const [activeLayout, setActiveLayout] = distinctSignal(reactivity, '');
 
   const writePlacement = (id: string, next: FloatPlacement) => {
     setActiveLayout('');
-    setPlacements((prev) => {
+    {
+      const prev = untrack(placements);
       const merged = { ...prev, [placementKey(id)]: next };
       savePlacements(merged);
-      return merged;
-    });
+      setPlacements(merged);
+    }
   };
 
   /**
@@ -1577,7 +1607,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * opposite cost, which is why it is held for less — a closed frame lingering at the strip's size sits
    * over the strip's names.
    */
-  const [laneMove, setLaneMove] = createSignal<{
+  const [laneMove, setLaneMove] = signal<{
     ids: readonly string[];
     closing: boolean;
     faded: boolean;
@@ -1603,12 +1633,15 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     laneMoveTimer = setTimeout(
       () => {
         laneMoveTimer = undefined;
-        setLaneMove((was) => (was?.ids === ids ? null : was));
+        if (untrack(laneMove)?.ids === ids) setLaneMove(null);
       },
       closing ? 340 : 700,
     );
     if (closing) return;
-    const unfade = () => setLaneMove((was) => (was?.ids === ids ? { ...was, faded: false } : was));
+    const unfade = () => {
+      const was = untrack(laneMove);
+      if (was?.ids === ids) setLaneMove({ ...was, faded: false });
+    };
     if (typeof requestAnimationFrame !== 'function') return unfade();
     requestAnimationFrame(() => requestAnimationFrame(unfade));
   };
@@ -1691,9 +1724,9 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * than written back into the template, so a template can go on improving its layout without
    * arguing with a dismissal.
    */
-  const [panelsVersion, setPanelsVersion] = createSignal(0);
-  onCleanup(onTemplatePanelsChanged(() => setPanelsVersion((v) => v + 1)));
-  const declaredPanels = createMemo<readonly TemplatePanel[]>(() => {
+  const [panelsVersion, setPanelsVersion] = signal(0);
+  onCleanup(onTemplatePanelsChanged(() => setPanelsVersion(untrack(panelsVersion) + 1)));
+  const declaredPanels = memo<readonly TemplatePanel[]>(() => {
     panelsVersion();
     return templatePanels();
   });
@@ -1734,7 +1767,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * Cleared on a template switch rather than persisted. A closed panel is a statement about the
    * arrangement in front of you, and the arrangement has been replaced.
    */
-  const [closedPanels, setClosedPanels] = createSignal<Record<string, boolean>>({});
+  const [closedPanels, setClosedPanels] = signal<Record<string, boolean>>({});
 
   /*
     Every interface's panel instances, kept across reloads like the reader's placements — and the
@@ -1750,21 +1783,15 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     `spaceGate` is. Kept by DID so a logout without a reload never shows the next agent the
     last one's chats: a change of agent re-reads storage for the one now signed in.
   */
-  const [didOf, setDidOf] = createSignal<(() => string | undefined) | undefined>(undefined);
+  const [didOf, setDidOf] = signal<(() => string | undefined) | undefined>(undefined);
   const agentDid = () => didOf()?.() ?? '';
-  const [allInstances, setAllInstances] = createSignal(loadInstances(agentDid()));
-  createEffect(() => {
-    const next = loadInstances(agentDid());
-    setAllInstances(next);
-    publishPanelInstances(visibleInstances(next));
-  });
   /**
    * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
    * mounts below this store, the same reason `moduleGate` is. An instance whose inputs bind it to
    * a perspective (the space chats) shows only while its space is current: hidden elsewhere, not
    * closed, so it is still there when you go back.
    */
-  const [spaceGate, setSpaceGate] = createSignal<(perspectiveUuid: string) => boolean>(() => true);
+  const [spaceGate, setSpaceGate] = signal<(perspectiveUuid: string) => boolean>(() => true);
   const visibleInstances = (all: Record<string, Record<string, PanelInstance>>) =>
     Object.fromEntries(
       Object.entries({
@@ -1775,45 +1802,58 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
           typeof instance.inputs.perspectiveUuid !== 'string' || spaceGate()(instance.inputs.perspectiveUuid),
       ),
     );
+  const [allInstances, setAllInstances] = signal(loadInstances(untrack(agentDid)));
+  /*
+    A change of agent re-reads storage for the one now signed in. Only the agent: the instances on
+    screen are published by the effect below, whatever changed them, so this one no longer publishes
+    too — it did, from its own copy, and so re-read storage whenever the space gate changed as well.
+  */
+  let instancesFor = untrack(agentDid);
+  effect(() => {
+    const did = agentDid();
+    if (did === instancesFor) return;
+    instancesFor = did;
+    untrack(() => setAllInstances(loadInstances(did)));
+  });
   // Following every announcement of a declaration, which is what says the interface on screen has
   // changed — the scope itself is a plain read, and the same declaration can arrive for another one.
-  const instancesHere = createMemo(() => {
+  const instancesHere = memo(() => {
     panelsVersion();
     return visibleInstances(allInstances());
   });
-  createEffect(() => publishPanelInstances(instancesHere()));
+  effect(() => publishPanelInstances(instancesHere()));
   const writeInstances = (
     scope: string,
     change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>,
-  ) =>
-    setAllInstances((all) => {
-      const here = change({ ...(all[scope] ?? {}) });
-      const next = { ...all };
-      if (Object.keys(here).length) next[scope] = here;
-      else delete next[scope];
-      saveInstances(agentDid(), next);
-      // Published as it is written, so a body drawn in the same breath reads its inputs.
-      publishPanelInstances(visibleInstances(next));
-      return next;
-    });
+  ) => {
+    const all = untrack(allInstances);
+    const here = change({ ...(all[scope] ?? {}) });
+    const next = { ...all };
+    if (Object.keys(here).length) next[scope] = here;
+    else delete next[scope];
+    saveInstances(agentDid(), next);
+    // Published as it is written, so a body drawn in the same breath reads its inputs.
+    publishPanelInstances(visibleInstances(next));
+    setAllInstances(next);
+  };
 
   /** Home lanes' widths and folds, for every template — see `LaneState`. */
-  const [lanes, setLanes] = createSignal<Record<string, LaneState>>(loadLanes());
+  const [lanes, setLanes] = signal<Record<string, LaneState>>(loadLanes());
   const laneKey = (lane: string) => `${templatePanelScope()}::${lane}`;
-  const writeLane = (lane: string, change: Partial<LaneState>) =>
-    setLanes((prev) => {
-      const key = laneKey(lane);
-      const merged: LaneState = { ...prev[key], ...change };
-      const cleaned = Object.fromEntries(
-        Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
-      );
-      const next = { ...prev };
-      if (Object.keys(cleaned).length) next[key] = cleaned;
-      else delete next[key];
-      saveLanes(next);
-      return next;
-    });
-  const [customisingLayout, setCustomisingLayout] = createSignal(false);
+  const writeLane = (lane: string, change: Partial<LaneState>) => {
+    const prev = untrack(lanes);
+    const key = laneKey(lane);
+    const merged: LaneState = { ...prev[key], ...change };
+    const cleaned = Object.fromEntries(
+      Object.entries(merged).filter(([, value]) => value !== undefined && value !== false),
+    );
+    const next = { ...prev };
+    if (Object.keys(cleaned).length) next[key] = cleaned;
+    else delete next[key];
+    saveLanes(next);
+    setLanes(next);
+  };
+  const [customisingLayout, setCustomisingLayout] = distinctSignal(reactivity, false);
 
   /*
     Switching template forgets what was closed.
@@ -1822,7 +1862,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     what stops the map growing for the life of the session, and is also the honest reading — a panel
     somebody closed in an arrangement that has been replaced is not a preference about the new one.
   */
-  createEffect(() => {
+  effect(() => {
     templatePanelScope();
     setClosedPanels({});
   });
@@ -1834,8 +1874,8 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     and therefore have nothing to re-run for — see the note in dockRegistry.ts. The counter is the
     dependency; nothing reads its value.
   */
-  const [dockRegistryVersion, setDockRegistryVersion] = createSignal(0);
-  onCleanup(onDockRegistryChanged(() => setDockRegistryVersion((v) => v + 1)));
+  const [dockRegistryVersion, setDockRegistryVersion] = signal(0);
+  onCleanup(onDockRegistryChanged(() => setDockRegistryVersion(untrack(dockRegistryVersion) + 1)));
 
   /**
    * The dock a declaration is about, or null when it names one that is not there.
@@ -1860,7 +1900,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   const sectionDockId = (id: string): string => (dockRegistry.get(id) ? id : templatePanelDockId(id));
 
   /** A declaration by the dock id it resolves to, for the placement chain to consult. */
-  const declarationFor = createMemo(() => {
+  const declarationFor = memo(() => {
     /*
       **No `dockRegistryVersion()` here, and it must stay that way.**
 
@@ -1907,15 +1947,15 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    *
    * Defaults to "everything is active", so a host that never injects behaves exactly as before.
    */
-  const [moduleGate, setModuleGate] = createSignal<(moduleId: string) => boolean>(() => true);
+  const [moduleGate, setModuleGate] = signal<(moduleId: string) => boolean>(() => true);
 
   /**
    * What "save this arrangement as a template" needs and this store cannot see: the schema on
    * screen, and a library to put a copy in. Injected, for the reason `moduleGate` is.
    */
-  const [templateSaver, setTemplateSaver] = createSignal<TemplateSaver | null>(null);
+  const [templateSaver, setTemplateSaver] = signal<TemplateSaver | null>(null);
 
-  const dockRequests = createMemo<DockRequest[]>(() => {
+  const dockRequests = memo<DockRequest[]>(() => {
     dockRegistryVersion();
     return (
       dockRegistry
@@ -1959,7 +1999,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   // Undefined until the first run, which only records: what was open on arrival was not *opened*,
   // and raising all of it would reshuffle the stacking somebody left on every reload.
   let wasOpen: Set<string> | undefined;
-  createEffect(() => {
+  effect(() => {
     const open = new Set(
       dockRequests()
         .filter((request) => request.edge)
@@ -1978,7 +2018,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   // As `wasOpen`, the first run records rather than acts: a call joined before the layout mounted
   // gets its raise from the edge appearing above, not a second one from the counter's first read.
   const wasAsked = new Map<string, unknown>();
-  createEffect(() => {
+  effect(() => {
     for (const request of dockRequests()) {
       const ask = moduleRegistry.panel(request.id)?.revealRequest;
       if (!ask) continue;
@@ -1992,7 +2032,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     }
   });
 
-  const laneSections = createMemo(() =>
+  const laneSections = memo(() =>
     laneSectionsOf({
       requests: dockRequests(),
       homes: Object.fromEntries(Object.entries(declarationFor()).map(([id, declared]) => [id, declared.home])),
@@ -2009,12 +2049,12 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   );
 
   /** How recently each dock was touched, by dock id — activation is kept by placement key. */
-  const touchedById = createMemo(() => {
+  const touchedById = memo(() => {
     const touched = activation();
     return Object.fromEntries(dockRequests().map((request) => [request.id, touched[placementKey(request.id)]]));
   });
   /** What each dock's tab says. */
-  const dockTitles = createMemo(() =>
+  const dockTitles = memo(() =>
     Object.fromEntries(
       dockRequests().map((request) => {
         const entry = dockRegistry.get(request.id);
@@ -2063,7 +2103,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     return { top, bottom, width };
   };
   /** What the modules alone are holding — the chrome on the `chrome` layer, painted over panels. */
-  const moduleReserves = createMemo<{ top: number; bottom: number; width: number }>(() => {
+  const moduleReserves = memo<{ top: number; bottom: number; width: number }>(() => {
     // The registration dependency, for the same reason `dockRequests` takes it: a module store read
     // before its module registers has no accessor to have tracked, and so nothing to re-run for.
     dockRegistryVersion();
@@ -2078,7 +2118,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       }),
     );
   });
-  const moduleChrome = createMemo<{ top: number; bottom: number; width: number }>(() =>
+  const moduleChrome = memo<{ top: number; bottom: number; width: number }>(() =>
     /*
       And the chrome that is not a module's — a shell template's pinned nav strip, say.
 
@@ -2098,7 +2138,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * because the anchor is open: a module may still declare a top reserve, and the rail should still
    * move for it.
    */
-  const topChrome = createMemo<TopChrome>(() => ({ height: moduleChrome().top, width: moduleChrome().width }));
+  const topChrome = memo<TopChrome>(() => ({ height: moduleChrome().top, width: moduleChrome().width }));
 
   /**
    * How far down a maximised panel's titlebar reaches, or 0 when none is maximised.
@@ -2133,7 +2173,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       if (event.key === '\\' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.defaultPrevented) {
         if (activeShellView()) return;
         event.preventDefault();
-        setPanelsHiddenByUser((hidden) => !hidden);
+        setPanelsHiddenByUser(!untrack(panelsHiddenByUser));
         return;
       }
       if (event.key !== 'Escape' || event.defaultPrevented) return;
@@ -2162,7 +2202,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * `display: none` rather than an unmount, so a rail that was expanded and had groups collapsed is
    * in the same state when full screen ends.
    */
-  const panelMaximised = createMemo(
+  const panelMaximised = memo(
     () =>
       // A maximised panel put away with the rest is not covering anything, and the sidebar and rail that
       // hide for one would otherwise go with it — taking the way back to the panels along too.
@@ -2170,7 +2210,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       dockRequests().some((request) => request.edge && (request.size === 'full' || placementOf(request).maximised)),
   );
 
-  const floatChrome = createMemo<ContentInset>(() => ({
+  const floatChrome = memo<ContentInset>(() => ({
     left: 0,
     right: appFrame().right,
     top: moduleChrome().top,
@@ -2186,7 +2226,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     chrome that was underneath. The modules' bars are on the `chrome` layer and stay over the panel;
     they are what is left, and the call bar's is zero whenever no call is up.
   */
-  const fullScreenChrome = createMemo<ContentInset>(() => ({
+  const fullScreenChrome = memo<ContentInset>(() => ({
     left: 0,
     right: 0,
     top: moduleReserves().top,
@@ -2301,7 +2341,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   };
 
   /** Every lane's division and which tab of each seat shows — see `seatLanes`. */
-  const laneSeating = createMemo(() =>
+  const laneSeating = memo(() =>
     seatLanes({
       requests: dockRequests(),
       viewport: viewport(),
@@ -2311,7 +2351,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     }),
   );
 
-  const dockGeometry = createMemo(() => {
+  const dockGeometry = memo(() => {
     const resolved = resolveDocks({
       requests: dockRequests(),
       seating: laneSeating(),
@@ -2339,14 +2379,14 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
 
   // Nothing taken while the panels are away: the overlay or the content gets the whole region, and
   // gets it back the moment they return, before they fade in.
-  const inset = createMemo(() => (panelsAway() ? { ...NO_INSET } : contentInset(dockRequests(), viewport())));
+  const inset = memo(() => (panelsAway() ? { ...NO_INSET } : contentInset(dockRequests(), viewport())));
 
   /*
     The lanes the host draws at the window's edges — every lane pushing the content aside, its
     thickness (the same number the inset sums) and its seats, each with its share of the lane worked
     out as `columnLayout` works it out, for flex to hand out. See `EdgeLanes`.
   */
-  const edgeLanes = createMemo(() => edgeLaneLayout(dockRequests(), viewport(), floatChrome(), touchedById()));
+  const edgeLanes = memo(() => edgeLaneLayout(dockRequests(), viewport(), floatChrome(), touchedById()));
   /*
     The same requests, asked the other question: not what the panels take, but what they hide.
 
@@ -2357,7 +2397,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
   //
   // And the chrome floating over the content — the call bar above all — which stays while the panels
   // are away, so a composer pinned to the bottom of a view can rise above it and settle when it goes.
-  const covered = createMemo(() =>
+  const covered = memo(() =>
     withChromeCovered(panelsAway() ? { ...NO_INSET } : coveredInset(dockRequests(), viewport()), moduleChrome()),
   );
 
@@ -2392,7 +2432,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     var(--we-covered-bottom, 0px))'` and rises above the call bar while one is up. Geometry it is
     drawn into, not anything it can move.
   */
-  createEffect(() => {
+  effect(() => {
     if (typeof document === 'undefined') return;
     const edges = covered();
     const root = document.documentElement.style;
@@ -2400,7 +2440,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       root.setProperty(`--we-covered-${edge}`, `${edges[edge]}px`);
   });
 
-  createEffect(() => {
+  effect(() => {
     if (typeof document === 'undefined') return;
     /*
       Full screen has no content edges but the window's. The sidebar hides and every other panel is
@@ -2476,7 +2516,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * the panel now: far enough to clear that titlebar and no further, capped so a panel somewhere
    * unexpected can never push the rail off the screen.
    */
-  createEffect(() => {
+  effect(() => {
     if (typeof document === 'undefined') return;
 
     const band = railBand(viewport(), inset(), topChrome());
@@ -2492,7 +2532,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
    * because it is in another package with no path to this store — so the same answer goes out as a
    * duration it can drop into its own `transition`.
    */
-  createEffect(() => {
+  effect(() => {
     if (typeof document === 'undefined') return;
     document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
   });
@@ -2510,7 +2550,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     rebuild would drop and recreate every frame under the editor's cursor.
   */
   let registeredPanels: string[] = [];
-  createEffect(() => {
+  effect(() => {
     const authored = declaredPanels().filter((panel) => panel.node && !panel.module);
 
     const keys: Record<string, unknown> = {};
@@ -2677,7 +2717,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     else controls.close();
   };
 
-  createEffect(() => {
+  effect(() => {
     dockRegistryVersion();
     const wanted = declaredPanels()
       // `open: false` places without opening. Opening goes through the panel's own controls — the
@@ -2759,11 +2799,10 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     spaceSettingsOpen,
     spaceSettingsTab,
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
-    // Wrapped, because `setSignal` treats a function argument as an updater.
-    provideModuleGate: (gate) => setModuleGate(() => gate),
-    provideSpaceGate: (gate) => setSpaceGate(() => gate),
-    provideAgentDid: (did) => setDidOf(() => did),
-    provideTemplateSaver: (saver) => setTemplateSaver(() => saver),
+    provideModuleGate: setModuleGate,
+    provideSpaceGate: setSpaceGate,
+    provideAgentDid: setDidOf,
+    provideTemplateSaver: setTemplateSaver,
 
     saveArrangementAsTemplate: async () => {
       const saver = templateSaver();
@@ -2801,7 +2840,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     },
     toggleSpaceSettings: () => {
       setSpaceSettingsFocus('');
-      setSpaceSettingsOpen((open) => !open);
+      setSpaceSettingsOpen(!untrack(spaceSettingsOpen));
     },
     openSpaceSettings: (tab?: string, focus?: string) => {
       // Only a name is a tab. A button wired without `args` hands an action the click, and the About
@@ -3683,7 +3722,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
           writePlacement(id, { ...placementOf(request), grow: Math.max(0, grow) });
       }
     },
-    panelFrames: createMemo(() =>
+    panelFrames: memo(() =>
       panelFramesOf({
         geometry: dockGeometry(),
         edges: appEdgeFrames(),
@@ -3703,9 +3742,9 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     togglePanelsHidden: () => {
       // Not while an overlay is up — see the keyboard shortcut, which says why.
       if (activeShellView()) return;
-      setPanelsHiddenByUser((hidden) => !hidden);
+      setPanelsHiddenByUser(!untrack(panelsHiddenByUser));
     },
-    hasPanels: createMemo(() => dockRequests().some((request) => request.edge && placementOf(request).snap !== 'home')),
+    hasPanels: memo(() => dockRequests().some((request) => request.edge && placementOf(request).snap !== 'home')),
 
     layoutPinned: () =>
       Object.fromEntries(
@@ -3716,21 +3755,22 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       ),
 
     resetDockToLayout: (id) => {
-      setPlacements((prev) => {
+      {
+        const prev = untrack(placements);
         const key = placementKey(id);
-        if (!prev[key]) return prev;
+        if (!prev[key]) return;
         const next = { ...prev };
         delete next[key];
         savePlacements(next);
-        return next;
-      });
+        setPlacements(next);
+      }
     },
 
     // Keyed exactly as the panel's own `edge:` accessor keys it — one spelling, so a close and the
     // edge that answers it cannot disagree about which panel was meant.
     closeTemplatePanel: (id) => {
       const key = placementKey(templatePanelDockId(id));
-      setClosedPanels((prev) => ({ ...prev, [key]: true }));
+      setClosedPanels({ ...untrack(closedPanels), [key]: true });
     },
 
     openPanel: (panel, inputs = {}, options = {}) => {
@@ -3813,7 +3853,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const dockId = templatePanelDockId(id);
       const key = placementKey(dockId);
       // `false` rather than deleted, so a panel declared closed (`open: false`) stays open once opened.
-      setClosedPanels((prev) => ({ ...prev, [key]: false }));
+      setClosedPanels({ ...untrack(closedPanels), [key]: false });
       // Opened on purpose, so in sight: a panel reopening into a stack comes back as the tab in front
       // rather than behind whichever was touched last. See `revealDock`.
       store.revealDock(dockId);
@@ -3836,7 +3876,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       So it supplies none and says why — a panel showing the module's own contents is a visible,
       correctable outcome, where the wrong contents in the right frame is not.
     */
-    panelSupplied: createMemo(() => {
+    panelSupplied: memo(() => {
       dockRegistryVersion();
       const supplied: Record<string, boolean> = {};
       for (const panel of declaredPanels()) {
@@ -3874,7 +3914,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const label = name.trim();
       if (!scope || !label) return;
       const prefix = `${scope}::`;
-      const under = <T,>(record: Record<string, T>) =>
+      const under = <T>(record: Record<string, T>) =>
         Object.fromEntries(Object.entries(record).filter(([key]) => key.startsWith(prefix)));
       /*
         Everything under this template's prefix, and nothing else — the same set `resetTemplateLayout`
@@ -3887,11 +3927,12 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
         closed: under(closedPanels()),
         lanes: under(lanes()),
       };
-      setLayouts((prev) => {
+      {
+        const prev = untrack(layouts);
         const next = { ...prev, [scope]: { ...(prev[scope] ?? {}), [label]: snapshot } };
         saveLayouts(next);
-        return next;
-      });
+        setLayouts(next);
+      }
       setActiveLayout(label);
     },
 
@@ -3900,40 +3941,44 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
       const saved = layouts()[scope]?.[name];
       if (!scope || !saved) return;
       const prefix = `${scope}::`;
-      const without = <T,>(record: Record<string, T>) =>
+      const without = <T>(record: Record<string, T>) =>
         Object.fromEntries(Object.entries(record).filter(([key]) => !key.startsWith(prefix)));
       // Replace this template's arrangement wholesale: what the layout does not mention returns to
       // the declaration, exactly as a reset would leave it.
-      setPlacements((prev) => {
+      {
+        const prev = untrack(placements);
         const next = { ...without(prev), ...saved.placements };
         savePlacements(next);
-        return next;
-      });
-      setActivation((prev) => {
+        setPlacements(next);
+      }
+      {
+        const prev = untrack(activation);
         const next = { ...without(prev), ...saved.activation };
         saveActivation(next);
         // The clock has to stay ahead of anything just restored, or the next raise lands underneath.
         activationClock = Math.max(activationClock, ...Object.values(next));
-        return next;
-      });
-      setClosedPanels((prev) => ({ ...without(prev), ...saved.closed }));
-      setLanes((prev) => {
+        setActivation(next);
+      }
+      setClosedPanels({ ...without(untrack(closedPanels)), ...saved.closed });
+      {
+        const prev = untrack(lanes);
         const next = { ...without(prev), ...(saved.lanes ?? {}) };
         saveLanes(next);
-        return next;
-      });
+        setLanes(next);
+      }
       setActiveLayout(name);
     },
 
     deleteLayout: (name) => {
       const scope = templatePanelScope();
       if (!scope || !layouts()[scope]?.[name]) return;
-      setLayouts((prev) => {
+      {
+        const prev = untrack(layouts);
         const { [name]: _gone, ...rest } = prev[scope] ?? {};
         const next = { ...prev, [scope]: rest };
         saveLayouts(next);
-        return next;
-      });
+        setLayouts(next);
+      }
       if (activeLayout() === name) setActiveLayout('');
     },
 
@@ -3953,22 +3998,28 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
         ordinary space is untouched: this says "put *this template's* panels back", not "forget
         everywhere I have ever moved anything".
       */
-      setPlacements((prev) => {
+      {
+        const prev = untrack(placements);
         const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
-        if (Object.keys(next).length === Object.keys(prev).length) return prev;
-        savePlacements(next);
-        return next;
-      });
+        if (Object.keys(next).length !== Object.keys(prev).length) {
+          savePlacements(next);
+          setPlacements(next);
+        }
+      }
       // And the panels closed under it, which is the half `resetDockToLayout` cannot reach — a closed
       // panel has no titlebar, so its own menu is not on screen to be opened.
-      setClosedPanels((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix))));
+      setClosedPanels(
+        Object.fromEntries(Object.entries(untrack(closedPanels)).filter(([key]) => !key.startsWith(prefix))),
+      );
       // And the home lanes: back to the widths the template gave them, none of them folded.
-      setLanes((prev) => {
+      {
+        const prev = untrack(lanes);
         const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
-        if (Object.keys(next).length === Object.keys(prev).length) return prev;
-        saveLanes(next);
-        return next;
-      });
+        if (Object.keys(next).length !== Object.keys(prev).length) {
+          saveLanes(next);
+          setLanes(next);
+        }
+      }
     },
 
     laneWidth: (lane) => lanes()[laneKey(lane)]?.width,
@@ -3985,7 +4036,7 @@ export function createShellStore(deps: { platform?: PlatformAdapter } = {}): She
     toggleLane: (lane) => writeLane(lane, { collapsed: !lanes()[laneKey(lane)]?.collapsed }),
     setLaneCollapsed: (lane, collapsed) => writeLane(lane, { collapsed: !!collapsed }),
     customisingLayout,
-    toggleCustomiseLayout: () => setCustomisingLayout((on) => !on),
+    toggleCustomiseLayout: () => setCustomisingLayout(!untrack(customisingLayout)),
 
     snapDock: (id, snap) => {
       const request = dockRequests().find((entry) => entry.id === id);
