@@ -10,7 +10,7 @@ import {
   joinTargetOf,
   sharedIdOf,
   transportGaveUp,
-} from '../src/frameworks/solid/stores/space/joining';
+} from '../src/shared/stores/space/joining';
 
 describe('sharedIdOf', () => {
   it('reduces a web link, a backend URI and a bare id to the same id', () => {

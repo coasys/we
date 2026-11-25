@@ -274,7 +274,7 @@ import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { createSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
@@ -293,6 +293,7 @@ import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/Runt
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
 import { createShellStore } from '../src/shared/stores/ShellStore';
+import type { SpaceStore } from '../src/shared/stores/SpaceStore';
 import { createTemplateStore } from '../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../src/shared/stores/ThemeStore';
 

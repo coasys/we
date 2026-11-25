@@ -5,8 +5,8 @@ import type { LivePage as Page, LiveQuery } from '@we/backend-shared';
 import type { FileData, Space } from '@we/entities';
 
 /**
- * The shapes `SpaceStore` speaks in, beside the store interface itself (which stays in
- * `SpaceStore.tsx`, where the generated context reads every `*Store` interface from).
+ * The shapes `SpaceStore` speaks in, beside the store interface itself (which is in `../SpaceStore.ts`,
+ * where the generated context reads every `*Store` interface from).
  */
 
 /**
