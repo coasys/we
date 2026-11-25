@@ -3031,6 +3031,45 @@ const boardsList = (landmarked: boolean): Scenario => ({
   stores: { spaceStore: { mutedDids: [] } },
 });
 
+/**
+ * Making a board from the Boards view, rendered as a space template is: the "New board" sheet calls
+ * `ops.core.createBoard` with one params object, and the board it answers with opens. The operation
+ * host here writes the board where the view will read it and says what it was asked.
+ */
+const boardsCreate = (): Scenario => {
+  const tables: Record<string, Record<string, unknown>[]> = {
+    CollectionBlock: [{ id: 'b-other', kind: 'board', title: 'Garden plans', createdAt: '2026-11-02T00:00:00.000Z' }],
+    SpaceLandmark: [],
+  };
+  return {
+    node: { type: 'Column', props: { width: '100%' }, children: [boardsView] },
+    tables,
+    bag: 'space',
+    stores: {
+      spaceStore: {
+        mutedDids: [],
+        offeredTaskStates: [
+          { id: 's-todo', slug: 'todo', name: 'To do' },
+          { id: 's-review', slug: 'review', name: 'In review' },
+          { id: 's-done', slug: 'done', name: 'Done' },
+        ],
+      },
+      ops: {
+        run: async (name: string, params?: Record<string, unknown>) => {
+          document.body.setAttribute('data-op', JSON.stringify([name, params]));
+          tables.CollectionBlock.push({
+            id: 'b-new',
+            kind: 'board',
+            title: params?.title,
+            createdAt: new Date().toISOString(),
+          });
+          return 'b-new';
+        },
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
@@ -3111,4 +3150,5 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'space:people': spacePeople,
   'boards:landmark': () => boardsList(true),
   'boards:no-landmark': () => boardsList(false),
+  'boards:create': boardsCreate,
 };

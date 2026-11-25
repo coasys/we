@@ -28,6 +28,12 @@ const columnTitle = (name: string, slug: string) =>
   `${slug} && find(states, { slug: ${slug} }).name == trim(${name}) ? '' : trim(${name})`;
 
 export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
+  /*
+    A board's columns are written with it rather than made on its first drag. Made lazily, two members
+    dragging at once would both find no columns and both make them, and the first drag anybody made
+    would rebuild the column list under them. Making a board is already one person's deliberate act,
+    so the work is done there, in the same run, and nobody sees a board with no columns.
+  */
   createBoard: {
     description:
       'Make a board with a column for each state given, in that order; optionally inside a collection and gathering from a record.',

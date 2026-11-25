@@ -590,8 +590,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     exportCallTranscript: action('content'),
     exportInterpretationLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
-    // administration: any member may make one and drag cards on it.
-    createBoard: action('content'),
+    // administration: any member may open one and drag cards on it.
     openBoardFor: action('content'),
     /*
       Extraction's hook, and host wiring rather than a template's business: a template that wanted a
@@ -601,11 +600,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     ensureBoardFor: WIRING,
     // The other half of naming a state: the space's own board grows a column for it. Reached from
-    // `createTaskState`, never from a schema, which has `addBoardColumn` for a board it can see.
+    // `createTaskState`, never from a schema, which has `ops.core.addBoardColumn` for a board it can see.
     addStateToSpaceBoard: WIRING,
-    addBoardColumn: action('content'),
     removeBoardColumn: action('content'),
-    renameBoardColumn: action('content'),
     reorderBoardColumns: action('content'),
     arrangeColumn: action('content'),
     moveCardToColumn: action('content'),

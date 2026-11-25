@@ -74,16 +74,23 @@ const createModal: SchemaNode = formModal({
   size: 'sm',
   localState: { boardTitle: { type: 'string', initial: '' } },
   children: [field({ name: 'boardTitle', label: 'What is this board for?', placeholder: 'Sprint 12' })],
-  disabled: { $: '!local.boardTitle' },
+  disabled: { $: '!trim(local.boardTitle)' },
   submitLabel: 'Create board',
   /*
     The anchor is passed as the parent, so a board made while the view is narrowed belongs to the
     container it was made in — otherwise it would be created into a list that does not list it. It
-    opens straight away: the new id comes back as the action's own result.
+    opens straight away: the new id comes back as the operation's own result. Its columns are the
+    states the community offers, in the community's order.
   */
   submit: {
-    $invoke: 'spaceStore.createBoard',
-    args: [{ $: 'local.boardTitle' }, ANCHOR_ID],
+    $invoke: 'ops.core.createBoard',
+    args: [
+      {
+        title: { $: 'local.boardTitle' },
+        states: { $: 'spaceStore.offeredTaskStates.map(s, s.slug)' },
+        parent: ANCHOR_ID,
+      },
+    ],
     onSuccess: [
       { $setLocal: 'createBoardOpen', value: false },
       { $setLocal: 'boardId', value: { $: 'result' } },

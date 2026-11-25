@@ -28,11 +28,9 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   'spaceStore.setInvolvement': 'ops.core.setInvolvement',
   'spaceStore.respondTo': 'ops.core.respond',
   'spaceStore.markRead': 'ops.core.markRead',
-  'spaceStore.createBoard': 'ops.core.createBoard',
-  'spaceStore.openBoardFor': 'ops.core.openBoardFor',
-  'spaceStore.addBoardColumn': 'ops.core.addBoardColumn',
+  'spaceStore.openBoardFor':
+    'ops.core.openBoardFor, for a collection’s board (the space’s own board stays a store action)',
   'spaceStore.removeBoardColumn': 'ops.core.removeBoardColumn',
-  'spaceStore.renameBoardColumn': 'ops.core.renameBoardColumn',
   'spaceStore.reorderBoardColumns': 'ops.core.reorderBoardColumns',
   'spaceStore.arrangeColumn': 'ops.core.arrangeColumn',
   'spaceStore.moveCardToColumn': 'ops.core.moveCard',

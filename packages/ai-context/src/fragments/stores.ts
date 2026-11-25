@@ -518,11 +518,8 @@ export const storeEntries: StoreEntry[] = [
       'createPost',
       'updatePost',
       'deleteCollection',
-      'createBoard',
       'openBoardFor',
-      'addBoardColumn',
       'removeBoardColumn',
-      'renameBoardColumn',
       'reorderBoardColumns',
       'arrangeColumn',
       'moveCardToColumn',
@@ -1567,16 +1564,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
       deleteCollection:
         '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them',
-      createBoard:
-        '(title: string, parentId?: string, options?: { gathers?: string }): makes a board \u2014 a CollectionBlock whose ordered children are its columns, one per state the community uses. Returns its id. Pass parentId to put the board inside another collection (a call\u2019s record), which is where an anchored Boards view lists it. A board made this way shows only what is put on it; openBoardFor makes the ones that gather',
       openBoardFor:
         '(anchorId?: string, title?: string, dataset?: string): the board for a container \u2014 one call\u2019s, or the space\u2019s own \u2014 making it if nobody has yet. Returns its id either way. The board it makes gathers from that container, a fact the board carries in its `gathers` relation, so anything rendering it needs only the id. Call it from a click rather than on mount: creating a board writes records into a space everybody shares',
-      addBoardColumn:
-        '(boardId: string, name: string, slug?: string): adds a column. **With a slug** it IS that state on this board \u2014 matching work arrives on its own and dropping a card there changes the card\u2019s state everywhere. **Without one** it is a local lane: nothing arrives by itself and a card put there is positioned rather than reclassified. A bound column given its state\u2019s own name stores no title, so its heading follows the vocabulary when the state is renamed',
       removeBoardColumn:
         '(boardId: string, columnId: string): takes a column off a board \u2014 the column record only, never the work in it. A column arranges its cards rather than owning them, so nothing that walks children can reach them; on a made board they are handed to the board itself so they stay on it. They keep their state, so they reappear in another column bound to it or in the unplaced column',
-      renameBoardColumn:
-        '(columnId: string, name: string): renames one column on this board. Its slug \u2014 its meaning \u2014 is untouched; renaming a state everywhere is Settings \u2192 Vocabulary',
       reorderBoardColumns:
         '(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable\u2019s onReorder and pass { $: "arg.detail" }',
       arrangeColumn:
