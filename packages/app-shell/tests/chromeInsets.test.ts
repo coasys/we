@@ -103,7 +103,7 @@ describe('the retired dock inset', () => {
   it('has a replacement that is actually published', () => {
     // The consumers above all pass a fallback of `0px`, so an unpublished variable is not an error
     // anywhere — every piece of chrome simply stops moving, quietly and permanently.
-    const store = readFileSync(join(__dirname, '..', 'src', 'shared', 'stores', 'ShellStore.ts'), 'utf8');
+    const store = readFileSync(join(__dirname, '..', 'src', 'shared', 'stores', 'shell', 'docks.ts'), 'utf8');
     // `give` is the side a centred bar spills toward when the content is narrower than it; a strip
     // that reads it unpublished falls back to `row`, which is right until a deep left dock.
     for (const name of ['left', 'right', 'top', 'bottom', 'center-x', 'give']) {
