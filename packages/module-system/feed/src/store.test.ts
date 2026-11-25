@@ -194,18 +194,26 @@ function harness(
 }
 
 describe('messages written from the Feed', () => {
-  it('writes into the space collection, as a typed line', async () => {
+  it('writes a message into the space collection, as a composition that holds its words', async () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
     await h.store.sendToFeed('see you all on Friday', '[{"start":0,"end":3,"type":"strong"}]');
     expect(h.created).toEqual([
       {
-        entity: 'TextBlock',
-        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        entity: 'CollectionBlock',
+        fields: { kind: 'message', mode: 'document', textContent: 'see you all on Friday', source: 'typed' },
         options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
+      {
+        entity: 'TextBlock',
+        fields: { text: 'see you all on Friday', source: 'typed', marks: '[{"start":0,"end":3,"type":"strong"}]' },
+        options: { parent: { id: 'new-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+      },
     ]);
+    // No files, so no group: the message holds one child.
+    expect(h.linked).toEqual([]);
+    expect(h.removed).toEqual([]);
     vi.useRealTimers();
   });
 
@@ -220,9 +228,14 @@ describe('messages written from the Feed', () => {
     });
     await h.store.reply('line-1', 'I do');
     expect(h.created[0]).toMatchObject({
+      entity: 'CollectionBlock',
+      fields: { kind: 'reply', textContent: 'I do', source: 'typed' },
+      options: { parent: { id: 'line-1', relation: 'responses' } },
+    });
+    expect(h.created[1]).toMatchObject({
       entity: 'TextBlock',
       fields: { text: 'I do', source: 'typed' },
-      options: { parent: { id: 'line-1', relation: 'responses' } },
+      options: { parent: { id: 'new-1', relation: 'children', entity: 'CollectionBlock' } },
     });
     expect(h.store.replyingTo()).toBeNull();
   });
@@ -286,6 +299,20 @@ describe('messages written from the Feed', () => {
       { entity: 'TextBlock', id: 'typed', fields: { text: 'lunch at one' } },
     ]);
   });
+
+  it('corrects a message composition in the text block it holds and in its own words', async () => {
+    const h = harness([], {}, async (entity, query) => {
+      const where = (query.where ?? {}) as Record<string, unknown>;
+      if (entity === 'CollectionBlock' && where.id === 'msg-1') return [{ id: 'msg-1', kind: 'message' }];
+      if (entity === 'TextBlock' && query.within === 'msg-1') return [{ id: 'words-1', text: 'lunch at 1' }];
+      return [];
+    });
+    await h.store.editUtterance('msg-1', 'lunch at one', 'typed');
+    expect(h.updated).toEqual([
+      { entity: 'TextBlock', id: 'words-1', fields: { text: 'lunch at one' } },
+      { entity: 'CollectionBlock', id: 'msg-1', fields: { textContent: 'lunch at one' } },
+    ]);
+  });
 });
 
 describe('the reader’s choices', () => {
@@ -311,7 +338,8 @@ describe('staying live', () => {
     // A view of the Feed is drawn: the host calls `watchFeed`, as it would open the panel.
     h.store.watchFeed();
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toEqual(['TextBlock', 'TextBlock', 'CollectionBlock']);
+    // The bot watch's, then the window's: the newest line, the newest message composition, the newest call.
+    expect(h.subscriptions).toEqual(['TextBlock', 'TextBlock', 'CollectionBlock', 'CollectionBlock']);
     // Asked of the whole space, by the host's kernel rather than by another module.
     expect(h.interpretation.proposals).toHaveBeenCalledWith(undefined, undefined);
 
@@ -327,7 +355,9 @@ describe('staying live', () => {
       A whole call carries the id of every line said in it, which is most of what a call weighs. Its
       title and time are what the window draws, and what a change worth a re-read moves.
     */
-    const call = h.subscribed.find((s) => s.entity === 'CollectionBlock');
+    const call = h.subscribed.find(
+      (s) => s.entity === 'CollectionBlock' && (s.query.where as { kind?: unknown } | undefined)?.kind === 'call',
+    );
     expect(call?.query).toMatchObject({ where: { kind: 'call' }, limit: 1, select: ['title', 'createdAt'] });
     vi.useRealTimers();
   });
@@ -522,7 +552,7 @@ describe('the Feed of one call', () => {
     vi.useRealTimers();
   });
 
-  it('writes a typed line into the call, the record the transcript writes, and nothing else', async () => {
+  it('writes a typed message into the call, as a composition, and nothing else', async () => {
     vi.useFakeTimers();
     const h = harness([], {}, CALL_LINES);
     h.store.watchCallFeed('call-9');
@@ -532,9 +562,14 @@ describe('the Feed of one call', () => {
 
     expect(h.created).toEqual([
       {
+        entity: 'CollectionBlock',
+        fields: { kind: 'message', mode: 'document', textContent: 'running late', source: 'typed' },
+        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+      },
+      {
         entity: 'TextBlock',
         fields: { text: 'running late', source: 'typed' },
-        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+        options: { parent: { id: 'new-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
     ]);
     // Writing into a call is not being in it: nobody is put on its roster from here.
@@ -542,7 +577,7 @@ describe('the Feed of one call', () => {
     vi.useRealTimers();
   });
 
-  it('writes each attached file as a FileBlock the message holds, files first and the message after', async () => {
+  it('writes each file as a FileBlock in a group the message holds after its words, files first', async () => {
     vi.useFakeTimers();
     const h = harness([], {}, CALL_LINES);
     h.store.watchCallFeed('call-9');
@@ -553,7 +588,13 @@ describe('the Feed of one call', () => {
     await h.store.sendToCallFeed('plan and map', '', [plan, map]);
 
     // The bytes go first, the step that can fail; the message is written only once they are stored.
-    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'FileBlock', 'TextBlock']);
+    expect(h.created.map((c) => [c.entity, c.fields.kind ?? ''])).toEqual([
+      ['FileBlock', ''],
+      ['FileBlock', ''],
+      ['CollectionBlock', 'attachments'],
+      ['CollectionBlock', 'message'],
+      ['TextBlock', ''],
+    ]);
     expect(h.created[0]).toEqual({
       entity: 'FileBlock',
       fields: {
@@ -564,10 +605,25 @@ describe('the Feed of one call', () => {
       },
       options: SPACE_1,
     });
-    // The message holds them through its `children` relation, which the executor reads as containment.
+    // The group and the files are written unparented; only the message goes into the call.
+    expect(h.created[2]).toEqual({
+      entity: 'CollectionBlock',
+      fields: { kind: 'attachments', mode: 'document' },
+      options: SPACE_1,
+    });
+    expect(h.created[3].options).toEqual({
+      parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' },
+      dataset: 'space-1',
+    });
+    expect(h.created[4].options).toEqual({
+      parent: { id: 'new-4', relation: 'children', entity: 'CollectionBlock' },
+      dataset: 'space-1',
+    });
+    // All containment: the files into the group, and the group into the message, after its words.
     expect(h.linked).toEqual([
-      ['TextBlock', 'new-3', 'children', 'new-1', SPACE_1],
-      ['TextBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      ['CollectionBlock', 'new-3', 'children', 'new-1', SPACE_1],
+      ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      ['CollectionBlock', 'new-4', 'children', 'new-3', SPACE_1],
     ]);
     expect(h.removed).toEqual([]);
     vi.useRealTimers();
@@ -580,20 +636,27 @@ describe('the Feed of one call', () => {
     const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
 
     await h.store.sendToFeed('see attached', undefined, [note]);
-    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'TextBlock']);
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'CollectionBlock', 'CollectionBlock', 'TextBlock']);
 
     h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
     await h.store.reply('line-1', 'here', undefined, [note]);
-    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'TextBlock', 'FileBlock', 'TextBlock']);
-    expect(h.created[3].options).toEqual({ parent: { id: 'line-1', relation: 'responses' }, dataset: 'space-1' });
+    expect(h.created.slice(4).map((c) => [c.entity, c.fields.kind ?? ''])).toEqual([
+      ['FileBlock', ''],
+      ['CollectionBlock', 'attachments'],
+      ['CollectionBlock', 'reply'],
+      ['TextBlock', ''],
+    ]);
+    expect(h.created[6].options).toEqual({ parent: { id: 'line-1', relation: 'responses' }, dataset: 'space-1' });
     expect(h.linked).toEqual([
-      ['TextBlock', 'new-2', 'children', 'new-1', SPACE_1],
-      ['TextBlock', 'new-4', 'children', 'new-3', SPACE_1],
+      ['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1],
+      ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      ['CollectionBlock', 'new-6', 'children', 'new-5', SPACE_1],
+      ['CollectionBlock', 'new-7', 'children', 'new-6', SPACE_1],
     ]);
     vi.useRealTimers();
   });
 
-  it('stores no text block when an attached file fails, and takes the files already written down', async () => {
+  it('writes no message when an attached file fails, and takes the files already written down', async () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
@@ -604,35 +667,57 @@ describe('the Feed of one call', () => {
 
     await expect(h.store.sendToFeed('with files', undefined, [first, second])).rejects.toThrow('refused');
 
-    expect(h.created.map((c) => c.entity)).not.toContain('TextBlock');
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock']);
     expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
     expect(h.linked).toEqual([]);
     vi.useRealTimers();
   });
 
-  it('leaves nothing stored when the message itself cannot be written', async () => {
+  it('leaves nothing stored when the words cannot be written', async () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
     const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
 
-    // Refused: the write throws.
+    // Refused: the write throws. Newest first: the message, its group, the file.
     h.refusing.add('TextBlock');
     await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('refused');
-    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-1', target: SPACE_1 }]);
-    expect(h.linked).toEqual([]);
+    expect(h.removed).toEqual([
+      { entity: 'CollectionBlock', id: 'new-3', target: SPACE_1 },
+      { entity: 'CollectionBlock', id: 'new-2', target: SPACE_1 },
+      { entity: 'FileBlock', id: 'new-1', target: SPACE_1 },
+    ]);
+    // The group holds the file, and is never put in the message.
+    expect(h.linked).toEqual([['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1]]);
 
-    // Answered with no id: nothing was written, the file is taken down as well, and the send fails.
+    // Answered with no id: nothing was written, all of it is taken down as well, and the send fails.
     h.refusing.clear();
     h.removed.length = 0;
+    h.linked.length = 0;
     h.returnsNothing.add('TextBlock');
     await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('could not be sent');
-    expect(h.removed).toEqual([{ entity: 'FileBlock', id: 'new-2', target: SPACE_1 }]);
-    expect(h.linked).toEqual([]);
+    expect(h.removed).toEqual([
+      { entity: 'CollectionBlock', id: 'new-6', target: SPACE_1 },
+      { entity: 'CollectionBlock', id: 'new-5', target: SPACE_1 },
+      { entity: 'FileBlock', id: 'new-4', target: SPACE_1 },
+    ]);
     vi.useRealTimers();
   });
 
-  it('takes the message and every file down when a link fails', async () => {
+  it('takes the message down when its words cannot be written, with no files sent', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    h.refusing.add('TextBlock');
+
+    await expect(h.store.sendToFeed('just words')).rejects.toThrow('refused');
+
+    expect(h.removed).toEqual([{ entity: 'CollectionBlock', id: 'new-1', target: SPACE_1 }]);
+    expect(h.store.feedRows()).toEqual([]);
+    vi.useRealTimers();
+  });
+
+  it('takes the group and every file down when a link fails', async () => {
     vi.useFakeTimers();
     const h = harness();
     await vi.runAllTimersAsync();
@@ -641,9 +726,10 @@ describe('the Feed of one call', () => {
 
     await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('link was refused');
 
-    // Newest first: the message, then the file it would have held.
+    // Newest first: the group, then the file it would have held. The message was never written.
+    expect(h.created.map((c) => c.entity)).toEqual(['FileBlock', 'CollectionBlock']);
     expect(h.removed).toEqual([
-      { entity: 'TextBlock', id: 'new-2', target: SPACE_1 },
+      { entity: 'CollectionBlock', id: 'new-2', target: SPACE_1 },
       { entity: 'FileBlock', id: 'new-1', target: SPACE_1 },
     ]);
     vi.useRealTimers();
@@ -655,8 +741,8 @@ describe('the Feed of one call', () => {
     await vi.runAllTimersAsync();
     const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
     h.failLinks.on = true;
-    // The message cannot be taken down; the file still is. What remains is a message with no file.
-    h.unremovable.add('TextBlock');
+    // The group cannot be taken down; the file still is.
+    h.unremovable.add('CollectionBlock');
 
     await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('link was refused');
 
@@ -748,9 +834,14 @@ describe('the Feed of one call', () => {
 
     expect(h.created.map((c) => c.options)).toEqual([
       SPACE_1,
+      SPACE_1,
       { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+      { parent: { id: 'new-3', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
     ]);
-    expect(h.linked).toEqual([['TextBlock', 'new-2', 'children', 'new-1', SPACE_1]]);
+    expect(h.linked).toEqual([
+      ['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1],
+      ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+    ]);
     vi.useRealTimers();
   });
 

@@ -1472,6 +1472,7 @@ export const contextData: ContextData = {
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'editorState', type: 'string', predicate: 'we://editor_state', required: false, default: 'null' },
         { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
+        { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
         { name: 'sourceRef', type: 'string', predicate: 'we://source_ref', required: false },
         { name: 'sourceName', type: 'string', predicate: 'we://source_name', required: false },
@@ -1934,7 +1935,7 @@ export const contextData: ContextData = {
         { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
       ],
-      relations: [{ name: 'children', kind: 'HasMany', predicate: 'we://child', target: 'FileBlock' }],
+      relations: [],
     },
     {
       name: 'Topic',

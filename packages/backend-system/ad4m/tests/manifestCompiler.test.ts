@@ -14,7 +14,7 @@ import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
 import { AD4M_CONTAINMENT_PREDICATE } from '../src/containment';
-import { TextBlock, WeNode } from '../src/entities';
+import { WeNode } from '../src/entities';
 import { buildEntityFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildEntityManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
@@ -241,16 +241,6 @@ describe('compileManifest — module-declared entities', () => {
       .generateSHACL()
       .shape!.properties.find((p) => p.name === 'items')!.path;
     expect(stored).toBe(AD4M_CONTAINMENT_PREDICATE);
-  });
-
-  it('stores the files of a message as its children, the containment an agent woken by it reads', () => {
-    // A message's attachments are `FileBlock`s it holds. The executor's waker finds them by asking
-    // what the message contains (`ad4m://has_child`), so the stored predicate is what puts a file
-    // where the waker looks — a renamed or minted predicate would leave every message looking bare.
-    const children = (TextBlock as unknown as Shaped)
-      .generateSHACL()
-      .shape!.properties.find((p) => p.name === 'children');
-    expect(children?.path).toBe(AD4M_CONTAINMENT_PREDICATE);
   });
 
   it('shares a core predicate when the declaration asks for it', () => {

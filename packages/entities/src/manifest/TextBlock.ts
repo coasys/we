@@ -1,5 +1,3 @@
-import { CONTAINMENT_PREDICATE } from '@we/backend-shared';
-
 import type { CoreEntityDef } from './defs';
 
 /**
@@ -115,13 +113,6 @@ export const TextBlock: CoreEntityDef = {
       source: { type: 'string', predicate: 'we://text_source', options: ['spoken', 'typed', 'corrected'], default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
     },
-    relations: {
-      /**
-       * The files attached to this line — a message sent with a file under it. Containment, so the
-       * executor sees the line as a holder (`ad4m://Container`) and a woken agent is told of the
-       * files it holds. Only `FileBlock`s are written here.
-       */
-      children: { target: 'FileBlock', cardinality: 'many', predicate: CONTAINMENT_PREDICATE, containment: true },
-    },
+    relations: {},
   },
 };

@@ -7,6 +7,14 @@
  * packages. Nothing here is a capability; each module keeps its own actions and passes their store's
  * name to the line it draws.
  */
+export {
+  ATTACHMENTS_KIND,
+  isMessageComposition,
+  lineText,
+  MESSAGE_KIND,
+  MESSAGE_KINDS,
+  REPLY_KIND,
+} from './composition.ts';
 export { messageLine } from './messageLine.ts';
 export { CORRECTED, SPOKEN, sourceAfterEdit, TYPED } from './source.ts';
 export { lineContent, repliesInclude, threadLines, threadLinesFunction } from './thread.ts';

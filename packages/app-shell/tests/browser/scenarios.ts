@@ -6,7 +6,7 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { resolveParts } from '@shared/registries/moduleParts';
-import { feedView } from '@we/module-feed';
+import { callFeedView, feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
   cardShell,
@@ -2650,6 +2650,83 @@ const feedViewPage = (hasMore = false): Scenario => {
   };
 };
 
+/**
+ * A message sent with two files, in the space's Feed or in a call's chat, beside a line with none.
+ *
+ * The rows are the lines `readFeedWindow` makes of a message composition (`kind: message`, its
+ * TextBlock, and a group of two FileBlocks): the words from the TextBlock, and each file named and
+ * sized from its record, with no bytes, and offered to save. The feed's own tests hold the read; this
+ * holds how the line is drawn.
+ */
+const feedAttachments = (inCall: boolean): Scenario => {
+  const line = (id: string, author: string, text: string, at: string, attachments: object[] = []) => {
+    const row = {
+      kind: 'line',
+      id,
+      at,
+      createdAt: at,
+      updatedAt: at,
+      author,
+      text,
+      marks: '',
+      source: 'typed',
+      call: inCall ? 'call-1' : '',
+      callTitle: inCall ? 'Monday sync' : '',
+      replyTo: null,
+      textId: attachments.length ? `${id}-text` : '',
+      attachments,
+      sending: false,
+    };
+    return { ...row, content: lineContent(row) };
+  };
+  const rows = [
+    line('m2', 'did:me', 'The plan and the site map, for Friday.', '2026-11-25T10:01:00Z', [
+      { id: 'file-1', name: 'venue-plan.pdf', mimeType: 'application/pdf', size: 2_516_582, sizeLabel: '2.4 MB' },
+      { id: 'file-2', name: 'site-map.png', mimeType: 'image/png', size: 312_320, sizeLabel: '305 KB' },
+    ]),
+    line('m1', 'did:them', 'Can somebody send the plan?', '2026-11-25T10:00:00Z'),
+  ];
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '600px' },
+      children: [inCall ? callFeedView : feedView],
+    },
+    tables: {},
+    stores: {
+      // The call's chat draws the call the route names.
+      ...(inCall ? { routeStore: { params: { call: 'call-1' } } } : {}),
+      modules: {
+        feed: inCall
+          ? {
+              callFeedRows: rows,
+              callFeedLoaded: true,
+              callFeedHasMore: false,
+              callFeedFromStart: false,
+              timelineOrientation: 'newestBottom',
+              replyingTo: null,
+              botAuthors: [],
+            }
+          : {
+              feedRows: rows,
+              feedLoaded: true,
+              feedHasMore: false,
+              feedFromStart: false,
+              timelineOrientation: 'newestBottom',
+              replyingTo: null,
+              botAuthors: [],
+            },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+        ],
+      },
+    },
+  };
+};
+
 /** `[start, end)` of `needle` in `text`, in code points — the unit a stored mark counts in. */
 const cpRange = (text: string, needle: string): { start: number; end: number } => {
   const at = text.indexOf(needle);
@@ -2891,6 +2968,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'feed:view': () => feedViewPage(),
   'feed:view-more': () => feedViewPage(true),
   'feed:rich': feedRichLines,
+  'feed:attachments': () => feedAttachments(false),
+  'feed:call-attachments': () => feedAttachments(true),
   'perf:feedLines': (scale) => feedLinesAt(scale ?? 50),
   'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,

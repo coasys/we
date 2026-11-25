@@ -114,6 +114,17 @@ export class CollectionBlock extends WeNode {
   @Property({ through: 'we://text_content' })
   textContent: string = '';
 
+  /**
+   * How the words of a message got here — `'spoken'`, `'typed'` or `'corrected'` — as on
+   * `TextBlock.source`, with the same predicate. Written only on a message (`kind: 'message'`
+   * or `'reply'`): a collection whose first child holds the words and whose second, when there
+   * are files, is the group of files it carries. A reader that asks which lines are input
+   * (interpretation, an export) reads it here without opening the children. Empty on every
+   * other collection.
+   */
+  @Property({ through: 'we://text_source', options: [{ value: 'spoken' }, { value: 'typed' }, { value: 'corrected' }] })
+  source: string = '';
+
   @Property({ through: 'we://version' })
   version: number = 0;
 

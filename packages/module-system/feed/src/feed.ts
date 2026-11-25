@@ -26,7 +26,15 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
-import { lineContent, repliesInclude, SPOKEN, threadLines } from '@we/messages';
+import {
+  ATTACHMENTS_KIND,
+  isMessageComposition,
+  lineContent,
+  MESSAGE_KINDS,
+  repliesInclude,
+  SPOKEN,
+  threadLines,
+} from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 
 type Row = Record<string, unknown>;
@@ -74,7 +82,12 @@ export interface FeedLine {
   replyTo: { id: string; author: string; text: string } | null;
   /** The line as the blocks a renderer draws, or `null` for a line with no words — see `lineContent`. */
   content: Record<string, unknown>[] | null;
-  /** The files sent with it — each a `FileBlock` held by the message. */
+  /**
+   * The `TextBlock` that holds the words of a message composition, or `''` for a bare line (which is
+   * its own `TextBlock`) and for a message not yet read back.
+   */
+  textId: string;
+  /** The files sent with it — each a `FileBlock` in the group the message holds. */
   attachments: FeedAttachment[];
   /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
   sending: boolean;
@@ -186,13 +199,17 @@ export function sizeLabel(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** The ids of the children each message composition holds, until {@link readParts} has read them. */
+const heldParts = new WeakMap<FeedLine, string[]>();
 /** The ids of the files each line holds, until {@link readAttachments} has read them. */
 const heldFiles = new WeakMap<FeedLine, string[]>();
 
 function toLine(row: Row, call: string, callTitle: string): FeedLine {
-  const files = [row.children ?? []].flat().map(idOf).filter(Boolean);
   const line = lineOf(row, call, callTitle);
-  if (files.length) heldFiles.set(line, files);
+  if (isMessageComposition(row)) {
+    const parts = [row.children ?? []].flat().map(idOf).filter(Boolean);
+    if (parts.length) heldParts.set(line, parts);
+  }
   return line;
 }
 
@@ -211,9 +228,50 @@ function lineOf(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    textId: '',
     attachments: [],
     sending: false,
   };
+}
+
+/**
+ * Fill in what the message compositions in a window hold: the marks of the `TextBlock` with their
+ * words, and the ids of the files in their group. Two reads for the whole window, by the ids each
+ * message carries as `children` — never one read per message. The words were drawn already, from the
+ * message's own `textContent`; if these reads fail, the lines stay as they are, with no marks and no
+ * files.
+ */
+async function readParts(rows: FeedRow[], find: FeedFind): Promise<void> {
+  const lines = rows.filter((row): row is FeedLine => row.kind === 'line' && heldParts.has(row));
+  const ids = [...new Set(lines.flatMap((line) => heldParts.get(line) ?? []))];
+  if (!ids.length) return;
+  let words: Row[];
+  let groups: Row[];
+  try {
+    [words, groups] = await Promise.all([
+      find('TextBlock', { where: { id: ids }, select: ['text', 'marks', 'source'] }),
+      find('CollectionBlock', { where: { id: ids, kind: ATTACHMENTS_KIND } }),
+    ]);
+  } catch (error) {
+    console.warn('[feed] could not read what the messages hold', error);
+    return;
+  }
+  const wordsById = new Map(words.map((row) => [text(row.id), row]));
+  const groupsById = new Map(groups.map((row) => [text(row.id), row]));
+  for (const line of lines) {
+    const parts = heldParts.get(line) ?? [];
+    // The first child that is a text block holds the words; the first that is a group holds the files.
+    const said = parts.map((id) => wordsById.get(id)).find(Boolean);
+    const group = parts.map((id) => groupsById.get(id)).find(Boolean);
+    if (said) {
+      line.textId = text(said.id);
+      line.text = line.text || text(said.text);
+      line.marks = text(said.marks);
+      line.content = lineContent({ text: line.text, marks: line.marks, source: line.source });
+    }
+    const files = [group?.children ?? []].flat().map(idOf).filter(Boolean);
+    if (files.length) heldFiles.set(line, files);
+  }
 }
 
 /**
@@ -332,6 +390,18 @@ export async function readFeedWindow(
     limit: shown,
     include: repliesInclude(),
   });
+  /*
+    What a collection says: its bare lines (what a call hears, and every line written before messages
+    were compositions) and its message compositions, each a page. The two pages are merged by time
+    with the rest, and the window is cut after that, as for two calls.
+  */
+  const said = async (within: string): Promise<{ rows: Row[]; filled: boolean }> => {
+    const [bare, messages] = await Promise.all([
+      find('TextBlock', page(within)),
+      find('CollectionBlock', { ...page(within), where: { kind: MESSAGE_KINDS } }),
+    ]);
+    return { rows: [...bare, ...messages], filled: bare.length >= shown || messages.length >= shown };
+  };
 
   /*
     Of one call, what its passes wrote, by id — the call's own `extracted`, which each record's
@@ -351,7 +421,7 @@ export async function readFeedWindow(
         );
 
   const [loose, calls, ...extracted] = await Promise.all([
-    find('TextBlock', page(root)),
+    said(root),
     /*
       The calls in the space collection itself — a call about nothing. A call held about something
       is a response to it and a child of nothing, so it is not here: it belongs with what it is
@@ -409,7 +479,7 @@ export async function readFeedWindow(
     A source that filled its page may hold more than it answered with — a kind of record too: a
     pass's records draw as one row, so a full page of them leaves the window looking roomy.
   */
-  let filled = loose.length >= shown || extracted.some((kind) => kind.length >= shown);
+  let filled = loose.filled || extracted.some((kind) => kind.length >= shown);
   /*
     A spoken line this reader keeps hidden goes here, before the cut — only what the window can
     draw counts toward filling it (and toward a later call being out of reach). A reply stays: its
@@ -417,7 +487,7 @@ export async function readFeedWindow(
     the page just now.
   */
   const drawn = (row: FeedLine) => options.spoken !== false || row.source !== SPOKEN;
-  let lines: FeedLine[] = threadLines({ rows: loose, newestFirst: !fromStart })
+  let lines: FeedLine[] = threadLines({ rows: loose.rows, newestFirst: !fromStart })
     .map((row) => toLine(row, '', ''))
     .filter(drawn);
   let reachedCalls = 0;
@@ -433,10 +503,10 @@ export async function readFeedWindow(
     reachedCalls += 1;
     const callId = text(call.id);
     stop();
-    const said = await find('TextBlock', page(callId));
-    if (said.length >= shown) filled = true;
+    const inCall = await said(callId);
+    if (inCall.filled) filled = true;
     lines = lines.concat(
-      threadLines({ rows: said, newestFirst: !fromStart })
+      threadLines({ rows: inCall.rows, newestFirst: !fromStart })
         .map((row) => toLine(row, callId, titles.get(callId) ?? ''))
         .filter(drawn),
     );
@@ -446,6 +516,8 @@ export async function readFeedWindow(
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
   const window = merged.slice(0, shown);
+  stop();
+  await readParts(window, find);
   await readAttachments(window, find, options.attachments ?? new Map<string, FeedAttachment>());
   return { rows: window, hasMore };
 }

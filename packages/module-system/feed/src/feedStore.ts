@@ -21,7 +21,7 @@
  * moved. The same answer the transcript's cards are marked from, read from the host rather than from
  * another module, which this one may not depend on.
  */
-import { lineContent, TYPED } from '@we/messages';
+import { lineContent, MESSAGE_KINDS, TYPED } from '@we/messages';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import {
@@ -359,6 +359,7 @@ export function createFeed(deps: FeedDeps) {
       callTitle: '',
       replyTo,
       content: lineContent({ text: words, marks }),
+      textId: '',
       // Named as they will be; there is nothing to download until the write has stored them.
       attachments: files.map((file) => ({
         id: '',
@@ -504,6 +505,18 @@ export function createFeed(deps: FeedDeps) {
     */
     const ownLines = deps.activityRoot ? { within: space } : {};
     stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
+    /*
+      And the newest message composition, the same way: a typed message, or a reply, is a
+      `CollectionBlock` (see `@we/messages`). By its kinds, so a new post or call is not a new line.
+      Its parts arrive after it, and are heard through the lines on screen, below.
+    */
+    stops.push(
+      records.subscribe(
+        'CollectionBlock',
+        { ...ownLines, where: { kind: MESSAGE_KINDS }, ...newest, select: ['createdAt'] },
+        onChange(),
+      ),
+    );
     // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
     // one is heard by the TextBlock subscription above rather than through the call's line list.
     stops.push(
@@ -526,17 +539,25 @@ export function createFeed(deps: FeedDeps) {
   let shownStop: (() => void) | null = null;
   let shownKey = '';
   effect?.(() => {
-    const ids = rows()
-      .filter((row) => row.kind === 'line')
-      .map((row) => row.id)
-      .filter(Boolean);
-    const key = ids.join(',');
+    const lines = rows().filter((row): row is FeedLine => row.kind === 'line');
+    const ids = lines.map((line) => line.id).filter(Boolean);
+    /*
+      A line is a bare text block or a message composition (see `@we/messages`). A composition is
+      followed as itself — its words, and its group of files joining it — and through the text block
+      that holds its words. Each id is asked of both kinds; a kind that does not hold it answers nothing.
+    */
+    const texts = [...ids, ...lines.map((line) => line.textId).filter(Boolean)];
+    const key = texts.join(',');
     if (key === shownKey) return;
     shownKey = key;
     shownStop?.();
     shownStop = null;
     if (!ids.length || typeof records?.subscribe !== 'function') return;
-    shownStop = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    const stops = [
+      records.subscribe('TextBlock', { where: { id: texts } }, onChange()),
+      records.subscribe('CollectionBlock', { where: { id: ids, kind: MESSAGE_KINDS } }, onChange()),
+    ];
+    shownStop = () => stops.forEach((stop) => stop());
   });
   deps.onDispose?.(() => {
     disposed = true;

@@ -2620,6 +2620,7 @@ CollectionBlock extends WeNode:
   - slug: string [we://slug]
   - editorState: string = null [we://editor_state]
   - textContent: string [we://text_content]
+  - source: string [we://text_source]
   - version: number [we://version]
   - sourceRef: string [we://source_ref]
   - sourceName: string [we://source_name]
@@ -2929,8 +2930,6 @@ TextBlock extends WeNode:
   - marks: json [we://marks]
   - source: string [we://text_source]
   - version: number [we://version]
-  Relations:
-  - children: HasMany → FileBlock [we://child]
 
 Topic extends WeNode:
   Fields:

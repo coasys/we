@@ -56,19 +56,24 @@ function space() {
   const subs: { entity: string; within?: string; ids?: string[]; cb: (rows: unknown[]) => void }[] = [];
   const reads: string[] = [];
   /** Every read, with what it was within — a call's page is a TextBlock read within that call. */
-  const finds: { entity: string; within?: string }[] = [];
+  const finds: { entity: string; within?: string; kind?: unknown }[] = [];
   /** The lines typed into the space, as a page of them reads back. */
   const lines: Record<string, unknown>[] = [];
   /** The space's calls, and what was said in each. */
   const calls: Record<string, unknown>[] = [];
   const said: Record<string, Record<string, unknown>[]> = {};
+  /** The message compositions in the space or a call, by what holds them. */
+  const messages: Record<string, Record<string, unknown>[]> = {};
   /** What extraction found, by entity. */
   const found: Record<string, Record<string, unknown>[]> = {};
   let gate: Promise<void> | null = null;
   let open: (() => void) | null = null;
   let failing = false;
-  const answer = (entity: string, within?: string) => {
-    if (entity === 'CollectionBlock') return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
+  const answer = (entity: string, within?: string, kind?: unknown) => {
+    if (entity === 'CollectionBlock' && kind === 'call')
+      return within === 'root-1' ? calls.map((call) => ({ ...call })) : [];
+    if (entity === 'CollectionBlock')
+      return [kind].flat().includes('message') ? (within && messages[within]?.map((m) => ({ ...m }))) || [] : [];
     if (entity === 'TextBlock') {
       if (within === 'root-1') return lines.map((line) => ({ ...line }));
       return (within && said[within]?.map((line) => ({ ...line }))) || [];
@@ -76,23 +81,23 @@ function space() {
     return within === 'root-1' ? (found[entity] ?? []).map((row) => ({ ...row })) : [];
   };
   const records = {
-    find: async (entity: string, query: { within?: string } = {}) => {
+    find: async (entity: string, query: { within?: string; where?: { kind?: unknown } } = {}) => {
       reads.push(entity);
-      finds.push({ entity, within: query.within });
+      finds.push({ entity, within: query.within, kind: query.where?.kind });
       if (gate) await gate;
       if (entity === 'CollectionBlock' && failing) throw new Error('executor unreachable');
-      return answer(entity, query.within);
+      return answer(entity, query.within, query.where?.kind);
     },
     subscribe: (
       entity: string,
-      query: { within?: string; where?: { id?: string[] } },
+      query: { within?: string; where?: { id?: string[]; kind?: unknown } },
       cb: (rows: unknown[]) => void,
     ) => {
       const sub = { entity, within: query.within, ids: query.where?.id, cb };
       subs.push(sub);
       // The first answer: the rows it starts from, which is not a change.
       void Promise.resolve().then(() => {
-        if (subs.includes(sub)) cb(answer(entity, query.within));
+        if (subs.includes(sub)) cb(answer(entity, query.within, query.where?.kind));
       });
       return () => {
         if (subs.includes(sub)) subs.splice(subs.indexOf(sub), 1);
@@ -127,7 +132,7 @@ function space() {
     failing = on;
   };
   /** One whole read of the window: the call list is asked once per read, and nowhere else. */
-  const windowReads = () => finds.filter((f) => f.entity === 'CollectionBlock').length;
+  const windowReads = () => finds.filter((f) => f.entity === 'CollectionBlock' && f.kind === 'call').length;
   /** The call pages read — the serial part of a read. */
   const callPages = () => finds.filter((f) => f.entity === 'TextBlock' && f.within?.startsWith('call-')).length;
   return {
@@ -139,6 +144,7 @@ function space() {
     lines,
     calls,
     said,
+    messages,
     found,
     subs,
     hold,
@@ -273,6 +279,71 @@ describe('the Feed staying live', () => {
     expect(s.reads.filter((e) => e === 'TextBlock').length).toBeGreaterThan(before);
     vi.useRealTimers();
   });
+
+  it('hears a message composition written anywhere in the space, a reply that is a child of nothing too', async () => {
+    vi.useFakeTimers();
+    const { signal, effect } = reactive();
+    const s = space();
+    const feed = createFeed({
+      signal,
+      effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: undefined,
+      write: async () => null,
+    });
+    await vi.runAllTimersAsync();
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    const before = s.windowReads();
+
+    s.write('CollectionBlock', undefined);
+    await vi.runAllTimersAsync();
+
+    expect(s.windowReads()).toBe(before + 1);
+    // Only the newest message, by the kinds a message has: not every collection in the space.
+    const heard = s.subs.find((sub) => sub.entity === 'CollectionBlock' && !sub.within);
+    expect(heard).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it('re-reads when a message composition it is showing is edited, or gets its files', async () => {
+    vi.useFakeTimers();
+    const { signal, effect } = reactive();
+    const s = space();
+    s.messages['root-1'] = [
+      { id: 'msg-1', kind: 'message', textContent: 'lunch at 1?', author: 'did:ann', createdAt: 1, children: [] },
+    ];
+    const feed = createFeed({
+      signal,
+      effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: undefined,
+      write: async () => null,
+    });
+    await vi.runAllTimersAsync();
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    expect((feed.feedRows() as { id: string; text: string }[]).map((r) => [r.id, r.text])).toEqual([
+      ['msg-1', 'lunch at 1?'],
+    ]);
+    const before = s.windowReads();
+
+    s.edit('CollectionBlock', 'msg-1');
+    await vi.runAllTimersAsync();
+
+    expect(s.windowReads()).toBe(before + 1);
+    vi.useRealTimers();
+  });
 });
 
 describe('the files the window has read', () => {
@@ -282,13 +353,29 @@ describe('the files the window has read', () => {
     const [dataset, setDataset] = signal('space-1');
     const [spaceRoot, setRoot] = signal('root-1');
     const s = space();
-    const line = { id: 'msg-1', text: 'plan', author: 'did:ann', createdAt: 3, children: ['f1'] };
+    // A message composition: its words, then the group that holds the file.
+    const line = {
+      id: 'msg-1',
+      kind: 'message',
+      textContent: 'plan',
+      author: 'did:ann',
+      createdAt: 3,
+      children: ['words-1', 'group-1'],
+    };
     s.lines.push(line);
     const fileReads: Record<string, unknown>[] = [];
     const records = {
       ...s.records,
-      find: async (entity: string, query: { within?: string; select?: string[] } = {}) => {
-        if (entity === 'TextBlock' && query.within?.startsWith('root-')) return s.lines.map((l) => ({ ...l }));
+      find: async (
+        entity: string,
+        query: { within?: string; select?: string[]; where?: { id?: unknown; kind?: unknown } } = {},
+      ) => {
+        const kinds = [query.where?.kind].flat();
+        if (entity === 'CollectionBlock' && kinds.includes('message') && query.within?.startsWith('root-'))
+          return s.lines.map((l) => ({ ...l }));
+        if (entity === 'TextBlock' && query.where?.id) return [{ id: 'words-1', text: 'plan', marks: '' }];
+        if (entity === 'CollectionBlock' && kinds.includes('attachments'))
+          return [{ id: 'group-1', kind: 'attachments', children: ['f1'] }];
         if (entity !== 'FileBlock') return s.records.find(entity, query);
         fileReads.push(query);
         return [{ id: 'f1', name: 'plan.pdf', mimeType: 'application/pdf', size: 10 }];
@@ -518,8 +605,11 @@ describe('the Feed reading only when something changed', () => {
     open();
     await vi.runAllTimersAsync();
 
-    // Three subscriptions answered, the suggestions arrived, and the lines on screen are followed.
-    expect(s.subs.length).toBe(3);
+    /*
+      Three subscriptions answered (the newest line, message and call), the suggestions arrived, and
+      the lines on screen are followed, as text blocks and as message compositions.
+    */
+    expect(s.subs.length).toBe(5);
     expect(staged.asked.length).toBe(1);
     expect(s.windowReads()).toBe(1);
     // The suggestions mark what is on screen, with no read of their own.

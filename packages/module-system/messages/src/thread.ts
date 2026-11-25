@@ -19,6 +19,7 @@
 import { isTextBlock, markdownToBlocks, parseMarks, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
 
+import { isMessageComposition, lineText } from './composition.ts';
 import { CORRECTED, SPOKEN } from './source.ts';
 
 /** What a reply's quote needs of the line it answers. */
@@ -74,7 +75,7 @@ type Row = Record<string, unknown>;
  * rather than not drawing the line at all.
  */
 export function lineContent(row: Row): Row[] | null {
-  const text = typeof row.text === 'string' ? row.text : '';
+  const text = lineText(row);
   if (!text) return null;
   const marks = parseMarks(row.marks);
   if (row.source === SPOKEN || row.source === CORRECTED)
@@ -105,7 +106,7 @@ function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
   return {
     id,
     author: typeof found!.author === 'string' ? found!.author : '',
-    text: typeof found!.text === 'string' ? found!.text : '',
+    text: lineText(found),
   };
 }
 
@@ -158,6 +159,8 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
       author: row.author,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      // A message composition holds its words in `textContent`; a line is drawn and quoted by `text`.
+      ...(isMessageComposition(row) ? { text: lineText(row) } : {}),
       ...(replyTo ? { replyTo } : {}),
       ...(content ? { content } : {}),
     });
