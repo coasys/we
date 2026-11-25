@@ -118,7 +118,7 @@ const createModal: SchemaNode = formModal({
   discardWhen: { $: 'local.kindName || local.kindInverse || local.kindDescription' },
   submitLabel: 'Create',
   submit: {
-    $invoke: 'spaceStore.createRelationshipType',
+    $invoke: 'ops.core.createRelationshipType',
     args: [
       {
         name: { $: 'local.kindName' },

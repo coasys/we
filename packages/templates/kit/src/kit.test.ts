@@ -899,7 +899,7 @@ describe('contracts call sites depend on', () => {
     */
     let forms = 0;
     walk(weDomain['signalDisplay (full)'], (n) => {
-      if (n.$invoke === 'spaceStore.createSignalType') forms += 1;
+      if (n.$invoke === 'ops.core.createSignalType') forms += 1;
     });
     expect(forms).toBe(1);
   });
@@ -1119,7 +1119,7 @@ describe('contracts call sites depend on', () => {
     let creates = 0;
     let gated = false;
     walk(weDomain['signalDisplay (full)'], (n) => {
-      if (n.$invoke === 'spaceStore.createSignalType') creates += 1;
+      if (n.$invoke === 'ops.core.createSignalType') creates += 1;
       const condition = (n.props as { condition?: { $?: string } } | undefined)?.condition?.$;
       if (condition === 'spaceStore.canAdministerCurrentSpace') gated = true;
     });

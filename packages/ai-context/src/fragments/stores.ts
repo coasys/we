@@ -528,7 +528,6 @@ export const storeEntries: StoreEntry[] = [
       'updateSpaceMeta',
       'setSpaceDefaultTemplate',
       'setSpaceDefaultTheme',
-      'createSignalType',
       'setSignalTypeRetired',
       'createTaskState',
       'updateTaskState',
@@ -1545,8 +1544,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
       setViewVisible:
         '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
-      createRelationshipType:
-        '(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank',
       removeSpaceFromGlobal:
         "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
       createSpace:
@@ -1578,12 +1575,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
       updateSpaceImage:
         '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
-      createSignalType:
-        '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
       setSignalTypeRetired:
         '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
       createTaskState:
-        '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+        '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to ops.core.createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
       updateTaskState:
         '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, evidence? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for, and `evidence` ({ entity, via?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space\u2019s states into a workflow, see taskWorkflowEnabled. By slug, which is what a task and a screen both hold',
       setTaskStateRetired:
