@@ -21,9 +21,6 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   'spaceStore.offeredTaskStates': "a $query of 'TaskState' where retired is false",
   'spaceStore.involvementTypes': "a $query of 'InvolvementType'",
   'spaceStore.offeredInvolvementTypes': "a $query of 'InvolvementType' where retired is false",
-  'spaceStore.readMarkers': "a $query of 'ReadMarker' where author is me.did",
-  'spaceStore.spaceList': 'spaceStore.mySpaces, arranged in an expression',
-  'spaceStore.orderedSidebarItems': 'spaceStore.mySpaces, arranged in an expression',
 
   // Writes that are declared operations.
   'spaceStore.createPost': 'ops.core.createPost',
