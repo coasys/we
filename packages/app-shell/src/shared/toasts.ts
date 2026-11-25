@@ -24,4 +24,6 @@ export interface Toasts {
   success: (message: string, duration?: number, action?: ToastButton, look?: ToastFace) => unknown;
   warning: (message: string, duration?: number) => unknown;
   error: (message: string, duration?: number) => unknown;
+  /** Take a toast down early, by what `info` or `success` answered with. */
+  remove?(id: unknown): void;
 }

@@ -31,6 +31,7 @@ import { createRouteStore } from '@shared/stores/RouteStore';
 import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { createShapeStore } from '@shared/stores/ShapeStore';
+import { createTemplateStore } from '@shared/stores/TemplateStore';
 import { createThemeStore } from '@shared/stores/ThemeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
 import { trace } from '@we/backend-shared';
@@ -40,12 +41,12 @@ import type { ParentProps } from 'solid-js';
 
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
+import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
 import { createEditorStore } from '../stores/EditorStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
-import { createTemplateStore } from '../stores/TemplateStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
@@ -133,7 +134,15 @@ export function BootController(props: ParentProps) {
     sessionStore,
     datasetStore,
   });
-  const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
+  const templateStore = createTemplateStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    liveTemplates: solidLiveTemplates,
+    sessionStore,
+    datasetStore,
+    themeStore,
+    routeStore,
+  });
   /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
   const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
   const editorStore = createEditorStore({

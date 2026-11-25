@@ -2,32 +2,40 @@
  * The REAL template store across a switch of space: its other stores are the smallest doubles that
  * let it mount, and the records it reads are served by the test, so what is under test is the store's
  * own sequencing — which space a late read may still put its answer in front of.
+ *
+ * Run once under each reactivity port, each with its renderer's live documents.
  */
+import { plainLiveTemplates } from '@shared/liveTemplate';
 import { encodeTemplateFile, registerEntity } from '@we/entities';
-import { createRoot, createSignal } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
+import { createTestReactivity } from '@we/reactivity/testing';
+import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createTemplateStore, type TemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
+import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';
 
-const [current, setCurrent] = createSignal<unknown>(undefined);
+const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnType<typeof plainLiveTemplates> }][] = [
+  ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates })],
+  [
+    'the test port',
+    () => {
+      const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+];
+
 const root = { id: 'root', name: 'root', handle: { dataset: 'root' } };
-const datasetStub = {
-  currentDataset: current,
-  rootDataset: () => root,
-  datasets: () => [],
-  agentSettings: () => undefined,
-  marketplaceDataset: () => undefined,
-  refreshAgentSettings: async () => {},
-  updateAgentSettings: async () => {},
-};
+const toasts = { info: () => {}, success: () => {}, warning: () => {}, error: () => {} };
 const sessionStub = { me: () => undefined, devTools: () => false };
 const themeStub = { allThemes: () => [], provideAppTheme: () => {}, setDefaultTheme: () => {} };
 const routeStub = { navigate: () => {}, segments: () => [] };
 
 type Held<T> = { promise: Promise<T>; release: (value: T) => void };
-const held = <T,>(): Held<T> => {
+const held = <T>(): Held<T> => {
   let release!: (value: T) => void;
   const promise = new Promise<T>((resolve) => (release = resolve));
   return { promise, release };
@@ -47,8 +55,9 @@ const record = (id: string, name: string) => ({
 
 provideSeed({ name: 'test', modules: [] } as never);
 
-describe('the template store across a switch of space', () => {
+describe.each(hosts)('the template store across a switch of space, under %s', (_name, host) => {
   let store: TemplateStore;
+  let setCurrent: (dataset: unknown) => void;
   let dispose: () => void;
   let setNamed: (id: string | undefined) => void;
   let reads: { space: string; read: Held<unknown[]> }[] = [];
@@ -74,13 +83,26 @@ describe('the template store across a switch of space', () => {
         return read.promise;
       },
     } as never);
-    // The doubled dataset store outlives a test: no space is on screen until the test puts one there.
-    setCurrent(undefined);
-    createRoot((d) => {
-      dispose = d;
-      const [named, setNamedSignal] = createSignal<string | undefined>(undefined);
-      setNamed = setNamedSignal;
+    const { reactivity, liveTemplates } = host();
+    // No space is on screen until the test puts one there.
+    const [current, writeCurrent] = reactivity.signal<unknown>(undefined);
+    setCurrent = writeCurrent;
+    const datasetStub = {
+      currentDataset: current,
+      rootDataset: () => root,
+      datasets: () => [],
+      agentSettings: () => undefined,
+      marketplaceDataset: () => undefined,
+      refreshAgentSettings: async () => {},
+      updateAgentSettings: async () => true,
+    };
+    const [named, setNamedSignal] = reactivity.signal<string | undefined>(undefined);
+    setNamed = setNamedSignal;
+    dispose = reactivity.root(() => {
       store = createTemplateStore({
+        reactivity,
+        toasts,
+        liveTemplates,
         sessionStore: sessionStub as never,
         datasetStore: datasetStub as never,
         themeStore: themeStub as never,

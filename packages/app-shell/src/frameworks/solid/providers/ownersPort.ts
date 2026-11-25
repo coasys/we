@@ -7,6 +7,7 @@
  */
 import { currentProductName } from '@shared/bundles/brand';
 import type { DatasetStore } from '@shared/stores/DatasetStore';
+import type { TemplateStore } from '@shared/stores/TemplateStore';
 import type { OwnedPart, OwnersPort } from '@we/editor/runtime';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { createSignal } from 'solid-js';
@@ -18,7 +19,6 @@ import { moduleRegistry, type RegisteredPart } from '../../../shared/registries/
 import { viewRegistry } from '../../../shared/registries/viewRegistry';
 import type { ShellStore } from '../stores/ShellStore';
 import type { SpaceStore } from '../stores/SpaceStore';
-import type { TemplateStore } from '../stores/TemplateStore';
 
 /** Template data is JSON; copied that way because a store hands over proxies `structuredClone` refuses. */
 const copyOf = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;

@@ -16,17 +16,19 @@ import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { TemplateSchema } from '@we/schema-shared';
 
 import { appTemplateRegistry } from '../registries/appTemplates';
+import type { TemplateStore } from './TemplateStore';
 
 /** What the edit target asks of the template store: the template on screen, and working copies. */
-export interface EditTargetTemplates {
-  readonly currentTemplate: TemplateSchema;
-  updateTemplate: (next: TemplateSchema) => void;
-  openDraft: (template: TemplateSchema) => TemplateSchema;
-  updateDraft: (draft: TemplateSchema, next: TemplateSchema) => void;
-  closeDraft: (draft: TemplateSchema) => void;
-  persistTemplate: (template: TemplateSchema) => Promise<void>;
-  isBuiltInTemplateId: (id: string) => boolean;
-}
+export type EditTargetTemplates = Pick<
+  TemplateStore,
+  | 'currentTemplate'
+  | 'updateTemplate'
+  | 'openDraft'
+  | 'updateDraft'
+  | 'closeDraft'
+  | 'persistTemplate'
+  | 'isBuiltInTemplateId'
+>;
 
 /**
  * The template on screen, or a section the shell on screen draws — edited through its working copy,

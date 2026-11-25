@@ -237,6 +237,19 @@ describe('what the space tier can reach', () => {
     }
   });
 
+  it('reads a store member held behind a getter afresh, as the template on screen is', () => {
+    // A live document may hand out a new tree per edit; read once at build, the bag would keep the first.
+    let shown = { id: 'first' };
+    const templateStore = {
+      get currentTemplate() {
+        return shown;
+      },
+    };
+    const bag = buildTemplateBag({ templateStore }, { grants: SPACE_TIER }) as { templateStore: typeof templateStore };
+    shown = { id: 'second' };
+    expect(bag.templateStore.currentTemplate.id).toBe('second');
+  });
+
   it('never puts host wiring in either bag', () => {
     for (const [store, spec] of Object.entries(TEMPLATE_SURFACE)) {
       for (const [member, value] of Object.entries(spec)) {

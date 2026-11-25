@@ -21,16 +21,9 @@
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
  */
 import type { WorkflowDefinition } from '@we/backend-shared';
-import type { ThemeData } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
-import {
-  type Bundle,
-  type BundleRecordType,
-  type BundleTheme,
-  readBundle,
-  type TemplateSchema,
-} from '@we/schema-shared';
+import { type Bundle, type BundleRecordType, readBundle, type TemplateSchema } from '@we/schema-shared';
 
 import { selectBootSnapshot, writeBootSnapshot } from '../bundles/bootSnapshot';
 import { currentProductName } from '../bundles/brand';
@@ -55,6 +48,8 @@ import { explain } from '../userMessage';
 import type { DatasetStore } from './DatasetStore';
 import type { SessionStore } from './SessionStore';
 import type { ShapeStore } from './ShapeStore';
+import type { TemplateStore } from './TemplateStore';
+import type { ThemeStore } from './ThemeStore';
 
 /** Bigger than any app has reason to be, small enough that reading one cannot hang the page. */
 const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
@@ -169,21 +164,13 @@ function fileOf(input: unknown): File | null {
 }
 
 /** What the bundle store writes through in the template library: an app's templates, and its choice. */
-export interface BundleTemplates {
-  loading: Accessor<boolean>;
-  allTemplates: Accessor<TemplateSchema[]>;
-  writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
-  writeSpaceTemplates: (templates: TemplateSchema[], origin: string, datasetId?: string) => Promise<void>;
-  setAppTemplate: (id: string) => Promise<boolean>;
-  deleteTemplate: (templateId: string) => Promise<void>;
-}
+export type BundleTemplates = Pick<
+  TemplateStore,
+  'loading' | 'allTemplates' | 'writeLibraryTemplates' | 'writeSpaceTemplates' | 'setAppTemplate' | 'deleteTemplate'
+>;
 
 /** What it writes through in the theme library. */
-export interface BundleThemes {
-  installedThemes: Accessor<ThemeData[]>;
-  writeLibraryTheme: (theme: BundleTheme) => Promise<string>;
-  deleteTheme: (themeId: string) => Promise<void>;
-}
+export type BundleThemes = Pick<ThemeStore, 'installedThemes' | 'writeLibraryTheme' | 'deleteTheme'>;
 
 /** A space this agent has, as the set-up list reads it. */
 export interface BundleSpaceRow {

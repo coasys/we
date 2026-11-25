@@ -17,7 +17,7 @@ const SOLID_TESTS = [
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
   // The real template store, its sibling stores doubled: which space a late read may still answer for.
-  'tests/templateStoreSpaceSwitch.test.tsx',
+  'tests/templateStoreSpaceSwitch.test.ts',
   'tests/runtimeStore.test.ts',
   'tests/accountStore.test.ts',
   'tests/identityStore.test.ts',
@@ -47,6 +47,8 @@ const SOLID_TESTS = [
   'tests/bundleStore.test.ts',
   'tests/libraryFlow.test.ts',
   'tests/themeStore.test.ts',
+  'tests/liveTemplate.test.ts',
+  'tests/templateStore.test.ts',
   'tests/shapeStore.test.ts',
   'tests/distinctSignal.test.ts',
   'tests/shellRouterRoot.test.tsx',

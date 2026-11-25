@@ -1979,6 +1979,16 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (!granted.has(spec.group)) continue;
 
       if (spec.kind === 'state') {
+        /*
+          A member behind a getter is read through it on every access. The template on screen is one:
+          its live document may hand out a new tree per edit, and copied once here the bag would keep
+          the tree it was built with.
+        */
+        if (Object.getOwnPropertyDescriptor(value, name)?.get) {
+          const source = value as Record<string, unknown>;
+          Object.defineProperty(filtered, name, { enumerable: true, get: () => source[name] });
+          continue;
+        }
         // Tagged so `walkPath` will call it. Anything untagged is data to the resolver, never
         // something to invoke — which is what stops a store read from running an action.
         filtered[name] = typeof member === 'function' ? markReactive(member) : member;

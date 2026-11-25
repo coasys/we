@@ -160,7 +160,7 @@ const app = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
+vi.mock('../src/shared/stores/TemplateStore', async () => {
   const { createSignal, createEffect } = await import('solid-js');
   const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
   const { latestPerSpace } = await import('../src/shared/stores/latestPerSpace');
@@ -256,12 +256,12 @@ import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
+import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
-import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
@@ -278,6 +278,7 @@ import { createRouteStore } from '../src/shared/stores/RouteStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
+import { createTemplateStore } from '../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../src/shared/stores/ThemeStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
@@ -359,7 +360,15 @@ function mountShell(): Stores {
       sessionStore,
       datasetStore,
     });
-    const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
+    const templateStore = createTemplateStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      liveTemplates: solidLiveTemplates,
+      sessionStore,
+      datasetStore,
+      themeStore,
+      routeStore,
+    });
     // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({

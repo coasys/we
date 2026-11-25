@@ -116,7 +116,7 @@ A section the agent may change — a stored copy, not a built-in or a module's, 
 only for whoever runs the space — is edited in place: the first press in visual mode selects the
 section whole, and a second press (or one with the modifier) makes it the editor's **edit target**
 (`stores/editTarget.ts`). The session then edits a working copy of the section
-(`stores/templateDrafts.ts`), which `SpaceStore.availableViews` prefers while it is open, so the shell
+(`shared/templateDrafts.ts`, a live document the renderer lends — `shared/liveTemplate.ts`), which `SpaceStore.availableViews` prefers while it is open, so the shell
 draws each edit where it will be seen. One thing is edited at a time: while the section is the
 target nothing outside it lights up, and a press outside it only comes back out, selecting nothing.
 Escape at its top and Done come back out too. A built-in section is copied first ("Make your own

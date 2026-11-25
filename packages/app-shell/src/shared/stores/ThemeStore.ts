@@ -106,8 +106,8 @@ export interface ThemeStore {
   setDefaultTheme: (themeId: string) => Promise<boolean>;
   /**
    * Lend this store the theme the app in use offers first, which stands in for the agent's default
-   * until they choose one. `TemplateStore` knows the app and mounts below this store, so it hands
-   * the accessor down — the same arrangement as `appStore.provideInstalledModules`.
+   * until they choose one. `TemplateStore` knows the app and is composed after this store, so it
+   * hands the accessor back — the same arrangement as `appStore.provideInstalledModules`.
    */
   provideAppTheme: (lookup: () => string | undefined) => void;
   /**
@@ -807,7 +807,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   const currentTheme: Accessor<ThemeData> = () =>
     allThemes().find((t) => t.id === currentThemeId()) ?? registryToThemeData('light');
 
-  // Map theme AD4M model UUID → model instance for save/delete. `NewRecord` because entries arrive
+  // Map theme record id → record for save/delete. `NewRecord` because entries arrive
   // both from a load and from whatever a save or install just wrote, and a create carries no
   // relations (see `NewRecord`) — nothing here reads one, an entry existing to be saved and deleted.
   const themeRecordMap = new Map<string, NewRecord<Theme>>();
@@ -885,7 +885,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     if (!prefs) return;
     const defaultId = agentDefaultThemeId();
     // Don't override currentThemeId while the user is actively editing a theme —
-    // agentSettings can update (e.g. when a theme save triggers AD4M subscriptions)
+    // agentSettings can update (e.g. when a theme save triggers the backend's subscriptions)
     // and blindly resetting currentThemeId to defaultThemeId would exit editing mode.
     if (untrack(() => editingTheme())) return;
     if (defaultId === lastAppliedDefaultThemeId) return;
@@ -894,7 +894,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   });
 
   // Keep localStorage in sync with the agent's default theme so the bootscreen
-  // can apply it immediately on next launch without waiting for AD4M to load.
+  // can apply it immediately on next launch without waiting for the backend.
   effect(() => {
     if (!datasetStore.agentSettings()) return;
     localStorage.setItem(THEME_KEY, agentDefaultThemeId());
@@ -918,7 +918,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
    * The agent's own theme — what the shell wears in scoped mode, and what a space falls back to.
    *
    * Prefers `AgentSettings` over `localStorage` so it is reactive; localStorage is the boot answer,
-   * before AD4M has loaded, and an effect above keeps the two in step.
+   * before the backend has answered, and an effect above keeps the two in step.
    */
   const personalTheme = memo<ThemeData>(() => resolveThemeData(agentDefaultThemeId()));
 
@@ -1054,7 +1054,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   });
 
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
-  // so the correct theme renders before AD4M loads, without relying on a stylesheet.
+  // so the correct theme renders before the backend answers, without relying on a stylesheet.
   const initialId = getInitialThemeId();
   applyThemeToDOM(
     isValidThemeKey(initialId)
