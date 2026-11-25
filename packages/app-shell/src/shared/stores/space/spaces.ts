@@ -211,7 +211,7 @@ export function createSpaceList(deps: SpaceListDeps) {
    * The rule itself is `buildGuestLink`, which the web entry point's parser is the inverse of — a
    * link this app offers has to be one this app would accept. Both halves have to be reachable by
    * whoever *receives* it, which is more than "has a server URL": `session.serverUrl()` is set from
-   * the connection for every connector, a local executor included, so the earlier check let a
+   * the connection for every connector, a local backend included, so the earlier check let a
    * desktop-shaped deployment publish `http://localhost:12000` as an invitation.
    */
   const guestLinkFor = (ds: AppDataset): string => {
@@ -1023,7 +1023,7 @@ export function createSpaceList(deps: SpaceListDeps) {
    *
    * The guest link encodes both the space and the host URL, so clicking it connects the guest
    * to the right node and auto-joins the space with no auth UI. Empty when there is no reachable
-   * server URL (local executor).
+   * server URL (a local backend).
    */
   async function copyGuestLink(uuid: string): Promise<void> {
     const ds = untrack(datasetStore.orderedDatasets).find((d) => d.id === uuid);

@@ -3,7 +3,7 @@
  *
  * One entry point for "open the chat": the shell rail's sparkle asks with no scope (the global
  * chat, which reaches everything the app's token does) and a space's "Find or ask" asks with that
- * space's perspective (the space chat, whose tools may only act there).
+ * space's dataset (the space chat, whose tools may only act there).
  *
  * ## Where a chat opens is a viewport question, not two features
  *
@@ -34,8 +34,8 @@ import { APP_PANEL_SCOPE } from '../panelScope';
 /** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
   /**
-   * The perspective the chat is scoped to — set by a space's ask, absent for the global chat.
-   * A scoped chat's tools may only act in that one perspective.
+   * The dataset the chat is scoped to — set by a space's ask, absent for the global chat.
+   * A scoped chat's tools may only act in that one dataset.
    */
   perspectiveUuid?: string;
   /** The space's own name, for the badge the scoped chat wears. */
@@ -81,7 +81,7 @@ export interface PendingQuestion {
 export interface ChatStore {
   /**
    * Open a chat. No `perspectiveUuid` is the global chat; with one, the chat scoped to that
-   * perspective. `draft` asks once the chat is up; `prefill` only fills its composer.
+   * dataset. `draft` asks once the chat is up; `prefill` only fills its composer.
    */
   openChat: (input?: ChatOpen) => void;
   /**
@@ -203,12 +203,12 @@ export function createChatStore({
   const store: ChatStore = {
     openChat: (input = {}) => {
       /*
-        A space's ask that names its perspective but carries no id (the space's local perspective
-        not loaded yet) is not a request for the global chat: opening one would answer a question
+        A space's ask that names its dataset but carries no id (the space's local dataset not
+        loaded yet) is not a request for the global chat: opening one would answer a question
         about one space with a chat that reaches all of them.
       */
       if ('perspectiveUuid' in input && !input.perspectiveUuid) {
-        console.warn('ChatStore: a space chat was asked for before its perspective was known; not opened');
+        console.warn('ChatStore: a space chat was asked for before its dataset was known; not opened');
         return;
       }
       const inputs: ChatInputs = {};

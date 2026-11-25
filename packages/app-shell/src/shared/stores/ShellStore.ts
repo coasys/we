@@ -203,11 +203,11 @@ export interface ShellStore {
    */
   provideModuleGate: (gate: (moduleId: string) => boolean) => void;
   /**
-   * Tell the shell whether a perspective uuid is the space on screen, so a panel instance bound to
+   * Tell the shell whether a dataset id is the space on screen, so a panel instance bound to
    * one (the space chats) shows only while its space is — hidden, not closed, elsewhere. Wiring:
    * `SpaceStore` provides it, and nothing else should. See `moduleGate`.
    */
-  provideSpaceGate: (gate: (perspectiveUuid: string) => boolean) => void;
+  provideSpaceGate: (gate: (datasetId: string) => boolean) => void;
   /**
    * Tell the shell whose instance records these are — the signed-in agent's DID. Wiring:
    * `SessionStore` provides it, and nothing else should. Kept panel instances read and write

@@ -471,7 +471,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     return record;
   }
 
-  // Per-session cache of space templates keyed by perspective UUID.
+  // Per-session cache of space templates keyed by dataset id.
   // Populated on first visit; subsequent visits restore synchronously without a fetch.
   interface SpaceTemplateCacheEntry {
     schemas: TemplateSchema[];
@@ -819,7 +819,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
 
   const defaultTemplateId = () => datasetStore.agentSettings()?.defaultTemplateId || 'default';
 
-  /** Load saved templates from root perspective and merge with built-in */
+  /** Load saved templates from the root dataset and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
     try {
       const perspective = datasetStore.rootDataset()?.handle;
@@ -965,7 +965,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
    */
   let spaceTemplateTurn = 0;
 
-  /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
+  /** Load templates from a space's dataset, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     const turn = ++spaceTemplateTurn;
     clearSpaceTemplates();
@@ -994,7 +994,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   }
 
   /**
-   * Ensure space templates for a perspective are in allTemplates.
+   * Ensure space templates for a dataset are in allTemplates.
    * Cache hit: restores synchronously from session cache (no fetch).
    * Cache miss: full async load that also populates the cache.
    */
@@ -1024,7 +1024,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     await load;
   }
 
-  // Load saved templates when root perspective becomes available
+  // Load saved templates when the root dataset becomes available
   effect(() => {
     if (datasetStore.rootDataset()) {
       void untrack(loadSavedTemplates).finally(() => setLoading(false));
@@ -1893,7 +1893,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     watchTemplates(dataset.handle, syncSpace);
   });
 
-  /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
+  /** Re-fetch space templates for the dataset on screen — call after any mutation (delete, install) */
   async function refreshSpaceTemplates(): Promise<void> {
     const perspective = datasetStore.currentDataset();
     if (!perspective) return;
@@ -2008,7 +2008,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   async function saveTemplate(name: string): Promise<void> {
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) {
-      console.error('TemplateStore: No root perspective available');
+      console.error('TemplateStore: No root dataset available');
       return;
     }
 
@@ -2059,7 +2059,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   /**
    * Save a provided schema as a new (or updated) template, refresh the
    * templates list, and switch to it. Returns true on success.
-   * Pass destination='space' to save into the current space perspective instead of we-root.
+   * Pass destination='space' to save into the space on screen's dataset instead of we-root.
    */
   async function saveTemplateAs(
     schema: TemplateSchema,
@@ -2070,7 +2070,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     const targetDs = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
     const perspective = targetDs?.handle;
     if (!perspective) {
-      toasts.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} perspective available`);
+      toasts.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} dataset available`);
       return false;
     }
 

@@ -339,12 +339,12 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     const returning = ds && !view && !arrivingFromHere ? lastPlaceInSpace.get(ds.id) : undefined;
     if (returning) {
       routeStore.navigate(returning);
-      broadcastPerspectiveNavigation(spaceId);
+      broadcastSpaceNavigation(spaceId);
       return;
     }
     routeStore.navigate(section ? `${base}/${section}` : base);
     // Notify embedded app iframes (e.g. Flux) after the dataset has switched
-    broadcastPerspectiveNavigation(spaceId);
+    broadcastSpaceNavigation(spaceId);
   }
 
   /**
@@ -379,7 +379,7 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     return navigateToSpace(destination.datasetId, destination.view);
   }
 
-  function broadcastPerspectiveNavigation(communityId: string): void {
+  function broadcastSpaceNavigation(communityId: string): void {
     const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
       'we-iframe',
     );

@@ -12,8 +12,8 @@
  * that just arrived?" — until they collapse to one value, because comparing the raw strings makes a
  * link and the id inside it two different spaces.
  *
- * Scheme-agnostic on purpose: `neighbourhood://` is AD4M's spelling, and this store is not supposed
- * to know that. Any `<scheme>://` prefix that is not the web's own is the backend's, and the id is
+ * Scheme-agnostic on purpose: each backend spells its own, and this store is not supposed to know
+ * which. Any `<scheme>://` prefix that is not the web's own is the backend's, and the id is
  * what follows it.
  */
 export function sharedIdOf(input: string): string {
@@ -54,9 +54,9 @@ export function datasetAnswersTo(ds: { id: string; sharedId?: string; sharedUri?
  * How long a join keeps looking for a dataset after the call to make it has already failed.
  *
  * Joining is a long-running backend operation wearing a request/response call's clothes: the
- * executor has to fetch the neighbourhood expression and install its link language before the
- * dataset exists at all, and only creates it at the very end. The transport gives up well before
- * that on a first join — AD4M's client applies one flat 30s timeout to every call it makes — and
+ * backend may have to fetch what the shared dataset is and install how it syncs before the dataset
+ * exists at all, and only creates it at the very end. The transport can give up well before that on
+ * a first join — one backend's client applies one flat 30s timeout to every call it makes — and
  * the resulting 408 says nothing whatsoever about whether the join is still running. It usually is.
  *
  * So a failed call is not a failed join, and the honest response to one is to keep watching for a

@@ -137,13 +137,13 @@ async function filedUnder(handle: unknown, conversation: string): Promise<Parent
   One collection, one watch.
 
   Derived rather than stored so that any peer computing it lands on the same string: the engine
-  keys its processors by this id inside the shared perspective, so two members starting the same
+  keys its processors by this id inside the shared dataset, so two members starting the same
   call must agree on it or they register two watches over one transcript and every utterance is
   interpreted twice.
 
-  Reduced to letters, digits and dashes because the id becomes part of a URI — the engine mints its
-  processor node at `ad4m://autoprocessor/<id>`, and a record id is itself a URL. What an id looks
-  like is AD4M's business, so nothing here assumes its form.
+  Reduced to letters, digits and dashes because the id may become part of a URI — a backend can mint
+  its processor node at an address built from it, and a record id is itself a URL. What an id looks
+  like is the backend's business, so nothing here assumes its form.
 */
 const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^a-zA-Z0-9]+/g, '-')}`;
 
@@ -205,7 +205,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
   /**
    * The class list one pass over this collection should ask for.
    *
-   * Always intersected with the candidates, and that is not tidiness: a name the perspective has no
+   * Always intersected with the candidates, and that is not tidiness: a name the dataset has no
    * shape for fails `assertShapesInstalled` and takes the whole pass down, so a space default naming
    * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
    * narrow the request rather than break it.
@@ -227,7 +227,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
     const watch = port.watch.bind(port);
     /*
       The caller's dataset, not the one on screen: a call outlives the space on screen, and a watch
-      registered wherever the reader had wandered to interprets the call into a perspective that
+      registered wherever the reader had wandered to interprets the call into a dataset that
       does not hold it — and is then removed from the wrong one too, so it never stops.
     */
     const handle = target ?? deps.dataset();
@@ -244,7 +244,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       */
       const { auto, classes } = await deps.collectionAnswers(handle, collectionId);
       if (!auto) throw new Error('interpretation: automatic interpretation is off for this collection');
-      // Refused rather than registered empty: the executor rejects a processor with no classes, and
+      // Refused rather than registered empty: the backend rejects a processor with no classes, and
       // "nothing in this space is marked for AI interpretation" is a sentence worth saying in its own words.
       if (!classes.length) throw new Error('interpretation: nothing in this space is marked for AI interpretation');
 
@@ -422,7 +422,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       would leave one behind every time somebody closed it.
 
       Keyed on the collection id, so registering twice for one call is the same registration rather
-      than two. The engine reads its processors out of the perspective graph, so this is idempotent
+      than two. The engine reads its processors out of the dataset, so this is idempotent
       in the place it matters: whichever peer registers first wins and the rest write the same row.
     */
     watchCollection: watchConversation,

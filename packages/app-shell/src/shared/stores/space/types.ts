@@ -83,7 +83,7 @@ export interface SpaceListEntry {
    * A link that gets someone else into this space, or `''` when there is nothing to share.
    *
    * Empty for a personal space: it has no global id, so no link could reach it. On the web this is
-   * an ordinary URL someone can click; anywhere else it is the `neighbourhood://` URI, because a
+   * an ordinary URL someone can click; anywhere else it is the backend's own URI for it, because a
    * desktop build has no origin worth putting in front of a path and no address bar to paste one
    * into. Both are accepted by `joinSpace`, so whichever a recipient has, it works.
    */
@@ -91,7 +91,7 @@ export interface SpaceListEntry {
   /**
    * A guest invite link that bypasses auth UI entirely.
    *
-   * Empty when the session has no server URL (local executor — unreachable from outside) or when
+   * Empty when the session has no server URL (a local backend — unreachable from outside) or when
    * the space has no shared id. The link encodes both the space and the host, so a guest clicking
    * it connects to the right node and joins the right space with no choices to make.
    */

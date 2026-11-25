@@ -339,7 +339,7 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
       ? { candidates: liveCandidates, installed: [] }
       : await shapeStore.interpretationCandidatesFor(handle);
     // A class the dataset already had is installed though this session never registered it — only
-    // a switch does — and the executor resolves it from its own shape, so it stays.
+    // a switch does — and the backend resolves it from its own shape, so it stays.
     const resolvable = (entity: string) =>
       installed.includes(entity) || getEntityForDataset(entity, handle) !== undefined;
     return {
@@ -455,7 +455,7 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
    *
    * Published before it is stored, and queued like a default save. Each switch writes the *whole*
    * list, so the next one has to read this one's list rather than the copy from before it. The
-   * executor shows a write as soon as it lands, which is before this call resumes to publish, and a
+   * backend shows a write as soon as it lands, which is before this call resumes to publish, and a
    * live row from before the write can replace the copy in the meantime — either one drops the class
    * the switch just turned on. The queue keeps an older write, whose list does not have the later
    * switch, from finishing last and storing that.

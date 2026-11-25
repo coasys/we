@@ -150,7 +150,7 @@ export function createCallExports(deps: CallExportDeps) {
             /*
               `polymorphic` said here rather than trusted to the declaration. `extracted` names no
               target class — a pass writes whatever models the call looks for — and the class this
-              store reads through does not carry the flag, so the executor would refuse to hydrate it.
+              store reads through does not carry the flag, so the backend would refuse to hydrate it.
             */
             include: {
               runs: { where: { kind: 'extraction' } },

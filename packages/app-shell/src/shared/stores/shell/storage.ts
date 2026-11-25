@@ -176,7 +176,7 @@ export const LANES_KEY = 'we-local:shell.lanes';
 export const INSTANCES_KEY = 'we-local:shell.panelInstances';
 
 /*
- * Instances are kept under the agent's DID: an app-scope chat carries a perspective id, and a
+ * Instances are kept under the agent's DID: an app-scope chat carries a dataset id, and a
  * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
  * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
  */

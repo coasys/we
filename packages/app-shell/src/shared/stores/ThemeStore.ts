@@ -446,7 +446,7 @@ function cssNamespace(theme: ThemeData): string {
  * The one door a theme's CSS gets through, and so the one place it is filtered.
  *
  * Sanitising here rather than at install is deliberate. Themes arrive by more routes than the
- * install dialog: they sync in through a shared perspective, so a peer can write a `Theme` model
+ * install dialog: they sync in through a shared dataset, so a peer can write a `Theme` model
  * straight into a space and every member wears it without anybody clicking anything. Install is one
  * door; injection is the choke point.
  *
@@ -913,12 +913,12 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     }
   }
 
-  // Load installed themes when root perspective is ready
+  // Load installed themes when the root dataset is ready
   effect(() => {
     if (datasetStore.rootDataset()) void loadInstalledThemes();
   });
 
-  // Load space themes when the current space perspective changes
+  // Load space themes when the space on screen changes
   effect(() => {
     if (datasetStore.currentDataset()) void loadSpaceThemes();
     else setSpaceThemes([]);
@@ -1425,7 +1425,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const perspective =
       destination === 'space' ? datasetStore.currentDataset()?.handle : datasetStore.rootDataset()?.handle;
     if (!perspective) {
-      toasts.error(`Cannot save theme: no ${destination} perspective available`);
+      toasts.error(`Cannot save theme: no ${destination} dataset available`);
       return false;
     }
     try {
@@ -1680,7 +1680,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       this session and never pruned, so an unconstrained slug match could bind the record to a theme
       belonging to a *space* — and `save()` would then publish marketplace content into that space,
       for every member, while the toast said "updated" and the installed list showed nothing new.
-      Slugs are not unique across perspectives and were never meant to be.
+      Slugs are not unique across datasets and were never meant to be.
     */
     const installedIds = new Set(installedThemes().map((theme) => theme.id));
     const existing = [...themeRecordMap.values()].find((model) => installedIds.has(model.id) && model.slug === slug);
@@ -1821,7 +1821,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
    * on the same page, meaning two different things. Nobody chose that; the space-scoped half was
    * simply missing, so the page reached for the account-scoped one.
    *
-   * It matters beyond the inconsistency: writing to your root perspective is an act on your account,
+   * It matters beyond the inconsistency: writing to your root dataset is an act on your account,
    * which is why `installFromMarketplace` sits at the chrome tier. A community template can offer
    * "give this space a theme" and cannot offer "put this in your library".
    */

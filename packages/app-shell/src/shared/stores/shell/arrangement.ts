@@ -166,12 +166,12 @@ export function createShellArrangement(deps: {
   const [didOf, setDidOf] = signal<(() => string | undefined) | undefined>(undefined);
   const agentDid = () => didOf()?.() ?? '';
   /**
-   * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
+   * Which dataset is on screen, asked as "is this the one" — injected by `SpaceStore`, which
    * is composed after the shell store, the same reason `moduleGate` is. An instance whose inputs bind it to
-   * a perspective (the space chats) shows only while its space is current: hidden elsewhere, not
+   * a dataset (the space chats) shows only while its space is current: hidden elsewhere, not
    * closed, so it is still there when you go back.
    */
-  const [spaceGate, setSpaceGate] = signal<(perspectiveUuid: string) => boolean>(() => true);
+  const [spaceGate, setSpaceGate] = signal<(datasetId: string) => boolean>(() => true);
   const visibleInstances = (all: Record<string, Record<string, PanelInstance>>) =>
     Object.fromEntries(
       Object.entries({

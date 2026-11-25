@@ -204,7 +204,7 @@ export interface SpaceStore {
    * for one syncing through a server, the servers to pick from.
    */
   sharingOptions: Accessor<SharingPickerOption[]>;
-  /** Address of the link language template publishing uses when none is chosen. */
+  /** The sharing option publishing uses when none is chosen — one of `sharingOptions`. */
   defaultSharing: Accessor<string>;
 
   /**
@@ -301,7 +301,7 @@ export interface SpaceStore {
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
    * A feed filters on this before rendering — `{ $: '!(post.author in spaceStore.mutedDids)' }`. Hiding on
-   * this agent's screen only: an AD4M neighbourhood is writable by every member, so nothing here
+   * this agent's screen only: a shared space is writable by every member, so nothing here
    * removes anything for anyone else.
    */
   mutedDids: Accessor<string[]>;
@@ -345,7 +345,7 @@ export interface SpaceStore {
    * most recent. A backend without references falls back to filtering the space's containers, which
    * misses lines.
    */
-  /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
+  /** `createdAt` is the backend's comparable timestamp, in epoch milliseconds. */
   myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
   /**
    * Put a file somewhere the space can reference, and return the URL that points at it.
