@@ -3079,6 +3079,9 @@ export const transcriptLines: SchemaNode = {
       // The call's lines: messages, each a collection holding its blocks — see `@we/messages`.
       entity: 'CollectionBlock',
       where: { kind: 'message' },
+      // What a line draws, and the parts and thread it is read with. A message holds no list worth
+      // carrying beyond those.
+      select: ['author', 'createdAt', 'updatedAt', 'textContent', 'source', 'kind', 'respondsTo', 'children', 'thread'],
       scope: {
         anchor: 'CollectionBlock',
         via: 'children',

@@ -1500,7 +1500,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false, label: string = ''
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
@@ -4185,9 +4185,9 @@ Needs: kernels records, interpretation.
   - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
-  - reply — Answers one line with a typed line of its own, linked from it as a reply.
-  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.
+  - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any, and the files attached to it, when it was given any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.
   - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
   - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.
@@ -4621,11 +4621,6 @@ An app installed at runtime brings its own, which this list does not show.
   Params: canvas: string (required) — The canvas.; connection: string (required) — The Relationship.; route: string — The connection’s route on this canvas, where it has one.; action: string (required) — update, replace, create or delete.; fields: object — sourceAnchor, targetAnchor, points — what the route says.
   Returns: nothing
   Writes: adds to CollectionBlock.children; creates a EdgeRoute; deletes a EdgeRoute; edits a EdgeRoute (destructive)
-
-- ops.feed.reply — Answer one line with a typed line of its own: a response to it, threaded under the subject of the thread it is in, mentioning whoever its marks name.
-  Params: line: string (required) — The line answered.; text: string (required) — What the reply says.; marks: list — Its marks, as the composer gave them; absent when it has none.; thread: string — The subject of the thread it joins.; threadEntity: string — The subject’s entity.
-  Returns: a value, read in onSuccess as result
-  Writes: adds to its parent.responses; adds to Relationship.thread; creates a TextBlock; adds to Topic.thread; adds to thread on any block type
 
 - ops.pocket.gather — Keep a reference in the Pocket, in a folder or at its root. Something already held is moved to the folder rather than kept twice.
   Params: ref: string (required) — The record URI — we:<datasetKey>/<Entity>/<id>.; entity: string — The reference’s entity, written out beside it.; datasetKey: string — Its dataset key.; recordId: string — Its record id.; withinEntity: string — The record it sits inside, where it is a block.; withinId: string — That record’s id.; label: string — How it read when it was gathered.; icon: string — Its icon.; thumbnail: string — Its picture.; sourceName: string — The space it came from, by name.; sourceAuthor: string — Whoever wrote it.; into: string — The folder to keep it in; the root when omitted.; origin: object — Where a row dragged out of the Pocket came from — { id, folder } — so a drop elsewhere moves it.

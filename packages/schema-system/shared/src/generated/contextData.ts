@@ -208,6 +208,10 @@ export const contextData: ContextData = {
         { name: 'multiple', type: 'boolean', optional: false, default: 'false' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
+        { name: 'files', type: 'File[] | undefined', optional: true },
+        { name: 'maxSize', type: 'number', optional: false, default: '0' },
+        { name: 'hideList', type: 'boolean', optional: false, default: 'false' },
+        { name: 'label', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -4759,7 +4763,7 @@ export const contextData: ContextData = {
         {
           name: 'reply',
           kind: 'action',
-          doc: 'Answers one line with a typed line of its own, linked from it as a reply.',
+          doc: 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.',
         },
         {
           name: 'replyingTo',
@@ -4769,12 +4773,12 @@ export const contextData: ContextData = {
         {
           name: 'sendToCallFeed',
           kind: 'action',
-          doc: 'Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.',
+          doc: 'Writes a typed message into the call on screen — with its marks, when the composer gave any, and the files attached to it, when it was given any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.',
         },
         {
           name: 'sendToFeed',
           kind: 'action',
-          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.',
+          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.',
         },
         {
           name: 'showCallTranscripts',
@@ -6259,30 +6263,6 @@ export const contextData: ContextData = {
         categories: {},
         bulk: false,
         destructive: true,
-      },
-    },
-    {
-      name: 'feed.reply',
-      description:
-        'Answer one line with a typed line of its own: a response to it, threaded under the subject of the thread it is in, mentioning whoever its marks name.',
-      params: {
-        line: { type: 'string', required: true, description: 'The line answered.' },
-        text: { type: 'string', required: true, description: 'What the reply says.' },
-        marks: { type: 'list', description: 'Its marks, as the composer gave them; absent when it has none.' },
-        thread: { type: 'string', description: 'The subject of the thread it joins.' },
-        threadEntity: { type: 'string', description: 'The subject’s entity.' },
-      },
-      returns: true,
-      effects: {
-        entities: {
-          '*': ['add:responses'],
-          Relationship: ['add:thread'],
-          TextBlock: ['create'],
-          Topic: ['add:thread'],
-        },
-        categories: { blockable: ['add:thread'] },
-        bulk: false,
-        destructive: false,
       },
     },
     {

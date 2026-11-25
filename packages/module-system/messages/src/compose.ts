@@ -48,7 +48,7 @@ export function messageBlocks(
         size: file.size,
         url: file.data,
       })),
-    } as ContentBlock,
+    },
   ];
 }
 

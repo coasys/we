@@ -86,7 +86,7 @@ export function lineContent(row: Row): Row[] | null {
     const blocks = rowsToBlocks(parts.filter((part) => !isAttachments(part))).map((block) =>
       isTextBlock(block) ? { ...block, marks: withFoundLinks(block.text, block.marks ?? []) } : block,
     );
-    return blocks.length ? (blocks as Row[]) : null;
+    return blocks.length ? blocks : null;
   }
   // A line with no parts on hand: a bare text block (a line written before messages were
   // compositions, or by a writer that knows nothing of them), or a message read without its parts.
