@@ -45,8 +45,8 @@ export function documentAccess(
       const key = datasetKey({ cid: ds.sharedUri, uuid: ds.id });
       return { id, ref: formatRef({ datasetKey: key, entity: 'CollectionBlock', id }) };
     },
-    update: async (id, document) => {
-      const ds = await target();
+    update: async (id, document, where) => {
+      const ds = await target(where?.dataset);
       const existing = ds && (await collection(ds.handle, id));
       if (!ds || !existing) return;
       await reconcileBlocks(ds.handle, existing, document as ContentInput);

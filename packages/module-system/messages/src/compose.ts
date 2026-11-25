@@ -6,7 +6,7 @@
  * blocks here, and the difference between a typed line and a heard one lives in one place.
  */
 import { type ContentBlock, markdownToBlocks, marksOf } from '@we/block-shared';
-import type { CreateDocumentOptions, RecordsKernel } from '@we/module-shared';
+import type { CreateDocumentOptions, DatasetTarget, RecordsKernel } from '@we/module-shared';
 
 import { CORRECTED, sourceAfterEdit, SPOKEN } from './source.ts';
 
@@ -56,15 +56,16 @@ export async function correctLine(
   id: string,
   text: string,
   was?: string,
+  target?: DatasetTarget,
 ): Promise<void> {
   const words = String(text ?? '').trim();
   if (!id || !words) return;
   const source = sourceAfterEdit(was);
-  const [message] = await records.find('CollectionBlock', { where: { id }, select: ['id'], limit: 1 });
+  const [message] = await records.find('CollectionBlock', { where: { id }, select: ['id'], limit: 1 }, target);
   if (!message) {
-    await records.update('TextBlock', id, { text: words, ...(source ? { source } : {}) });
+    await records.update('TextBlock', id, { text: words, ...(source ? { source } : {}) }, target);
     return;
   }
-  await records.documents.update(id, messageBlocks(words, undefined, source ?? was));
-  if (source) await records.update('CollectionBlock', id, { source });
+  await records.documents.update(id, messageBlocks(words, undefined, source ?? was), target);
+  if (source) await records.update('CollectionBlock', id, { source }, target);
 }

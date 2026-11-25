@@ -167,7 +167,7 @@ export interface DocumentAccess {
    * Save an edit to one. Refused for a collection whose `mode` is not a single author's
    * (`document`) — reconciling a feed would delete every child the editor never loaded.
    */
-  update: (id: string, document: ComposedDocument) => Promise<void>;
+  update: (id: string, document: ComposedDocument, target?: DatasetTarget) => Promise<void>;
   /** Delete one and every block under it. Irreversible. */
   remove: (id: string) => Promise<void>;
   /** Read one back, file payloads resolved — ready to `create` somewhere else. `null` if it is not there. */
