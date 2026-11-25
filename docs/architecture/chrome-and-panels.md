@@ -432,8 +432,11 @@ keep a card's heading.
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
   `src/shared/kernels/dockLayout.ts` names the functions a second host reproduces the layout with,
   against the recorded vectors beside it (`vectors/dockLayout.json`).
-- `packages/app-shell/src/shared/stores/ShellStore.ts` — the state, the drag handling,
-  and the custom properties, on the reactivity port.
+- `packages/app-shell/src/shared/stores/ShellStore.ts` — the store's interface, composed of its
+  parts in `stores/shell/`, on the reactivity port: `arrangement.ts` (what the reader has done to the
+  panels, and the declarations it is read against), `docks.ts` (each panel's box, the edge lanes, the
+  insets and the custom properties), `dockDrag.ts` (the drag and resize gestures), `templatePanels.ts`
+  (an interface's declared panels as docks), and the overlays and prompts.
 - `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in
   (`frameBox`), over the window or filling its seat in an edge lane.
 - `packages/app-shell/src/frameworks/solid/components/PanelHost.tsx` — every panel's content, drawn

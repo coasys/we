@@ -167,7 +167,7 @@ export function createShellArrangement(deps: {
   const agentDid = () => didOf()?.() ?? '';
   /**
    * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
-   * mounts below this store, the same reason `moduleGate` is. An instance whose inputs bind it to
+   * is composed after the shell store, the same reason `moduleGate` is. An instance whose inputs bind it to
    * a perspective (the space chats) shows only while its space is current: hidden elsewhere, not
    * closed, so it is still there when you go back.
    */
