@@ -10,7 +10,7 @@ import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../steps/space.mjs';
 import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
-import { pointOnCard } from './canvas.mjs';
+import { parkCallStage, pointOnCard } from './canvas.mjs';
 import { SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
 import { HEARD, LINES } from './stub-llm.mjs';
@@ -118,9 +118,10 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
       // The page's console from here: the canvas warns when it cannot read or watch its placements.
       const mark = alice.device.logs.length;
       // A card nobody has placed sits in the tray; dragging it out is how a person puts it on the canvas.
-      // The press has to land on the card. The call's stage floats over the lower tray, and the
-      // centre of a bottom-row card can be the stage (nightly coasys-spaces #91692).
+      // The call's stage floats over the lower tray (nightly coasys-spaces #91692). Park it first,
+      // by its own grip, then press the canvas surface at a point on the card.
       await card().waitFor({ timeout: SLOW });
+      await parkCallStage(alice.page);
       const from = await pointOnCard(alice.page, card(), record.title);
       await alice.page.mouse.move(from.x, from.y);
       await alice.page.mouse.down();

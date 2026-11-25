@@ -1,23 +1,24 @@
 /**
- * Where a drag of a canvas card has to start.
+ * Where a drag of a canvas card has to start, and that it does start.
  *
  * Nightly coasys-spaces #91692 (2026-11-25): the card for "Should we rebuild the sync?" sat in the
  * bottom row of the tray, and the floating call stage covered its centre. The step pressed the
- * centre, the press landed on the stage, and no Placement was written. `pointOnCard` presses a
- * point `elementFromPoint` says is the card — the centre when it is free, otherwise the upper
- * third or the top-left — and, when the stage covers all three, moves the stage or pans once.
+ * centre, the press landed on the stage, and no Placement was written.
+ *
+ * `pointOnCard` returns a point where `elementFromPoint` is `.we-graph__surface` inside the card's
+ * box — the centre when it is free, otherwise the upper third or the top-left. A descendant of the
+ * card is not that point: the graph listens on the surface, and a descendant that takes the pointer
+ * stops the press. `parkCallStage` moves the stage once, by its grip, before that probe.
  *
  * The page is the graph's hit model in miniature. The node layer sets `pointer-events: none`, and
- * that inherits, so a card does not take the pointer: a press on it hits `.we-graph__surface`, and
- * the graph picks the card from the point. A descendant that sets `pointer-events: auto` — text in
- * an open shadow root — is the card by walking out through the host. A stage above the card is
- * neither, so it is not a place to press.
+ * that inherits, so a press on a card hits the surface. The surface listener moves the node, which
+ * is how a case shows that a drag started.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { launchBrowser } from '@we/e2e/browser';
 
-import { pointOnCard } from './canvas.mjs';
+import { parkCallStage, pointOnCard } from './canvas.mjs';
 
 /** Chrome's first launch on a CI runner can take longer than vitest's 10 s hook default. */
 const LAUNCH = 60_000;
@@ -49,47 +50,42 @@ function graph(cards, overlay = '') {
 ${overlay}`;
 }
 
-/** One card whose centre is at (`x`, `y`). `shadow` puts the title in an open shadow root. */
-function cardAt(x, y, { shadow = false, inert = false } = {}) {
-  const body = shadow
-    ? '<div class="host" style="width:100%;height:100%"></div>'
+/** One card whose centre is at (`x`, `y`). `hole` is a descendant that takes the pointer over the lower part. */
+function cardAt(x, y, { hole = false } = {}) {
+  const body = hole
+    ? '<div class="hole" style="position:absolute;left:0;right:0;top:50px;bottom:0;pointer-events:auto"></div>'
     : '<div class="we-graph__card-content">Should we rebuild the sync?</div>';
-  const events = inert ? ' style="pointer-events: none"' : '';
   return `<div class="we-graph__node" style="transform: translate(${x}px, ${y}px)">
-    <div class="we-graph__card"${events}>${body}</div>
+    <div class="we-graph__card">${body}</div>
   </div>`;
 }
 
-/** The call stage, as a dock frame with the grip a person drags it by. */
-function stage({ left, top, width, height, grip = true }) {
-  const handle = grip ? '<we-move-handle aria-label="Move panel" role="button">Move panel</we-move-handle>' : '';
-  return `<div class="call-stage" data-we-dock-frame aria-label="Call"
-    style="left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px">${handle}
+/** The call stage. The grip is the one `parkCallStage` drags, named the way the shell names it. */
+function stage({ left, top, width, height }) {
+  return `<div class="call-stage" data-we-dock-frame="call:stage" aria-label="Call"
+    style="left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px">
+    <we-move-handle data-we-panel-grip="call:stage" aria-label="Move panel" role="button">Move panel</we-move-handle>
     <div class="call-stage__tile" aria-label="You">You</div>
   </div>`;
 }
 
 /**
- * The stage follows its grip, and a pan of the surface moves the card, the way the shell and the
- * graph do. Both listen with pointer capture, because the thing being dragged leaves the cursor.
+ * The stage follows its grip, and a press on the surface moves the card. Both listen with pointer
+ * capture, because the thing being dragged leaves the cursor. A press that is not the surface
+ * leaves the card where it is, which is the graph's own rule.
  */
-async function show(page, html, { shadow = false } = {}) {
+async function show(page, html) {
   await page.setContent(html);
-  if (shadow) {
-    await page.evaluate(() => {
-      const host = document.querySelector('.host');
-      const root = host.attachShadow({ mode: 'open' });
-      // `auto` is what makes this the hit. The card inherits `none` from the node layer, and a
-      // shadow tree does too, unless something in it turns the pointer back on.
-      root.innerHTML = '<div style="width:100%;height:100%;pointer-events:auto">Should we rebuild the sync?</div>';
-    });
-  }
   await page.evaluate(() => {
-    const panel = document.querySelector('[data-we-dock-frame]');
-    const grip = panel?.querySelector('we-move-handle');
+    const panel = document.querySelector('[data-we-dock-frame="call:stage"]');
+    const grip = panel?.querySelector('[data-we-panel-grip="call:stage"]');
     if (grip && panel) {
       let origin = null;
       let start = null;
+      const release = (event) => {
+        if (grip.hasPointerCapture(event.pointerId)) grip.releasePointerCapture(event.pointerId);
+        start = null;
+      };
       grip.addEventListener('pointerdown', (event) => {
         start = { x: event.clientX, y: event.clientY };
         origin = { left: panel.offsetLeft, top: panel.offsetTop };
@@ -100,15 +96,18 @@ async function show(page, html, { shadow = false } = {}) {
         panel.style.left = `${origin.left + event.clientX - start.x}px`;
         panel.style.top = `${origin.top + event.clientY - start.y}px`;
       });
-      grip.addEventListener('pointerup', () => {
-        start = null;
-      });
+      grip.addEventListener('pointerup', release);
+      grip.addEventListener('pointercancel', release);
     }
     const surface = document.querySelector('.we-graph__surface');
     const node = document.querySelector('.we-graph__node');
     if (surface && node) {
       let origin = null;
       let start = null;
+      const release = (event) => {
+        if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
+        start = null;
+      };
       surface.addEventListener('pointerdown', (event) => {
         if (event.target !== surface) return;
         start = { x: event.clientX, y: event.clientY };
@@ -118,56 +117,36 @@ async function show(page, html, { shadow = false } = {}) {
       });
       surface.addEventListener('pointermove', (event) => {
         if (!start) return;
-        const x = origin.x + event.clientX - start.x;
-        const y = origin.y + event.clientY - start.y;
-        node.style.transform = `translate(${x}px, ${y}px)`;
+        node.style.transform = `translate(${origin.x + event.clientX - start.x}px, ${origin.y + event.clientY - start.y}px)`;
       });
-      surface.addEventListener('pointerup', () => {
-        start = null;
-      });
+      surface.addEventListener('pointerup', release);
+      surface.addEventListener('pointercancel', release);
     }
   });
 }
 
-/** What `elementFromPoint` names at the card's centre — the press the old step made. */
-async function centreHit(page) {
+function card(page) {
+  return page.locator('.we-graph__card').first();
+}
+
+/** The node's centre, read from the transform the surface's drag writes. */
+async function nodeAt(page) {
   return page.evaluate(() => {
-    const card = document.querySelector('.we-graph__card');
-    const box = card.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-    return `${hit?.className || hit?.tagName || 'nothing'}`;
+    const node = document.querySelector('.we-graph__node');
+    const match = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(node.style.transform);
+    return { x: Number(match[1]), y: Number(match[2]) };
   });
 }
 
-/**
- * Whether a press at `point` starts a drag of the card: the hit is the card (or a shadow descendant
- * of it) or the canvas surface, and the point lies in the card's box.
- */
-async function pressesCard(page, point) {
-  return page.evaluate(({ x, y }) => {
-    const card = document.querySelector('.we-graph__card');
-    const box = card.getBoundingClientRect();
-    const hit = document.elementFromPoint(x, y);
-    const inside = x >= box.left && x < box.right && y >= box.top && y < box.bottom;
-    const surface = hit?.classList?.contains('we-graph__surface') ?? false;
-    let node = hit;
-    let owned = false;
-    while (node) {
-      if (node === card) {
-        owned = true;
-        break;
-      }
-      const root = node.getRootNode?.();
-      node = node.parentElement || (root instanceof ShadowRoot ? root.host : null);
-    }
-    return {
-      name: `${hit?.className || hit?.tagName || 'nothing'}`,
-      inside,
-      owned,
-      surface,
-      ok: inside && (owned || surface),
-    };
-  }, point);
+/** The same gesture the V2 step makes after `pointOnCard`. Returns how far the node moved. */
+async function dragFrom(page, point) {
+  const before = await nodeAt(page);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await page.mouse.move(point.x + 40, point.y - 100, { steps: 8 });
+  await page.mouse.up();
+  const after = await nodeAt(page);
+  return { dx: after.x - before.x, dy: after.y - before.y };
 }
 
 describe('pointOnCard', () => {
@@ -176,66 +155,50 @@ describe('pointOnCard', () => {
 
   beforeAll(async () => {
     browser = await launchBrowser();
-    page = await browser.newPage();
   }, LAUNCH);
+
+  // A new page each time. A drag that captured the pointer, then `setContent`, leaves the next
+  // gesture on that same page unable to capture again — the panel would not follow its grip.
+  beforeEach(async () => {
+    page = await browser.newPage();
+  });
+
+  afterEach(async () => {
+    await page?.close();
+  });
 
   afterAll(async () => {
     await browser?.close();
   });
 
-  const card = () => page.locator('.we-graph__card').first();
-
-  it('presses the centre when the card owns it, including text in an open shadow root', async () => {
-    await show(page, graph(cardAt(400, 220, { shadow: true })), { shadow: true });
-    const point = await pointOnCard(page, card(), 'Should we rebuild the sync?');
+  it('drags the card from its centre when the surface is there', async () => {
+    await show(page, graph(cardAt(400, 220)));
+    const point = await pointOnCard(page, card(page), 'Should we rebuild the sync?');
     expect(point.name).toBe('centre');
-    const owned = await page.evaluate(() => {
-      const el = document.querySelector('.we-graph__card');
-      const box = el.getBoundingClientRect();
-      let node = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      while (node) {
-        if (node === el) return true;
-        node = node.parentElement || (node.parentNode instanceof ShadowRoot ? node.parentNode.host : null);
-      }
-      return false;
-    });
-    expect(owned).toBe(true);
+    const moved = await dragFrom(page, point);
+    expect(moved).toEqual({ dx: 40, dy: -100 });
   });
 
-  it('presses the centre when the card takes no pointer and the canvas surface does', async () => {
-    await show(page, graph(cardAt(400, 220, { inert: true })));
-    const point = await pointOnCard(page, card(), 'Should we rebuild the sync?');
-    expect(point.name).toBe('centre');
-    expect(await centreHit(page)).toBe('we-graph__surface');
+  it('does not press a descendant of the card, even one that takes the pointer', async () => {
+    // The lower part of the card, including its centre, is a descendant with `pointer-events: auto`.
+    // The upper third is still the surface. A press on the descendant would not start a drag.
+    await show(page, graph(cardAt(400, 260, { hole: true })));
+    const point = await pointOnCard(page, card(page), 'Should we rebuild the sync?');
+    expect(point.name).toBe('upper third');
+    const moved = await dragFrom(page, point);
+    expect(moved).toEqual({ dx: 40, dy: -100 });
   });
 
   it('does not press the centre the call stage covers (nightly 91692)', async () => {
-    // The card's centre sits under the stage's body, below its grip. Its upper third does not.
-    // The card takes no pointer, so the free point is the surface in the card's box.
-    await show(page, graph(cardAt(400, 260), stage({ left: 250, top: 220, width: 320, height: 250 })));
-    expect(await centreHit(page)).toContain('call-stage');
-    const point = await pointOnCard(page, card(), 'Should we rebuild the sync?');
+    // The card's centre sits under the stage. Its upper third does not.
+    await show(page, graph(cardAt(400, 260), stage({ left: 250, top: 230, width: 320, height: 250 })));
+    const point = await pointOnCard(page, card(page), 'Should we rebuild the sync?');
     expect(point.name).toBe('upper third');
-    expect(await pressesCard(page, point)).toMatchObject({ ok: true, surface: true });
+    const moved = await dragFrom(page, point);
+    expect(moved).toEqual({ dx: 40, dy: -100 });
   });
 
-  it('moves the stage when it covers the centre, the upper third and the top-left', async () => {
-    await show(page, graph(cardAt(400, 300), stage({ left: 260, top: 200, width: 300, height: 240 })));
-    expect(await centreHit(page)).toContain('call-stage');
-    const point = await pointOnCard(page, card(), 'Should we rebuild the sync?');
-    expect(await pressesCard(page, point)).toMatchObject({ ok: true });
-    expect(await centreHit(page)).toBe('we-graph__surface');
-  });
-
-  it('pans the canvas when what covers the card cannot be dragged', async () => {
-    await show(page, graph(cardAt(180, 420), stage({ left: 60, top: 340, width: 280, height: 200, grip: false })));
-    expect(await centreHit(page)).toContain('call-stage');
-    const point = await pointOnCard(page, card(), 'Should we rebuild the sync?');
-    expect(await pressesCard(page, point)).toMatchObject({ ok: true });
-    expect(await centreHit(page)).toBe('we-graph__surface');
-  });
-
-  it('names the element on the centre when the card stays covered', async () => {
+  it('names the element on the centre when every sample point is covered', async () => {
     await show(
       page,
       graph(
@@ -243,8 +206,38 @@ describe('pointOnCard', () => {
         `<div class="call-stage" aria-label="Call" style="inset: 0; width: 900px; height: 640px"></div>`,
       ),
     );
-    await expect(pointOnCard(page, card(), 'Should we rebuild the sync?')).rejects.toThrow(
+    await expect(pointOnCard(page, card(page), 'Should we rebuild the sync?')).rejects.toThrow(
       /"Should we rebuild the sync\?" is covered at its centre, its upper third and its top-left; the centre is under div\.call-stage\[aria-label="Call"\]/,
     );
+  });
+
+  it('moves the call stage by its grip to the bottom-right marker, then a drag of the card starts', async () => {
+    await show(page, graph(cardAt(400, 300), stage({ left: 260, top: 200, width: 300, height: 240 })));
+    // The marker the shell would draw. The helper aims at it; this page has no shell to draw one.
+    await page.evaluate(() => {
+      const marker = document.createElement('div');
+      marker.id = 'landing';
+      marker.style.cssText = [
+        'position:fixed',
+        `left:${window.innerWidth - 200}px`,
+        `top:${window.innerHeight - 180}px`,
+        'width:90px',
+        'height:70px',
+        'pointer-events:none',
+      ].join(';');
+      document.body.appendChild(marker);
+    });
+    const before = await page.locator('[data-we-dock-frame="call:stage"]').boundingBox();
+    const grip = await page.locator('[data-we-panel-grip="call:stage"]').boundingBox();
+    const marker = await page.locator('#landing').boundingBox();
+    await parkCallStage(page);
+    const after = await page.locator('[data-we-dock-frame="call:stage"]').boundingBox();
+    const dx = marker.x + marker.width / 2 - (grip.x + grip.width / 2);
+    const dy = marker.y + marker.height / 2 - (grip.y + grip.height / 2);
+    expect(after.x).toBeCloseTo(before.x + dx, 0);
+    expect(after.y).toBeCloseTo(before.y + dy, 0);
+    const point = await pointOnCard(page, card(page), 'Should we rebuild the sync?');
+    const moved = await dragFrom(page, point);
+    expect(moved).toEqual({ dx: 40, dy: -100 });
   });
 });
