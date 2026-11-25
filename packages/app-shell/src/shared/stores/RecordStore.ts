@@ -26,15 +26,10 @@ import {
   datasetIdOf,
   datasetKey,
   datasetKindOf,
-  type EntitySchema,
-  type EntityStatic,
   formatRef,
   HERE,
-  type LivePage as Page,
-  type LiveQuery,
   namePropertyOf,
   type ParentRef,
-  type RecordInstance,
 } from '@we/backend-shared';
 import { type ContentInput, copyableContent, createBlock, deleteBlocks, planPost, writePost } from '@we/block-shared';
 import {
@@ -43,16 +38,11 @@ import {
   compressImageToFileData,
   dataURIToFileData,
   EdgeRoute,
-  getEntity,
-  getEntityForDataset,
   inlineRecordId,
   isOperationError,
   Placement,
   runOperation,
-  Space,
-  TypeStyle,
 } from '@we/entities';
-import { CORE_MANIFEST } from '@we/entities/manifest';
 import {
   type FollowedRelation,
   followedRelations,
@@ -68,23 +58,19 @@ import type { Accessor, ReactivityPort } from '@we/reactivity';
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../bringIn';
 import { distinctSignal } from '../distinctSignal';
 import { routeWrite } from '../edgeRoute';
-import { followLive } from '../followLive';
 import { toEntityShape } from '../graphEntityShape';
 import { hostSlot } from '../hostSlot';
 import { connectionKey } from '../kernels/connectionKey';
 import { isRank, isUnder, rowFor, seatInRow } from '../kernels/treeRanks';
-import { kindHue } from '../kindHue';
 import { notifyCopiedIn } from '../registries/moduleHostServices';
-import { WE_PLUMBING_CLASSES } from '../shapes/interpretationCandidates';
-import { presentationFields, presentationOf, type TypePresentation, withPresentation } from '../shapes/presentation';
-import { displayFor, modelLabel, type RecordDisplay } from '../shapes/recordDisplay';
+import { type CreatableEntity, imagePropertyOf } from '../shapes/creatableKinds';
+import { type TypePresentation } from '../shapes/presentation';
+import { type RecordDisplay } from '../shapes/recordDisplay';
 import {
   asEntityName,
-  type CreationPath,
   creationPath,
   emptyRecordDraft,
   entryLabel,
-  fieldsFor,
   type RecordDraft,
   recordDraftChanged,
   recordDraftErrors,
@@ -92,35 +78,18 @@ import {
   type RecordField,
   type RecordFieldValue,
   type RelationEntry,
-  type RelationTargetAbilities,
   withoutRelationEntry,
   withPlace,
   withRelationEntry,
   writeFieldValue,
 } from '../shapes/recordDraft';
-import { BLOCK_ICONS } from '../shapes/spaceShapes';
 import { modelManifestEntries, parseSpine, type Spine } from '../sources/treeSpines';
 import type { Toasts } from '../toasts';
-import type { AppDataset, DatasetStore } from './DatasetStore';
+import type { AppDataset } from './DatasetStore';
+import { entityNamed, operationRunner, type RecordDatasets, RELATIONSHIP } from './records/context';
+import { createRecordKinds } from './records/kinds';
 import type { SessionStore } from './SessionStore';
 import type { ShapeStore } from './ShapeStore';
-
-/** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
-export interface CreatableEntity {
-  label: string;
-  value: string;
-  icon: string;
-  /** The palette hue it is drawn in where the community has not chosen a colour — see `kindHue`. */
-  hue: string;
-  group: string;
-  /** What this kind of thing is, in a line — the manifest's `description`, or the shape's. Empty when neither says. */
-  description: string;
-  /**
-   * How it is made. A surface that can only host a form — the record form's type selector — lists
-   * the `form` ones; a surface that can open the composer too (a canvas) lists them all.
-   */
-  via: CreationPath;
-}
 
 /** The two records a connection joins, exactly as the graph's `onEdgeCreate` reports them. */
 export interface PendingLink {
@@ -132,37 +101,6 @@ export interface PendingLink {
   sourceLabel?: string;
   targetLabel?: string;
 }
-
-/** The model a drawn connection is written as. Named once, so the store and the form agree. */
-const RELATIONSHIP = 'Relationship';
-
-/**
- * A class this file writes through, picked by name at runtime. Loose over fields because which
- * entity it is is only known then.
- */
-type AnyEntity = EntityStatic<RecordInstance & Record<string, unknown>>;
-
-/**
- * The registry's class for `name`. The registry's entries are typed loosely (`any`-valued); every
- * class it holds presents the contract's static surface, so it is read as that here, once — the same
- * conversion `@we/entities` makes for its own proxies.
- */
-function entityNamed(name: string): AnyEntity {
-  return getEntity(name) as unknown as AnyEntity;
-}
-
-/**
- * Models that can be *shown* but are not content anybody creates from a picker — see
- * {@link displayableEntities}. Every core block is shown as well, whether or not it can be made.
- *
- * `Relationship` is drawn between two things rather than filled in from a picker, and it is read
- * constantly all the same: a line on a canvas is one, and clicking it is exactly the moment somebody
- * wants to read it.
- *
- * The space's vocabulary is made in its settings, never from a picker, and is read in an inspector
- * and on a map of what the space has defined — each as the fields its settings form asks for.
- */
-const DISPLAY_ONLY = [RELATIONSHIP, 'SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] as const;
 
 /**
  * A stored placement, as this file reads one back.
@@ -715,9 +653,6 @@ export interface RecordStore {
   ) => Promise<void>;
 }
 
-/** What the record store reads of the datasets: the one on screen, the ones held, and the classes it already has. */
-export type RecordDatasets = Pick<DatasetStore, 'currentDataset' | 'currentDatasetEntities' | 'datasets'>;
-
 export interface RecordStoreDeps {
   reactivity: ReactivityPort;
   toasts: Toasts;
@@ -732,16 +667,11 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const { reactivity, toasts } = deps;
   const datasetStore = deps.datasetStore;
   const session = deps.sessionStore;
+  const runOp = operationRunner(session);
+  const context = { reactivity, toasts, sessionStore: session, datasetStore, runOp };
 
-  /**
-   * Run one of the canvas operations (`core.placeCard` …) as the signed-in agent. The writes are
-   * declared so every host and an agent make the same ones; what is drawn ahead and the undo stay here.
-   */
-  async function runOp<T = unknown>(name: string, args: Record<string, unknown>, handle: unknown): Promise<T> {
-    const invoker = session.me()?.did;
-    if (!invoker) throw new Error(`${name}: nobody is signed in`);
-    return (await runOperation(name, args, { dataset: handle, invoker })) as T;
-  }
+  const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
+  const { creatableEntities, displays, schemaFor, entityClass, relationTarget, titleField } = kinds;
 
   /** A connection between two records, as one write — answering with its id. */
   async function connect(
@@ -778,206 +708,10 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const [relationErrors, setRelationErrors] = reactivity.signal<string[]>([]);
   let entrySeq = 0;
 
-  /**
-   * WE's own content a person can make, read straight off the core manifest — every block there is a
-   * way to make, and how. See `creationPath`.
-   *
-   * Derived rather than listed, so a block that gains a form appears here with no second edit in a
-   * different package — the failure mode a hardcoded table has is that it is correct on the day it is
-   * written and silently stale afterwards. And by declaration rather than by name: nothing that is not
-   * content needs a flag to stay out.
-   */
-  const coreEntities = reactivity.memo<CreatableEntity[]>(() =>
-    Object.entries(CORE_MANIFEST.entities)
-      .flatMap(([name, entity]) => {
-        const via = creationPath(entity);
-        if (!via) return [];
-        const icon = BLOCK_ICONS[name] ?? 'cube';
-        return [
-          {
-            label: modelLabel(name),
-            value: name,
-            icon,
-            hue: kindHue(name),
-            group: 'Built in',
-            description: entity.description ?? '',
-            via,
-          },
-        ];
-      })
-      .sort((a, b) => a.label.localeCompare(b.label)),
-  );
-
-  /** Models this community defined. Healthy ones only — a shape that failed adoption is not queryable. */
-  const shapeEntities = reactivity.memo<CreatableEntity[]>(() =>
-    shapeStore
-      .spaceShapes()
-      .filter((shape) => shape.manifest && !shape.problems.length)
-      .map((shape) => ({
-        label: shape.name,
-        value: shape.name,
-        icon: shape.icon || 'cube',
-        hue: kindHue(shape.name),
-        group: 'This space',
-        description: shape.description ?? '',
-        via: 'form' as const,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label)),
-  );
-
-  // This space's own first: a community that has modelled its vocabulary means those models, and
-  // WE's built-ins are the fallback rather than the headline.
-  const creatableEntities = reactivity.memo<CreatableEntity[]>(() => [...shapeEntities(), ...coreEntities()]);
-
-  /**
-   * The schema behind a name, and whether every property of it belongs to the author.
-   *
-   * A community shape carries its own manifest and is authorable in full; a core entity is offered
-   * only the fields it declared. Shapes are consulted first so a space that names a model after one
-   * of WE's own gets its own, which is the same precedence the graph host uses in reverse and for
-   * the same reason — whichever is more local should win where the two can collide.
-   */
-  function schemaFor(
-    entity: string,
-  ): { schema: EntitySchema; authorable: boolean; icon: string; label: string } | undefined {
-    const shape = shapeStore.spaceShapes().find((row) => row.name === entity && row.manifest);
-    const fromShape = shape?.manifest?.entities[entity];
-    if (fromShape) return { schema: fromShape, authorable: true, icon: shape?.icon || 'cube', label: entity };
-
-    const core = CORE_MANIFEST.entities[entity];
-    if (core)
-      return { schema: core, authorable: false, icon: BLOCK_ICONS[entity] ?? 'cube', label: modelLabel(entity) };
-    return undefined;
-  }
-
-  /**
-   * The class a record of `entity` is written through, in the dataset on screen.
-   *
-   * `getEntity` alone reads the global registry, which holds WE's own models and the modules'. A
-   * model a community defined is registered *per dataset* on some backends — that is how two spaces can each
-   * have a `Sighting` — so saving one through this form failed with "Model "UfoSighting" not found in
-   * registry" while the model sat listed in the space's settings. The per-dataset lookup prefers the
-   * global class and falls back to the space's own, so every caller here goes through it.
-   */
-  function entityClass(entity: string, handle: unknown): AnyEntity {
-    // The same reading of the registry's loose entries as `entityNamed`.
-    return (getEntityForDataset(entity, handle) ?? getEntity(entity)) as unknown as AnyEntity;
-  }
-
-  /**
-   * What a relation field pointing at `target` may do.
-   *
-   * Make one when the target has a form of its own. Pick an existing one when the target is not a
-   * block: an image in a sighting belongs to that sighting, where the species it names is a record
-   * many sightings share.
-   */
-  function relationTarget(target: string): RelationTargetAbilities | undefined {
-    const found = schemaFor(target);
-    if (!found) return undefined;
-    return {
-      canCreate: fieldsFor(found.schema, found.authorable).length > 0,
-      canPick: !found.schema.blockable,
-      label: found.label,
-      inline: inlineEditorFor(target, found.schema),
-    };
-  }
-
-  /*
-    One display per creatable model, from the same declarations the forms come from.
-
-    A map rather than a lookup action because a template reads it in a value position — a feed
-    indexes it by each row's type — and `$invoke` cannot return a value. Recomputed when the
-    space's shapes change, so a model defined a moment ago has a display a moment later.
-  */
-  /**
-   * Every model that can be *shown*, which is not the same set as every model that can be *made*.
-   *
-   * `Relationship` is the case that separated them, and the reason this exists. It is excluded from
-   * `creatableEntities` on purpose — a connection is drawn between two things rather than filled in
-   * from a picker, so offering it in the "new record" list would be offering a form with two
-   * endpoints nobody had chosen. But it is a `WeNode` with a label, a description, comments and
-   * signals, and clicking the line that stands for it is exactly the moment somebody wants to read
-   * all of that.
-   *
-   * Deriving one list from the other quietly made "cannot be created here" mean "cannot be
-   * displayed", so the inspector showed an empty panel for a connector whose name was drawn on the
-   * line beside it. Two questions, two lists — and `CollectionBlock` is the second name it needed:
-   * every note on a canvas is one, and every one of them opened that same empty panel.
-   *
-   * A space's own model named after one of these is left alone: it is already in `creatableEntities`
-   * with its own icon and label, and a display derived from the community's shape is the one that
-   * should win.
-   */
-  const displayableEntities = reactivity.memo<Omit<CreatableEntity, 'via' | 'description'>[]>(() => {
-    const named = new Set(creatableEntities().map((entity) => entity.value));
-    /*
-      Every core block too, including the ones there is no way to make — a divider still appears in a
-      post, and a quote dropped on a canvas is an embed. The key and the inspector read a kind's name
-      and glyph from here.
-    */
-    const blocks = Object.entries(CORE_MANIFEST.entities)
-      .filter(([, entity]) => entity.blockable)
-      .map(([name]) => name);
-    const extra = [...new Set([...DISPLAY_ONLY, ...blocks])]
-      .filter((name) => !named.has(name) && CORE_MANIFEST.entities[name])
-      .map((name) => ({
-        label: modelLabel(name),
-        value: name,
-        icon: BLOCK_ICONS[name] ?? 'cube',
-        hue: kindHue(name),
-        group: 'Built in',
-      }));
-    return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
-  });
-
-  const vocabularies = hostSlot<(vocabulary: string) => string[] | undefined>();
   const contentHomes = hostSlot<{ forCanvas: (canvas: string) => string; root: () => string }>();
   /** Where content made on `canvas` lives — or, with no canvas, content with no other home. See `provideContentHomes`. */
   const contentHome = (canvas?: string): string | undefined =>
     canvas ? (contentHomes.get()?.forCanvas(canvas) ?? canvas) : contentHomes.get()?.root() || undefined;
-
-  /** The space's layer of each type's presentation, by type — filled by `reloadSpacePresentation`. */
-  const [spacePresentation, setSpacePresentation] = reactivity.signal<Record<string, TypePresentation>>({});
-
-  const displays = reactivity.memo<Record<string, RecordDisplay>>(() => {
-    const out: Record<string, RecordDisplay> = {};
-    for (const entity of displayableEntities()) {
-      const found = schemaFor(entity.value);
-      if (!found) continue;
-      out[entity.value] = displayFor({
-        entity: entity.value,
-        label: entity.label,
-        icon: found.icon,
-        // The model's own presentation, with the space's laid over it.
-        schema: withPresentation(found.schema, spacePresentation()[entity.value]),
-        authorable: found.authorable,
-        vocabularyFor: (vocabulary) => vocabularies.get()?.(vocabulary),
-      });
-    }
-    /*
-      A class the space already had — every one the dataset's schema lists from other apps, which is also every
-      one a call may extract into. No WE model says how to show one, so its scalar properties
-      are listed as its schema names them — without this an accepted record of one is an empty card,
-      and opening the class from the schema lists nothing readable. Display only: `schemaFor` still does
-      not know it, so nothing here makes one creatable or placeable.
-    */
-    const plumbing = new Set(WE_PLUMBING_CLASSES);
-    for (const entry of datasetStore.currentDatasetEntities()) {
-      if (out[entry.name] || plumbing.has(entry.name)) continue;
-      const scalars = entry.properties.filter((p) => p.relatedEntity === undefined);
-      const properties = Object.fromEntries(
-        scalars.map((p) => [p.name, { type: p.type === 'uri' ? ('string' as const) : p.type }]),
-      );
-      out[entry.name] = displayFor({
-        entity: entry.name,
-        label: modelLabel(entry.name),
-        icon: 'cube',
-        schema: { properties, relations: {}, display: { fields: Object.keys(properties) } },
-        authorable: false,
-      });
-    }
-    return out;
-  });
 
   /*
     `entity` is typed loosely because of how `$invoke` calls a store method.
@@ -1112,33 +846,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
       reader.readAsDataURL(file);
     });
     return dataURIToFileData(uri, file.name);
-  }
-
-  /**
-   * Whether a relation's target is better made where the relation is than in a form of its own.
-   *
-   * A place is picked on a map, and a picture is chosen and cropped — neither is a list of fields.
-   * The generic nested form asked for a location as two number boxes and showed nothing of an image
-   * once it was chosen. So those two targets get the controls WE already has for them, inline: the
-   * location picker (with its name and address beneath, as the profile page has) and the image
-   * editor with its cropper and a preview.
-   */
-  function inlineEditorFor(target: string, schema: EntitySchema): RelationTargetAbilities['inline'] {
-    if (target === 'LocationBlock') return 'location';
-    const properties = schema.properties;
-    const picture = imagePropertyOf(schema);
-    return picture && properties[picture]?.required ? 'image' : '';
-  }
-
-  /** The property that holds a target's picture — a file whose name reads as one. */
-  function imagePropertyOf(schema: EntitySchema): string {
-    return (
-      Object.keys(schema.properties).find(
-        (name) =>
-          schema.properties[name].format === 'file' &&
-          /image|avatar|photo|picture|thumbnail|cover|poster|src/i.test(name),
-      ) ?? ''
-    );
   }
 
   function setRelationLocation(field: string, detail: unknown): void {
@@ -2988,106 +2695,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
       toasts.error('Could not save that colour.');
     }
   }
-  /*
-    The space's layer of a type's presentation — see `shared/shapes/presentation.ts`. Read live, as
-    the space's key is drawn: a change somebody else makes reaches every card here.
-  */
-  /** Reads the space's layer. Answers with the space's record id, or '' when there is no space record. */
-  async function reloadSpacePresentation(): Promise<string> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset) {
-      setSpacePresentation({});
-      return '';
-    }
-    try {
-      const space = (await Space.findOne(dataset.handle)) as { id?: string } | null;
-      if (!space?.id || datasetStore.currentDataset()?.id !== dataset.id) return '';
-      const rows = (await TypeStyle.findAll(dataset.handle, {
-        parent: spaceTypeStyles(space.id),
-      })) as KeyRow[];
-      if (datasetStore.currentDataset()?.id !== dataset.id) return space.id;
-      applySpacePresentation(rows);
-      return space.id;
-    } catch (error) {
-      console.warn("RecordStore: could not read the space's presentation of its types", error);
-      return '';
-    }
-  }
-  /** The space's own `TypeStyle` records, as a parent scope. */
-  const spaceTypeStyles = (spaceId: string) => ({ id: spaceId, relation: 'typeStyles', entity: 'Space' });
-  /** The space's layer, from its `TypeStyle` rows — read, or pushed by the watch below. */
-  function applySpacePresentation(rows: readonly KeyRow[]): void {
-    const out: Record<string, TypePresentation> = {};
-    for (const row of rows) {
-      const layer = presentationOf(row);
-      if (row.nodeType && Object.keys(layer).length) out[row.nodeType] = layer;
-    }
-    setSpacePresentation(out);
-  }
-  reactivity.effect(() => {
-    const dataset = datasetStore.currentDataset();
-    setSpacePresentation({});
-    if (!dataset) return;
-    const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => LiveQuery<Page<KeyRow>> }).query;
-    // A backend whose records cannot be followed is read once, on entering.
-    if (typeof query !== 'function') {
-      void reactivity.untrack(reloadSpacePresentation);
-      return;
-    }
-    let spaceId: string | undefined;
-    followLive(
-      reactivity,
-      async (current) => {
-        const space = (await reactivity.untrack(() => Space.findOne(dataset.handle))) as { id?: string } | null;
-        if (!current()) return undefined;
-        spaceId = datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
-        /*
-          The watch asks what the layer is — the space's own styles, not every canvas's — and its first
-          result is the layer as it stands, so nothing is read separately before it.
-
-          With no space record to scope to yet — a dataset that becomes a space later — any style
-          written is the cue to look for the space again, so that watch only signals, and asks for ids
-          alone.
-        */
-        return spaceId
-          ? query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) })
-          : query.call(TypeStyle, dataset.handle, { properties: ['id'] });
-      },
-      {
-        store: 'RecordStore',
-        what: "the space's types",
-        apply: (rows, opened) => {
-          if (spaceId) applySpacePresentation(rows);
-          else if (!opened) void reloadSpacePresentation();
-        },
-      },
-    );
-  });
-
-  async function setSpaceTypePresentation(
-    spaceId: string,
-    nodeType: string,
-    presentation: TypePresentation | null,
-  ): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !spaceId || !nodeType) return;
-    const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
-    try {
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as KeyRow[];
-      const rows = existing.filter((row) => row.nodeType === nodeType);
-      const color = rows.find((row) => row.color)?.color ?? '';
-      const fields = presentationFields(presentation ?? {});
-      // Written whole: a field cannot be emptied in place (the ORM skips `''`), so the row is made
-      // again with exactly what it should say — the colour it had, and the presentation given.
-      const keep = Object.fromEntries(Object.entries({ color, ...fields }).filter(([, v]) => v));
-      await runOp('core.restyleSpaceType', { space: spaceId, nodeType, fields: keep }, dataset.handle);
-      await reloadSpacePresentation();
-    } catch (error) {
-      console.error('RecordStore: saving how the space presents a type failed', error);
-      toasts.error('Could not save how that type is shown.');
-    }
-  }
-
   async function dropOnCanvas(
     canvas: string,
     payload: { entity: string; id: string; dataset?: string; x: number; y: number },
@@ -3246,16 +2853,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);
   }
 
-  /**
-   * The property an extraction prompt names a record by — its dedup key, which the executor lists an
-   * existing entry under as `title` — or its display name where it declares none.
-   */
-  function titleField(entity: string): string {
-    const schema = schemaFor(entity)?.schema;
-    if (!schema) return '';
-    return Object.entries(schema.properties).find(([, spec]) => spec.identity)?.[0] ?? namePropertyOf(schema);
-  }
-
   /** What an extraction prompt calls one record, read now — falling back to its id. */
   async function promptTitle(handle: unknown, end: { id: string; type: string }): Promise<string> {
     const field = titleField(end.type);
@@ -3318,48 +2915,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
       for (const row of rows) if (typeof row?.id === 'string') await rekeyConnection(row.id);
     } catch (error) {
       console.warn('RecordStore: could not refresh the keys of a renamed record', error);
-    }
-  }
-
-  /** A row of the space's key, as read: what it styles, its colour, and how it lays the type out. */
-  type KeyRow = {
-    id: string;
-    nodeType?: string;
-    color?: string;
-    display?: string;
-    controls?: string;
-    authoring?: string;
-  };
-
-  async function setSpaceTypeColor(spaceId: string, nodeType: string, color: unknown): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !spaceId || !nodeType) return;
-    const raw = color !== null && typeof color === 'object' && 'detail' in color ? color.detail : color;
-    const value = typeof raw === 'string' ? raw : '';
-    // The relation's own predicate, not `children`: a space is not a container and a key is not one
-    // of its contents. It is what `Space.typeStyles` reads through.
-    const parent = { id: spaceId, relation: 'typeStyles', entity: 'Space' };
-
-    try {
-      const existing = (await TypeStyle.findAll(dataset.handle, { parent })) as KeyRow[];
-      const rows = existing.filter((row) => row.nodeType === nodeType);
-      if (!value) {
-        // Clearing deletes. `''` cannot be stored — the ORM's update skips it — and the canvas
-        // sentinel would leave a row every reader has to know to ignore. A row that also says how
-        // the type is laid out is written again with that alone.
-        const kept = rows.map(presentationOf).find((p) => Object.keys(p).length);
-        await runOp(
-          'core.restyleSpaceType',
-          { space: spaceId, nodeType, fields: kept ? presentationFields(kept) : {} },
-          dataset.handle,
-        );
-        return;
-      }
-      // Two people colouring the same kind at once can leave two rows; the write settles it.
-      await runOp('core.colorSpaceType', { space: spaceId, nodeType, color: value }, dataset.handle);
-    } catch (error) {
-      console.error("RecordStore: colouring a type in the space's key failed", error);
-      toasts.error('Could not save that colour.');
     }
   }
 
@@ -3634,9 +3189,9 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     recordDraft,
     recordDraftDirty,
     displays,
-    kinds: displayableEntities,
-    plumbingClasses: () => WE_PLUMBING_CLASSES,
-    provideVocabularies: vocabularies.provide,
+    kinds: kinds.kinds,
+    plumbingClasses: kinds.plumbingClasses,
+    provideVocabularies: kinds.provideVocabularies,
     provideContentHomes: contentHomes.provide,
     recordErrors,
     savingRecord,
@@ -3679,8 +3234,8 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     arrangeOnTree,
     setCardStyle,
     setTypeColor,
-    setSpaceTypeColor,
-    setSpaceTypePresentation,
+    setSpaceTypeColor: kinds.setSpaceTypeColor,
+    setSpaceTypePresentation: kinds.setSpaceTypePresentation,
     dropOnCanvas,
     bringIn,
     updateRecordField,
