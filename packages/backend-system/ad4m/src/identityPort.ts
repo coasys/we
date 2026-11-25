@@ -46,6 +46,9 @@ import {
 } from './keySession';
 import { recordMissingMethod } from './missingMethods';
 
+/** Shown when the host's list of servers cannot be read. What went wrong is not for the person. */
+export const CANT_LOAD_HOSTS = "Can't load your hosts right now.";
+
 /** The slice of the SDK client this port uses — the whole of it, so a test can stand one in. */
 export interface IdentityClientLike {
   identity: {
@@ -295,13 +298,13 @@ function servingMembers(
       let servers: { address: string; name: string }[];
       try {
         ({ servers } = await host.list());
-      } catch (error) {
+      } catch {
         // The list cannot be read (the connector said so at start, and still cannot): this computer
         // serves the session, and the page shows why rather than an error in place of the problem.
         return {
           devices: [{ id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: servedBy === null }],
           role: current?.session.role ?? null,
-          problem: serving.problem ?? `Can't load your hosts. ${String(error)}`,
+          problem: serving.problem ?? CANT_LOAD_HOSTS,
         };
       }
       return {
@@ -336,12 +339,9 @@ function servingMembers(
         await host.add({ address: origin, name: serverName(origin) });
         return { ok: true, id: origin };
       } catch (error) {
+        // A refusal's message is written for the person (`describeRefusal`); anything else is not.
         if (error instanceof KeySessionError) return { ok: false, reason: error.reason, message: error.message };
-        return {
-          ok: false,
-          reason: 'unavailable',
-          message: `Couldn't add that host. ${error instanceof Error ? error.message : String(error)}`,
-        };
+        return { ok: false, reason: 'unavailable', message: "Couldn't add that host. Try again." };
       }
     },
 

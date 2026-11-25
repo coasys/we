@@ -816,17 +816,15 @@ describe('choosing which device serves the account (the identity port)', () => {
       throw new Error('registry unreadable');
     };
     const a = createAd4mIdentityPort(local, undefined, { host: listFails, ...base });
-    expect(await a.addServer!(ADDRESS)).toMatchObject({
-      ok: false,
-      message: expect.stringMatching(/registry unreadable/),
-    });
+    // Plain words for the person: what the list threw stays out of them.
+    expect(await a.addServer!(ADDRESS)).toMatchObject({ ok: false, message: "Couldn't add that host. Try again." });
 
     const addFails = fakeHost();
     addFails.add = vi.fn(async () => {
       throw new Error('disk full');
     });
     const b = createAd4mIdentityPort(local, undefined, { host: addFails, ...base });
-    expect(await b.addServer!(ADDRESS)).toMatchObject({ ok: false, message: expect.stringMatching(/disk full/) });
+    expect(await b.addServer!(ADDRESS)).toMatchObject({ ok: false, message: "Couldn't add that host. Try again." });
   });
 
   it('keeps the session open when the choice cannot be recorded, and restarts only once it is', async () => {
@@ -864,7 +862,8 @@ describe('choosing which device serves the account (the identity port)', () => {
     }).initialize(ctx);
     const view = await result.ports.identity!.serving!();
     expect(view.devices).toEqual([{ id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: true }]);
-    expect(view.problem).toMatch(/Can't load your hosts.*registry unreadable/);
+    // The person reads plain words; what the list threw is not one of them.
+    expect(view.problem).toBe("Can't load your hosts right now.");
   });
 
   it('switches to a listed server, and back to this computer, logging out of the server it leaves', async () => {
@@ -964,6 +963,19 @@ describe('the desktop connector, with a server chosen', () => {
     expect(local.identity.status).toHaveBeenCalled();
 
     await result.ports.identity!.serveFrom!(THIS_COMPUTER_ID);
+  });
+
+  it('says plainly why a chosen server failed when the failure is not a refusal', async () => {
+    const result = await createLocalAd4mConnector(async () => ({ port: 12000, token: 'admin' }), {
+      startupDelayMs: 0,
+      servers: fakeHost([{ address: ADDRESS, name: 'home' }], ADDRESS),
+      connectRemote: () => {
+        throw new TypeError('WebSocket ECONNRESET at ws.ts:41');
+      },
+      connectLocal: async () => ({ client: fakeLocal() }),
+    }).initialize(ctx);
+    const view = await result.ports.identity!.serving!();
+    expect(view.problem).toBe("Can't use home, so this computer is in use. The host didn't let you sign in.");
   });
 
   it('gives an agent the server serves no settings of the server', async () => {
