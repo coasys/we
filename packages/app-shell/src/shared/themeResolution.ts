@@ -50,7 +50,7 @@ export interface ThemeResolutionInput {
    *
    * Derived from the rendering template rather than from `SpacePreference.templateId`, because
    * there are two ways to change template and only one goes through that field:
-   * `spaceStore.setSpaceTemplateOverride` writes the preference, while the template *switcher*
+   * `templateStore.setSpaceTemplateOverride` writes the preference, while the template *switcher*
    * calls `templateStore.switchTemplate`, which writes `AgentSettings.currentTemplateId` and never
    * touches it. Reading the preference therefore said "the space chose" while the agent was looking
    * at something they had picked themselves a second ago — and the suggestion never applied.

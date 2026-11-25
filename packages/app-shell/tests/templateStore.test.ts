@@ -7,7 +7,7 @@
  */
 import { plainLiveTemplates } from '@shared/liveTemplate';
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { asFileField, encodeTemplateFile, Template } from '@we/entities';
+import { AGENT_DEFAULT, asFileField, encodeTemplateFile, FOLLOW_SPACE, Template } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
+import { appearanceOf } from './support/spaceAppearance';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -98,9 +99,9 @@ describe.each(hosts)('the template store under %s', (_name, host) => {
             },
           },
           routeStore: { navigate: (to: string) => void navigated.push(to), segments: () => [] },
-          themeStore: { allThemes: () => [], provideAppTheme: () => {}, setDefaultTheme: async () => true },
+          themeStore: { allThemes: () => [], provideTemplates: () => {}, setDefaultTheme: async () => true },
         });
-        store.provideSpaceLookup(() => [{ uuid: 'space' }]);
+        store.provideSpaceAppearance(appearanceOf(reactivity, () => [{ uuid: 'space' }]));
       }),
     );
     await flush();
@@ -262,5 +263,15 @@ describe.each(hosts)('the template store under %s', (_name, host) => {
     expect(await store.publishToMarketplace(options)).toBe(true);
     const listings = await Template.findAll(handles.market);
     expect(listings.map((t) => [t.slug, t.version])).toEqual([['mine', 2]]);
+  });
+
+  it('paints the template an agent overrides a space with, and offers the way back', async () => {
+    await stored(handles.root, shell('mine', 'Mine'));
+    const { store } = await mount({ space: true });
+    await store.setSpaceTemplateOverride('mine');
+    expect(store.currentTemplate.id).toBe('mine');
+    const [follow, own] = store.templateOverrideOptions();
+    expect([follow.value, own.value]).toEqual([FOLLOW_SPACE, AGENT_DEFAULT]);
+    expect(store.templateOverrideOptions().some((option) => option.value === 'mine')).toBe(true);
   });
 });

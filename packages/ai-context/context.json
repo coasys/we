@@ -7896,20 +7896,6 @@
         "rolesLoaded": {
           "type": "boolean"
         },
-        "templateOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "themeOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "spaceThemePinned": {
-          "type": "boolean"
-        },
-        "spaceThemeHiddenBy": {
-          "type": "string"
-        },
         "installedModules": {
           "type": "array"
         },
@@ -8040,10 +8026,6 @@
         "setViewEnabled",
         "reorderViews",
         "setViewVisible",
-        "setSpaceTemplateOverride",
-        "setSpaceThemeOverride",
-        "applyTheme",
-        "clearSpaceThemePin",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8122,9 +8104,6 @@
         "setViewEnabled",
         "reorderViews",
         "setViewVisible",
-        "setSpaceTemplateOverride",
-        "setSpaceThemeOverride",
-        "applyTheme",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8162,6 +8141,10 @@
     {
       "name": "templateStore",
       "state": {
+        "templateOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
         "personalTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -8232,6 +8215,7 @@
         }
       },
       "actions": [
+        "setSpaceTemplateOverride",
         "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
@@ -8258,6 +8242,7 @@
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
       "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"],
       "needsArgs": [
+        "setSpaceTemplateOverride",
         "switchTemplate",
         "deleteTemplate",
         "deleteRefusedTemplate",
@@ -8320,6 +8305,16 @@
         "operationLoading": {
           "type": "string"
         },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "spaceThemePinned": {
+          "type": "boolean"
+        },
+        "spaceThemeHiddenBy": {
+          "type": "string"
+        },
         "focusedRole": {
           "type": "string"
         },
@@ -8369,6 +8364,9 @@
       "actions": [
         "setCurrentTheme",
         "setDefaultTheme",
+        "setSpaceThemeOverride",
+        "applyTheme",
+        "clearSpaceThemePin",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
@@ -8402,6 +8400,8 @@
       "needsArgs": [
         "setCurrentTheme",
         "setDefaultTheme",
+        "setSpaceThemeOverride",
+        "applyTheme",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",

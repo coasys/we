@@ -16,6 +16,7 @@ import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';
+import { appearanceOf } from './support/spaceAppearance';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnType<typeof plainLiveTemplates> }][] = [
   ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates })],
@@ -31,7 +32,7 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnT
 const root = { id: 'root', name: 'root', handle: { dataset: 'root' } };
 const toasts = { info: () => {}, success: () => {}, warning: () => {}, error: () => {} };
 const sessionStub = { me: () => undefined, devTools: () => false };
-const themeStub = { allThemes: () => [], provideAppTheme: () => {}, setDefaultTheme: () => {} };
+const themeStub = { allThemes: () => [], provideTemplates: () => {}, setDefaultTheme: () => {} };
 const routeStub = { navigate: () => {}, segments: () => [] };
 
 type Held<T> = { promise: Promise<T>; release: (value: T) => void };
@@ -108,7 +109,7 @@ describe.each(hosts)('the template store across a switch of space, under %s', (_
         themeStore: themeStub as never,
         routeStore: routeStub as never,
       });
-      store.provideSpaceLookup(() => [{ uuid: 'A', defaultTemplateId: named() } as never]);
+      store.provideSpaceAppearance(appearanceOf(reactivity, () => [{ uuid: 'A', defaultTemplateId: named() }]));
     });
   });
 

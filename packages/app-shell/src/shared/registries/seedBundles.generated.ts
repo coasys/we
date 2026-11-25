@@ -1587,7 +1587,7 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'theme|')" },
                                 then: {
-                                  $invoke: 'spaceStore.applyTheme',
+                                  $invoke: 'themeStore.applyTheme',
                                   args: [{ $: "split(event.detail.value, '|')[1]" }],
                                 },
                               },
@@ -3091,7 +3091,7 @@ export const seedBundles: Bundle[] = [
                                             type: '$if',
                                             props: {
                                               condition: {
-                                                $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId',
+                                                $: 'themeStore.spaceThemePinned && theme.id == themeStore.currentThemeId',
                                               },
                                               then: {
                                                 type: 'we-tooltip',
@@ -3108,7 +3108,7 @@ export const seedBundles: Bundle[] = [
                                                       size: 'sm',
                                                       color: 'text-faint',
                                                       hoverProps: { color: 'text' },
-                                                      onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
+                                                      onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
                                                     },
                                                     children: [
                                                       { type: 'we-icon', props: { name: 'push-pin', weight: 'fill' } },

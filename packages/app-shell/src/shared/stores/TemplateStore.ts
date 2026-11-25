@@ -56,6 +56,7 @@ import { followLive } from '../followLive';
 import type { LiveTemplates } from '../liveTemplate';
 import { CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
 import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../safeMode';
+import { overrideOptions, overrideTemplateId, type SpaceAppearance } from '../spaceAppearance';
 import { acceptTemplate, describeAcceptance, describeCapabilities, describeRefusal } from '../templateAcceptance';
 import { createTemplateDrafts } from '../templateDrafts';
 import {
@@ -129,13 +130,6 @@ export type TemplateSwitcherItem = {
 };
 export type TemplateSwitcherGroup = { label: string; items: TemplateSwitcherItem[] };
 
-/** The slice of a Space model this store needs to resolve default templates. */
-export interface SpaceLike {
-  uuid?: string;
-  url?: string;
-  defaultTemplateId?: string;
-}
-
 /**
  * A marketplace template that has been fetched and judged, waiting on a person's decision.
  *
@@ -175,8 +169,18 @@ export interface AppBrand {
 }
 
 export interface TemplateStore {
-  /** Injected by SpaceStore, composed after this store — see resolveSpaceFromPerspective. */
-  provideSpaceLookup: (lookup: () => SpaceLike[]) => void;
+  /**
+   * Lend this store the spaces' records and this agent's overrides for them, which the space store
+   * holds and is composed after this store to lend. See `spaceAppearance.ts`.
+   */
+  provideSpaceAppearance: (appearance: SpaceAppearance) => void;
+  /** Options for the per-space template override picker, including a "follow the space" entry. */
+  templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private.
+   * Applied at once when the space is the one on screen; otherwise when that space is next opened.
+   */
+  setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
   // State
   personalTemplates: Accessor<TemplateSchema[]>;
   spaceTemplates: Accessor<TemplateSchema[]>;
@@ -393,7 +397,7 @@ export interface TemplateStoreDeps {
     | 'marketplaceDataset'
   >;
   routeStore: Pick<RouteStore, 'navigate' | 'segments'>;
-  themeStore: Pick<ThemeStore, 'allThemes' | 'provideAppTheme' | 'setDefaultTheme'>;
+  themeStore: Pick<ThemeStore, 'allThemes' | 'provideTemplates' | 'setDefaultTheme'>;
 }
 
 export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
@@ -721,16 +725,19 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     );
   };
 
-  // The app's first theme stands in for the agent's default until they choose one — see `resolveAppTheme`.
-  themeStore.provideAppTheme(() =>
-    resolveAppTheme({
-      safe: safe.on,
-      settled: settled(),
-      appThemeIds: templateThemeIds(appTemplate().meta),
-      known: (id) => themeStore.allThemes().some((t) => t.id === id),
-      device: rememberedApp,
-    }),
-  );
+  themeStore.provideTemplates({
+    // The app's first theme stands in for the agent's default until they choose one — see `resolveAppTheme`.
+    appTheme: () =>
+      resolveAppTheme({
+        safe: safe.on,
+        settled: settled(),
+        appThemeIds: templateThemeIds(appTemplate().meta),
+        known: (id) => themeStore.allThemes().some((t) => t.id === id),
+        device: rememberedApp,
+      }),
+    // Whose suggested theme a space's theme resolution reads.
+    onScreen,
+  });
 
   // Kept for the next boot's sign-in screen, once the app in use is known rather than guessed.
   effect(() => {
@@ -1024,14 +1031,13 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     }
   });
 
-  // Space models are owned by SpaceStore, which mounts BELOW this store (it depends on template
-  // preloading). It injects this lookup at creation, keeping the dependency one-directional; the
-  // empty default only exists between this provider mounting and SpaceStore mounting, during
-  // which no space can be open.
-  let spaceLookup: () => SpaceLike[] = () => [];
-  function provideSpaceLookup(lookup: () => SpaceLike[]): void {
-    spaceLookup = lookup;
-  }
+  /*
+    The spaces' records and this agent's overrides are the space store's, which is composed after
+    this one (it depends on template preloading) and lends them, keeping the dependency one-way.
+    Nothing is lent only before the space store exists, when no space can be open.
+  */
+  const [appearance, setAppearance] = signal<SpaceAppearance | null>(null);
+  const spaceLookup = () => appearance()?.spaces() ?? [];
 
   function resolveSpaceFromPerspective(dataset: AppDataset) {
     const allKnownSpaces = spaceLookup();
@@ -1242,7 +1248,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     const still = chooseLatestFor(perspective.id).begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
-    // below this one — the same reason `provideSpaceLookup` exists.
+    // after this one — the same reason it lends `SpaceAppearance`.
     const rootPerspective = datasetStore.rootDataset()?.handle;
     const templateOverride = rootPerspective
       ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
@@ -1302,6 +1308,38 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     // that showed it its own way does not leave that app's template on screen.
     if (perspective) void untrack(() => applySpaceTemplate(perspective, defaultTemplateId()));
   });
+
+  /** The template a space's override names for this agent, `''` when it names none. */
+  const overriddenTemplateFor = (datasetId: string): string => {
+    const lent = appearance();
+    if (!lent) return '';
+    return overrideTemplateId(
+      lent.overrideFor(datasetId).template,
+      lent.spaceFor(datasetId)?.defaultTemplateId,
+      defaultTemplateId(),
+    );
+  };
+
+  const templateOverrideOptions = memo(() => {
+    const byId = (id: string) => allTemplates().find((t) => t.id === id)?.meta?.name;
+    const space = appearance()?.spaceFor(datasetStore.currentDataset()?.id ?? '');
+    return overrideOptions({
+      choices: allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
+      spaceDefaultName: byId(space?.defaultTemplateId ?? ''),
+      agentDefaultName: byId(defaultTemplateId()),
+    });
+  });
+
+  async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
+    const lent = untrack(appearance);
+    const datasetId = spaceUuid ?? datasetStore.currentDataset()?.id;
+    if (!lent || !datasetId) return;
+    await lent.setOverride(datasetId, 'template', templateId);
+    if (datasetStore.currentDataset()?.id !== datasetId) return;
+    const wanted = untrack(() => overriddenTemplateFor(datasetId));
+    const template = untrack(allTemplates).find((t) => t.id === wanted);
+    if (template) replaceTemplate(template);
+  }
 
   // Restore persisted template choice on boot (runs once, then stops)
   let initialRestoreDone = false;
@@ -1728,7 +1766,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   }
 
   /**
-   * What the editor tells this store, injected the way `provideSpaceLookup` is, since the editor is
+   * What the editor tells this store, injected the way `provideSpaceAppearance` is, since the editor is
    * built on this store and not the other way round: whether a template is being edited here, and
    * what to do once a change saved elsewhere has been put into it.
    */
@@ -2388,7 +2426,9 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   );
 
   const store: TemplateStore = {
-    provideSpaceLookup,
+    provideSpaceAppearance: (lent: SpaceAppearance) => setAppearance(lent),
+    templateOverrideOptions,
+    setSpaceTemplateOverride,
     // State
     personalTemplates,
     spaceTemplates,

@@ -135,7 +135,7 @@ export interface ShapeStore {
    * Options for the identity picker: "None" plus every named property of the open draft.
    *
    * Built here rather than `$map`-ped in the schema for the same reason as
-   * `spaceStore.templateOverrideOptions` — a schema can map a store array into options but cannot
+   * `templateStore.templateOverrideOptions` — a schema can map a store array into options but cannot
    * prepend one, and without the "None" entry the choice would be one-way.
    */
   identityOptions: Accessor<{ label: string; value: string }[]>;

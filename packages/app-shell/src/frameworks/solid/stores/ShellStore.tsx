@@ -568,7 +568,7 @@ export interface ShellStore {
    * What a "reset to layout" control is gated on. The three-rung chain is otherwise one-way: a drag
    * wins for good and there is no way back to the arrangement the template designed, so an author
    * improving a layout would be overruled forever by one stray drag. Same pairing as
-   * `spaceThemePinned` and `clearSpaceThemePin`.
+   * `themeStore.spaceThemePinned` and `themeStore.clearSpaceThemePin`.
    *
    * False for a panel the interface says nothing about — there is no layout to go back to.
    */

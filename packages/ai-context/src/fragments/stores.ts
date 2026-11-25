@@ -349,6 +349,9 @@ export const storeEntries: StoreEntry[] = [
     state: {
       builtInThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
       automaticThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
+      themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
+      spaceThemePinned: { type: 'boolean' },
+      spaceThemeHiddenBy: { type: 'string' },
       installedThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
       spaceThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
       allThemes: { type: 'array', properties: ['id', 'name', 'icon', 'origin'] },
@@ -371,6 +374,9 @@ export const storeEntries: StoreEntry[] = [
     },
     actions: [
       'setCurrentTheme',
+      'applyTheme',
+      'clearSpaceThemePin',
+      'setSpaceThemeOverride',
       'setDefaultTheme',
       'setThemeMode',
       'setDisplayPreference',
@@ -401,10 +407,12 @@ export const storeEntries: StoreEntry[] = [
       safeMode: { type: 'object', properties: ['on', 'reason', 'template'] },
       followTemplateUpdates: { type: 'boolean' },
       brand: { type: 'object', properties: ['active', 'bundleId', 'name', 'mark', 'wordmark', 'about'] },
+      templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
     },
     actions: [
       'setFollowTemplateUpdates',
       'switchTemplate',
+      'setSpaceTemplateOverride',
       'removeTemplate',
       'saveTemplate',
       'toggleInstalled',
@@ -465,10 +473,6 @@ export const storeEntries: StoreEntry[] = [
       activeModules: {
         type: 'array',
       },
-      templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
-      themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
-      spaceThemePinned: { type: 'boolean' },
-      spaceThemeHiddenBy: { type: 'string' },
       canAdministerCurrentSpace: { type: 'boolean' },
       moduleInstallSettings: {
         type: 'array',
@@ -561,10 +565,6 @@ export const storeEntries: StoreEntry[] = [
       'setModuleEnabled',
       'setModuleInstalled',
       'setModuleVisible',
-      'setSpaceTemplateOverride',
-      'setSpaceThemeOverride',
-      'applyTheme',
-      'clearSpaceThemePin',
       'launchModule',
     ],
   },
@@ -1225,6 +1225,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   themeStore: {
     state: {
+      themeOverrideOptions:
+        '{ label, value }[] — options for the per-space theme override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every theme. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
+      spaceThemeHiddenBy:
+        "string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two",
+      spaceThemePinned:
+        'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
       builtInThemes: 'array of ThemeData objects — built-in registry themes (origin: "built-in", always available)',
       automaticThemes:
         'array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes',
@@ -1272,6 +1278,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme",
     },
     actions: {
+      setSpaceThemeOverride:
+        "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Three values: 'space-default' follows the space, 'agent-default' follows your own global default, or a concrete theme id pins that one. Private, and applied immediately when that space is the one on screen",
+      applyTheme:
+        '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see',
+      clearSpaceThemePin:
+        '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
       setCurrentTheme: '(themeId: string): sets and persists the active theme',
       focusRole:
         '(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll',
@@ -1327,6 +1339,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   templateStore: {
     state: {
+      templateOverrideOptions:
+        '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
       personalTemplates:
         "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
       spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space',
@@ -1362,6 +1376,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — whether somebody else's change to the template on screen is put on screen as they save it. Off by default: it is offered instead, with a notice and an Update now button, so the page does not change under somebody mid-task. This agent's own changes (another device, an agent it asked) and changes to a template being edited here always apply",
     },
     actions: {
+      setSpaceTemplateOverride:
+        "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all",
       setFollowTemplateUpdates:
         '(on: boolean): sets followTemplateUpdates, for this agent everywhere. Boolean, so a we-switch can pass `event.detail` bare',
       leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
@@ -1489,19 +1505,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer',
       policy:
         "{ loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: \"can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })\" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message",
-      templateOverrideOptions:
-        '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
-      themeOverrideOptions: '{ label, value }[] — the same, for themes',
       sharingOptions:
         '{ label, value, icon, description, servers }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. `servers` is, for a server option, a second we-select’s { label, value }[]: the servers it can sync through, default first and named by host, then "Custom…" (value \'custom\') for typing an http(s) address in; empty for a peer-to-peer option. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
       defaultSharing:
         'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
       canAdministerCurrentSpace:
         'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
-      spaceThemeHiddenBy:
-        "string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two",
-      spaceThemePinned:
-        'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
       requiredModules:
         'string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable',
       missingModules:
@@ -1650,14 +1659,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
       setModuleVisible:
         '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare \u2014 wrapping it in another token would evaluate at render time and send a constant',
-      setSpaceTemplateOverride:
-        "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all",
-      setSpaceThemeOverride:
-        '(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Same three values as setSpaceTemplateOverride. Private',
-      applyTheme:
-        '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see',
-      clearSpaceThemePin:
-        '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
       setModuleEnabled:
         '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
       launchModule:

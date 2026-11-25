@@ -6,7 +6,7 @@
  * does to the page — its variables, its stylesheet — can be read back.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { Theme } from '@we/entities';
+import { AGENT_DEFAULT, FOLLOW_SPACE, Theme } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createThemeStore, type ThemeStore } from '../src/shared/stores/ThemeStore';
+import { appearanceOf } from './support/spaceAppearance';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -37,11 +38,19 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
   let installedRefs: string[];
   const disposers: (() => void)[] = [];
 
-  async function mount(options: { space?: boolean } = {}) {
+  async function mount(options: { space?: boolean; spaceTheme?: string; spaceTemplate?: string } = {}) {
+    const [spaceRecord, setSpaceRecord] = reactivity.signal({
+      uuid: 'space',
+      defaultThemeId: options.spaceTheme ?? '',
+      defaultTemplateId: options.spaceTemplate ?? '',
+    });
+    const [onScreen, setOnScreen] = reactivity.signal<{ id?: string; meta?: { themeId?: string } }>({
+      id: options.spaceTemplate ?? '',
+    });
+    const appearance = appearanceOf(reactivity, () => [spaceRecord()]);
     const [settings, setSettings] = reactivity.signal<Record<string, unknown> | null>(null);
-    const [current, setCurrent] = reactivity.signal<unknown>(
-      options.space ? { id: 'space', name: 'Space', handle: handles.space } : null,
-    );
+    // The space is entered once the agent's settings are in, as it is on a real boot.
+    const [current, setCurrent] = reactivity.signal<unknown>(null);
     const record = (fields: Record<string, unknown>) => ({
       ...fields,
       installedThemes: installedRefs,
@@ -77,11 +86,17 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
             },
           },
         });
+        store.provideTemplates({ appTheme: () => undefined, onScreen });
+        store.provideSpaceAppearance(appearance);
       }),
     );
     setSettings(record({ defaultThemeId: '' }));
     await flush();
-    return { store, setCurrent };
+    if (options.space) {
+      setCurrent({ id: 'space', name: 'Space', handle: handles.space });
+      await flush();
+    }
+    return { store, setCurrent, appearance, setSpaceRecord, setOnScreen };
   }
 
   beforeEach(async () => {
@@ -259,5 +274,80 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     expect(await store.publishToSpace('space', 'Space')).toBe(true);
     expect(store.spaceThemes().map((t) => t.slug)).toEqual(['mine']);
     expect(told).toEqual(['error: No theme is being edited', 'Theme "mine" shared to space "Space"']);
+  });
+
+  describe('the theme a space is seen in', () => {
+    it('wears the space’s theme on arriving, and the agent’s own again on leaving', async () => {
+      const { store, setCurrent } = await mount({ space: true, spaceTheme: 'retro' });
+      expect(store.currentThemeId()).toBe('retro');
+      setCurrent(null);
+      await flush();
+      expect(store.currentThemeId()).not.toBe('retro');
+    });
+
+    it('lets a template on screen bring its theme, unless it is the space’s own pair', async () => {
+      const { store, setOnScreen } = await mount({ space: true, spaceTheme: 'retro', spaceTemplate: 'cards' });
+      setOnScreen({ id: 'cards', meta: { themeId: 'cyberpunk' } });
+      await flush();
+      // The space's template: the theme chosen beside it holds.
+      expect(store.currentThemeId()).toBe('retro');
+      setOnScreen({ id: 'channels', meta: { themeId: 'cyberpunk' } });
+      await flush();
+      expect(store.currentThemeId()).toBe('cyberpunk');
+      expect(store.spaceThemeHiddenBy()).toBe('template');
+    });
+
+    it('says once that a template suggests a theme this agent does not have', async () => {
+      const { setOnScreen } = await mount({ space: true });
+      setOnScreen({ id: 'odd', meta: { themeId: 'nowhere' } });
+      await flush();
+      setOnScreen({ id: 'odd-again', meta: { themeId: 'nowhere' } });
+      await flush();
+      expect(told.filter((m) => m.includes('"nowhere"'))).toHaveLength(1);
+    });
+
+    it('pins a theme where the agent is, and lets them take the pin back', async () => {
+      const { store, appearance } = await mount({ space: true, spaceTheme: 'retro' });
+      await store.applyTheme('cyberpunk');
+      expect(appearance.written).toEqual([['space', 'theme', 'cyberpunk']]);
+      expect(store.currentThemeId()).toBe('cyberpunk');
+      expect(store.spaceThemePinned()).toBe(true);
+      expect(store.spaceThemeHiddenBy()).toBe('pin');
+
+      await store.clearSpaceThemePin();
+      expect(store.currentThemeId()).toBe('retro');
+      expect(store.spaceThemePinned()).toBe(false);
+      expect(store.spaceThemeHiddenBy()).toBe('');
+    });
+
+    it('does not count a pin naming what would apply anyway', async () => {
+      const { store } = await mount({ space: true, spaceTheme: 'retro' });
+      await store.applyTheme('retro');
+      expect(store.spaceThemePinned()).toBe(false);
+    });
+
+    it('sets the agent’s own default when there is no space to pin to', async () => {
+      const { store, appearance } = await mount();
+      await store.applyTheme('cyberpunk');
+      expect(appearance.written).toEqual([]);
+      expect(settingsWrites).toContainEqual({ defaultThemeId: 'cyberpunk' });
+    });
+
+    it('offers the space’s and the agent’s defaults by name before the themes', async () => {
+      const { store } = await mount({ space: true, spaceTheme: 'retro' });
+      const [follow, mine, ...rest] = store.themeOverrideOptions();
+      expect(follow.label).toMatch(/^Use the space's default \(.+\)$/);
+      expect(follow.value).toBe(FOLLOW_SPACE);
+      expect(mine.value).toBe(AGENT_DEFAULT);
+      expect(rest.some((option) => option.value === 'retro')).toBe(true);
+    });
+
+    it('explains a new space default the agent will not see, and offers the way back', async () => {
+      const { store, setSpaceRecord } = await mount({ space: true, spaceTheme: 'retro' });
+      await store.applyTheme('cyberpunk');
+      setSpaceRecord({ uuid: 'space', defaultThemeId: 'dark', defaultTemplateId: '' });
+      store.explainSpaceThemeHidden();
+      expect(told.at(-1)).toMatch(/^Saved\. You won't see it while you're using .* in this space\.$/);
+    });
   });
 });

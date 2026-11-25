@@ -188,14 +188,17 @@ vi.mock('../src/shared/stores/TemplateStore', async () => {
         paints only through this path now, so a double that could not follow would hide the
         publish-to-repaint contract from every test below.
       */
-      let spaceLookup: () => { uuid?: string; url?: string; defaultTemplateId?: string }[] = () => [];
+      let appearance: {
+        spaces: () => { uuid?: string; url?: string; defaultTemplateId?: string }[];
+        setOverride: (datasetId: string, which: 'template' | 'theme', id: string) => Promise<void>;
+      } = { spaces: () => [], setOverride: async () => {} };
       let followed: { id: string; named: string | undefined } | null = null;
       // The real choose sequences overlapping follows, through the same per-space tracker, and
       // re-reads the record after the preference read — a stale choose must not paint an older
       // record over a newer follow's answer.
       const chooseLatestFor = latestPerSpace();
       const namedNow = (ds: { id: string; sharedId?: string | null }) =>
-        spaceLookup().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId;
+        appearance.spaces().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId;
       createEffect(() => {
         const ds = datasets.currentDataset() as { id: string; sharedId?: string | null } | undefined;
         const named = ds ? namedNow(ds) : undefined;
@@ -223,8 +226,17 @@ vi.mock('../src/shared/stores/TemplateStore', async () => {
 
       return {
         appTemplate: inUse,
-        provideSpaceLookup: (lookup: never) => {
-          spaceLookup = lookup;
+        provideSpaceAppearance: (lent: never) => {
+          appearance = lent;
+        },
+        /*
+          The real store's override, modelled: written through the space store's lent writer, and a
+          named template painted at once while its space is on screen.
+        */
+        setSpaceTemplateOverride: async (id: string, datasetId: string) => {
+          await appearance.setOverride(datasetId, 'template', id);
+          const template = app.templates.list.find((t) => t.id === id);
+          if (template && datasets.currentDataset()?.id === datasetId) setCurrent(template as never);
         },
         preloadSpaceTemplates: async () => {},
         allTemplates: () => app.templates.list,
@@ -247,6 +259,8 @@ vi.mock('../src/shared/stores/ThemeStore', () => ({
     replaceTheme: () => {},
     restorePersonalTheme: () => {},
     clearSpaceTheme: () => {},
+    provideSpaceAppearance: () => {},
+    explainSpaceThemeHidden: () => {},
   }),
 }));
 
@@ -287,6 +301,7 @@ interface Stores {
   session: SessionStore;
   datasets: DatasetStore;
   spaces: SpaceStore;
+  templates: { setSpaceTemplateOverride: (id: string, datasetId: string) => Promise<void> };
   records: RecordStore;
   shapes: ShapeStore;
   profiles: ProfileStore;
@@ -390,6 +405,7 @@ function mountShell(): Stores {
       session: sessionStore,
       datasets: datasetStore,
       spaces: spaceStore,
+      templates: templateStore,
       records: recordStore,
       shapes: shapeStore,
     });
@@ -1830,7 +1846,7 @@ describe('dataset lifecycle through the real stores', () => {
       const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
       await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
 
-      await stores.spaces.setSpaceTemplateOverride('mine', uuid);
+      await stores.templates.setSpaceTemplateOverride('mine', uuid);
       expect(app.templates.shown().id).toBe('mine');
       const repaints = app.templates.repaints.length;
 

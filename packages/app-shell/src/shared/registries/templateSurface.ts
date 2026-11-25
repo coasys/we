@@ -738,17 +738,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     agentModuleSettings: state('space-settings'),
     interpretationTargets: state('space-settings'),
     setInterpretationTarget: action('space-settings'),
-    templateOverrideOptions: state('space-admin'),
-    themeOverrideOptions: state('space-admin'),
-    /*
-      `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
-      looking at one you chose here", which is a fact about the current view rather than about
-      configuring some other space. The theme picker in the rail needs it to know whether to offer
-      a reset, and that picker lives in the appearance tier.
-    */
-    spaceThemePinned: state('appearance'),
-    // Beside the space-default picker it explains, in Space settings.
-    spaceThemeHiddenBy: state('space-settings'),
     moduleInstallSettings: state('space-admin'),
     createSpace: action('space-admin'),
     shareSpace: action('space-admin'),
@@ -792,15 +781,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setModuleVisible: hereOnly('space-settings', 2),
     /** Hiding a section for yourself. Private, and never removes it for anybody else. */
     setViewVisible: hereOnly('space-settings', 2),
-    setSpaceTemplateOverride: hereOnly('appearance', 1),
-    setSpaceThemeOverride: hereOnly('appearance', 1),
-    /*
-      Both are `setSpaceThemeOverride` aimed at the space on screen and nowhere else, so they sit in
-      the same tier — and take no space argument at all, which is why they need no `hereOnly` arity
-      guard: there is no parameter through which a template could name somebody else's space.
-    */
-    applyTheme: action('appearance'),
-    clearSpaceThemePin: action('appearance'),
 
     updateSpaceInCache: WIRING,
     loadSpaces: WIRING,
@@ -1004,7 +984,28 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     activeTemplateTheme: state('view-state'),
     setCurrentTheme: action('appearance'),
     setDefaultTheme: action('library'),
-    provideAppTheme: WIRING,
+    provideTemplates: WIRING,
+    provideSpaceAppearance: WIRING,
+    explainSpaceThemeHidden: WIRING,
+    // ── the theme a space is seen in: this agent's override per space ──
+    themeOverrideOptions: state('space-admin'),
+    /*
+      `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
+      looking at one you chose here", which is a fact about the current view rather than about
+      configuring some other space. The theme picker in the rail needs it to know whether to offer
+      a reset, and that picker lives in the appearance tier.
+    */
+    spaceThemePinned: state('appearance'),
+    // Beside the space-default picker it explains, in Space settings.
+    spaceThemeHiddenBy: state('space-settings'),
+    setSpaceThemeOverride: hereOnly('appearance', 1),
+    /*
+      Both are `setSpaceThemeOverride` aimed at the space on screen and nowhere else, so they sit in
+      the same tier — and take no space argument at all, which is why they need no `hereOnly` arity
+      guard: there is no parameter through which a template could name somebody else's space.
+    */
+    applyTheme: action('appearance'),
+    clearSpaceThemePin: action('appearance'),
     setSystemTheme: action('agent'),
     themeMode: state('appearance'),
     displayPreferences: state('appearance'),
@@ -1144,7 +1145,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // Install or uninstall by id, which is what the settings list's switch calls. `library`, like
     // the two actions it delegates to — marking it wiring left that switch inert.
     toggleInstalled: action('library'),
-    provideSpaceLookup: WIRING,
+    provideSpaceAppearance: WIRING,
+    // This agent's override of the template one space shows — beside its theme twin in `themeStore`.
+    templateOverrideOptions: state('space-admin'),
+    setSpaceTemplateOverride: hereOnly('appearance', 1),
     provideEditingProbe: WIRING,
     /*
       Whether somebody else's change to the template on screen applies as it arrives — this agent's
