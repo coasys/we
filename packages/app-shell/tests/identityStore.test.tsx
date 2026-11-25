@@ -23,13 +23,18 @@ const NEW_DID = 'did:key:z6MkRekeyed';
 /** What `agent.me` answers: the executor's re-key changes it. */
 const agent = { did: RETIRED_DID };
 const [me, setMe] = createSignal<{ did: string }>({ did: RETIRED_DID });
+/** What the session's `refreshMe` throws, when the test has reading the agent again fail. */
+let refreshMeFails: Error | null = null;
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
     backendPorts: ports,
     bootState,
     me,
-    refreshMe: async () => setMe({ did: agent.did }),
+    refreshMe: async () => {
+      if (refreshMeFails) throw refreshMeFails;
+      setMe({ did: agent.did });
+    },
     // As the session reads them from the port: linking a device needs a way to sign changes.
     identityCapabilities: () => ({
       ...NO_IDENTITY_CAPABILITIES,
@@ -183,6 +188,7 @@ beforeEach(() => {
   agent.did = RETIRED_DID;
   setMe({ did: RETIRED_DID });
   setBootState('ready');
+  refreshMeFails = null;
   localStorage.clear();
 });
 
@@ -627,6 +633,17 @@ describe('deviceStore', () => {
       b.state.refuse = undefined;
       expect(await deviceStore.unlinkThisComputer()).toBe('done');
       expect(b.calls.filter((call) => call === 'unlinkSelf')).toHaveLength(2);
+    });
+
+    it('frees the device buttons when reading again after the unlink throws', async () => {
+      const { devices: deviceStore } = setup(false);
+      await flush();
+      await flush();
+      await deviceStore.unlink('d1');
+      refreshMeFails = new Error('the agent could not be read');
+      await expect(deviceStore.unlinkThisComputer()).rejects.toThrow('the agent could not be read');
+      expect(deviceStore.unlinking()).toBe(false);
+      expect(deviceStore.confirmingUnlink()).toBe(false);
     });
 
     describe('while the unlink is in flight', () => {
