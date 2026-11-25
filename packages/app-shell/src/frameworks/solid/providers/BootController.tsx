@@ -18,7 +18,9 @@ import { consumeGuestBootTarget } from '@shared/guestLink';
 import { createAppStore } from '@shared/stores/AppStore';
 import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
+import { createDeviceStore } from '@shared/stores/DeviceStore';
 import { createEditTarget } from '@shared/stores/editTarget';
+import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -28,9 +30,7 @@ import { firstScreen } from '../firstScreen';
 import { createAccountStore } from '../stores/AccountStore';
 import { createBundleStore } from '../stores/BundleStore';
 import { createDatasetStore } from '../stores/DatasetStore';
-import { createDeviceStore } from '../stores/DeviceStore';
 import { createEditorStore } from '../stores/EditorStore';
-import { createIdentityStore } from '../stores/IdentityStore';
 import { createInterpretationStore } from '../stores/InterpretationStore';
 import { createPresenceStore } from '../stores/PresenceStore';
 import { createProfileStore } from '../stores/ProfileStore';
@@ -68,8 +68,8 @@ export function BootController(props: ParentProps) {
   const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
   // Beside Runtime and for the same reason: they read only the port bundle and the host's custody.
   // Identity before devices, whose changes it opens.
-  const identityStore = createIdentityStore({ sessionStore });
-  const deviceStore = createDeviceStore({ sessionStore, identityStore });
+  const identityStore = createIdentityStore({ reactivity: solidReactivity, sessionStore });
+  const deviceStore = createDeviceStore({ reactivity: solidReactivity, sessionStore, identityStore });
   const datasetStore = createDatasetStore({ sessionStore });
   // The shape adoption rail follows the current dataset, and everything that renders a space may
   // query the entities it registers.

@@ -1,7 +1,7 @@
 /**
  * IdentityStore — who this computer speaks for, and the log of every change to their keys.
  *
- * The Solid binding over the backend's `IdentityPort`, which answers two kinds of question:
+ * The store over the backend's `IdentityPort`, which answers two kinds of question:
  *
  * - **Reads**: the identity this device's key speaks for, and the person's key log, which the
  *   backend checked event by event before answering.
@@ -17,8 +17,9 @@
  * asked to make an identity here — or to start without one, which `startWithoutIdentity` remembers
  * for that account on this computer.
  */
-import { type KeyLogRow, keyLogRows } from '@shared/identityRows';
 import type {
+  BackendPorts,
+  IdentityCapabilities,
   IdentityChange,
   IdentityChangeOutcome,
   IdentityCustodyView,
@@ -27,9 +28,16 @@ import type {
   KeyLogFork,
 } from '@we/backend-shared';
 import { latest } from '@we/module-shared';
-import { type Accessor, createEffect, createMemo, createSignal, on, onCleanup } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import type { StoreRegistry } from './useStore';
+import { type KeyLogRow, keyLogRows } from '../identityRows';
+
+/** What the identity store reads of the session: its ports, how far boot has got, and what they can do. */
+export interface IdentitySession {
+  backendPorts: Accessor<Pick<BackendPorts, 'identity'> | null>;
+  bootState: Accessor<string>;
+  identityCapabilities: Accessor<IdentityCapabilities>;
+}
 
 export interface IdentityStore {
   /** The backend can say who this device speaks for (it has a key log). */
@@ -104,33 +112,39 @@ function readStartNow(deviceKey: string): boolean {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): IdentityStore {
-  const session = deps.sessionStore;
+export function createIdentityStore({
+  reactivity,
+  sessionStore: session,
+}: {
+  reactivity: ReactivityPort;
+  sessionStore: IdentitySession;
+}): IdentityStore {
+  const { signal, memo, effect, untrack, batch, onCleanup } = reactivity;
 
   const port = () => session.backendPorts()?.identity ?? null;
   const ready = () => session.bootState() === 'ready' || session.bootState() === 'finishing';
 
-  const [status, setStatus] = createSignal<IdentityStatusView | null>(null);
-  const [statusLoaded, setStatusLoaded] = createSignal(false);
-  const [events, setEvents] = createSignal<KeyLogEvent[]>([]);
-  const [keyLogLoaded, setKeyLogLoaded] = createSignal(false);
-  const [fork, setFork] = createSignal<KeyLogFork | null>(null);
-  const [custody, setCustody] = createSignal<IdentityCustodyView | null>(null);
-  const [busy, setBusy] = createSignal(false);
-  const [lastOutcome, setLastOutcome] = createSignal<IdentityChangeOutcome | ''>('');
-  const [error, setError] = createSignal('');
-  const [startNowChosen, setStartNowChosen] = createSignal(false);
+  const [status, setStatus] = signal<IdentityStatusView | null>(null);
+  const [statusLoaded, setStatusLoaded] = signal(false);
+  const [events, setEvents] = signal<KeyLogEvent[]>([]);
+  const [keyLogLoaded, setKeyLogLoaded] = signal(false);
+  const [fork, setFork] = signal<KeyLogFork | null>(null);
+  const [custody, setCustody] = signal<IdentityCustodyView | null>(null);
+  const [busy, setBusy] = signal(false);
+  const [lastOutcome, setLastOutcome] = signal<IdentityChangeOutcome | ''>('');
+  const [error, setError] = signal('');
+  const [startNowChosen, setStartNowChosen] = signal(false);
 
-  const deviceKey = createMemo(() => status()?.deviceKey ?? '');
-  const startNow = createMemo(() => startNowChosen() || readStartNow(deviceKey()));
+  const deviceKey = memo(() => status()?.deviceKey ?? '');
+  const startNow = memo(() => startNowChosen() || readStartNow(deviceKey()));
   // What the backend said it can do (`sessionStore.identityCapabilities`), not merely what methods exist.
-  const available = createMemo(() => session.identityCapabilities().keyLog && !!port()?.status);
-  const did = createMemo(() => status()?.did ?? '');
-  const keyId = createMemo(() => status()?.keyId ?? '');
-  const changeBlocked = createMemo(() => custody()?.blocked ?? '');
+  const available = memo(() => session.identityCapabilities().keyLog && !!port()?.status);
+  const did = memo(() => status()?.did ?? '');
+  const keyId = memo(() => status()?.keyId ?? '');
+  const changeBlocked = memo(() => custody()?.blocked ?? '');
   // Not until the backend has said this computer can sign changes: a custody service that has not
   // answered is one nothing is known about, and a door offered then would only fail.
-  const canChange = createMemo(() => !!port()?.change && custody() !== null && !changeBlocked());
+  const canChange = memo(() => !!port()?.change && custody() !== null && !changeBlocked());
 
   /*
     Every read belongs to the port it was asked of. A reply that comes back after the session moved to
@@ -140,9 +154,9 @@ export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): 
   const reads = latest();
 
   // Another backend is another person, or the same one reached afresh: nothing read before carries over.
-  createEffect(
-    on(port, () => {
-      reads.cancel();
+  function forget() {
+    reads.cancel();
+    batch(() => {
       setStatus(null);
       setStatusLoaded(false);
       setEvents([]);
@@ -152,8 +166,8 @@ export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): 
       setLastOutcome('');
       setError('');
       setStartNowChosen(false);
-    }),
-  );
+    });
+  }
 
   async function refresh(): Promise<void> {
     const identity = port();
@@ -178,25 +192,39 @@ export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): 
       if (!current()) return;
       const log = next.did && identity.log ? await identity.log(next.did) : null;
       if (!current()) return;
-      setStatus(next);
-      setStatusLoaded(true);
-      setEvents(log?.events ?? []);
-      // The backend's own answer, a fork it no longer reports included: a banner stays only while true.
-      setFork(log?.fork ?? next.fork ?? null);
-      setKeyLogLoaded(true);
-      setError('');
+      // One update, so nothing reading the identity sees the new status beside the old log.
+      batch(() => {
+        setStatus(next);
+        setStatusLoaded(true);
+        setEvents(log?.events ?? []);
+        // The backend's own answer, a fork it no longer reports included: a banner stays only while true.
+        setFork(log?.fork ?? next.fork ?? null);
+        setKeyLogLoaded(true);
+        setError('');
+      });
     } catch (e) {
       if (!current()) return;
       setError(message(e));
     }
   }
 
-  // Read once the session can answer, and again whenever it reconnects to another backend.
-  createEffect(() => {
-    if (ready() && port()) void refresh();
+  /*
+    Read once the session can answer, and again whenever it reconnects to another backend — after
+    forgetting the last one's, in the same effect. Two effects, one forgetting on a new port and one
+    reading, worked only because Solid ran them in the order they were made; the port promises no
+    order between siblings, and the other one cancels the read.
+  */
+  let seen: ReturnType<typeof port> | undefined;
+  effect(() => {
+    const identity = port();
+    if (identity !== seen) {
+      seen = identity;
+      untrack(forget);
+    }
+    if (ready() && identity) void refresh();
   });
 
-  createEffect(() => {
+  effect(() => {
     const identity = port();
     if (!identity?.onFork) return;
     const off = identity.onFork((f) => setFork(f));
@@ -247,12 +275,12 @@ export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): 
     did,
     keyId,
     thisDeviceRevoked: () => status()?.revoked != null,
-    keyLog: createMemo(() => keyLogRows(events(), keyId() || null)),
+    keyLog: memo(() => keyLogRows(events(), keyId() || null)),
     keyLogLoaded,
     forked: () => fork() !== null,
     fork,
     custody,
-    needsFirstRun: createMemo(
+    needsFirstRun: memo(
       () =>
         !!port()?.change &&
         custody() !== null &&

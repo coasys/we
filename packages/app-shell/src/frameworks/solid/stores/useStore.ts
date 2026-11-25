@@ -13,16 +13,16 @@
 import type { AppStore } from '@shared/stores/AppStore';
 import type { ChatStore } from '@shared/stores/ChatStore';
 import type { ClockStore } from '@shared/stores/ClockStore';
+import type { DeviceStore } from '@shared/stores/DeviceStore';
 import type { EditTargetPort } from '@shared/stores/editTarget';
+import type { IdentityStore } from '@shared/stores/IdentityStore';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import { createContext, useContext } from 'solid-js';
 
 import type { AccountStore } from './AccountStore';
 import type { BundleStore } from './BundleStore';
 import type { DatasetStore } from './DatasetStore';
-import type { DeviceStore } from './DeviceStore';
 import type { EditorStore } from './EditorStore';
-import type { IdentityStore } from './IdentityStore';
 import type { InterpretationStore } from './InterpretationStore';
 import type { PresenceStore } from './PresenceStore';
 import type { ProfileStore } from './ProfileStore';

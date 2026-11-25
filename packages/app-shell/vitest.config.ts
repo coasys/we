@@ -20,7 +20,7 @@ const SOLID_TESTS = [
   'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
-  'tests/identityStore.test.tsx',
+  'tests/identityStore.test.ts',
   'tests/profileStore.test.tsx',
   // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
   'tests/firstScreenDeferral.test.tsx',
