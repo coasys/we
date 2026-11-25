@@ -508,7 +508,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     version: '1.0.0',
     title: 'Identity',
     description:
-      'Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for. Profiles only — never keys, devices or accounts.',
+      'Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted. Profiles only — never keys, devices or accounts.',
     members: [
       {
         path: 'profileStore.ownProfile',
@@ -545,6 +545,15 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         description: 'The DIDs of everybody in the space on screen, the viewing person included.',
         events: ['members'],
       },
+      {
+        path: 'spaceStore.mutedDids',
+        kind: 'state',
+        group: 'content',
+        shape: 'string[]',
+        description:
+          'The DIDs the viewing person has muted, in every space. Theirs alone: a template hides what these people wrote on this person’s screen, and nothing is removed for anybody else.',
+        events: ['muted'],
+      },
     ],
     events: [
       {
@@ -556,6 +565,11 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         name: 'members',
         changes: ['spaceStore.memberDids'],
         description: 'Somebody joined or left the space on screen, or a different space is on screen.',
+      },
+      {
+        name: 'muted',
+        changes: ['spaceStore.mutedDids'],
+        description: 'The viewing person muted or unmuted somebody.',
       },
     ],
   },
