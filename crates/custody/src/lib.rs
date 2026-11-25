@@ -18,7 +18,8 @@
 //! - [`sidecar`] serves the service over stdin and stdout, as the `we-custody` binary, for the
 //!   Electron app.
 //! - [`wallet`] keeps the executor's wallet passphrase in the keyring for the Electron supervisor
-//!   (`we-custody wallet-passphrase`): a stopgap ahead of AR-06, which replaces it.
+//!   (`we-custody wallet-passphrase`): a stopgap until the executor unlocks its own
+//!   storage.
 //!
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.

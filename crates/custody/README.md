@@ -128,7 +128,7 @@ The copies made before the sidecar have no such guarantee, and cannot be given o
   escapes and is borrowed from the line, but a passphrase with a `"` or a `\` in it leaves an
   unescaped copy in that scratch buffer.
 
-## The wallet passphrase (a stopgap until AR-06)
+## The wallet passphrase (a stopgap until the executor unlocks its own storage)
 
 `we-custody wallet-passphrase read|make --data-folder <dir>` answers one line of JSON about the
 executor's wallet passphrase for that data folder, and exits: `{"passphrase": …}`, `{"none": true}`,
@@ -143,8 +143,8 @@ Service on Linux (`SecretServiceStore`, so a locked keyring is answered `locked`
 signed build's entitlement and asks for the person at every read. There is no file fallback: the
 passphrase rests unsealed, so only a keyring may keep it. Windows answers `unavailable`.
 
-Slice 3's AR-06 replaces this: the executor's storage is unlocked by a secret of its own
-(`storage.unlock`), and the command and its item go. `tests/wallet.rs` covers it over the in-memory
+Once the executor's storage is unlocked by a secret of its own (`storage.unlock`), the command
+and its item go. `tests/wallet.rs` covers it over the in-memory
 store.
 
 ## The identity store

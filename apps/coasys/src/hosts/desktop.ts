@@ -186,10 +186,10 @@ export const WORDS_AGENT_LOCKED =
 /**
  * The custody service as the base app's identity source. With the shell's `executor`, the doors open
  * only once it is ready with its agent unlocked: every step runs against the executor's main agent,
- * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until AR-06's
- * `storage.unlock`). An agent with nothing kept for it stays locked until sign-in, and the base app
- * asks the executor again (`refresh`) when it is shown and before a door opens. An executor that does
- * not say how its agent is leaves the doors as they were.
+ * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until the
+ * executor unlocks its own storage, `storage.unlock`). An agent with nothing kept for it stays locked
+ * until sign-in, and the base app asks the executor again (`refresh`) when it is shown and before a
+ * door opens. An executor that does not say how its agent is leaves the doors as they were.
  */
 export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseExecutor): BaseIdentitySource {
   const open = {

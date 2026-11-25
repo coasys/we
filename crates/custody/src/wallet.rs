@@ -1,12 +1,12 @@
 //! The executor's wallet passphrase, kept in this computer's keyring for the Electron supervisor.
 //!
-//! **A stopgap ahead of AR-06.** Custody's steps need the executor's main agent, made and unlocked,
+//! **A stopgap until the executor unlocks its own storage.** Custody's steps need the executor's main agent, made and unlocked,
 //! and WE used to make it only at "Create account", after the app before a session hands off: on a
 //! new computer every identity door failed ("DID requested but not yet set in AgentService"). So the
 //! Electron supervisor makes the main agent itself with a random passphrase and unlocks it at every
-//! start, with no prompt, and this module keeps that passphrase. Slice 3's AR-06 (the storage
-//! secret, `storage.unlock`) replaces it: the executor's storage is then unlocked by a secret of
-//! its own, and this item and the `wallet-passphrase` command go.
+//! start, with no prompt, and this module keeps that passphrase. Once the executor's storage is
+//! unlocked by a secret of its own (`storage.unlock`), this item and the `wallet-passphrase`
+//! command go.
 //!
 //! One item per executor data folder, named by the folder's canonical path ([`item_name`]). The
 //! keyring is the one custody keeps master keys in, reached the same way: the Linux Secret Service
