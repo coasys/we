@@ -179,12 +179,14 @@ import {
   TaskState,
 } from '@we/entities';
 import { type Latest, latest } from '@we/module-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import { Accessor, batch, createComputed, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { followLive } from '../../../shared/followLive';
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -897,32 +899,6 @@ const SPACE_AVATAR_PX = 512;
 
 /** What a collection's extraction settings are read from — see `autoInterpretFor`. */
 const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
-
-/**
- * The one rule for a live query that cannot open: read the stored rows once and apply them, and let
- * the caller say the rows are loaded only when this answers `true`.
- *
- * A watch that never opened has no first result to stand for the rows, and an empty answer is not
- * "none": for a policy it is the open policy, for settings it is the space's default. `current`
- * says the effect is still the one that asked, so a read that lands after leaving the space applies
- * nothing. A read that fails applies nothing either, leaving whatever the store holds as it is.
- */
-async function readStoredOnce<T>(
-  what: string,
-  current: () => boolean,
-  read: () => Promise<T>,
-  apply: (value: T) => void,
-): Promise<boolean> {
-  try {
-    const value = await read();
-    if (!current()) return false;
-    apply(value);
-    return true;
-  } catch (error) {
-    console.warn(`SpaceStore: could not read ${what}`, error);
-    return false;
-  }
-}
 
 export function createSpaceStore(
   deps: Pick<
@@ -2988,12 +2964,6 @@ export function createSpaceStore(
   createEffect(() => {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
-    let stopped = false;
-    let watch: LiveRows<SpaceLandmark> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
     setSpaceRoot('');
     // Nothing to wait for outside a WE space: its root is '' and stays so.
     setRootLoaded(!(dataset && weSpace));
@@ -3004,36 +2974,22 @@ export function createSpaceStore(
       whose collection was not there yet when it was read — a starter still writing — is read again,
       since the collection is not what this query watches.
     */
-    const follow = (rows: SpaceLandmark[], opened = false) => {
-      if (stopped) return;
-      if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
-      batch(() => {
-        setSpaceLandmarks(landmarksByName(rows));
-        setLandmarksLoaded(true);
-      });
-    };
     if (dataset && weSpace) {
       // Its first result is the landmarks as they are now; a change after that is applied as it comes.
-      watch = SpaceLandmark.query(dataset, {});
-      watch.subscribe((s) => {
-        if (s.status === 'ready' && s.data) follow(s.data.results, s.initial);
-      });
-      watch.first.catch((error: unknown) => {
-        console.warn('SpaceStore: could not watch the space’s landmarks', error);
-        // The watch never opened, so nothing else answers for the landmarks: read them once. A handle
-        // disposed on leaving the space rejects too; `stopped` keeps that from starting a read. The
-        // space's collection is read by the `reloadSpaceStructure(false)` below.
-        if (stopped) return;
-        void readStoredOnce(
-          'the space’s landmarks',
-          () => !stopped,
-          () => readSpaceLandmarks(dataset),
-          (found) =>
-            batch(() => {
-              setSpaceLandmarks(found);
-              setLandmarksLoaded(true);
-            }),
-        );
+      // A watch that never opened has nothing else answering for the landmarks, so they are read once;
+      // the space's collection is read by the `reloadSpaceStructure(false)` below.
+      followLive(solidReactivity, SpaceLandmark.query(dataset, {}), {
+        store: 'SpaceStore',
+        what: 'the space’s landmarks',
+        map: landmarksByName,
+        apply: (landmarks, opened) => {
+          if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
+          batch(() => {
+            setSpaceLandmarks(landmarks);
+            setLandmarksLoaded(true);
+          });
+        },
+        stored: { read: () => readSpaceLandmarks(dataset) },
       });
     }
     void untrack(() => reloadSpaceStructure(false));
@@ -3152,22 +3108,6 @@ export function createSpaceStore(
   createEffect(() => {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
-    let stopped = false;
-    let watch: LiveRows<TaskState> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
-    // The pushed rows are the states, whole — the read `loadTaskStates` makes — so a change is
-    // applied from them. The list is already on screen, so nothing drops back to "not loaded".
-    const follow = (rows: TaskState[]) => {
-      if (stopped) return;
-      try {
-        applyTaskStates(rows);
-      } catch (error) {
-        console.warn('SpaceStore: could not read task states', error);
-      }
-    };
     const ports = session.backendPorts()?.schemas;
     if (!dataset || !weSpace || !ports) {
       // Nothing to follow: the list is empty, and answered.
@@ -3175,41 +3115,36 @@ export function createSpaceStore(
       return;
     }
     setTaskStatesLoaded(false);
-    void (async () => {
-      try {
+    followLive(
+      solidReactivity,
+      async (current) => {
         // The shape is installed first — see above. After that the query's first result is the list.
         await ports.ensure(dataset, TaskState);
-      } catch (error) {
-        console.warn('SpaceStore: could not read task states', error);
-        if (!stopped) {
-          setOwnTaskStates([]);
+        return current() ? TaskState.query(dataset, {}) : undefined;
+      },
+      {
+        store: 'SpaceStore',
+        what: 'task states',
+        // The pushed rows are the states, whole — the read `loadTaskStates` makes — so a change is
+        // applied from them. The list is already on screen, so nothing drops back to "not loaded".
+        apply: (rows) => {
+          try {
+            applyTaskStates(rows);
+          } catch (error) {
+            console.warn('SpaceStore: could not read task states', error);
+          }
           setTaskStatesLoaded(true);
-        }
-        return;
-      }
-      if (stopped) return;
-      watch = TaskState.query(dataset, {});
-      watch.subscribe((s) => {
-        if (s.status !== 'ready' || !s.data) return;
-        follow(s.data.results);
-        if (!stopped) setTaskStatesLoaded(true);
-      });
-      watch.first.catch(async (error: unknown) => {
-        console.warn('SpaceStore: could not watch task states', error);
-        if (stopped) return;
-        // The states held are the previous space's (this effect runs per space), so a failed read
-        // empties the list; either way the list is answered.
-        const read = await readStoredOnce(
-          'task states',
-          () => !stopped,
-          () => TaskState.findAll(dataset),
-          applyTaskStates,
-        );
-        if (stopped) return;
-        if (!read) setOwnTaskStates([]);
-        setTaskStatesLoaded(true);
-      });
-    })();
+        },
+        stored: { read: () => TaskState.findAll(dataset), apply: applyTaskStates },
+        // The states held are the previous space's (this effect runs per space), so a list that could
+        // not be read is emptied; either way the list is answered.
+        settled: (loaded) =>
+          batch(() => {
+            if (!loaded) setOwnTaskStates([]);
+            setTaskStatesLoaded(true);
+          }),
+      },
+    );
   });
 
   /**
@@ -3908,52 +3843,53 @@ export function createSpaceStore(
   createEffect(() => {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
-    let stopped = false;
-    const watches: { dispose(): void }[] = [];
-    onCleanup(() => {
-      stopped = true;
-      for (const watch of watches) watch.dispose();
-    });
     setRoleRows([]);
     setGrantRows([]);
     setRolesLoaded(false);
-    void (async () => {
-      const schemas = session.backendPorts()?.schemas;
-      if (dataset && weSpace && schemas) {
-        // A space made before roles existed has neither entity installed; `ensure` is the diff-first
-        // install `loadInvolvementTypes` uses.
+    const schemas = session.backendPorts()?.schemas;
+    if (!dataset || !weSpace) {
+      // Nothing to follow: no roles, and answered.
+      void untrack(reloadRoles);
+      return;
+    }
+    // A space made before roles existed has neither entity installed; `ensure` is the diff-first
+    // install `loadInvolvementTypes` uses.
+    const installed = (async () => {
+      if (schemas) {
         for (const Model of [Role, RoleGrant]) await schemas.ensure(dataset, Model as never).catch(() => undefined);
       }
-      if (!dataset || !weSpace) {
-        // Nothing to follow: no roles, and answered.
-        await untrack(reloadRoles);
-        return;
-      }
-      if (stopped) return;
-      // Each watch pushes its own model's records whole, which is all its half of the roles is made
-      // of — so its first result is the read, and a change is applied from it, the other half left
-      // as it is.
-      // Answers whether the half is in: opened, or read once after its watch failed to open.
-      const followAll = <T,>(watch: LiveRows<T>, read: () => Promise<T[]>, apply: (rows: T[]) => void) => {
-        watches.push(watch);
-        watch.subscribe((s) => {
-          if (!stopped && s.status === 'ready' && s.data) apply(s.data.results);
-        });
-        return watch.first.then(
-          () => true,
-          (error: unknown) => {
-            console.warn('SpaceStore: could not watch the space’s roles', error);
-            return stopped ? false : readStoredOnce('the space’s roles', () => !stopped, read, apply);
-          },
-        );
-      };
-      const halves = await Promise.all([
-        followAll(Role.query(dataset, {}) as LiveRows<Role>, () => Role.findAll(dataset), applyRoles),
-        followAll(RoleGrant.query(dataset, {}) as LiveRows<RoleGrant>, () => RoleGrant.findAll(dataset), applyGrants),
-      ]);
-      // A half that is missing would change who administers the space: roles are not loaded without it.
-      if (!stopped && halves.every(Boolean)) setRolesLoaded(true);
     })();
+    // A half that is missing would change who administers the space: roles are not loaded without both.
+    let halves = 0;
+    let both = true;
+    const half = (loaded: boolean) => {
+      both &&= loaded;
+      if (++halves === 2 && both) setRolesLoaded(true);
+    };
+    /*
+      Each watch pushes its own model's records whole, which is all its half of the roles is made of —
+      so its first result is the read, and a change is applied from it, the other half left as it is.
+      A half is in once its watch opened, or once it was read after its watch failed to open.
+    */
+    const followHalf = <T,>(query: () => LiveRows<T>, read: () => Promise<T[]>, apply: (rows: T[]) => void) =>
+      followLive(
+        solidReactivity,
+        async (current) => {
+          await installed;
+          return current() ? query() : undefined;
+        },
+        { store: 'SpaceStore', what: 'the space’s roles', apply, stored: { read }, settled: half },
+      );
+    followHalf(
+      () => Role.query(dataset, {}) as LiveRows<Role>,
+      () => Role.findAll(dataset),
+      applyRoles,
+    );
+    followHalf(
+      () => RoleGrant.query(dataset, {}) as LiveRows<RoleGrant>,
+      () => RoleGrant.findAll(dataset),
+      applyGrants,
+    );
   });
 
   const myRoles = createMemo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
@@ -4105,79 +4041,45 @@ export function createSpaceStore(
   createEffect(() => {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
-    let stopped = false;
-    let watch: LiveRows<Policy> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
     setPolicyRows([]);
     setPolicyLoaded(false);
-    // The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
-    // applied from them. A later push supersedes an earlier one still resolving its authors.
-    let pushed = 0;
-    // Whether the newest push is in `policyRows`; false while it resolves, and if it could not be.
-    let applied = Promise.resolve(false);
-    const follow = (rows: Policy[]): void => {
-      if (stopped) return;
-      const turn = ++pushed;
-      applied = policyVersionsOf(rows).then(
-        (versions) => {
-          if (stopped || turn !== pushed) return false;
-          setPolicyRows(versions);
-          return true;
+    const schemas = session.backendPorts()?.schemas;
+    if (!dataset || !weSpace) {
+      // Nothing to follow: no versions, and answered.
+      void untrack(reloadPolicy);
+      return;
+    }
+    followLive(
+      solidReactivity,
+      async (current) => {
+        // A space made before policies existed has the entity uninstalled; see the roles effect above.
+        if (schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
+        // The query's first result is every version, which is what a read would have given.
+        return current() ? Policy.query(dataset, {}) : undefined;
+      },
+      {
+        store: 'SpaceStore',
+        what: 'the space’s policy',
+        /*
+          The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
+          applied from them, once its authors are resolved. A later push supersedes an earlier one still
+          resolving, and loaded is not told before the newest push's versions are in.
+        */
+        map: policyVersionsOf,
+        apply: (versions) => setPolicyRows(versions),
+        /*
+          No page of versions reached `policyRows`: the watch failed to open, or the newest page could
+          not be turned into versions. An empty list is the open policy, which would judge every write,
+          so the stored versions are read instead, and the policy is loaded only once that read is in.
+          `readPolicyVersions` turns a failed `findAll` into `[]`, as on `dev`, so a failed read still
+          counts as in: the open policy applies.
+        */
+        stored: { read: () => readPolicyVersions(dataset) },
+        settled: (loaded) => {
+          if (loaded) setPolicyLoaded(true);
         },
-        (error: unknown) => {
-          console.warn('SpaceStore: could not read the space’s policy', error);
-          return false;
-        },
-      );
-    };
-    void (async () => {
-      const schemas = session.backendPorts()?.schemas;
-      if (!dataset || !weSpace) {
-        // Nothing to follow: no versions, and answered.
-        await untrack(reloadPolicy);
-        return;
-      }
-      // A space made before policies existed has the entity uninstalled; see the roles effect above.
-      if (schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
-      if (stopped) return;
-      // The query's first result is every version, which is what a read would have given.
-      watch = Policy.query(dataset, {});
-      watch.subscribe((s) => {
-        if (s.status === 'ready' && s.data) follow(s.data.results);
-      });
-      let held = false;
-      try {
-        await watch.first;
-        // Settled once the newest push is in: a push that lands while an earlier one resolves its
-        // authors replaces it, and loaded must not be told before the rows it carries are applied.
-        let seen: Promise<boolean> | undefined;
-        while (seen !== applied) held = await (seen = applied);
-      } catch (error) {
-        if (stopped) return;
-        console.warn('SpaceStore: could not watch the space’s policy', error);
-      }
-      if (stopped) return;
-      /*
-        No page of versions reached `policyRows`: the watch failed to open, or the newest page could
-        not be turned into versions. An empty list is the open policy, which would judge every write,
-        so read the stored versions instead, and mark the policy loaded only once that read is in.
-        `readPolicyVersions` turns a failed `findAll` into `[]`, as on `dev`, so a failed read still
-        counts as in: the open policy applies.
-      */
-      if (
-        held ||
-        (await readStoredOnce(
-          'the space’s policy',
-          () => !stopped,
-          () => readPolicyVersions(dataset),
-          setPolicyRows,
-        ))
-      )
-        setPolicyLoaded(true);
-    })();
+      },
+    );
   });
 
   /** The dataset a write names, among the ones this agent has open. */
@@ -4540,12 +4442,6 @@ export function createSpaceStore(
     const handle = datasetStore.currentDataset()?.handle;
     const ids = askedCollections();
     if (!handle || !datasetStore.isWeSpace() || !ids.length) return;
-    let stopped = false;
-    let watch: LiveRows<CollectionBlock> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
     /*
       Only the two fields the settings are made of. Without `properties` a read hydrates every field,
       `children` among them — and the space's own collection holds everything in the space.
@@ -4562,27 +4458,17 @@ export function createSpaceStore(
     };
     // The query asks what a read would ask, so its first result is the settings, whole, and a change
     // after that is applied the same way.
-    watch = CollectionBlock.query(handle, query);
-    watch.subscribe((s) => {
-      if (stopped || s.status !== 'ready' || !s.data) return;
-      apply(s.data.results);
-      if (s.initial) setLoadedCollections(new Set(ids));
-    });
-    watch.first.catch((error: unknown) => {
-      console.warn('SpaceStore: could not watch what these collections extract', error);
-      if (stopped) return;
+    followLive(solidReactivity, CollectionBlock.query(handle, query), {
+      store: 'SpaceStore',
+      what: 'what these collections extract',
+      apply: (rows, opened) => {
+        apply(rows);
+        if (opened) setLoadedCollections(new Set(ids));
+      },
       // Loaded only once the stored settings are in: without them `autoInterpretFor` would answer
       // with the space's default for a collection stored as off. If this read fails too they stay
       // unloaded, and it answers `false`.
-      void readStoredOnce(
-        'what these collections extract',
-        () => !stopped,
-        () => CollectionBlock.findAll(handle, query as never),
-        (rows) => {
-          apply(rows);
-          setLoadedCollections(new Set(ids));
-        },
-      );
+      stored: { read: () => CollectionBlock.findAll(handle, query as never) },
     });
   });
 
@@ -5825,17 +5711,14 @@ export function createSpaceStore(
       if (space) pushedSpaces.add(space);
       setCurrentSpace(space);
     };
-    let stopped = false;
-    live.subscribe((snapshot) => {
-      if (snapshot.status === 'ready' && snapshot.data) handleResult(snapshot.data.results);
-    });
-    // Disposing rejects `first`: after a switch, the old effect must not clear the new space.
-    live.first.catch(() => {
-      if (!stopped) setCurrentSpace(null);
-    });
-    onCleanup(() => {
-      stopped = true;
-      live.dispose();
+    followLive(solidReactivity, live, {
+      store: 'SpaceStore',
+      what: 'the space on screen',
+      apply: handleResult,
+      // Never told after a switch, so the old effect cannot clear the new space.
+      settled: (loaded) => {
+        if (!loaded) setCurrentSpace(null);
+      },
     });
   });
 
