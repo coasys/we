@@ -24,8 +24,16 @@
  * {@link BOT_BURST_MS} and raised as one notice ("Sent 3 messages", under the bot's name). The wait also gives an
  * author's profile time to arrive: a line whose author is not known yet asks for the profile, and is
  * judged when the burst is raised.
+ *
+ * ## A line inside a message
+ *
+ * A typed message is a composition (see `@we/messages`): a `CollectionBlock` holding the `TextBlock`
+ * with its words. The watch hears that `TextBlock` — its `partOf` is the message, not a conversation —
+ * and the Feed draws the message, by the message's id. So a line whose parent is a message is weighed
+ * as the message: its id, and the collection the message is in. Which parents are messages is one read
+ * for a batch's, and a batch with none to ask about is weighed as it arrives.
  */
-import { SPOKEN } from '@we/messages';
+import { MESSAGE_KINDS, SPOKEN } from '@we/messages';
 import type { ModuleIdentityAccess, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 /** How long lines from one author are gathered into one notice. */
@@ -50,8 +58,9 @@ export interface BotWatchDeps {
   enabled: () => boolean;
   /**
    * Whether the reader is looking at the newest of these lines already — the Feed's, or the Feed of
-   * the call they were said in — so a notice would tell them nothing. Each by its id and the call it
-   * was said in (`partOf`), or `''` when that is not known.
+   * the call they were said in — so a notice would tell them nothing. Each as the Feed draws it: by its
+   * id and the collection it was said in (`partOf`), or `''` when that is not known — and the words of
+   * a message composition by the message's id and the collection the message is in.
    */
   readingLive: (lines: { id: string; call: string }[]) => boolean;
   /** Whether the Feed keeps spoken lines out of view — a hidden line is not unseen activity. */
@@ -105,8 +114,14 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     string,
     { lines: string[]; heard: { id: string; call: string }[]; timer: ReturnType<typeof setTimeout> }
   >();
+  /** Bumped by every `forget`: a lookup that answers after it is for a watch that is over. */
+  let generation = 0;
+  /** The batches waiting on a lookup, in the order they arrived, and how many. */
+  let queue: Promise<void> = Promise.resolve();
+  let waiting = 0;
 
   const forget = () => {
+    generation++;
     stop?.();
     stop = null;
     for (const { timer } of held.values()) clearTimeout(timer);
@@ -154,6 +169,40 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     });
   }
 
+  /**
+   * Weigh a batch of new lines as the Feed draws them — see "A line inside a message". The parents
+   * that might be messages (any but the space's own collection) are asked about in one read; until it
+   * answers, later batches wait behind it, so lines are weighed in the order they arrived. A read that
+   * fails weighs them as they came.
+   */
+  function weigh(lines: Heard[], space: string): void {
+    const parents = [...new Set(lines.map((line) => line.call).filter((call) => call && call !== space))];
+    const find = typeof records?.find === 'function' ? records.find.bind(records) : undefined;
+    if (!waiting && (!parents.length || !find)) {
+      for (const line of lines) heard(line);
+      return;
+    }
+    const at = generation;
+    waiting++;
+    queue = queue.then(async () => {
+      const messages = new Map<string, string>();
+      if (parents.length && find) {
+        try {
+          for (const row of await find('CollectionBlock', { where: { id: parents, kind: MESSAGE_KINDS } }))
+            messages.set(idOf(row.id), idOf(row.partOf));
+        } catch {
+          // Weighed as bare lines: the notice is still raised, and only the on-screen check is coarser.
+        }
+      }
+      waiting--;
+      if (at !== generation) return;
+      for (const line of lines) {
+        const holder = messages.get(line.call);
+        heard(holder === undefined ? line : { ...line, id: line.call, call: holder });
+      }
+    });
+  }
+
   deps.effect?.(() => {
     const space = deps.space();
     if (space === watching) return;
@@ -163,13 +212,14 @@ export function watchBotMessages(deps: BotWatchDeps): void {
     if (!space || typeof records?.subscribe !== 'function') return;
     let first = true;
     stop = records.subscribe('TextBlock', { order: { createdAt: 'desc' }, limit: WATCHED }, (rows) => {
+      const fresh: Heard[] = [];
       for (const row of rows) {
         const id = typeof row.id === 'string' ? row.id : '';
         if (!id || seen.has(id)) continue;
         seen.add(id);
         // The first answer is what was already there: a notice is for what arrives.
         if (!first)
-          heard({
+          fresh.push({
             id,
             call: idOf(row.partOf),
             author: typeof row.author === 'string' ? row.author : '',
@@ -178,6 +228,7 @@ export function watchBotMessages(deps: BotWatchDeps): void {
           });
       }
       first = false;
+      if (fresh.length) weigh(fresh, space);
     });
   });
   deps.onDispose?.(forget);

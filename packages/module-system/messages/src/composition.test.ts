@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isMessageComposition, lineText, mendLine, threadLines } from './index.ts';
+import { heldFiles, isMessageComposition, lineText, mendLine, threadLines } from './index.ts';
 
 /*
   A message is a composition (a CollectionBlock with `kind: message`, or `reply`) that holds its words
@@ -21,6 +21,34 @@ describe('the words of a line', () => {
     expect(lineText(undefined)).toBe('');
     expect(isMessageComposition({ kind: 'call' })).toBe(false);
     expect(isMessageComposition({ kind: 'message' })).toBe(true);
+  });
+});
+
+describe('the files of a message', () => {
+  it('reads them from the parts the line was read with, named and sized and never by their bytes', () => {
+    const message = {
+      kind: 'message',
+      children: [
+        { id: 'words', text: 'the plan' },
+        {
+          id: 'group',
+          kind: 'attachments',
+          children: [{ id: 'f1', name: 'plan.pdf', mimeType: 'application/pdf', size: 2048, url: 'the whole file' }],
+        },
+      ],
+    };
+    expect(heldFiles(message)).toEqual([
+      { id: 'f1', name: 'plan.pdf', mimeType: 'application/pdf', size: 2048, sizeLabel: '2.0 KB' },
+    ]);
+  });
+
+  it('finds none in a message read with ids only, a bare line, or a message with no files', () => {
+    // The Feed reads its parts itself, so its rows hold ids, and keep the files it set.
+    expect(heldFiles({ kind: 'message', children: ['words', 'group'] })).toEqual([]);
+    expect(
+      heldFiles({ text: 'said aloud', children: [{ id: 'g', kind: 'attachments', children: [{ id: 'f' }] }] }),
+    ).toEqual([]);
+    expect(heldFiles({ kind: 'reply', children: [{ id: 'words', text: 'yes' }] })).toEqual([]);
   });
 });
 
@@ -99,6 +127,32 @@ describe('mending a line', () => {
 
     expect(calls.filter((c) => c[0] === 'update')).toEqual([
       ['update', 'TextBlock', 'line', { text: 'the fixed words' }],
+    ]);
+  });
+
+  it('puts the TextBlock back as it was when the message’s own words cannot be written, and says so', async () => {
+    const marks = '[{"start":0,"end":4,"type":"mention","did":"did:ann"}]';
+    const calls: Call[] = [];
+    const records = {
+      update: async (entity: string, ...rest: unknown[]) => {
+        calls.push(['update', entity, ...rest]);
+        if (entity === 'CollectionBlock') throw new Error('the executor refused');
+      },
+      find: async (entity: string) =>
+        entity === 'CollectionBlock'
+          ? [{ id: 'msg', kind: 'message' }]
+          : [{ id: 'msg-words', text: '@Ann lunch at 1', source: 'typed', marks }],
+    };
+    const target = { dataset: 'space-1' };
+
+    await expect(mendLine(records, 'msg', '@Ann lunch at one', 'typed', target)).rejects.toThrow('refused');
+
+    expect(calls).toEqual([
+      ['update', 'TextBlock', 'msg-words', { text: '@Ann lunch at one', source: 'typed' }, target],
+      ['update', 'CollectionBlock', 'msg', { textContent: '@Ann lunch at one', source: 'typed' }, target],
+      // Its words, how they arrived and its marks — the marks the host re-placed over the new words,
+      // and the mentions it moved with them, go back with them.
+      ['update', 'TextBlock', 'msg-words', { text: '@Ann lunch at 1', source: 'typed', marks }, target],
     ]);
   });
 

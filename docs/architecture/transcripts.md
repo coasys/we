@@ -14,6 +14,8 @@ CollectionBlock                    ← one call's transcript
                 a typed line is a message composition: a CollectionBlock with kind 'message'
                   or 'reply', source 'typed', its words in `textContent`, its own TextBlock
                   under it and, if files were sent, a CollectionBlock of kind 'attachments'
+                  holding a FileBlock for each; the people its marks mention are its own
+                  `mentions` (we://mention), on the message and not on its TextBlock
                 each line has `thread`: every reply typed to it, at any depth
   participants: [did, …]           ← who was present, including people who never spoke
   ↑ a response to the node the call was about, through `we://response` (WeNode.responses), and in
@@ -112,3 +114,43 @@ rows, not the raw window, but use the raw window to tell whether there are more.
 Then `threadLines({ rows, newestFirst })` flattens the threads in, sorts by when each line was said,
 and gives each reply the quote of what it answers. The transcript panel reads exactly this, windowed
 by `modules.transcribe.transcriptShown`; see `Panel.schema.ts`.
+
+A message's files are two containment levels below it (message → group → file), so the panel reads
+them in the same query: `include: { thread: { include: partsInclude() }, ...partsInclude() }`, where
+`partsInclude()` (in `@we/messages`) is each line's `children` and, below them, each file's `name`,
+`mimeType` and `size` — only for the lines in the window, in one read, and never a file's `url`,
+which for a stored file is the whole file. `threadLines` turns those into each message's
+`attachments`, which `messageLine` draws. The Feed reads its own window's parts and files itself
+(`readParts` and `readAttachments` in `feed.ts`, which keep files read between windows); its rows
+hold the parts as ids, and `threadLines` leaves their `attachments` alone.
+
+## Writing a typed message
+
+`writeMessage` in `@we/module-feed`'s `store.ts` writes every part first, where no reader of the
+conversation looks: the files and their group, the message (unparented), its `TextBlock`, the group
+into the message. Then **one link** publishes it: into the call's or the space's `children`, or —
+for a reply — the answered line's `responses` (the host completes the thread from that link). Only
+then come the `mentions` links from the message to each person its marks name: a mention wakes an
+agent, a wake cannot be taken back, and the agent reads the message's place in its conversation.
+The records kernel has no write group, so this is what stands in for one: until the holder link
+nothing reads the message, and a failure at any step removes every record written, newest first. Every write names the dataset
+it was sent from, captured before the first await.
+
+**Mentions are on the message.** A woken agent is woken on the record that carries the
+`we://mention` link and is told of the files up to two containment levels below it, which is the
+message's group of files — from its `TextBlock` they would be a sibling's. The host's
+`lineMentions.ts` keeps this so: it links nothing from a `TextBlock` written into a message, and
+when an edit changes such a `TextBlock`'s words, it moves the links on the message (found through
+`partOf`). Its readers — `myMentions` (`referrers` by relation, then `containerActivity`'s
+`mentionsOf`) — read the relation on any record, so they find messages as they find posts.
+
+**An edit** (`editUtterance` → `mendLine` in `@we/messages`) writes the words in both places they
+are held, the `TextBlock` and the message's `textContent`, to the dataset captured when the edit
+began. The two writes are not one transaction: if the second fails, the `TextBlock` is written back
+as it was — text, `source` and marks, so the host moves the mentions back with them — and the
+failure is reported.
+
+**A bot's notice** (`botWatch.ts`) watches the space's newest `TextBlock`s. The words of a message
+are a `TextBlock` whose `partOf` is the message, so a line whose parent is a message composition is
+weighed as the message — its id, and the collection the message is in — which is what the Feed draws
+and what "is the reader already looking at it" is asked about.

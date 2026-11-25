@@ -12,6 +12,7 @@
  * through `responses`, and a heard line turning `corrected` when somebody mends it. A heard line is a
  * bare `TextBlock`; the transcript writes those.
  */
+import { mentionedDids, parseMarks } from '@we/block-shared';
 import { ATTACHMENTS_KIND, mendLine, MESSAGE_KIND, REPLY_KIND, sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { ATTACH_MAX_BYTES } from '@we/schema-kit';
@@ -67,12 +68,12 @@ export function createFeedStore(deps: ModuleStoreDeps) {
    * One typed message, into whatever holds it: the space or a call, or — as a reply — the line it
    * answers. Written as a composition (see `@we/messages`): a `CollectionBlock` that holds a
    * `TextBlock` with the words and, when files were sent, a group with one `FileBlock` for each file.
-   * Answers the id of the message collection.
+   * The people its marks mention are linked from the message itself (`mentions`), the root of what was
+   * sent, as a composed post's are from its root. Answers the id of the message collection.
    */
   async function writeMessage(holder: FeedHolder, text: string, marks?: string, files: File[] = []) {
     const words = String(text ?? '').trim();
-    if (!words || !createEntity) return null;
-    if (files.length > 0 && !linkEntity) return null;
+    if (!words || !createEntity || !linkEntity) return null;
     const tooBig = files.filter((file) => file.size > ATTACH_MAX_BYTES);
     if (tooBig.length)
       throw new Error(
@@ -89,11 +90,16 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     if (!name) throw new Error('This message cannot be sent: there is no space open to write it in.');
     const target = { dataset: name };
     /*
-      The kernel has no write group, so the steps that can fail come first. The files are written
-      (and uploaded) first, unparented, and put in their group. Then the message is written into its
-      holder, with the words in `textContent`, so a reader that sees it can draw it. Then its parts:
-      the `TextBlock` first, and the group of files last, by a link, which moves no bytes. A failure
-      takes down all that was written, newest first, so nobody sees half a message.
+      The kernel has no write group, so the message is built where nobody reads it and published by
+      one link. In order: the files (uploaded), unparented, and their group; the message,
+      unparented, with the words in `textContent`; its `TextBlock`; the group into it; the link that
+      puts it in its holder — the conversation's `children`, or the answered line's `responses`; and
+      then a `mentions` link from it to each person the marks name. Until the holder link, no reader
+      of the conversation sees the message; once it is there, every part is. The mentions come after
+      it, because a mention wakes an agent, a wake cannot be taken back, and the woken agent reads
+      the message's place in its conversation. A failure
+      at any step takes down every record written, newest first (`discard`), and the links out of
+      each go with it; the holder never had one to it.
     */
     const written: { entity: string; id: string }[] = [];
     const write = async (entity: string, fields: Record<string, unknown>, options: Record<string, unknown>) => {
@@ -120,7 +126,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       let group = '';
       if (fileIds.length) {
         group = await write('CollectionBlock', { kind: ATTACHMENTS_KIND, mode: 'document' }, {});
-        for (const fileId of fileIds) await linkEntity!('CollectionBlock', group, 'children', fileId, target);
+        for (const fileId of fileIds) await linkEntity('CollectionBlock', group, 'children', fileId, target);
       }
       const id = await write(
         'CollectionBlock',
@@ -130,14 +136,18 @@ export function createFeedStore(deps: ModuleStoreDeps) {
           textContent: words,
           source: TYPED,
         },
-        { parent: holder },
+        {},
       );
       await write(
         'TextBlock',
         { text: words, source: TYPED, ...(marks ? { marks } : {}) },
         { parent: { id, relation: 'children', entity: 'CollectionBlock' } },
       );
-      if (group) await linkEntity!('CollectionBlock', id, 'children', group, target);
+      if (group) await linkEntity('CollectionBlock', id, 'children', group, target);
+      // The answered line's class is not known here; `responses` is every node's (`WeNode`'s).
+      await linkEntity(holder.entity ?? 'WeNode', holder.id, holder.relation, id, target);
+      for (const did of mentionedDids(parseMarks(marks)))
+        await linkEntity('CollectionBlock', id, 'mentions', did, target);
       return id;
     } catch (error) {
       await discard(written, target);
@@ -366,13 +376,16 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     editUtterance: action(async (id: string, text: string, was?: string) => {
       const words = String(text ?? '').trim();
       if (!id || !words || !updateEntity) return;
+      // Named before anything is awaited, as a send's is: an edit stays in the space it began in.
+      const name = deps.datasetUri?.() || deps.datasetId?.();
+      if (!name) throw new Error('This line cannot be corrected: there is no space open to write it in.');
       /*
         A message composition holds its words two times: in the `TextBlock` it holds, and in its own
         `textContent`, which readers draw first. `mendLine` changes both. A bare line is its own `TextBlock`.
       */
       const find: RecordsKernel['find'] | undefined =
         typeof records?.find === 'function' ? (...args) => records.find(...args) : undefined;
-      await mendLine({ update: updateEntity, find }, id, words, sourceAfterEdit(was));
+      await mendLine({ update: updateEntity, find }, id, words, sourceAfterEdit(was), { dataset: name });
     }, 'Corrects the words on a line, marking a heard line as corrected.'),
     callFeedRoot: state(callRoot, 'The call whose Feed is drawn — the one shown most recently — or empty.'),
     callFeedRows: state(

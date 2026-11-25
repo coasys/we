@@ -9,13 +9,18 @@
  */
 export {
   ATTACHMENTS_KIND,
+  FILE_FIELDS,
+  heldFiles,
   isMessageComposition,
   type LineRecords,
   lineText,
   mendLine,
   MESSAGE_KIND,
   MESSAGE_KINDS,
+  type MessageFile,
+  partsInclude,
   REPLY_KIND,
+  sizeLabel,
 } from './composition.ts';
 export { messageLine } from './messageLine.ts';
 export { CORRECTED, SPOKEN, sourceAfterEdit, TYPED } from './source.ts';

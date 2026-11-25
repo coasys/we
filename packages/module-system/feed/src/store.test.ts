@@ -95,15 +95,21 @@ function harness(
   const screen: { uri: string | null; id: string | null } = { uri: 'space-1', id: 'local-1' };
   /** Names of the records whose removal, or whose link, the executor refuses. */
   const unremovable = new Set<string>();
-  const failLinks = { on: false };
+  /** `on` refuses every link; `from` only the links out of that record. */
+  const failLinks: { on: boolean; from?: string } = { on: false };
+  /** Every read and update, with the dataset it named. */
+  const aimed: { call: string; entity: string; target?: unknown }[] = [];
+  /** Update fields that the executor refuses: an update writing any of them throws. */
+  const refusingUpdates = new Set<string>();
   /** Names of the records whose write fails, as an upload the executor refuses does. */
   const refusing = new Set<string>();
   /** Entities whose write is answered with no id, as a host with nowhere to write answers. */
   const returnsNothing = new Set<string>();
   const identities = new Map<string, { kind: string }>([['did:bot', { kind: 'bot' }]]);
   const records = {
-    find: async (entity: string, query: Record<string, unknown> = {}) => {
+    find: async (entity: string, query: Record<string, unknown> = {}, target?: unknown) => {
       finds.push({ entity, within: query.within as string | undefined });
+      aimed.push({ call: 'find', entity, target });
       return find(entity, query);
     },
     subscribe: (
@@ -119,7 +125,7 @@ function harness(
       return () => live.delete(sub);
     },
     link: async (...args: unknown[]) => {
-      if (failLinks.on) throw new Error('the link was refused');
+      if (failLinks.on && (!failLinks.from || args[1] === failLinks.from)) throw new Error('the link was refused');
       linked.push(args);
     },
     create: async (entity: string, fields: Record<string, unknown>, options: unknown) => {
@@ -135,7 +141,9 @@ function harness(
       if (unremovable.has(entity)) throw new Error(`could not remove ${entity}`);
       removed.push({ entity, id, target });
     },
-    update: async (entity: string, id: string, fields: Record<string, unknown>) => {
+    update: async (entity: string, id: string, fields: Record<string, unknown>, target?: unknown) => {
+      aimed.push({ call: 'update', entity, target });
+      if (Object.keys(fields).some((field) => refusingUpdates.has(field))) throw new Error('the update was refused');
       updated.push({ entity, id, fields });
     },
   };
@@ -180,6 +188,8 @@ function harness(
     screen,
     unremovable,
     failLinks,
+    aimed,
+    refusingUpdates,
     holdCreates,
     updated,
     subscriptions,
@@ -203,7 +213,7 @@ describe('messages written from the Feed', () => {
       {
         entity: 'CollectionBlock',
         fields: { kind: 'message', mode: 'document', textContent: 'see you all on Friday', source: 'typed' },
-        options: { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+        options: SPACE_1,
       },
       {
         entity: 'TextBlock',
@@ -211,8 +221,8 @@ describe('messages written from the Feed', () => {
         options: { parent: { id: 'new-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
     ]);
-    // No files, so no group: the message holds one child.
-    expect(h.linked).toEqual([]);
+    // No files, so no group: the message holds one child, and is put in the space by its one link.
+    expect(h.linked).toEqual([['CollectionBlock', 'root-1', 'children', 'new-1', SPACE_1]]);
     expect(h.removed).toEqual([]);
     vi.useRealTimers();
   });
@@ -230,7 +240,7 @@ describe('messages written from the Feed', () => {
     expect(h.created[0]).toMatchObject({
       entity: 'CollectionBlock',
       fields: { kind: 'reply', textContent: 'I do', source: 'typed' },
-      options: { parent: { id: 'line-1', relation: 'responses' } },
+      options: SPACE_1,
     });
     expect(h.created[1]).toMatchObject({
       entity: 'TextBlock',
@@ -312,6 +322,92 @@ describe('messages written from the Feed', () => {
       { entity: 'TextBlock', id: 'words-1', fields: { text: 'lunch at one' } },
       { entity: 'CollectionBlock', id: 'msg-1', fields: { textContent: 'lunch at one' } },
     ]);
+  });
+
+  it('keeps every read and write of an edit in the space it began in, whatever the reader moves to', async () => {
+    let moveAway = () => {};
+    const h = harness([], {}, async (entity, query) => {
+      // The reader goes to another space while the edit is reading the message.
+      moveAway();
+      const where = (query.where ?? {}) as Record<string, unknown>;
+      if (entity === 'CollectionBlock' && where.id === 'msg-1') return [{ id: 'msg-1', kind: 'message' }];
+      if (entity === 'TextBlock' && query.within === 'msg-1') return [{ id: 'words-1', text: 'lunch at 1' }];
+      return [];
+    });
+    moveAway = () => {
+      h.screen.uri = 'space-2';
+      h.screen.id = 'local-2';
+    };
+    h.aimed.length = 0;
+
+    await h.store.editUtterance('msg-1', 'lunch at one', 'typed');
+
+    expect(h.aimed.map((t) => t.call)).toEqual(['find', 'find', 'update', 'update']);
+    for (const call of h.aimed) expect(call.target).toEqual(SPACE_1);
+  });
+
+  it('writes a message with a mention and a file whole, publishes it into its holder with one link, then mentions', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const plan = new File(['%PDF'], 'plan.pdf', { type: 'application/pdf' });
+    const marks = JSON.stringify([{ start: 0, end: 4, type: 'mention', did: 'did:ann' }]);
+
+    await h.store.sendToFeed('@Ann the plan', marks, [plan]);
+
+    // The file, its group, the message — unparented, so nobody can see it yet — and its words inside it.
+    expect(h.created.map((c) => [c.entity, c.options])).toEqual([
+      ['FileBlock', SPACE_1],
+      ['CollectionBlock', SPACE_1],
+      ['CollectionBlock', SPACE_1],
+      ['TextBlock', { parent: { id: 'new-3', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' }],
+    ]);
+    expect(h.linked).toEqual([
+      ['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1],
+      ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      // The one link that publishes it, once it is whole.
+      ['CollectionBlock', 'root-1', 'children', 'new-3', SPACE_1],
+      // Then the mention, on the message, the root of what was sent, where a woken agent finds its
+      // files and its conversation.
+      ['CollectionBlock', 'new-3', 'mentions', 'did:ann', SPACE_1],
+    ]);
+    // The line drawn at once now carries the message's id.
+    expect(h.store.feedRows()).toMatchObject([{ id: 'new-3', text: '@Ann the plan' }]);
+    // The file is two containment levels below the record the mention is on: message → group → file.
+    const childrenOf = (of: string) =>
+      (h.linked as string[][]).filter((l) => l[1] === of && l[2] === 'children').map((l) => l[3]);
+    const mentioned = (h.linked as string[][]).find((l) => l[2] === 'mentions')![1];
+    expect(childrenOf(mentioned).flatMap(childrenOf)).toEqual(['new-1']);
+    vi.useRealTimers();
+  });
+
+  it('publishes a reply by its link from the line it answers, last', async () => {
+    const h = harness();
+    h.store.startReply({ id: 'line-1', text: 'who has the venue?', author: 'did:ann' });
+    await h.store.reply('line-1', 'I do');
+    expect(h.created[0].options).toEqual(SPACE_1);
+    expect(h.linked).toEqual([['WeNode', 'line-1', 'responses', 'new-1', SPACE_1]]);
+  });
+
+  it('leaves nothing stored when the final link, into its holder, fails', async () => {
+    vi.useFakeTimers();
+    const h = harness();
+    await vi.runAllTimersAsync();
+    const note = new File(['hi'], 'note.txt', { type: 'text/plain' });
+    h.failLinks.on = true;
+    h.failLinks.from = 'root-1';
+
+    await expect(h.store.sendToFeed('with a file', undefined, [note])).rejects.toThrow('link was refused');
+
+    // Newest first: the words, the message, the group, the file.
+    expect(h.removed).toEqual([
+      { entity: 'TextBlock', id: 'new-4', target: SPACE_1 },
+      { entity: 'CollectionBlock', id: 'new-3', target: SPACE_1 },
+      { entity: 'CollectionBlock', id: 'new-2', target: SPACE_1 },
+      { entity: 'FileBlock', id: 'new-1', target: SPACE_1 },
+    ]);
+    expect(h.store.feedRows()).toEqual([]);
+    vi.useRealTimers();
   });
 });
 
@@ -564,7 +660,7 @@ describe('the Feed of one call', () => {
       {
         entity: 'CollectionBlock',
         fields: { kind: 'message', mode: 'document', textContent: 'running late', source: 'typed' },
-        options: { parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+        options: SPACE_1,
       },
       {
         entity: 'TextBlock',
@@ -572,8 +668,8 @@ describe('the Feed of one call', () => {
         options: { parent: { id: 'new-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
       },
     ]);
-    // Writing into a call is not being in it: nobody is put on its roster from here.
-    expect(h.linked).toEqual([]);
+    // Into the call by one link. Writing into a call is not being in it: nobody is put on its roster.
+    expect(h.linked).toEqual([['CollectionBlock', 'call-9', 'children', 'new-1', SPACE_1]]);
     vi.useRealTimers();
   });
 
@@ -605,25 +701,24 @@ describe('the Feed of one call', () => {
       },
       options: SPACE_1,
     });
-    // The group and the files are written unparented; only the message goes into the call.
+    // The group, the files and the message are written unparented; only the message goes into the call.
     expect(h.created[2]).toEqual({
       entity: 'CollectionBlock',
       fields: { kind: 'attachments', mode: 'document' },
       options: SPACE_1,
     });
-    expect(h.created[3].options).toEqual({
-      parent: { id: 'call-9', relation: 'children', entity: 'CollectionBlock' },
-      dataset: 'space-1',
-    });
+    expect(h.created[3].options).toEqual(SPACE_1);
     expect(h.created[4].options).toEqual({
       parent: { id: 'new-4', relation: 'children', entity: 'CollectionBlock' },
       dataset: 'space-1',
     });
-    // All containment: the files into the group, and the group into the message, after its words.
+    // All containment: the files into the group, the group into the message after its words, and
+    // the message into the call, last.
     expect(h.linked).toEqual([
       ['CollectionBlock', 'new-3', 'children', 'new-1', SPACE_1],
       ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
       ['CollectionBlock', 'new-4', 'children', 'new-3', SPACE_1],
+      ['CollectionBlock', 'call-9', 'children', 'new-4', SPACE_1],
     ]);
     expect(h.removed).toEqual([]);
     vi.useRealTimers();
@@ -646,12 +741,14 @@ describe('the Feed of one call', () => {
       ['CollectionBlock', 'reply'],
       ['TextBlock', ''],
     ]);
-    expect(h.created[6].options).toEqual({ parent: { id: 'line-1', relation: 'responses' }, dataset: 'space-1' });
+    expect(h.created[6].options).toEqual(SPACE_1);
     expect(h.linked).toEqual([
       ['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1],
       ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      ['CollectionBlock', 'root-1', 'children', 'new-3', SPACE_1],
       ['CollectionBlock', 'new-6', 'children', 'new-5', SPACE_1],
       ['CollectionBlock', 'new-7', 'children', 'new-6', SPACE_1],
+      ['WeNode', 'line-1', 'responses', 'new-7', SPACE_1],
     ]);
     vi.useRealTimers();
   });
@@ -835,12 +932,13 @@ describe('the Feed of one call', () => {
     expect(h.created.map((c) => c.options)).toEqual([
       SPACE_1,
       SPACE_1,
-      { parent: { id: 'root-1', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
+      SPACE_1,
       { parent: { id: 'new-3', relation: 'children', entity: 'CollectionBlock' }, dataset: 'space-1' },
     ]);
     expect(h.linked).toEqual([
       ['CollectionBlock', 'new-2', 'children', 'new-1', SPACE_1],
       ['CollectionBlock', 'new-3', 'children', 'new-2', SPACE_1],
+      ['CollectionBlock', 'root-1', 'children', 'new-3', SPACE_1],
     ]);
     vi.useRealTimers();
   });

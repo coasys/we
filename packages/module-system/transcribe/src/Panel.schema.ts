@@ -16,7 +16,7 @@
  * rendering. The other three modules still declare their fragments inline; this is the shape they
  * should move to.
  */
-import { MESSAGE_KINDS, messageLine, repliesInclude } from '@we/messages';
+import { MESSAGE_KINDS, messageLine, partsInclude } from '@we/messages';
 import {
   emptyState,
   foldingBody,
@@ -3136,8 +3136,13 @@ export const transcriptLines: SchemaNode = {
         said.
       */
       limit: { $: 'modules.transcribe.transcriptShown' },
-      // Each line's whole thread, so its replies are drawn inline — see `threadLines`.
-      include: repliesInclude(),
+      /*
+        Each line's whole thread, so its replies are drawn inline — see `threadLines` — and the files
+        of each message among them: its parts, and the name, type and size of each file in its group
+        (`partsInclude`). In this read, so only the window's messages bring theirs, in one read rather
+        than one per message, and never a file's `url`, which for a stored file is the whole file.
+      */
+      include: { thread: { include: partsInclude() }, ...partsInclude() },
       when: { $: 'modules.transcribe.collectionId' },
       /*
         A call's lines are live only while the call is; anything else — a channel these lines are

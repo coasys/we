@@ -58,6 +58,72 @@ describe('a line’s mentions', () => {
     expect(links).toEqual([`-line-1.mentions=${BEN}`]);
   });
 
+  it('links nothing from a line written into a message: the message carries its mentions', async () => {
+    const { links, Model } = model();
+    const message = model({ id: 'msg-1', kind: 'message', mentions: [] });
+    const marks = JSON.stringify([mention(0, 4, ANN)]);
+    await linkNewMentions(
+      Model,
+      {},
+      'TextBlock',
+      'words-1',
+      { text: '@Ann hi', marks },
+      { id: 'msg-1', relation: 'children', entity: 'CollectionBlock' },
+      message.Model,
+    );
+    expect(links).toEqual([]);
+    expect(message.links).toEqual([]);
+
+    // A line written into a call, which is no message, carries its own.
+    const call = model({ id: 'call-1', kind: 'call' });
+    await linkNewMentions(
+      Model,
+      {},
+      'TextBlock',
+      'line-2',
+      { text: '@Ann hi', marks },
+      { id: 'call-1', relation: 'children', entity: 'CollectionBlock' },
+      call.Model,
+    );
+    expect(links).toEqual([`+line-2.mentions=${ANN}`]);
+  });
+
+  it('moves the mentions on the message when the words of the line it holds change', async () => {
+    const { links, Model } = model({
+      id: 'words-1',
+      text: '@Ann and @Ben',
+      marks: JSON.stringify([mention(0, 4, ANN), mention(9, 13, BEN)]),
+      mentions: [],
+      partOf: 'msg-1',
+    });
+    const message = model({ id: 'msg-1', kind: 'message', mentions: [ANN, BEN] });
+    const { fields, after } = await prepareMentionUpdate(
+      Model,
+      {},
+      'TextBlock',
+      'words-1',
+      { text: '@Ann and nobody' },
+      message.Model,
+    );
+    await after();
+    expect(JSON.parse(String(fields.marks))).toEqual([mention(0, 4, ANN)]);
+    expect(links).toEqual([]);
+    expect(message.links).toEqual([`-msg-1.mentions=${BEN}`]);
+
+    // Put back as it was — the rollback of a failed edit — and the link comes back with the marks.
+    const back = model({ id: 'msg-1', kind: 'message', mentions: [ANN] });
+    const restore = await prepareMentionUpdate(
+      Model,
+      {},
+      'TextBlock',
+      'words-1',
+      { text: '@Ann and @Ben', marks: JSON.stringify([mention(0, 4, ANN), mention(9, 13, BEN)]) },
+      back.Model,
+    );
+    await restore.after();
+    expect(back.links).toEqual([`+msg-1.mentions=${BEN}`]);
+  });
+
   it('leaves an update that is not about the words alone', async () => {
     const { links, Model } = model({ text: 'x', marks: '', mentions: [] });
     const { fields, after } = await prepareMentionUpdate(Model, {}, 'TextBlock', 'line-1', { source: 'corrected' });

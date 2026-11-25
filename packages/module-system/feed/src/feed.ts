@@ -28,10 +28,13 @@
  */
 import {
   ATTACHMENTS_KIND,
+  FILE_FIELDS,
   isMessageComposition,
   lineContent,
   MESSAGE_KINDS,
+  type MessageFile,
   repliesInclude,
+  sizeLabel,
   SPOKEN,
   threadLines,
 } from '@we/messages';
@@ -53,15 +56,9 @@ export const FEED_FIRST_PAGE = 50;
 export const FEED_PAGE = 100;
 
 /** A file sent with a message — what the line draws to name it, size it and offer it. */
-export interface FeedAttachment {
-  /** The `FileBlock` record, or `''` while the message is still being written. */
-  id: string;
-  name: string;
-  mimeType: string;
-  size: number;
-  /** The size as people read it — "2.4 MB". */
-  sizeLabel: string;
-}
+export type FeedAttachment = MessageFile;
+
+export { sizeLabel };
 
 /** One message, as the Feed draws it. */
 export interface FeedLine {
@@ -193,12 +190,6 @@ function summarise(items: { entity: string }[]): string {
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
-export function sizeLabel(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 /** The ids of the children each message composition holds, until {@link readParts} has read them. */
 const heldParts = new WeakMap<FeedLine, string[]>();
 /** The ids of the files each line holds, until {@link readAttachments} has read them. */
@@ -288,7 +279,7 @@ async function readAttachments(rows: FeedRow[], find: FeedFind, known: Map<strin
       for (const file of await find('FileBlock', {
         where: { id: unread },
         // Never `url`: for a stored file that is the whole file. It is fetched when somebody saves it.
-        select: ['name', 'mimeType', 'size'],
+        select: FILE_FIELDS,
       })) {
         const size = Number(file.size) || 0;
         known.set(text(file.id), {

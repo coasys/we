@@ -10,6 +10,8 @@
  * Serialised and searched rather than walked, the same way the showcase templates are tested. A
  * schema is data; what matters is whether the token is in the tree, not the path it sits at.
  */
+import { compileQuery, executeQueryIR, type InMemoryDataset } from '@we/backend-shared';
+import { threadLines } from '@we/messages';
 import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import {
@@ -273,7 +275,71 @@ describe('a transcript with nothing in it', () => {
     // One window over both shapes of a line: a heard TextBlock and a typed message composition.
     expect(linesJson).toContain('"utterances":{"entity":["TextBlock","CollectionBlock"]');
     // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
-    expect(linesJson).toContain('"include":{"thread":true}');
+    expect(linesJson).toContain('"include":{"thread":{');
+  });
+
+  /**
+   * A message typed into the call with files draws its files.
+   *
+   * A message is a composition: its files are in a group the message holds, two containment levels
+   * below the row the window reads. The window's own read brings them — for its lines only, in the
+   * one read — and never a file's `url`, which for a stored file is the whole file. Run here through
+   * the reference engine, over records shaped as stored: a bare heard line, a message with a file,
+   * and a reply with a file in that message's thread.
+   */
+  it('brings the files of each message in its window, and of each reply in their threads', () => {
+    const query = (transcriptLines.$queries as unknown as Record<string, { include: Record<string, unknown> }>)
+      .utterances;
+    const file = (id: string, parent: string, name: string, size: number) => ({
+      id,
+      parent,
+      name,
+      mimeType: 'application/pdf',
+      size,
+      url: `{"data_base64":"${'A'.repeat(64)}"}`,
+    });
+    const data: InMemoryDataset = {
+      tables: {
+        TextBlock: [
+          { id: 'heard', parent: 'call', text: 'said aloud' },
+          { id: 'msg-words', parent: 'msg', text: 'the plan' },
+          { id: 'reply-words', parent: 'reply', text: 'and the map' },
+        ],
+        CollectionBlock: [
+          { id: 'call', kind: 'call' },
+          { id: 'msg', parent: 'call', kind: 'message', textContent: 'the plan', children: ['msg-words', 'msg-files'] },
+          { id: 'msg-files', parent: 'msg', kind: 'attachments' },
+          { id: 'reply', root: 'msg', kind: 'reply', textContent: 'and the map', respondsTo: 'msg' },
+          { id: 'reply-files', parent: 'reply', kind: 'attachments' },
+        ],
+        FileBlock: [file('plan', 'msg-files', 'plan.pdf', 2048), file('map', 'reply-files', 'map.pdf', 10)],
+      },
+      relations: Object.fromEntries(
+        ['TextBlock', 'CollectionBlock', 'FileBlock'].map((entity) => [
+          entity,
+          {
+            children: { target: '', cardinality: 'many', foreignKey: 'parent', ordered: true },
+            thread: { target: '', cardinality: 'many', foreignKey: 'root' },
+          },
+        ]),
+      ) as InMemoryDataset['relations'],
+    };
+    const { ir, unsupported } = compileQuery({ entity: 'CollectionBlock', include: query.include });
+    expect(unsupported).toEqual([]);
+    const rows = ['TextBlock', 'CollectionBlock'].flatMap((entity) =>
+      executeQueryIR({ ...ir, entity, filter: { field: 'parent', op: 'eq', value: 'call' } }, data),
+    );
+
+    const lines = threadLines({ rows });
+    const files = Object.fromEntries(lines.map((line) => [line.id, line.attachments]));
+    expect(files).toEqual({
+      heard: undefined,
+      msg: [{ id: 'plan', name: 'plan.pdf', mimeType: 'application/pdf', size: 2048, sizeLabel: '2.0 KB' }],
+      reply: [{ id: 'map', name: 'map.pdf', mimeType: 'application/pdf', size: 10, sizeLabel: '10 B' }],
+    });
+    // The files are read by their fields, at every place they are reached — never by `url`.
+    const selects = JSON.stringify(query.include).match(/"select":\[[^\]]*\]/g);
+    expect(selects).toEqual(['"select":["name","mimeType","size"]', '"select":["name","mimeType","size"]']);
   });
 
   /**

@@ -301,7 +301,7 @@ export default function TemplateProvider() {
           if (root) rest.parent = { id: root, relation: 'children', entity: 'CollectionBlock' };
         }
         const created = (await createInDataset(entity, fields, perspective, rest)) as { id?: string } | undefined;
-        // A line written with marks mentions whoever they name — see `lineMentions`.
+        // A line written with marks mentions whoever they name — or its message does — see `lineMentions`.
         if (created?.id) {
           await linkNewMentions(
             getEntity(entity) as unknown as MentionWriter,
@@ -309,6 +309,8 @@ export default function TemplateProvider() {
             entity,
             created.id,
             fields,
+            rest.parent,
+            getEntity('CollectionBlock') as unknown as MentionWriter,
           ).catch((error: unknown) => console.warn('module host: could not link the mentions in a new line', error));
         }
         return created?.id ?? null;
@@ -350,6 +352,8 @@ export default function TemplateProvider() {
           return;
         }
         await (add as (v: string) => Promise<void>).call(instance, value);
+        // A record linked in as a response — a reply published last — goes into its thread, as one created as one does.
+        if (relation === 'responses') void completeResponse(p, value, id);
       },
       // The counterpart, through the registered class's own removal — see `RecordsKernel.unlink`.
       unlinkEntity: async (entity, id, relation, value, options) => {
@@ -375,6 +379,7 @@ export default function TemplateProvider() {
           entity,
           id,
           fields,
+          getEntity('CollectionBlock') as unknown as MentionWriter,
         );
         await updateInDataset(entity, id, mentions.fields, p);
         await mentions

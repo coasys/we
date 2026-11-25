@@ -39,7 +39,7 @@ export interface GatherTurnsDeps {
 const DEFAULT_TURN_ENTITIES = ['TextBlock', 'CollectionBlock'];
 
 /** The `kind`s of a message composition — the same as `MESSAGE_KINDS` in `@we/messages`. */
-const MESSAGE_KINDS = ['message', 'reply'];
+export const MESSAGE_KINDS = ['message', 'reply'];
 
 /**
  * The words of a row: `text` on a TextBlock, `textContent` on a message composition. Other
