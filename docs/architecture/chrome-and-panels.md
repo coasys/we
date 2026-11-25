@@ -436,7 +436,10 @@ keep a card's heading.
   parts in `stores/shell/`, on the reactivity port: `arrangement.ts` (what the reader has done to the
   panels, and the declarations it is read against), `docks.ts` (each panel's box, the edge lanes, the
   insets and the custom properties), `dockDrag.ts` (the drag and resize gestures), `templatePanels.ts`
-  (an interface's declared panels as docks), and the overlays and prompts.
+  (an interface's declared panels as docks), and the overlays and prompts. The host state it reads
+  and publishes (the app frame, lane frames, panel instances) is a dependency, `ShellHostState`;
+  the app's copy, made over Solid's port, is `frameworks/solid/stores/hostState.ts`, and a test
+  builds its own (`tests/support/shellPorts.ts`).
 - `packages/app-shell/src/shared/registries/dockRegistry.ts` — the frame a panel is wrapped in
   (`frameBox`), over the window or filling its seat in an edge lane.
 - `packages/app-shell/src/frameworks/solid/components/PanelHost.tsx` — every panel's content, drawn

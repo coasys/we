@@ -165,7 +165,14 @@ that declares `backends: ['ad4m']` — nothing else. See `docs/architecture/pack
 - Add/adjust a primitive → `packages/design-system/3-primitives/src/` (Lit).
 - Add/adjust a layout/composite component → `packages/design-system/4-components/src/` (Solid).
 - DS-props → CSS logic (shared) → `packages/design-system/utils/src/index.ts`; Solid binding → `.../src/solid/index.ts`.
-- Stores / app shell / registries → `packages/app-shell/src/`.
+- Stores → `packages/app-shell/src/shared/stores/`, all on the reactivity port; SpaceStore, ShellStore and
+  RecordStore are compositions over one part per job in `stores/space/`, `stores/shell/`, `stores/records/`.
+  Composed once in `BootController`; components reach them with `useStore` (the Solid binding,
+  `frameworks/solid/stores/`).
+- Pure algorithms another host must agree with (board arrangement, tree ranks, connection keys, dock layout)
+  → `packages/app-shell/src/shared/kernels/`, each with recorded vectors; block flattening is
+  `flattenBlocks` in `@we/block-shared`.
+- App shell / registries → `packages/app-shell/src/`.
 - Built-in templates (data) → `packages/templates/`.
 - The editing surface → `packages/editor/src/`.
 - The backend contract (ports, query IR) → `packages/backend-system/shared/src/`.

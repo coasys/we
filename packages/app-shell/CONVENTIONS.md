@@ -17,12 +17,22 @@ contract, and product meet. These are the rules that keep it navigable.
 
 ## Stores
 
-- One store per concern, built by a `createXStore(deps)` factory and composed
-  in `providers/BootController.tsx`: the stores it reads are its arguments,
-  never a context lookup. **The composition order is load-bearing**: a store
-  may read stores built before it, never after. Components read stores
-  through `useStore('<name>Store')` (`stores/useStore.ts`), keyed by the names
-  templates use; it is the only Solid-specific piece of the wiring.
+- One store per concern, in `src/shared/stores/`, built by a `createXStore(deps)`
+  factory on the reactivity port and composed in `providers/BootController.tsx`:
+  the stores it reads are its arguments, never a context lookup. **The
+  composition order is load-bearing**: a store may read stores built before
+  it, never after. Components read stores through `useStore('<name>Store')`
+  (`frameworks/solid/stores/useStore.ts`), keyed by the names templates use;
+  that directory is the only Solid-specific piece of the wiring, and
+  `pnpm check:neutral-stores` refuses a Solid import anywhere under `shared/`.
+- A store with several jobs is one part per job (`stores/space/`,
+  `stores/shell/`, `stores/records/`), each its own factory with its own test
+  under both ports, composed back into the one store templates read. Move a
+  job between parts without changing the store's interface.
+- A pure algorithm another host has to agree with is a kernel in
+  `src/shared/kernels/`, with recorded vectors (`pnpm --filter @we/app-shell
+record:kernels`; prettier the JSON after, except `dockLayout.json`). See
+  "Kernels" in `docs/architecture/package-conventions.md`.
   A store needing something from a later one is a design smell — the existing
   upward callbacks (`registerHistoryCallbacks`, `provideSpaceLookup`,
   `provideInstalledModules`, `setNavigateFunction`) are tolerated debt, not

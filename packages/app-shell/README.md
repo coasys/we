@@ -43,16 +43,28 @@ never imports `@coasys/*` itself.
 
 ## Stores
 
-`src/frameworks/solid/stores/` — one store per concern, each a `createXStore(deps)`
-factory. `providers/BootController.tsx` composes them, passing each the stores it
-reads as arguments (the order is the dependency graph: a store may read the stores
-built before it):
+`src/shared/stores/` — one store per concern, each a `createXStore(deps)` factory
+written against the reactivity port (`@we/reactivity`), so none of them imports
+Solid. `providers/BootController.tsx` composes them once, passing each the port
+and the stores it reads as arguments (the order is the dependency graph: a store
+may read the stores built before it):
 
-Route → Shell → Account → Session → Runtime → Dataset → Profile → Theme →
-Template → Editor → App → Space → Presence.
+Route → Clock → Shell → Chat → Account → Session → Runtime → Identity → Device →
+Dataset → Shape → Record → Profile → Theme → Template → Editor → App → Space →
+Presence → Interpretation → Workflow → Bundle.
+
+The three largest are split by job and composed back into one store each:
+`SpaceStore.ts` from the parts in `stores/space/` (spaces, navigation, roles,
+modules and views, extraction, task states, involvements, unread, content, the
+space's own record), `ShellStore.ts` from `stores/shell/` (overlays, prompts,
+arrangement, docks, dragging, template panels) and `RecordStore.ts` from
+`stores/records/` (kinds, connections, canvas, tree, forms, drops). A template
+still reads one namespace per store.
 
 Components reach them through one typed hook, `useStore('spaceStore')`, keyed by
-the same names templates use.
+the same names templates use (`StoreRegistry`, `shared/stores/storeRegistry.ts`).
+`src/frameworks/solid/stores/` is only Solid's binding: that hook, Solid's live
+template document, and the app's host state made over Solid's port.
 
 The store surface a schema can reach through expressions and `$invoke` is documented in
 the generated reference (`CLAUDE.md`, "Stores" section) and kept honest by
