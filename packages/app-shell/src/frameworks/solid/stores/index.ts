@@ -10,7 +10,7 @@ export { type RecordStore, createRecordStore } from './RecordStore';
 export { type SpaceStore, createSpaceStore } from './SpaceStore';
 export { type ThemeStore, type EditingTheme, createThemeStore } from '../../../shared/stores/ThemeStore';
 export { type TemplateStore, createTemplateStore } from '../../../shared/stores/TemplateStore';
-export { type EditorStore, createEditorStore } from './EditorStore';
+export { type EditorStore, createEditorStore } from '../../../shared/stores/EditorStore';
 export { type AppStore, createAppStore } from '../../../shared/stores/AppStore';
 export { type ClockStore, type ClockView, createClockStore } from '../../../shared/stores/ClockStore';
 export { type WorkflowStore, createWorkflowStore } from '../../../shared/stores/WorkflowStore';

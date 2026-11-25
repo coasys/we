@@ -22,6 +22,7 @@ import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
 import { createDatasetStore } from '@shared/stores/DatasetStore';
 import { createDeviceStore } from '@shared/stores/DeviceStore';
+import { createEditorStore } from '@shared/stores/EditorStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createInterpretationStore } from '@shared/stores/InterpretationStore';
@@ -43,7 +44,6 @@ import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
 import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { createEditorStore } from '../stores/EditorStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
@@ -146,6 +146,9 @@ export function BootController(props: ParentProps) {
   /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
   const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
   const editorStore = createEditorStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    firstScreen,
     sessionStore,
     datasetStore,
     templateStore,

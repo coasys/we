@@ -8,26 +8,22 @@
  * `LanguageModelPort.converse`; prompt assembly, the tool definitions, patch application and the
  * request loop live in `@we/agent-tools` — this store orchestrates them against its own
  * signals, and never learns which model or provider answered.
+ *
+ * Every write to the template goes through the edit target (`editTarget.ts`), which hands it to the
+ * template store's live document for what is edited — so an edit redraws the nodes it touched.
  */
-import { agentTurns } from '@shared/agentTurns';
-import { isEditorChord, pressEditorChord } from '@shared/editorChord';
-import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
-import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
-import type { EditTargetPort } from '@shared/stores/editTarget';
-import { sameTemplateContent } from '@shared/templateSync';
-import { deepClone } from '@shared/utils';
-import { type EditingTheme } from '@solid/stores';
 import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
 import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
 import { operationCatalog } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink, TEMPLATE_SCHEMA_VERSION } from '@we/schema-shared';
 import { buildValidationContext, withEntities, withOperations } from '@we/schema-shared';
-import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
+import { agentTurns } from '../agentTurns';
+import { distinctSignal } from '../distinctSignal';
 import {
   appendMessage,
   chatMessages,
@@ -36,9 +32,20 @@ import {
   clearChat,
   deleteChat,
   startChat,
-} from '../../../shared/editorChats';
-import { firstScreen } from '../firstScreen';
-import type { StoreRegistry } from './useStore';
+} from '../editorChats';
+import { isEditorChord, pressEditorChord } from '../editorChord';
+import type { FirstScreen } from '../firstScreen';
+import { registerHostDockStore, unregisterHostDockStore } from '../registries/dockRegistry';
+import { EDITOR_STORE_ID } from '../registries/editorDocks';
+import { sameTemplateContent } from '../templateSync';
+import type { Toasts } from '../toasts';
+import { deepClone } from '../utils';
+import type { DatasetStore } from './DatasetStore';
+import type { EditTargetPort } from './editTarget';
+import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
+import type { TemplateStore } from './TemplateStore';
+import type { EditingTheme, ThemeStore } from './ThemeStore';
 
 export interface ChatMessage {
   id: string;
@@ -51,7 +58,7 @@ export interface ChatMessage {
 type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
 
 // Base validation context built once from the static generated context data.
-// External perspective models are merged in reactively inside the editor store.
+// The models a space adds are merged in reactively inside the editor store.
 const baseValidationCtx = buildValidationContext(contextData);
 
 export interface EditorStore {
@@ -229,12 +236,47 @@ const starterTemplate: SchemaNode = {
   ],
 };
 
-export function createEditorStore(
-  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore' | 'templateStore' | 'themeStore'> & {
-    /** What the session edits. Composed beside this store rather than inside it, because the editor's host adapter reads it too. */
-    editTarget: EditTargetPort;
-  },
-): EditorStore {
+export interface EditorStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Toasts;
+  /** Model reads wait for it: nobody can have opened the chat before the first screen is up. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  sessionStore: Pick<SessionStore, 'backendPorts'>;
+  datasetStore: Pick<DatasetStore, 'currentDataset' | 'currentDatasetEntities' | 'rootDataset'>;
+  shapeStore: Pick<ShapeStore, 'spaceShapes'>;
+  templateStore: Pick<
+    TemplateStore,
+    | 'allTemplates'
+    | 'appTemplate'
+    | 'appTemplateId'
+    | 'currentTemplate'
+    | 'getTemplateRecord'
+    | 'isBuiltInTemplateId'
+    | 'provideEditingProbe'
+    | 'saveTemplateAs'
+    | 'setAppTemplate'
+    | 'storedAt'
+    | 'writtenElsewhere'
+  >;
+  themeStore: Pick<
+    ThemeStore,
+    'applySnapshot' | 'cancelEditing' | 'currentThemeId' | 'editingTheme' | 'registerHistoryCallbacks' | 'startEditing'
+  >;
+  /** What the session edits. Composed beside this store rather than inside it, because the editor's host adapter reads it too. */
+  editTarget: EditTargetPort;
+}
+
+export function createEditorStore(deps: EditorStoreDeps): EditorStore {
+  const { reactivity, toasts, firstScreen } = deps;
+  const { memo, effect, untrack, batch, onCleanup } = reactivity;
+  /** A signal whose write is skipped when it holds that value already. */
+  const flag = <T>(initial: T) => distinctSignal(reactivity, initial);
+  /** A write computed from what a signal holds, read untracked so a caller in an effect does not follow it. */
+  const change =
+    <T>([read, write]: [Accessor<T>, (next: T) => void]) =>
+    (next: (now: T) => T) =>
+      write(next(untrack(read)));
+
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
   const templateStore = deps.templateStore;
@@ -254,18 +296,52 @@ export function createEditorStore(
     `$query` on a `TaskBlock` read as an unknown model — and in a space with none, a query on the
     community's own `Sighting` did, which is the case a validator is most needed for.
   */
-  const getValidationCtx = createMemo(() => {
+  const getValidationCtx = memo(() => {
     const foreign = datasetStore.currentDatasetEntities().map((m) => m.name);
     const shapes = shapeStore.spaceShapes().map((s) => s.name);
     // And the operations registered since the context was generated — an installed app's own.
     return withOperations(withEntities(baseValidationCtx, [...foreign, ...shapes]), operationCatalog());
   });
 
+  /*
+    Every signal is declared here, ahead of any effect: an effect may first run as soon as it is
+    made, and one that reached a signal declared further down would find it not yet there.
+  */
   // --- Chat state ---
-  const [messages, setMessages] = createSignal<ChatMessage[]>([]);
-  const [isOpen, setIsOpen] = createSignal(false);
-  const [isStreaming, setIsStreaming] = createSignal(false);
-  const [streamingContent, setStreamingContent] = createSignal('');
+  const messagesSignal = reactivity.signal<ChatMessage[]>([]);
+  const [messages, setMessages] = messagesSignal;
+  const changeMessages = change(messagesSignal);
+  const [isOpen, setIsOpen] = flag(false);
+  const [isStreaming, setIsStreaming] = flag(false);
+  const [streamingContent, setStreamingContent] = flag('');
+  const [nodeHasModel, setNodeHasModel] = flag(false);
+  const [assistantStatus, setAssistantStatus] = reactivity.signal<LanguageModelStatus | null>(null);
+  // --- Session management ---
+  const sessionsSignal = reactivity.signal<ChatSummary[]>([]);
+  const [sessions, setSessions] = sessionsSignal;
+  const changeSessions = change(sessionsSignal);
+  const [activeSessionId, setActiveSessionId] = flag<string | null>(null);
+  // --- Content mode and panels ---
+  const [contentMode, setContentModeSignal] = flag<'preview' | 'visual'>('preview');
+  const [codePanelOpen, setCodePanelOpen] = flag(false);
+  const [themePanelOpen, setThemePanelOpen] = flag(false);
+  // Open by default when entering visual mode.
+  const [visualPanelOpen, setVisualPanelOpen] = flag(true);
+  // --- Undo / redo ---
+  const undoSignal = reactivity.signal<HistoryEntry[]>([]);
+  const redoSignal = reactivity.signal<HistoryEntry[]>([]);
+  const [undoStack, setUndoStack] = undoSignal;
+  const [redoStack, setRedoStack] = redoSignal;
+  const changeUndo = change(undoSignal);
+  const changeRedo = change(redoSignal);
+  // --- Picker ---
+  const [pickerOpen, setPickerOpen] = flag(false);
+  const [pickerAction, setPickerAction] = flag<'fork' | 'fresh'>('fork');
+  const [pickerDefaultName, setPickerDefaultName] = flag('');
+  const [pickerDefaultIcon, setPickerDefaultIcon] = flag('cube');
+  // --- Template editing ---
+  const [isEditingTemplate, setIsEditingTemplate] = flag(false);
+  const [editAction, setEditAction] = flag<'edit' | 'fork' | 'fresh' | null>(null);
 
   /*
     Asked of the node rather than read off the agent. This used to be "the agent pasted an Anthropic
@@ -273,8 +349,6 @@ export function createEditorStore(
     handed a secret to the browser to send from there.
   */
   const languageModel = () => session.backendPorts()?.languageModel;
-  const [nodeHasModel, setNodeHasModel] = createSignal(false);
-  const [assistantStatus, setAssistantStatus] = createSignal<LanguageModelStatus | null>(null);
   const assistantAvailable = () => nodeHasModel() && !!languageModel()?.converse;
 
   /*
@@ -285,26 +359,30 @@ export function createEditorStore(
   async function refreshAssistant(): Promise<void> {
     const port = languageModel();
     if (!port?.converse) {
-      setNodeHasModel(false);
-      setAssistantStatus(null);
+      batch(() => {
+        setNodeHasModel(false);
+        setAssistantStatus(null);
+      });
       return;
     }
     const [available, status] = await Promise.all([
       port.available().catch(() => false),
       port.status?.().catch(() => null) ?? Promise.resolve(null),
     ]);
-    setNodeHasModel(available);
-    setAssistantStatus(status);
+    batch(() => {
+      setNodeHasModel(available);
+      setAssistantStatus(status);
+    });
   }
 
-  createEffect(() => {
+  effect(() => {
     // When the port arrives — so the answer is ready before anyone opens the chat — and each time
     // the panel opens, since that is when a stale answer would be read.
     languageModel();
     // Not before the first screen is up: nobody can have opened the chat yet, and the model reads
     // would sit beside the first page. See `shared/firstScreen.ts`.
     if (!firstScreen.open()) return;
-    if (isOpen() || !assistantStatus()) void refreshAssistant();
+    if (isOpen() || !assistantStatus()) void untrack(refreshAssistant);
   });
 
   /*
@@ -314,11 +392,7 @@ export function createEditorStore(
     — see `shared/editorChats.ts`. Held here as summaries, to name and address; messages are always
     asked for, because a relation on a held record is a snapshot of when it was read.
   */
-  const [sessions, setSessions] = createSignal<ChatSummary[]>([]);
-  const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
 
-  // --- Content mode (preview / visual / code) ---
-  const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
   /*
     Ids shown, not stripped: they are permanent, so they are part of what a template IS, and the
     code panel is where somebody reads the template exactly. Stripping them made every save from the
@@ -333,20 +407,20 @@ export function createEditorStore(
 
   // --- Unified Undo / Redo (covers template and theme edits in chronological order) ---
   const MAX_UNDO = 50;
-  const [undoStack, setUndoStack] = createSignal<HistoryEntry[]>([]);
-  const [redoStack, setRedoStack] = createSignal<HistoryEntry[]>([]);
   const stackCache = new Map<string, { undo: HistoryEntry[]; redo: HistoryEntry[] }>();
   let prevTemplateId: string | undefined;
   const canUndo: Accessor<boolean> = () => undoStack().length > 0;
   const canRedo: Accessor<boolean> = () => redoStack().length > 0;
 
   function pushSnapshot() {
-    const current = deepClone(edit.template());
-    setUndoStack((prev) => {
-      const next = [...prev, { type: 'template' as const, snapshot: current }];
-      return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
+    const current = deepClone(untrack(edit.template));
+    batch(() => {
+      changeUndo((prev) => {
+        const next = [...prev, { type: 'template' as const, snapshot: current }];
+        return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
+      });
+      setRedoStack([]);
     });
-    setRedoStack([]);
   }
 
   /** See `commitEdit` on the interface. A built-in has nothing to save into, and no session opens on one. */
@@ -355,14 +429,25 @@ export function createEditorStore(
     await edit.persist();
   }
 
-  async function undo() {
-    const stack = undoStack();
+  /**
+   * Take the newest entry off one stack, put what is there now on the other, and go back to the
+   * entry. Undo and redo are this with the stacks swapped.
+   */
+  async function stepHistory(
+    from: Accessor<HistoryEntry[]>,
+    changeFrom: (next: (now: HistoryEntry[]) => HistoryEntry[]) => void,
+    changeTo: (next: (now: HistoryEntry[]) => HistoryEntry[]) => void,
+  ) {
+    const stack = untrack(from);
     if (stack.length === 0) return;
     const entry = stack[stack.length - 1];
-    setUndoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: deepClone(edit.template()) }]);
+      const now = deepClone(untrack(edit.template));
+      batch(() => {
+        changeFrom((prev) => prev.slice(0, -1));
+        changeTo((prev) => [...prev, { type: 'template' as const, snapshot: now }]);
+      });
       edit.update(entry.snapshot);
       try {
         await edit.persist();
@@ -370,55 +455,38 @@ export function createEditorStore(
         /* key may already exist */
       }
     } else {
-      const current = themeStore.editingTheme();
-      if (current) setRedoStack((prev) => [...prev, { type: 'theme' as const, snapshot: { ...current } }]);
+      const current = untrack(themeStore.editingTheme);
+      batch(() => {
+        changeFrom((prev) => prev.slice(0, -1));
+        if (current) changeTo((prev) => [...prev, { type: 'theme' as const, snapshot: { ...current } }]);
+      });
       await themeStore.applySnapshot(entry.snapshot);
     }
   }
 
-  async function redo() {
-    const stack = redoStack();
-    if (stack.length === 0) return;
-    const entry = stack[stack.length - 1];
-    setRedoStack((prev) => prev.slice(0, -1));
+  const undo = () => stepHistory(undoStack, changeUndo, changeRedo);
+  const redo = () => stepHistory(redoStack, changeRedo, changeUndo);
 
-    if (entry.type === 'template') {
-      setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: deepClone(edit.template()) }]);
-      edit.update(entry.snapshot);
-      try {
-        await edit.persist();
-      } catch {
-        /* key may already exist */
-      }
-    } else {
-      const current = themeStore.editingTheme();
-      if (current) setUndoStack((prev) => [...prev, { type: 'theme' as const, snapshot: { ...current } }]);
-      await themeStore.applySnapshot(entry.snapshot);
-    }
-  }
-
-  // Wire theme history into the unified stack. ThemeStore is a parent provider and
-  // cannot call back into EditorStore, so we register callbacks here after both stores
-  // and the stack signals are initialised.
+  // Theme history joins the one stack. The theme store is built before this one and cannot reach
+  // it, so the callbacks are lent here, once the stacks exist.
   themeStore.registerHistoryCallbacks({
     onEntry: (snapshot: EditingTheme) => {
-      setUndoStack((prev) => {
-        const next = [...prev, { type: 'theme' as const, snapshot }];
-        return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
+      batch(() => {
+        changeUndo((prev) => {
+          const next = [...prev, { type: 'theme' as const, snapshot }];
+          return next.length > MAX_UNDO ? next.slice(-MAX_UNDO) : next;
+        });
+        setRedoStack([]);
       });
-      setRedoStack([]);
     },
     onClear: () => {
-      setUndoStack((prev) => prev.filter((e) => e.type !== 'theme'));
-      setRedoStack((prev) => prev.filter((e) => e.type !== 'theme'));
+      batch(() => {
+        changeUndo((prev) => prev.filter((e) => e.type !== 'theme'));
+        changeRedo((prev) => prev.filter((e) => e.type !== 'theme'));
+      });
     },
   });
 
-  // --- Name + Icon picker state ---
-  const [pickerOpen, setPickerOpen] = createSignal(false);
-  const [pickerAction, setPickerAction] = createSignal<'fork' | 'fresh'>('fork');
-  const [pickerDefaultName, setPickerDefaultName] = createSignal('');
-  const [pickerDefaultIcon, setPickerDefaultIcon] = createSignal('cube');
   // An app is the agent's own, whatever space is open, so forking one never asks where to put it.
   const pickerShowDestination = () => !!datasetStore.currentDataset() && edit.target().kind !== 'app';
 
@@ -428,10 +496,10 @@ export function createEditorStore(
 
   /** One chat's messages, or none where it has gone or cannot be read. */
   async function messagesFor(chatId: string): Promise<ChatMessage[]> {
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return [];
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (!dataset) return [];
     try {
-      return await chatMessages(perspective, chatId);
+      return await chatMessages(dataset, chatId);
     } catch (err) {
       console.error('Failed to read messages for chat', chatId, err);
       return [];
@@ -439,9 +507,11 @@ export function createEditorStore(
   }
 
   function showNoChat() {
-    setSessions([]);
-    setActiveSessionId(null);
-    setMessages([]);
+    batch(() => {
+      setSessions([]);
+      setActiveSessionId(null);
+      setMessages([]);
+    });
   }
 
   /** Load the chats about a template and open the most recent one */
@@ -453,14 +523,16 @@ export function createEditorStore(
       return;
     }
 
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return;
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (!dataset) return;
 
     try {
-      const { chats, latest } = await chatsAbout(perspective, templateId);
-      setSessions(chats);
-      setActiveSessionId(chats[0]?.id ?? null);
-      setMessages(latest);
+      const { chats, latest } = await chatsAbout(dataset, templateId);
+      batch(() => {
+        setSessions(chats);
+        setActiveSessionId(chats[0]?.id ?? null);
+        setMessages(latest);
+      });
     } catch (err) {
       console.error('Failed to load chats for template', templateId, err);
       showNoChat();
@@ -472,24 +544,25 @@ export function createEditorStore(
     const templateId = edit.template().id;
     if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
       // For a built-in, the conversation is only in memory; a new one just clears it.
-      setMessages([]);
-      setMessages((prev) => [...prev, createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
+      setMessages([createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
       return;
     }
 
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateStore.getTemplateRecord(templateId) || !perspective) return;
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (!templateStore.getTemplateRecord(templateId) || !dataset) return;
 
     try {
-      const chat = await startChat(perspective, templateId, `Chat ${sessions().length + 1}`);
-      setActiveSessionId(chat.id);
-      setMessages([]);
-      setSessions((prev) => [chat, ...prev]);
+      const chat = await startChat(dataset, templateId, `Chat ${sessions().length + 1}`);
+      batch(() => {
+        setActiveSessionId(chat.id);
+        setMessages([]);
+        changeSessions((prev) => [chat, ...prev]);
+      });
     } catch (err) {
       console.error('Failed to create new chat session', err);
       // The button leaves the old conversation on screen when this fails, so without a word it
       // reads as "New chat does nothing".
-      toastService.error('Could not start a new chat');
+      toasts.error('Could not start a new chat');
     }
   }
 
@@ -504,12 +577,12 @@ export function createEditorStore(
 
   /** Delete a chat and everything in it */
   async function deleteSession(sessionId: string) {
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective || !sessions().some((s) => s.id === sessionId)) return;
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (!dataset || !sessions().some((s) => s.id === sessionId)) return;
 
     try {
-      await deleteChat(perspective, sessionId);
-      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      await deleteChat(dataset, sessionId);
+      changeSessions((prev) => prev.filter((s) => s.id !== sessionId));
 
       if (activeSessionId() === sessionId) {
         const next = sessions()[0];
@@ -520,7 +593,7 @@ export function createEditorStore(
       console.error('Failed to delete session', err);
       // A delete that fails silently leaves the row there, which reads as a stuck button — and
       // invites a second press at a delete that may have half-run.
-      toastService.error('Could not delete that chat');
+      toasts.error('Could not delete that chat');
     }
   }
 
@@ -530,11 +603,11 @@ export function createEditorStore(
    */
   async function persistMessage(role: 'user' | 'assistant', content: string) {
     const chatId = activeSessionId();
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!chatId || !perspective) return;
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (!chatId || !dataset) return;
 
     try {
-      await appendMessage(perspective, chatId, { role, content, model: assistantStatus()?.model ?? '' });
+      await appendMessage(dataset, chatId, { role, content, model: assistantStatus()?.model ?? '' });
     } catch (err) {
       console.error('Failed to persist message', err);
     }
@@ -543,8 +616,6 @@ export function createEditorStore(
   // ----------------------------------------------------------------
   // Template editing mode
   // ----------------------------------------------------------------
-  const [isEditingTemplate, setIsEditingTemplate] = createSignal(false);
-  const [editAction, setEditAction] = createSignal<'edit' | 'fork' | 'fresh' | null>(null);
 
   /*
     A built-in template is never edited in place: changing one means a copy of your own, so asking to
@@ -558,12 +629,14 @@ export function createEditorStore(
       startFork();
       return false;
     }
-    setEditAction(action);
-    setIsEditingTemplate(true);
-    setIsOpen(true);
-    setCodePanelOpen(false);
-    setContentModeSignal('preview');
-    setThemePanelOpen(false);
+    batch(() => {
+      setEditAction(action);
+      setIsEditingTemplate(true);
+      setIsOpen(true);
+      setCodePanelOpen(false);
+      setContentModeSignal('preview');
+      setThemePanelOpen(false);
+    });
     return true;
   }
 
@@ -598,12 +671,14 @@ export function createEditorStore(
 
   function exitTemplateEditing() {
     // A section edited in place goes back to being drawn from its saved template.
-    edit.leave();
-    setIsEditingTemplate(false);
-    setEditAction(null);
-    setIsOpen(false);
-    setCodePanelOpen(false);
-    setContentModeSignal('preview');
+    batch(() => {
+      edit.leave();
+      setIsEditingTemplate(false);
+      setEditAction(null);
+      setIsOpen(false);
+      setCodePanelOpen(false);
+      setContentModeSignal('preview');
+    });
     // Theme editing is independent — not closed here
   }
 
@@ -629,16 +704,19 @@ export function createEditorStore(
    * no-op, so the existing call sites keep working unchanged.
    */
   function enterThemeEditing() {
-    if (!themeStore.editingTheme()) themeStore.startEditing();
-    setThemePanelOpen(true);
-    setIsOpen(false);
-    setCodePanelOpen(false);
-    setContentModeSignal('preview');
+    if (!untrack(themeStore.editingTheme)) themeStore.startEditing();
+    batch(() => {
+      setThemePanelOpen(true);
+      setIsOpen(false);
+      setCodePanelOpen(false);
+      setContentModeSignal('preview');
+    });
   }
 
   function exitThemeEditing() {
     // Close panel first so ThemePanel.onCleanup fires and saves any pending debounced changes
-    // before cancelEditing clears editingTheme (which would make saveEditingTheme bail early).
+    // before cancelEditing clears editingTheme (which would make saveEditingTheme bail early). Not
+    // batched with it for that reason: the write's effects have run by the time it returns.
     setThemePanelOpen(false);
     themeStore.cancelEditing();
   }
@@ -649,9 +727,9 @@ export function createEditorStore(
   // an authoring diagnostic aimed at whoever can act on it, so it follows the
   // editing session. The console keeps a copy either way (see schema-shared's
   // propResolvers/local.ts).
-  createEffect(() => {
+  effect(() => {
     const authoring = isEditingTemplate() || isEditingTheme() || isOpen();
-    setLocalWarningSink(authoring ? (message) => toastService.warning(message) : null);
+    setLocalWarningSink(authoring ? (message) => toasts.warning(message) : null);
   });
   onCleanup(() => setLocalWarningSink(null));
 
@@ -665,7 +743,7 @@ export function createEditorStore(
    * which is whether they can see the thing.
    */
   function toggleThemeEditing() {
-    if (themeDockEdge()) {
+    if (untrack(themeDockEdge)) {
       exitThemeEditing();
     } else {
       enterThemeEditing();
@@ -680,12 +758,13 @@ export function createEditorStore(
    * would tear down the session the user is still in the moment they saved.
    *
    * Lives here rather than in the chrome that used to own it because it is session logic, not a
-   * view concern — and the picker that replaced that chrome is a schema, which has no `createEffect`.
+   * view concern — and the picker that replaced that chrome is a schema, which has no effects.
    */
-  createEffect(() => {
+  effect(() => {
     const newId = themeStore.currentThemeId();
-    if (!untrack(() => isEditingTheme())) return;
-    if (newId !== untrack(() => themeStore.editingTheme()?.id)) exitThemeEditing();
+    untrack(() => {
+      if (isEditingTheme() && newId !== themeStore.editingTheme()?.id) exitThemeEditing();
+    });
   });
 
   /**
@@ -696,8 +775,9 @@ export function createEditorStore(
    * an input, Ctrl-Z means the text, and stealing it would make the name box in a fork dialog
    * silently un-undoable.
    */
-  createEffect(() => {
+  effect(() => {
     if (!isEditingTemplate() && !isEditingTheme()) return;
+    if (typeof document === 'undefined') return;
 
     const handler = (event: KeyboardEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -705,11 +785,8 @@ export function createEditorStore(
       const target = event.target as HTMLElement | null;
       if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
       event.preventDefault();
-      if (event.shiftKey) {
-        if (canRedo()) void redo();
-      } else if (canUndo()) {
-        void undo();
-      }
+      if (event.shiftKey) void redo();
+      else void undo();
     };
 
     document.addEventListener('keydown', handler);
@@ -720,7 +797,7 @@ export function createEditorStore(
   // Panel control
   // ----------------------------------------------------------------
   function toggle() {
-    setIsOpen((v) => !v);
+    setIsOpen(!untrack(isOpen));
   }
   function open() {
     setIsOpen(true);
@@ -730,9 +807,8 @@ export function createEditorStore(
   }
 
   // Code panel
-  const [codePanelOpen, setCodePanelOpen] = createSignal(false);
   function toggleCodePanel() {
-    setCodePanelOpen((v) => !v);
+    setCodePanelOpen(!untrack(codePanelOpen));
   }
   function openCodePanel() {
     setCodePanelOpen(true);
@@ -742,18 +818,19 @@ export function createEditorStore(
   }
 
   function setContentMode(mode: 'preview' | 'visual') {
-    if (mode === 'visual') {
-      setIsOpen(false);
-      setCodePanelOpen(false);
-      setThemePanelOpen(false);
-    }
-    setContentModeSignal(mode);
+    batch(() => {
+      if (mode === 'visual') {
+        setIsOpen(false);
+        setCodePanelOpen(false);
+        setThemePanelOpen(false);
+      }
+      setContentModeSignal(mode);
+    });
   }
 
   // Theme panel
-  const [themePanelOpen, setThemePanelOpen] = createSignal(false);
   function toggleThemePanel() {
-    setThemePanelOpen((v) => !v);
+    setThemePanelOpen(!untrack(themePanelOpen));
   }
   function openThemePanel() {
     setThemePanelOpen(true);
@@ -762,10 +839,9 @@ export function createEditorStore(
     setThemePanelOpen(false);
   }
 
-  // Visual properties panel — open by default when entering visual mode
-  const [visualPanelOpen, setVisualPanelOpen] = createSignal(true);
+  // Visual properties panel
   function toggleVisualPanel() {
-    setVisualPanelOpen((v) => !v);
+    setVisualPanelOpen(!untrack(visualPanelOpen));
   }
 
   /*
@@ -781,13 +857,13 @@ export function createEditorStore(
     different panel system at the same edge.
   */
   const dockedWhen = (open: Accessor<boolean>, session: Accessor<boolean>): Accessor<DockEdge> =>
-    createMemo(() => (session() && open() ? 'right' : null));
+    memo(() => (session() && open() ? 'right' : null));
 
   const aiDockEdge = dockedWhen(isOpen, isEditingTemplate);
   const codeDockEdge = dockedWhen(codePanelOpen, isEditingTemplate);
   const themeDockEdge = dockedWhen(themePanelOpen, isEditingTheme);
   // Properties is the one with a third condition: there is nothing to inspect outside visual mode.
-  const visualDockEdge = createMemo<DockEdge>(() =>
+  const visualDockEdge = memo<DockEdge>(() =>
     isEditingTemplate() && contentMode() === 'visual' && visualPanelOpen() ? 'right' : null,
   );
 
@@ -795,18 +871,23 @@ export function createEditorStore(
   // Template actions — Fork / Start Fresh / Picker
   // ----------------------------------------------------------------
   function startFork() {
-    const name = edit.template().meta?.name || edit.template().id || '';
-    setPickerDefaultName(`${name} (copy)`);
-    setPickerDefaultIcon(edit.template().meta?.icon || 'cube');
-    setPickerAction('fork');
-    setPickerOpen(true);
+    const template = untrack(edit.template);
+    const name = template.meta?.name || template.id || '';
+    batch(() => {
+      setPickerDefaultName(`${name} (copy)`);
+      setPickerDefaultIcon(template.meta?.icon || 'cube');
+      setPickerAction('fork');
+      setPickerOpen(true);
+    });
   }
 
   function startFresh() {
-    setPickerDefaultName('');
-    setPickerDefaultIcon('cube');
-    setPickerAction('fresh');
-    setPickerOpen(true);
+    batch(() => {
+      setPickerDefaultName('');
+      setPickerDefaultIcon('cube');
+      setPickerAction('fresh');
+      setPickerOpen(true);
+    });
   }
 
   async function confirmPicker(name: string, icon: string, destination: 'personal' | 'space') {
@@ -829,7 +910,7 @@ export function createEditorStore(
       const saved = await templateStore.saveTemplateAs(forked, 'root', { activate: false });
       setPickerOpen(false);
       if (!saved) {
-        setMessages((prev) => [...prev, createMessage('assistant', `Failed to save the app "${name}".`)]);
+        changeMessages((prev) => [...prev, createMessage('assistant', `Failed to save the app "${name}".`)]);
         return;
       }
       await templateStore.setAppTemplate(templateId);
@@ -837,7 +918,7 @@ export function createEditorStore(
       if (copy) edit.enterApp(copy);
       // The fork was asked for from outside a session; the copy is the thing to edit now.
       if (!isEditingTemplate()) enterTemplateEditing('fork');
-      setMessages((prev) => [
+      changeMessages((prev) => [
         ...prev,
         createMessage('assistant', `Forked the app as "${name}". It is the app you are in now.`),
       ]);
@@ -865,17 +946,17 @@ export function createEditorStore(
     const success = await templateStore.saveTemplateAs(schema, saveDestination);
     setPickerOpen(false);
     if (!success) {
-      setMessages((prev) => [...prev, createMessage('assistant', `Failed to save template "${name}".`)]);
+      changeMessages((prev) => [...prev, createMessage('assistant', `Failed to save template "${name}".`)]);
       return;
     }
 
     if (action === 'fresh') {
-      setMessages((prev) => [
+      changeMessages((prev) => [
         ...prev,
         createMessage('assistant', `Created new template "${name}". Start chatting to build your interface!`),
       ]);
     } else {
-      setMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".`)]);
+      changeMessages((prev) => [...prev, createMessage('assistant', `Forked as "${name}".`)]);
     }
 
     // Enter template editing on the newly created template
@@ -905,7 +986,7 @@ export function createEditorStore(
 
     // Add user message to chat
     const userMsg = createMessage('user', text, 'sending');
-    setMessages((prev) => [...prev, userMsg]);
+    changeMessages((prev) => [...prev, userMsg]);
 
     // Kept in the chat (a saved template only; a built-in's chat is in memory)
     if (activeSessionId()) void persistMessage('user', text);
@@ -921,10 +1002,10 @@ export function createEditorStore(
       // should stop claiming it is fine.
       void refreshAssistant();
       const errorText = err instanceof Error ? err.message : 'Unknown error';
-      setMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
+      changeMessages((prev) => [...prev, createMessage('assistant', `Error: ${errorText}`)]);
     } finally {
       // Mark user message as sent
-      setMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, status: 'sent' as const } : m)));
+      changeMessages((prev) => prev.map((m) => (m.id === userMsg.id ? { ...m, status: 'sent' as const } : m)));
       /*
         Resolve any placeholder still marked `streaming`.
 
@@ -933,7 +1014,7 @@ export function createEditorStore(
         that shimmered for the life of the panel. Every escape from that function passes through
         here, which is why the cleanup belongs here and not beside each throw.
       */
-      setMessages((prev) =>
+      changeMessages((prev) =>
         prev.map((m) =>
           m.status === 'streaming'
             ? { ...m, status: undefined, content: m.content || 'The assistant stopped before replying.' }
@@ -965,7 +1046,7 @@ export function createEditorStore(
     if (!agents || !stored) return false;
 
     const streamMsg = createMessage('assistant', '', 'streaming');
-    setMessages((prev) => [...prev, streamMsg]);
+    changeMessages((prev) => [...prev, streamMsg]);
     setStreamingContent('<span class="shimmer">*Working on it…*</span>');
     try {
       const before = deepClone<TemplateSchema>(template);
@@ -996,7 +1077,7 @@ export function createEditorStore(
       if (!(error instanceof AgentUnavailableError)) throw error;
       // Not this node's to do — the editor's own loop takes the request instead.
       devLog('[editor] backend agent unavailable:', error.message);
-      setMessages((prev) => prev.filter((m) => m.id !== streamMsg.id));
+      changeMessages((prev) => prev.filter((m) => m.id !== streamMsg.id));
       return false;
     }
   }
@@ -1014,7 +1095,7 @@ export function createEditorStore(
 
     // Create a placeholder assistant message — shows streaming content as tokens arrive
     const streamMsg = createMessage('assistant', '', 'streaming');
-    setMessages((prev) => [...prev, streamMsg]);
+    changeMessages((prev) => [...prev, streamMsg]);
 
     /*
       The template prepared once for this request — the tree the model is shown and its ids are
@@ -1109,9 +1190,9 @@ export function createEditorStore(
   /** Update or create the assistant message, then keep it in the chat */
   function updateAssistantMessage(streamMsgId: string | undefined, content: string) {
     if (streamMsgId) {
-      setMessages((prev) => prev.map((m) => (m.id === streamMsgId ? { ...m, content, status: undefined } : m)));
+      changeMessages((prev) => prev.map((m) => (m.id === streamMsgId ? { ...m, content, status: undefined } : m)));
     } else {
-      setMessages((prev) => [...prev, createMessage('assistant', content)]);
+      changeMessages((prev) => [...prev, createMessage('assistant', content)]);
     }
 
     // Kept in the chat, not awaited (a saved template only)
@@ -1134,9 +1215,9 @@ export function createEditorStore(
       const schema = { ...(parsed as TemplateSchema), id: edit.template().id } as TemplateSchema;
       edit.update(schema);
       void commitEdit();
-      setMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
+      changeMessages((prev) => [...prev, createMessage('assistant', 'Schema updated from JSON editor.')]);
     } catch {
-      setMessages((prev) => [...prev, createMessage('assistant', 'Invalid JSON — changes not applied.')]);
+      changeMessages((prev) => [...prev, createMessage('assistant', 'Invalid JSON — changes not applied.')]);
     }
   }
 
@@ -1145,10 +1226,10 @@ export function createEditorStore(
   // ----------------------------------------------------------------
   async function clearHistory() {
     const chatId = activeSessionId();
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (chatId && perspective) {
+    const dataset = datasetStore.rootDataset()?.handle;
+    if (chatId && dataset) {
       try {
-        await clearChat(perspective, chatId);
+        await clearChat(dataset, chatId);
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }
@@ -1183,28 +1264,54 @@ export function createEditorStore(
     onCleanup(() => window.removeEventListener('keydown', onEditorChord, true));
   }
 
+  /*
+    The three effects below are keyed on which template, and each compares with what it last saw:
+    reading a template's id may wake on any edit to it (a renderer that redraws a tree whole lends a
+    document whose every read does), and an edit must neither end the session, reload the chats, nor
+    trim the history.
+  */
+  /** Changes when `id` or the root dataset does; forgets what it saw when either is absent. */
+  const keyedOn = () => {
+    let seen: [string, unknown] | undefined;
+    return (id: string | undefined, root: unknown): boolean => {
+      if (!id || !root) {
+        seen = undefined;
+        return false;
+      }
+      if (seen && seen[0] === id && seen[1] === root) return false;
+      seen = [id, root];
+      return true;
+    };
+  };
+
   // Switching the template on screen ends the session; what is edited within one is chosen there.
-  createEffect(() => {
-    const templateId = templateStore.currentTemplate.id;
-    if (templateId && datasetStore.rootDataset()) {
-      untrack(() => edit.leave());
-      setContentModeSignal('preview');
-      setIsEditingTemplate(false);
-      setEditAction(null);
-    }
+  const screenTemplateChanged = keyedOn();
+  effect(() => {
+    if (!screenTemplateChanged(templateStore.currentTemplate.id, datasetStore.rootDataset())) return;
+    untrack(() =>
+      batch(() => {
+        edit.leave();
+        setContentModeSignal('preview');
+        setIsEditingTemplate(false);
+        setEditAction(null);
+      }),
+    );
   });
 
   // Chats are about what is being edited, which is not always the template on screen.
-  createEffect(() => {
+  const editedTemplateChanged = keyedOn();
+  effect(() => {
     const templateId = edit.template().id;
-    if (templateId && datasetStore.rootDataset()) void loadSessionsForTemplate(templateId);
+    if (!editedTemplateChanged(templateId, datasetStore.rootDataset())) return;
+    untrack(() => void loadSessionsForTemplate(templateId!));
   });
 
   // Save/restore undo/redo stacks per edited template — keyed with its origin, see `EditTargetPort.key`.
   // Only template entries are persisted — theme entries become stale after a switch.
-  createEffect(() => {
+  effect(() => {
     const newId = edit.key();
     untrack(() => {
+      if (newId === prevTemplateId) return;
       if (prevTemplateId) {
         const undo = undoStack().filter((e) => e.type === 'template');
         const redo = redoStack().filter((e) => e.type === 'template');
@@ -1215,8 +1322,10 @@ export function createEditorStore(
         }
       }
       const cached = newId ? stackCache.get(newId) : undefined;
-      setUndoStack(cached?.undo ?? []);
-      setRedoStack(cached?.redo ?? []);
+      batch(() => {
+        setUndoStack(cached?.undo ?? []);
+        setRedoStack(cached?.redo ?? []);
+      });
       prevTemplateId = newId;
     });
   });
@@ -1235,8 +1344,10 @@ export function createEditorStore(
       edit.template().id === template.id &&
       !!edit.template()._fromSpace === !!template._fromSpace,
     replaced: () => {
-      setUndoStack((prev) => prev.filter((entry) => entry.type !== 'template'));
-      setRedoStack((prev) => prev.filter((entry) => entry.type !== 'template'));
+      batch(() => {
+        changeUndo((prev) => prev.filter((entry) => entry.type !== 'template'));
+        changeRedo((prev) => prev.filter((entry) => entry.type !== 'template'));
+      });
     },
   });
 

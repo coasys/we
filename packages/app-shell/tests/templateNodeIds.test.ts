@@ -9,7 +9,7 @@ import { templateRegistry } from '../src/shared/registries/templateRegistry';
 import { viewRegistry } from '../src/shared/registries/viewRegistry';
 
 const STORE = join(__dirname, '../src/shared/stores/TemplateStore.ts');
-const EDITOR_STORE = join(__dirname, '../src/frameworks/solid/stores/EditorStore.tsx');
+const EDITOR_STORE = join(__dirname, '../src/shared/stores/EditorStore.ts');
 
 /**
  * `node.id` is the visual editor's only handle on the tree.

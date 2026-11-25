@@ -17,6 +17,7 @@ import type { ChatStore } from '@shared/stores/ChatStore';
 import type { ClockStore } from '@shared/stores/ClockStore';
 import type { DatasetStore } from '@shared/stores/DatasetStore';
 import type { DeviceStore } from '@shared/stores/DeviceStore';
+import type { EditorStore } from '@shared/stores/EditorStore';
 import type { EditTargetPort } from '@shared/stores/editTarget';
 import type { IdentityStore } from '@shared/stores/IdentityStore';
 import type { InterpretationStore } from '@shared/stores/InterpretationStore';
@@ -31,7 +32,6 @@ import type { ThemeStore } from '@shared/stores/ThemeStore';
 import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
-import type { EditorStore } from './EditorStore';
 import type { RecordStore } from './RecordStore';
 import type { ShellStore } from './ShellStore';
 import type { SpaceStore } from './SpaceStore';

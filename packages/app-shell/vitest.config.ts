@@ -55,6 +55,9 @@ const SOLID_TESTS = [
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',
   'tests/templateDrafts.test.ts',
+  'tests/editorStore.test.ts',
+  // Draws an editor edit through the real renderer and counts which components mount again.
+  'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
   // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
   // `MessageEvent`s — the DOM is what is under test.
