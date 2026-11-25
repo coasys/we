@@ -7703,7 +7703,7 @@
                                                                     "variant": "solid",
                                                                     "disabled": { "$": "!local.name" },
                                                                     "onClick": {
-                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                      "$invoke": "ops.core.createSignalType",
                                                                       "args": [
                                                                         {
                                                                           "name": { "$": "local.name" },
@@ -9990,7 +9990,7 @@
                                                                                                                       "$": "!local.name"
                                                                                                                     },
                                                                                                                     "onClick": {
-                                                                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                                                                      "$invoke": "ops.core.createSignalType",
                                                                                                                       "args": [
                                                                                                                         {
                                                                                                                           "name": {
@@ -12514,7 +12514,7 @@
                                                                                                                               "$": "!local.name"
                                                                                                                             },
                                                                                                                             "onClick": {
-                                                                                                                              "$invoke": "spaceStore.createSignalType",
+                                                                                                                              "$invoke": "ops.core.createSignalType",
                                                                                                                               "args": [
                                                                                                                                 {
                                                                                                                                   "name": {
@@ -15154,7 +15154,7 @@
                                                                                                                                                                       "$": "!local.name"
                                                                                                                                                                     },
                                                                                                                                                                     "onClick": {
-                                                                                                                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                                                                                                                      "$invoke": "ops.core.createSignalType",
                                                                                                                                                                       "args": [
                                                                                                                                                                         {
                                                                                                                                                                           "name": {
@@ -17798,7 +17798,7 @@
                                                                                                                                                                                                               "$": "!local.name"
                                                                                                                                                                                                             },
                                                                                                                                                                                                             "onClick": {
-                                                                                                                                                                                                              "$invoke": "spaceStore.createSignalType",
+                                                                                                                                                                                                              "$invoke": "ops.core.createSignalType",
                                                                                                                                                                                                               "args": [
                                                                                                                                                                                                                 {
                                                                                                                                                                                                                   "name": {

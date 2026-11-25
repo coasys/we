@@ -7529,7 +7529,7 @@ export const seedBundles: Bundle[] = [
                                                                       variant: 'solid',
                                                                       disabled: { $: '!local.name' },
                                                                       onClick: {
-                                                                        $invoke: 'spaceStore.createSignalType',
+                                                                        $invoke: 'ops.core.createSignalType',
                                                                         args: [
                                                                           {
                                                                             name: { $: 'local.name' },
@@ -10252,7 +10252,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                           onClick:
                                                                                                                             {
                                                                                                                               $invoke:
-                                                                                                                                'spaceStore.createSignalType',
+                                                                                                                                'ops.core.createSignalType',
                                                                                                                               args: [
                                                                                                                                 {
                                                                                                                                   name: {
@@ -13288,7 +13288,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     onClick:
                                                                                                                                       {
                                                                                                                                         $invoke:
-                                                                                                                                          'spaceStore.createSignalType',
+                                                                                                                                          'ops.core.createSignalType',
                                                                                                                                         args: [
                                                                                                                                           {
                                                                                                                                             name: {
@@ -16625,7 +16625,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                   onClick:
                                                                                                                                                                                                     {
                                                                                                                                                                                                       $invoke:
-                                                                                                                                                                                                        'spaceStore.createSignalType',
+                                                                                                                                                                                                        'ops.core.createSignalType',
                                                                                                                                                                                                       args: [
                                                                                                                                                                                                         {
                                                                                                                                                                                                           name: {
@@ -20062,7 +20062,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                             onClick:
                                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                                 $invoke:
-                                                                                                                                                                                                                                                                  'spaceStore.createSignalType',
+                                                                                                                                                                                                                                                                  'ops.core.createSignalType',
                                                                                                                                                                                                                                                                 args: [
                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                     name: {
