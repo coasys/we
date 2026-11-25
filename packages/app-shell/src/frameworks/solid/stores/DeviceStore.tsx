@@ -217,7 +217,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const encMismatch = () => !!identity.custody()?.encMismatch;
   // The record's names cannot have been read here then: whatever came is not this computer's to show.
   const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
-  // A phone's custody service answers for the phone, not for the executor's computer it reaches.
+  // A phone's custody service answers for the phone, not for the computer it reaches.
   const here = createMemo(() => custodyDevice(identity.custody()));
   const rows = createMemo(() =>
     deviceRows(
@@ -253,7 +253,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       return 'failed';
     }
     if (unlinking()) return 'cancelled';
-    // `unlinkSelf` retires the key of the executor reached, which on a phone is another device's.
+    // `unlinkSelf` retires the key of the backend reached, which on a phone is another device's.
     if (here()) {
       setConfirmingUnlink(false);
       setError("This phone can't unlink itself from here.");

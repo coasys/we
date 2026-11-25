@@ -205,9 +205,8 @@ export interface IdentityCustodyView {
   masterWaiting: boolean;
   /**
    * The device the custody service answers for, where it is not the backend's own: a phone that
-   * reaches a computer's executor keeps its own key, so that key, not the executor's, is this
-   * device. `null` where the custody service runs beside the backend (the desktop), whose own key
-   * `IdentityStatusView.keyId` and `DeviceKeyView.thisDevice` already name.
+   * reaches a computer's node keeps its own key, so that key, not the node's, is this device. `null` where
+   * the custody service runs beside the backend (the desktop), whose own key `IdentityStatusView.keyId` and `DeviceKeyView.thisDevice` already name.
    */
   thisDevice?: CustodyDeviceView | null;
   /**

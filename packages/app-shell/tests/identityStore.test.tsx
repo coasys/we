@@ -451,8 +451,8 @@ describe('deviceStore', () => {
     expect(stores.devices.canManage()).toBe(true);
   });
 
-  it('on a phone, marks the phone’s key and not the key of the computer whose executor it reaches', async () => {
-    // The executor is the computer's (d1, which it marks as its own); the phone's custody is d2.
+  it('on a phone, marks the phone’s key and not the key of the computer it reaches', async () => {
+    // The backend is the computer's (d1, which it marks as its own); the phone's custody is d2.
     const b = backend({ did: DID, events: [incept, add], devices });
     const state: IdentityCustodyView = {
       ...NO_CUSTODY,
@@ -476,7 +476,7 @@ describe('deviceStore', () => {
       ['Created identity', 'with d1'],
     ]);
     expect(deviceStore.requests()[0].title).toBe('Desktop asks to remove This phone');
-    // `unlinkSelf` would retire the executor's key (d1), not the phone's: the phone's row offers no unlink,
+    // `unlinkSelf` would retire the backend's key (d1), not the phone's: the phone's row offers no unlink,
     // and neither the confirm nor the call can be reached.
     expect(deviceStore.devices().map((d) => [d.keyId, d.canUnlink])).toEqual([
       ['d2', false],

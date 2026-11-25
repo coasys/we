@@ -348,8 +348,8 @@ describe('requestRows', () => {
 });
 
 /**
- * Where this device is: on the desktop the custody service runs beside the executor, which marks its
- * own key; on a phone the custody service answers for the phone, which reaches a computer's executor.
+ * Where this device is: on the desktop the custody service runs beside the backend, which marks its
+ * own key; on a phone the custody service answers for the phone, which reaches a computer's backend.
  */
 describe('this device, on a phone and on a desktop', () => {
   const custody = (thisDevice: IdentityCustodyView['thisDevice']): IdentityCustodyView => ({
@@ -364,7 +364,7 @@ describe('this device, on a phone and on a desktop', () => {
     thisDevice,
     encMismatch: false,
   });
-  // The executor is the laptop's (d1), and marks d1 as its own; the phone is d2.
+  // The backend is the laptop's (d1), and marks d1 as its own; the phone is d2.
   const keys = [
     { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
     { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
@@ -376,7 +376,7 @@ describe('this device, on a phone and on a desktop', () => {
   ];
   const NOW = 1_800_000_000;
 
-  it('a desktop names nothing of its own, and the executor’s key stays this computer', () => {
+  it('a desktop names nothing of its own, and the backend’s key stays this computer', () => {
     expect(custodyDevice(custody(null))).toBeNull();
     expect(custodyDevice(custody(undefined))).toBeNull();
     expect(custodyDevice(null)).toBeNull();
@@ -390,7 +390,7 @@ describe('this device, on a phone and on a desktop', () => {
     expect(rows).toEqual(deviceRows(keys, names, [], null, NOW));
   });
 
-  it('a phone is this device, and the computer whose executor it reaches is one more device', () => {
+  it('a phone is this device, and the computer it reaches is one more device', () => {
     const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
     expect(here).toEqual({ keyId: 'd2', label: 'This phone', icon: 'device-mobile' });
     const rows = deviceRows(keys, names, [], null, NOW, here);
@@ -446,7 +446,7 @@ describe('this device, on a phone and on a desktop', () => {
     });
     expect(servingDevice([], [], null).label).toBe('This computer');
 
-    // A phone: the executor it signs in to marks d1, the laptop, which the record names.
+    // A phone: the backend it signs in to marks d1, the laptop, which the record names.
     const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
     expect(servingDevice(keys, names, here)).toEqual({
       label: 'Laptop',
