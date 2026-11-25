@@ -209,6 +209,59 @@ describe('the revoke confirm screen', () => {
   });
 });
 
+describe('the time a revoke is retried from', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  const restoreThen = (keyIds: string[]) =>
+    openOn(
+      [
+        {
+          screen: 'rotated-not-revoked',
+          index: 1,
+          keyIds,
+          names: keyIds.map(() => null),
+          reason: 'The device list could not be written.',
+          needsWords: false,
+        },
+        { screen: 'failed', message: 'stop here' },
+      ],
+      {
+        screen: 'restore-devices',
+        did: 'did:scid:coasys:1:Qm',
+        devices: [
+          { keyId: 'd2', name: 'Phone', kind: 'app', lockOut: true },
+          { keyId: 'd3', name: 'Laptop', kind: 'app', lockOut: true },
+        ],
+        note: null,
+      },
+    );
+  const press = (label: string) =>
+    Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent === label)!
+      .click();
+
+  it("after a restore, starts from the restore's time for the devices it locked out", async () => {
+    const sent = await restoreThen(['d3', 'd2']);
+    picker().value = '2026-11-20T08:00';
+    press('Restore');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Devices not revoked yet'));
+
+    expect(picker().value).toBe('2026-11-20T08:00');
+    press('Revoke now');
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(sent[1]).toEqual({ kind: 'retry-revoke', since: new Date(2026, 10, 20, 8, 0).getTime() });
+  });
+
+  it('starts empty for devices the time was not picked for', async () => {
+    await restoreThen(['d4']);
+    picker().value = '2026-11-20T08:00';
+    press('Restore');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Device not revoked yet'));
+
+    expect(picker().value).toBe('');
+  });
+});
+
 describe('"Also replace master key"', () => {
   beforeEach(() => document.body.replaceChildren());
 
