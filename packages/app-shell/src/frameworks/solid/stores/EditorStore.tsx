@@ -13,6 +13,7 @@ import { agentTurns } from '@shared/agentTurns';
 import { isEditorChord, pressEditorChord } from '@shared/editorChord';
 import { registerHostDockStore, unregisterHostDockStore } from '@shared/registries/dockRegistry';
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
+import type { EditTargetPort } from '@shared/stores/editTarget';
 import { sameTemplateContent } from '@shared/templateSync';
 import { deepClone } from '@shared/utils';
 import { type EditingTheme } from '@solid/stores';
@@ -37,7 +38,6 @@ import {
   startChat,
 } from '../../../shared/editorChats';
 import { firstScreen } from '../firstScreen';
-import type { EditTargetPort } from './editTarget';
 import type { StoreRegistry } from './useStore';
 
 export interface ChatMessage {

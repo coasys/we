@@ -78,7 +78,6 @@ import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
-import { useEditTarget } from '../stores/editTarget';
 import { useStore } from '../stores/useStore';
 import { buildRoutes } from '../utils/buildRoutes';
 
@@ -97,7 +96,7 @@ export default function TemplateProvider() {
   const themeStore = useStore('themeStore');
   const templateStore = useStore('templateStore');
   /** What the editor edits — the app is an edit surface only while it is the target. */
-  const editTarget = useEditTarget();
+  const editTarget = useStore('editTarget');
   const routeStore = useStore('routeStore');
   const shellStore = useStore('shellStore');
   const chatStore = useStore('chatStore');

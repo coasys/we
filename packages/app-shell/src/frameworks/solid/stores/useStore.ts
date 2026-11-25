@@ -11,6 +11,7 @@
  * the AI context describes `spaceStore`. One name per store, whichever side reaches for it.
  */
 import type { AppStore } from '@shared/stores/AppStore';
+import type { EditTargetPort } from '@shared/stores/editTarget';
 import type { RouteStore } from '@shared/stores/RouteStore';
 import { createContext, useContext } from 'solid-js';
 
@@ -35,7 +36,7 @@ import type { TemplateStore } from './TemplateStore';
 import type { ThemeStore } from './ThemeStore';
 import type { WorkflowStore } from './WorkflowStore';
 
-/** Every app-lifetime store the host composes, by name. */
+/** Every app-lifetime store the host composes, by name, and the edit target composed with them. */
 export interface StoreRegistry {
   accountStore: AccountStore;
   appStore: AppStore;
@@ -45,6 +46,12 @@ export interface StoreRegistry {
   datasetStore: DatasetStore;
   deviceStore: DeviceStore;
   editorStore: EditorStore;
+  /**
+   * Not a store: what the editing session edits, the editor's own plumbing (`editTarget.ts`).
+   * Composed with the stores and reached the same way; no template bag is built from this registry,
+   * so no template can name it.
+   */
+  editTarget: EditTargetPort;
   identityStore: IdentityStore;
   interpretationStore: InterpretationStore;
   presenceStore: PresenceStore;

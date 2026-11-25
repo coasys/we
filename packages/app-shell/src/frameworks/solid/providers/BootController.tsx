@@ -16,6 +16,7 @@
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
 import { createAppStore } from '@shared/stores/AppStore';
+import { createEditTarget } from '@shared/stores/editTarget';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -29,7 +30,6 @@ import { createClockStore } from '../stores/ClockStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createDeviceStore } from '../stores/DeviceStore';
 import { createEditorStore } from '../stores/EditorStore';
-import { createEditTarget, EditTargetContext } from '../stores/editTarget';
 import { createIdentityStore } from '../stores/IdentityStore';
 import { createInterpretationStore } from '../stores/InterpretationStore';
 import { createPresenceStore } from '../stores/PresenceStore';
@@ -79,8 +79,8 @@ export function BootController(props: ParentProps) {
   const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
   const themeStore = createThemeStore({ sessionStore, datasetStore });
   const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
-  /** What the editing session edits — the editor's plumbing, published to its host adapter. */
-  const editTarget = createEditTarget(templateStore);
+  /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
+  const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
   const editorStore = createEditorStore({
     sessionStore,
     datasetStore,
@@ -136,6 +136,7 @@ export function BootController(props: ParentProps) {
     datasetStore,
     deviceStore,
     editorStore,
+    editTarget,
     identityStore,
     interpretationStore,
     presenceStore,
@@ -154,12 +155,10 @@ export function BootController(props: ParentProps) {
 
   return (
     <StoreRegistryContext.Provider value={stores}>
-      <EditTargetContext.Provider value={editTarget}>
-        {/* The editor's host port is built from every store above, so it sits inside the registry.
-            It provides only a context, so a deployment that ships no editing surface pays a context
-            and nothing else. */}
-        <EditorHostAdapter>{props.children}</EditorHostAdapter>
-      </EditTargetContext.Provider>
+      {/* The editor's host port is built from every store above, so it sits inside the registry.
+          It provides only a context, so a deployment that ships no editing surface pays a context
+          and nothing else. */}
+      <EditorHostAdapter>{props.children}</EditorHostAdapter>
     </StoreRegistryContext.Provider>
   );
 }

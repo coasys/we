@@ -9,13 +9,24 @@
  * through that name rather than through `currentTemplate`.
  *
  * Not members of the editor store, which is public API every template can reach: this is the
- * editor's own plumbing, published to the editor's host adapter through a context of its own.
+ * editor's own plumbing. It is composed with the stores at `BootController` and reached the way
+ * they are, as `editTarget` in the registry, which no template bag is built from.
  */
-import { appTemplateRegistry } from '@shared/registries/appTemplates';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { TemplateSchema } from '@we/schema-shared';
-import { type Accessor, createContext, createSignal, useContext } from 'solid-js';
 
-import type { TemplateStore } from './TemplateStore';
+import { appTemplateRegistry } from '../registries/appTemplates';
+
+/** What the edit target asks of the template store: the template on screen, and working copies. */
+export interface EditTargetTemplates {
+  readonly currentTemplate: TemplateSchema;
+  updateTemplate: (next: TemplateSchema) => void;
+  openDraft: (template: TemplateSchema) => TemplateSchema;
+  updateDraft: (draft: TemplateSchema, next: TemplateSchema) => void;
+  closeDraft: (draft: TemplateSchema) => void;
+  persistTemplate: (template: TemplateSchema) => Promise<void>;
+  isBuiltInTemplateId: (id: string) => boolean;
+}
 
 /**
  * The template on screen, or a section the shell on screen draws — edited through its working copy,
@@ -51,14 +62,22 @@ export interface EditTargetPort {
   key: () => string;
 }
 
-export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
-  const [target, setTarget] = createSignal<EditTarget>({ kind: 'screen' });
+export function createEditTarget({
+  reactivity,
+  templateStore,
+}: {
+  reactivity: Pick<ReactivityPort, 'signal' | 'untrack'>;
+  templateStore: EditTargetTemplates;
+}): EditTargetPort {
+  const { signal, untrack } = reactivity;
+  const [target, setTarget] = signal<EditTarget>({ kind: 'screen' });
+  // An action reads the target untracked, so an effect that calls one does not come to depend on it.
   const template = (): TemplateSchema => {
     const now = target();
     return now.kind === 'screen' ? templateStore.currentTemplate : now.draft;
   };
   const leave = () => {
-    const now = target();
+    const now = untrack(target);
     if (now.kind !== 'screen') templateStore.closeDraft(now.draft);
     setTarget({ kind: 'screen' });
   };
@@ -75,7 +94,7 @@ export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
     leave,
     template,
     update: (next) => {
-      const now = target();
+      const now = untrack(target);
       if (now.kind === 'screen') templateStore.updateTemplate(next);
       else templateStore.updateDraft(now.draft, next);
     },
@@ -95,12 +114,4 @@ export function createEditTarget(templateStore: TemplateStore): EditTargetPort {
       return `${edited._fromSpace ? 'space' : 'own'}:${edited.id ?? ''}`;
     },
   };
-}
-
-export const EditTargetContext = createContext<EditTargetPort>();
-
-export function useEditTarget(): EditTargetPort {
-  const ctx = useContext(EditTargetContext);
-  if (!ctx) throw new Error('useEditTarget must be used beneath BootController, which composes the edit target');
-  return ctx;
 }
