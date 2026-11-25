@@ -22,6 +22,7 @@ import { createClockStore } from '@shared/stores/ClockStore';
 import { createDeviceStore } from '@shared/stores/DeviceStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createIdentityStore } from '@shared/stores/IdentityStore';
+import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { trace } from '@we/backend-shared';
@@ -32,7 +33,6 @@ import { firstScreen } from '../firstScreen';
 import { createBundleStore } from '../stores/BundleStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createEditorStore } from '../stores/EditorStore';
-import { createInterpretationStore } from '../stores/InterpretationStore';
 import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
@@ -120,7 +120,14 @@ export function BootController(props: ParentProps) {
   // Beside presence, and for the same reasons: it follows the current dataset, reads the same
   // ephemeral port, and has to outlive the panel that started a pass — a call bar is still showing
   // an extraction after the transcript panel closes.
-  const interpretationStore = createInterpretationStore({ sessionStore, datasetStore, profileStore, spaceStore });
+  const interpretationStore = createInterpretationStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    sessionStore,
+    datasetStore,
+    profileStore,
+    spaceStore,
+  });
   // After the space store, whose task states, involvement kinds, archive list and administrator it reads.
   const workflowStore = createWorkflowStore({ sessionStore, datasetStore, spaceStore, shapeStore });
   // After every store an install writes through — templates, themes, record types, modules,

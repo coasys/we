@@ -26,8 +26,8 @@ const SOLID_TESTS = [
   'tests/firstScreenDeferral.test.tsx',
   // The same gate and store: this agent's own profile, asked for before `me()` answered.
   'tests/firstScreenOwnProfile.test.tsx',
-  // Mounts the interpretation store under the held gate and watches what it tells modules.
-  'tests/firstScreenInterpretation.test.tsx',
+  // The interpretation store under a held gate, under both ports: what it tells modules.
+  'tests/interpretationStore.test.ts',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
   // build, where `createEffect` never runs again — so every count would be 1 and the test would
   // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.

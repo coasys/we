@@ -20,7 +20,7 @@ export {
   type InterpretationActivityView,
   type InterpretationStore,
   createInterpretationStore,
-} from './InterpretationStore';
+} from '../../../shared/stores/InterpretationStore';
 export { type PresenceStore, type PresentAgent, createPresenceStore } from '../../../shared/stores/PresenceStore';
 export { type ShellStore, createShellStore } from './ShellStore';
 export { type ChatOpen, type ChatStore, createChatStore } from '../../../shared/stores/ChatStore';

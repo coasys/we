@@ -22,11 +22,13 @@
  * formatting, so "0:42" and "Found 3 tasks" are unreachable from a template — the same reason
  * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
  */
-import { watchPassRecord } from '@shared/interpretation/activityView';
-import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
-import { holdSubscription } from '@shared/utils';
-import { firstScreen } from '@solid/firstScreen';
-import type { InterpretationActivity, InterpretationPhase, InterpretationRelay } from '@we/backend-shared';
+import type {
+  AgentProfileSummary,
+  BackendPorts,
+  InterpretationActivity,
+  InterpretationPhase,
+  InterpretationRelay,
+} from '@we/backend-shared';
 import {
   byActivityInterest,
   createInterpretationRelay,
@@ -35,9 +37,28 @@ import {
   isSettled,
   trace,
 } from '@we/backend-shared';
-import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+import type { DatasetProxy } from '@we/entities';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import type { StoreRegistry } from './useStore';
+import type { FirstScreen } from '../firstScreen';
+import { watchPassRecord } from '../interpretation/activityView';
+import { provideModuleHostServices } from '../registries/moduleHostServices';
+import { formatJson } from '../sources/formatJson';
+import { holdSubscription } from '../utils';
+
+/** What the interpretation store reads of the stores it is built from. */
+export interface InterpretationStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: the probe and the watches wait for the first screen. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  sessionStore: {
+    me: Accessor<{ did?: string } | undefined>;
+    backendPorts: Accessor<Pick<BackendPorts, 'interpretation' | 'ephemeral'> | null>;
+  };
+  datasetStore: { currentDataset: Accessor<{ handle: DatasetProxy } | null> };
+  profileStore: { profiles: Accessor<AgentProfileSummary[]>; fetchProfile: (did: string) => Promise<void> };
+  spaceStore: { autoInterpret: Accessor<boolean>; autoInterpretFor: (collectionId: string) => boolean };
+}
 
 /** One pass, ready to render — every field a string or a boolean a schema can read directly. */
 export interface InterpretationActivityView {
@@ -114,28 +135,6 @@ export interface InterpretationStore {
 }
 
 /**
- * Indented if it is JSON, left alone if it is not.
- *
- * Both halves of the exchange are JSON. The response is parsed into proposed instances; the prompt
- * is the object `build_interpretation_input` assembles from the transcript, the target shapes and
- * their hints. Both arrive as one unbroken line, which is unreadable at any width and overflows
- * whatever it is put in — indenting is what makes each a document rather than a string.
- *
- * Left verbatim when it will not parse, and that case is worth keeping rather than swallowing: a
- * model that returned prose, or JSON wrapped in a code fence, is exactly the failure somebody opens
- * this pane to diagnose. Showing them the raw text answers the question; showing them nothing, or a
- * parse error, does not.
- */
-function formatJson(raw: string): string {
-  if (!raw) return '';
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
-  } catch {
-    return raw;
-  }
-}
-
-/**
  * How long a pass must have been running before its prompt is worth offering.
  *
  * A caret on every running row was unusable in practice: on a fast model the pass completes before
@@ -186,17 +185,19 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
 /** How long a burst of staged-suggestion changes is gathered before modules are told to re-read. */
 const PROPOSALS_COALESCE_MS = 250;
 
-export function createInterpretationStore(
-  deps: Pick<StoreRegistry, 'datasetStore' | 'profileStore' | 'sessionStore' | 'spaceStore'>,
-): InterpretationStore {
-  const session = deps.sessionStore;
-  const datasetStore = deps.datasetStore;
-  const profileStore = deps.profileStore;
-  const spaceStore = deps.spaceStore;
+export function createInterpretationStore({
+  reactivity,
+  firstScreen,
+  sessionStore: session,
+  datasetStore,
+  profileStore,
+  spaceStore,
+}: InterpretationStoreDeps): InterpretationStore {
+  const { signal, memo, effect, untrack, onCleanup } = reactivity;
 
-  const [rows, setRows] = createSignal<InterpretationActivity[]>([]);
-  const [now, setNow] = createSignal(Date.now());
-  const [dismissed, setDismissed] = createSignal<string[]>([]);
+  const [rows, setRows] = signal<InterpretationActivity[]>([]);
+  const [now, setNow] = signal(Date.now());
+  const [dismissed, setDismissed] = signal<string[]>([]);
   /*
     Whether this node can interpret at all, as opposed to having no model configured.
 
@@ -204,7 +205,12 @@ export function createInterpretationStore(
     feature for the round trip it takes to answer, on every space change, including on every node
     that can interpret perfectly well.
   */
-  const [capable, setCapable] = createSignal(true);
+  const [capable, writeCapable] = signal(true);
+  // Compared first: it is reset to true on every space change, nearly always from true, and modules
+  // read it inside derived values. Whether an equal write wakes them is not the port's to say.
+  const setCapable = (value: boolean) => {
+    if (untrack(capable) !== value) writeCapable(value);
+  };
   /*
     Bumped whenever the staged suggestions in this space may have changed, by anybody.
 
@@ -212,7 +218,9 @@ export function createInterpretationStore(
     time, and only it knows which it is showing. What this store can do that a module cannot is hold
     the subscription for the space's lifetime.
   */
-  const [proposalsRevision, setProposalsRevision] = createSignal(0);
+  const [proposalsRevision, writeProposalsRevision] = signal(0);
+  // Read untracked: it is bumped from inside the space effect, which must not come to depend on it.
+  const bumpProposalsRevision = () => writeProposalsRevision(untrack(proposalsRevision) + 1);
 
   let relay: InterpretationRelay | null = null;
   /** The space and connection the revision was last bumped for — see the effect below. */
@@ -225,7 +233,7 @@ export function createInterpretationStore(
     user is no longer looking at, and every one of them is about to go stale with nobody there to
     watch it happen.
   */
-  createEffect(() => {
+  effect(() => {
     const handle = datasetStore.currentDataset()?.handle;
     const ports = session.backendPorts();
 
@@ -242,7 +250,7 @@ export function createInterpretationStore(
     // a bump then made the Feed read its whole window again for suggestions that had not moved.
     if (revisedFor?.handle !== handle || revisedFor?.ports !== ports) {
       revisedFor = { handle, ports };
-      setProposalsRevision((n) => n + 1);
+      bumpProposalsRevision();
     }
 
     /*
@@ -359,7 +367,7 @@ export function createInterpretationStore(
     const stopProposals = holdSubscription(
       ports.interpretation.onProposalsChanged?.(handle, () => {
         clearTimeout(coalesce);
-        coalesce = setTimeout(() => setProposalsRevision((n) => n + 1), PROPOSALS_COALESCE_MS);
+        coalesce = setTimeout(() => bumpProposalsRevision(), PROPOSALS_COALESCE_MS);
       }),
       (error) => {
         // Settling still works without it; peers' screens just catch up on the next pass, as before.
@@ -388,7 +396,7 @@ export function createInterpretationStore(
     without a tick, a peer who closed their laptop mid-pass would leave a row sitting there until
     something unrelated changed.
   */
-  createEffect(() => {
+  effect(() => {
     if (!rows().some((row) => !isSettled(row.phase))) return;
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -406,7 +414,7 @@ export function createInterpretationStore(
    */
   const startedAt = new Map<string, number>();
 
-  const activity = createMemo<InterpretationActivityView[]>(() => {
+  const activity = memo<InterpretationActivityView[]>(() => {
     const me = session.me()?.did;
     const at = now();
     const hidden = new Set(dismissed());
@@ -437,8 +445,8 @@ export function createInterpretationStore(
           elapsed: running ? formatElapsed(at - (startedAt.get(row.passId) ?? row.at)) : '',
           finishedAt: running ? '' : new Date(row.at).toISOString(),
           detail: row.detail ?? '',
-          prompt: formatJson(row.llm?.prompt ?? ''),
-          response: formatJson(row.llm?.response ?? ''),
+          prompt: formatJson({ text: row.llm?.prompt ?? '' }),
+          response: formatJson({ text: row.llm?.response ?? '' }),
           hasDetail: !!(row.llm?.prompt || row.llm?.response),
           openable:
             !!(row.llm?.prompt || row.llm?.response) &&
@@ -453,7 +461,7 @@ export function createInterpretationStore(
     The store never blocks on this: an unresolved runner renders as "Someone" and becomes a name a
     moment later, which is the same degradation every other agent-facing surface here accepts.
   */
-  createEffect(() => {
+  effect(() => {
     for (const row of rows()) if (row.runner) void profileStore.fetchProfile(row.runner);
   });
 
@@ -489,11 +497,11 @@ export function createInterpretationStore(
     }),
   );
 
-  const runningCount = createMemo(() => activity().filter((row) => row.running).length);
-  const hasActivity = createMemo(() => activity().length > 0);
-  const runningPasses = createMemo(() => activity().filter((row) => row.running));
-  const settledPasses = createMemo(() => activity().filter((row) => !row.running));
-  const settledCount = createMemo(() => activity().filter((row) => !row.running).length);
+  const runningCount = memo(() => activity().filter((row) => row.running).length);
+  const hasActivity = memo(() => activity().length > 0);
+  const runningPasses = memo(() => activity().filter((row) => row.running));
+  const settledPasses = memo(() => activity().filter((row) => !row.running));
+  const settledCount = memo(() => activity().filter((row) => !row.running).length);
 
   const store: InterpretationStore = {
     activity,
