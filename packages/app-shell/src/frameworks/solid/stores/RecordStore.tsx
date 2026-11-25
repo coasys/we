@@ -64,6 +64,7 @@ import {
 import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
+import { solidReactivity } from '@we/reactivity-solid';
 import {
   Accessor,
   batch,
@@ -2359,7 +2360,7 @@ export function RecordStoreProvider(props: ParentProps) {
     each answers for itself. The patch-per-record shape survives only as {@link pendingCardStyle},
     which is what the graph host draws from.
   */
-  const cardStyle = createOptimism<unknown>(createSignal, { same: sameValue });
+  const cardStyle = createOptimism<unknown>(solidReactivity.signal, { same: sameValue });
 
   const hold = (nodeId: string, patch: Record<string, unknown>) => {
     for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
@@ -2392,7 +2393,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * an AD4M delete drops the links, a re-create earns a new id, and everything pointing at the old
    * one breaks silently. `deleteRecords` says as much in the host's own confirmation.
    */
-  const history = createHistory(createSignal);
+  const history = createHistory(solidReactivity.signal);
 
   /** One card's move, with where it came from — `from` is null for a card that was not on the canvas. */
   type CardMove = {
@@ -2543,7 +2544,7 @@ export function RecordStoreProvider(props: ParentProps) {
     | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
     | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
     | { kind: 'removed'; id: string };
-  const connections = createOptimism<string | number>(createSignal, { same: sameValue });
+  const connections = createOptimism<string | number>(solidReactivity.signal, { same: sameValue });
   const connectionHolds = new Map<string, ConnectionHold>();
   let addedSerial = 0;
 

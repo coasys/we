@@ -30,7 +30,8 @@ import {
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
 import { pocketModule } from '@we/module-pocket';
-import { createEffect, createRoot, createSignal } from 'solid-js';
+import { solidReactivity } from '@we/reactivity-solid';
+import { createEffect, createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { heldLive } from './liveRows';
@@ -79,14 +80,9 @@ const gate = vi.hoisted(() => ({
 }));
 vi.mock('../src/frameworks/solid/firstScreen', async () => {
   const { createFirstScreen } = await import('../src/shared/firstScreen');
-  const { createSignal } = await import('solid-js');
+  const { solidReactivity } = await import('@we/reactivity-solid');
   gate.reset = () => {
-    gate.current = createFirstScreen({
-      signal: <T,>(initial: T): [() => T, (next: T) => void] => {
-        const [read, write] = createSignal(initial);
-        return [read, (next: T) => void write(() => next)];
-      },
-    });
+    gate.current = createFirstScreen({ signal: solidReactivity.signal });
   };
   gate.reset();
   return {
@@ -565,7 +561,7 @@ describe('boot', () => {
     const gathered = { entity: 'Post', id: 'p1', ref: 'we:n:somewhere/Post/p1', label: 'A post' };
 
     beforeEach(() => {
-      const deps = createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+      const deps = createModuleStoreDeps(solidReactivity);
       moduleRegistry.register(pocketModule, host, deps);
       moduleRegistry.register(notesModule, host, deps);
       registerCoreBlocks();
@@ -3780,8 +3776,8 @@ describe('what a collection interprets', () => {
   function kernel() {
     const deps = createRoot(() =>
       createModuleStoreDeps({
-        signal: <T,>(initial: T) => createSignal(initial) as unknown as [() => T, (next: T) => void],
-        effect: createEffect,
+        signal: solidReactivity.signal,
+        effect: solidReactivity.effect,
       }),
     );
     return deps.kernels.interpretation!;

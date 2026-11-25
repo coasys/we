@@ -11,11 +11,12 @@ import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { PresentPart } from '@solid/components/PartFrame';
 import { render } from '@solidjs/testing-library';
 import { markAction, type ModuleDefinition } from '@we/module-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import { createSignal } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const host = { backend: 'ad4m', framework: 'solid' };
-const storeDeps = createModuleStoreDeps({ signal: createSignal, effect: (fn: () => void) => fn() });
+const storeDeps = createModuleStoreDeps({ signal: solidReactivity.signal, effect: (fn: () => void) => fn() });
 
 function withWatcher() {
   const calls: unknown[][] = [];

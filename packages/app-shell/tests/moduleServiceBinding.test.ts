@@ -28,6 +28,7 @@ import {
   resetModuleHostServices,
 } from '@shared/registries/moduleHostServices';
 import { liveSurfaceMarks } from '@solid/components/LiveView';
+import { solidReactivity } from '@we/reactivity-solid';
 import { createEffect, createMemo, createRoot, createSignal } from 'solid-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -41,7 +42,7 @@ afterEach(() => {
 });
 
 /** The deps a module gets, wired to Solid exactly as the host wires them. */
-const solidDeps = () => createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+const solidDeps = () => createModuleStoreDeps(solidReactivity);
 
 /** Let Solid's effect queue drain. */
 const settled = () => Promise.resolve();

@@ -11,7 +11,7 @@ import {
   provideModuleHostServices,
   resetModuleHostServices,
 } from '@shared/registries/moduleHostServices';
-import { createSignal } from 'solid-js';
+import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, describe, expect, it } from 'vitest';
 
 afterEach(() => resetModuleHostServices());
@@ -28,7 +28,7 @@ function host() {
       return 0;
     },
   });
-  const deps = createModuleStoreDeps({ signal: createSignal, effect: () => undefined });
+  const deps = createModuleStoreDeps({ signal: solidReactivity.signal, effect: () => undefined });
   const passSettled = (collection: string) => deps.kernels.interpretation!.passSettled!(collection);
   return { finish, started, passSettled };
 }

@@ -16,7 +16,8 @@
  */
 import { createModuleStoreDeps, resetModuleHostServices } from '@shared/registries/moduleHostServices';
 import { liveModule } from '@we/module-live';
-import { createEffect, createRoot, createSignal } from 'solid-js';
+import { solidReactivity } from '@we/reactivity-solid';
+import { createRoot, createSignal } from 'solid-js';
 import { afterEach, describe, expect, it } from 'vitest';
 
 afterEach(() => resetModuleHostServices());
@@ -28,7 +29,7 @@ afterEach(() => resetModuleHostServices());
  * answers arrive: null before login, then a space, then another.
  */
 function build(dataset: () => unknown) {
-  const deps = createModuleStoreDeps({ signal: createSignal, effect: createEffect });
+  const deps = createModuleStoreDeps(solidReactivity);
   const wanted = new Set(liveModule.manifest.requires?.kernels ?? []);
   const kernels = Object.fromEntries(Object.entries(deps.kernels).filter(([name]) => wanted.has(name as never)));
   return liveModule.createStore!({ ...deps, kernels, dataset: dataset as never }) as Record<string, unknown>;
