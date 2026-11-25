@@ -81,8 +81,7 @@ import type {
   UnsupportedCapability,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { type Accessor, batch, createComputed, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
+import { type Accessor, batch, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 
 import type { StoreRegistry } from './useStore';
 
@@ -617,40 +616,21 @@ export function createRuntimeStore(
   const [localStatus, setLocalStatus] = createSignal<LocalAiStatus | null>(null);
   const [localProgress, setLocalProgress] = createSignal<LocalAiProgress | null>(null);
   /*
-    Held in a store and reconciled, rather than a memo handing out a new object each time.
-
-    An install's progress arrives many times a second, and every event re-derives the whole view.
-    As a fresh object, everything the page binds to it was asked again: the plan's rows and the
-    running servers' rows are lists of objects, so each event gave the list new ones and its `$each`
-    took every row down and drew new ones — under a reader who had scrolled down to watch the bar.
-    Reconciled by each row's `key`, an event changes the progress fields and nothing else.
+    A plain view, derived afresh on every event. An install's progress arrives many times a second,
+    and the page under it stays put through the renderer: the plan's rows and the servers' rows carry
+    an `id`, which is what a list's rows are kept by, so an event changes the progress fields and
+    draws nothing again — under a reader who has scrolled down to watch the bar.
   */
-  const [localAiView, setLocalAiView] = createStore<LocalAiView>(
+  const localAi = createMemo<LocalAiView>(() =>
     describeLocalAi({
-      hardware: null,
-      plan: null,
-      status: null,
-      progress: null,
-      installingHere: false,
-      operator: false,
+      hardware: localHardware(),
+      plan: localPlan(),
+      status: localStatus(),
+      progress: localProgress(),
+      installingHere: pending().includes('installLocalAi'),
+      operator: canConfigureLocalAi(),
     }),
   );
-  createComputed(() =>
-    setLocalAiView(
-      reconcile(
-        describeLocalAi({
-          hardware: localHardware(),
-          plan: localPlan(),
-          status: localStatus(),
-          progress: localProgress(),
-          installingHere: pending().includes('installLocalAi'),
-          operator: canConfigureLocalAi(),
-        }),
-        { key: 'key' },
-      ),
-    ),
-  );
-  const localAi: Accessor<LocalAiView> = () => localAiView;
 
   const aiSetupOptions = createMemo(() =>
     aiSetupOptionsFor({

@@ -54,7 +54,8 @@ export function computeText(hardware: LocalAiHardware): string {
 
 /** A row of what an install brings: a model or a server program, and how big it is. */
 export interface LocalAiPlanItem {
-  key: string;
+  /** The row's identity, what a page keeps it by while its fields change. */
+  id: string;
   label: string;
   name: string;
   sizeText: string;
@@ -67,7 +68,7 @@ export interface LocalAiPlanItem {
 export function planItems(plan: LocalAiPlan): LocalAiPlanItem[] {
   return [
     ...plan.models.map((model) => ({
-      key: `model:${model.kind}:${model.model}`,
+      id: `model:${model.kind}:${model.model}`,
       label: MODEL_KIND_LABELS[model.kind],
       name: model.model,
       sizeText: model.installed ? 'Downloaded' : sizeText(model.sizeBytes),
@@ -75,7 +76,7 @@ export function planItems(plan: LocalAiPlan): LocalAiPlanItem[] {
       done: model.installed,
     })),
     ...plan.runtimes.map((runtime) => ({
-      key: `runtime:${runtime.id}`,
+      id: `runtime:${runtime.id}`,
       label: 'Model server',
       name: `${runtime.id} ${runtime.version} · ${backendLabel(runtime.backend)}`,
       sizeText: runtime.installed ? 'Downloaded' : sizeText(runtime.sizeBytes),
@@ -161,7 +162,8 @@ export function progressView(progress: LocalAiProgress): LocalAiProgressView {
 
 /** A server program as its row says it: what it serves, how it runs, on what. */
 export interface LocalAiRuntimeView {
-  key: string;
+  /** The server's id: the row's identity, what a page keeps it by while its fields change. */
+  id: string;
   label: string;
   stateText: string;
   /** Running, and on the GPU where a GPU build was checked. */
@@ -194,7 +196,7 @@ export function runtimeView(runtime: LocalAiRuntimeStatus): LocalAiRuntimeView {
   const ok = runtime.phase === 'running' && runtime.onGpu !== false;
   const idle = (!runtime.phase || runtime.phase === 'stopped') && !runtime.detail;
   return {
-    key: runtime.id,
+    id: runtime.id,
     label: `${kindsText(runtime.kinds)} · ${runtime.id} ${runtime.version}${backend ? ` · ${backendLabel(backend)}` : ''}`,
     stateText: parts.join(' · '),
     ok,

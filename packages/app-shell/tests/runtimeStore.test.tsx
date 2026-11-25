@@ -1370,7 +1370,7 @@ describe('local AI on this device', () => {
     expect(store.localAi()).toMatchObject({ installed: true, installing: false, running: true, progress: null });
     expect(store.localAi().runtimes).toEqual([
       {
-        key: 'llama-server',
+        id: 'llama-server',
         label: 'Language model · llama-server b1 · Vulkan',
         stateText: 'Running · on the GPU (3.0 GB)',
         ok: true,
