@@ -35,6 +35,8 @@ const SOLID_TESTS = [
   // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
   // so the Solid port's effects re-run at all.
   'tests/routeStore.test.ts',
+  // The same, for following a live query: a page arriving must wake the port's effects.
+  'tests/followLive.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',
