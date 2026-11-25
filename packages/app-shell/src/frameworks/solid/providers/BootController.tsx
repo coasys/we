@@ -28,6 +28,7 @@ import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createProfileStore } from '@shared/stores/ProfileStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
+import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { createShapeStore } from '@shared/stores/ShapeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
@@ -41,7 +42,6 @@ import { firstScreen } from '../firstScreen';
 import { startAppBridge } from '../services/appBridge';
 import { createEditorStore } from '../stores/EditorStore';
 import { createRecordStore } from '../stores/RecordStore';
-import { createRuntimeStore } from '../stores/RuntimeStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
 import { createTemplateStore } from '../stores/TemplateStore';
@@ -91,7 +91,13 @@ export function BootController(props: ParentProps) {
   });
   // Straight after the session: it reads only the port bundle, and its consent subscription must be
   // live before anything can mount an embedded app that asks for credentials.
-  const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
+  const runtimeStore = createRuntimeStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    platform,
+    sessionStore,
+    shellStore,
+  });
   // Beside Runtime and for the same reason: they read only the port bundle and the host's custody.
   // Identity before devices, whose changes it opens.
   const identityStore = createIdentityStore({ reactivity: solidReactivity, sessionStore });

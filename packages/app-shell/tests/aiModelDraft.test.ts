@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AI_SERVICES,
+  type AiModelForm,
   apiKeyProblem,
   describeDetected,
   describeEndpoint,
@@ -20,6 +21,7 @@ import {
   endpointName,
   modelFormComplete,
   modelFormFrom,
+  sameFields,
   serves,
   toEndpointDraft,
   toModelDraft,
@@ -205,5 +207,17 @@ describe('display strings', () => {
     expect(serves(['qwen3:8b'], 'qwen3:8b')).toBe(true);
     expect(serves(['nomic-embed-text:latest'], 'nomic-embed-text')).toBe(true);
     expect(serves(['qwen3:4b'], 'qwen3:8b')).toBe(false);
+  });
+});
+
+describe('sameFields', () => {
+  it('compares a flat form field by field, an absent field the same as an unset one', () => {
+    const opened: AiModelForm = { name: 'Qwen', kind: 'llm', endpointId: 'e1', remoteModel: 'qwen3:8b' };
+    expect(sameFields({ ...opened }, opened)).toBe(true);
+    expect(sameFields({ ...opened, nativeTools: undefined }, opened)).toBe(true);
+    // Key order is not an edit: the form is the same whichever field was written last.
+    expect(sameFields({ remoteModel: 'qwen3:8b', name: 'Qwen', kind: 'llm', endpointId: 'e1' }, opened)).toBe(true);
+    expect(sameFields({ ...opened, name: 'Other' }, opened)).toBe(false);
+    expect(sameFields(opened, null)).toBe(false);
   });
 });

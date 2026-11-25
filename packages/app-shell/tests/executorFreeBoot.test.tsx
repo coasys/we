@@ -259,7 +259,6 @@ import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
-import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
@@ -277,6 +276,7 @@ import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
+import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
 
@@ -321,7 +321,13 @@ function mountShell(): Stores {
       accountStore,
     });
     // Setting up an account asks it whether there is an AI question, as the real order has it.
-    const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
+    const runtimeStore = createRuntimeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      platform,
+      sessionStore,
+      shellStore,
+    });
     const datasetStore = createDatasetStore({
       reactivity: solidReactivity,
       firstScreen,

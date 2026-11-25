@@ -460,3 +460,15 @@ export function describeDetected(found: AiDetectedEndpoint): AiDetectedView {
 export function sameServer(a: string, b: string): boolean {
   return a.trim().replace(/\/+$/, '') === b.trim().replace(/\/+$/, '');
 }
+
+/**
+ * Whether a form holds what it held when it opened — the question a discard guard asks. A form is
+ * flat, so its fields are compared one by one; a field absent from one and undefined in the other
+ * is the same field unset.
+ */
+export function sameFields<T extends object>(form: T, opened: T | null): boolean {
+  if (!opened) return false;
+  const a = form as Record<string, unknown>;
+  const b = opened as Record<string, unknown>;
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) => Object.is(a[key], b[key]));
+}

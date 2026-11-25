@@ -18,6 +18,7 @@ import { provideModuleHostServices } from '../registries/moduleHostServices';
 import type { Toasts } from '../toasts';
 import { uploadOf } from '../uploadOf';
 import type { AccountStore } from './AccountStore';
+import type { RuntimeStore } from './RuntimeStore';
 import type { SessionStore } from './SessionStore';
 
 export interface ProfileStore {
@@ -130,10 +131,6 @@ function sameProfile(a: AgentProfileSummary | undefined, b: AgentProfileSummary 
 }
 
 /** What the profile store reads of the runtime store: whether a first run asks about AI next. */
-export interface ProfileRuntime {
-  openAiStep: () => Promise<boolean>;
-}
-
 export interface ProfileStoreDeps {
   reactivity: ReactivityPort;
   /** The host's first-screen gate: somebody else's profile waits for it. */
@@ -143,7 +140,7 @@ export interface ProfileStoreDeps {
   /** What a failed write says, and where a module's `notify` lands. */
   toasts: Toasts;
   sessionStore: Pick<SessionStore, 'me' | 'backendPorts' | 'bootState' | 'createAgent' | 'finishSetup'>;
-  runtimeStore: ProfileRuntime;
+  runtimeStore: Pick<RuntimeStore, 'openAiStep'>;
   accountStore: Pick<AccountStore, 'syncDisplay'>;
 }
 

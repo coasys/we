@@ -18,7 +18,7 @@ const SOLID_TESTS = [
   'tests/executorFreeBoot.test.tsx',
   // The real template store, its sibling stores doubled: which space a late read may still answer for.
   'tests/templateStoreSpaceSwitch.test.tsx',
-  'tests/runtimeStore.test.tsx',
+  'tests/runtimeStore.test.ts',
   'tests/accountStore.test.ts',
   'tests/identityStore.test.ts',
   'tests/profileStore.test.ts',

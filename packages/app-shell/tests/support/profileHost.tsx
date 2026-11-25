@@ -29,7 +29,6 @@ import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
-import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
 import { createTemplateStore } from '../../src/frameworks/solid/stores/TemplateStore';
@@ -46,6 +45,7 @@ import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createProfileStore } from '../../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
+import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 import { createShapeStore } from '../../src/shared/stores/ShapeStore';
 
@@ -477,7 +477,13 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       chatStore,
       accountStore,
     });
-    const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
+    const runtimeStore = createRuntimeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      platform,
+      sessionStore,
+      shellStore,
+    });
     const datasetStore = createDatasetStore({
       reactivity: solidReactivity,
       firstScreen,
