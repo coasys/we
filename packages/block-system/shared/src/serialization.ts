@@ -20,6 +20,7 @@ import {
   toPortableText,
   walkBlocks,
 } from './content';
+import { type BlockNode, flattenBlocks } from './kernels/flattenBlocks';
 import { marksField, marksOf, mentionChanges, mentionedDids } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
@@ -603,6 +604,18 @@ interface PlannedBlock {
   parent?: string;
 }
 
+/** The block at `path` — positions from the top down, through each collection's content — or undefined. */
+function blockAt(blocks: readonly ContentBlock[], path: readonly number[]): ContentBlock | undefined {
+  let level: readonly ContentBlock[] | undefined = blocks;
+  let found: ContentBlock | undefined;
+  for (const index of path) {
+    found = level?.[index];
+    if (!found) return undefined;
+    level = isCollectionBlock(found) ? (found.content ?? []) : undefined;
+  }
+  return found;
+}
+
 /**
  * A composer's document as `core.createPost`'s args: what the host works out before the operation
  * runs, because it needs a file store and the block registry, which an operation has neither of.
@@ -627,34 +640,35 @@ export async function planPost(
   const { blocks } = normalizeInput(input);
   const uploaded = await preUploadFileAssets(perspective, blocks);
 
-  const planned: PlannedBlock[] = [];
-  const plan = async (
-    authored: readonly ContentBlock[],
-    stored: readonly ContentBlock[],
-    parent: string | undefined,
-    path: string,
-  ) => {
-    for (let i = 0; i < authored.length; i++) {
-      const block = authored[i];
+  /*
+    The tree as the registry reads it, flattened by the kernel; each block then takes the id its key
+    plans, stamped on the block handed in and on its uploaded copy alike.
+  */
+  const toNodes = (authored: readonly ContentBlock[]): BlockNode[] =>
+    authored.map((block) => {
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
-      if (!registration) continue;
-      const key = path ? `${path}.${i}` : String(i);
-      const id = await postBlockId(invocationId, key, within);
-      block._key = id;
-      if (stored[i]) stored[i]._key = id;
-      planned.push({
-        key,
+      if (!registration) return { fields: {} };
+      return {
         entity: registration.entity,
         fields: modelData(registration.entity, block),
-        ...(parent ? { parent } : {}),
-      });
-      if (isCollectionBlock(block)) {
-        const inner = stored[i];
-        await plan(block.content ?? [], inner && isCollectionBlock(inner) ? (inner.content ?? []) : [], id, key);
-      }
-    }
-  };
-  await plan(blocks, uploaded, undefined, '');
+        ...(isCollectionBlock(block) ? { content: toNodes(block.content ?? []) } : {}),
+      };
+    });
+  const flat = flattenBlocks(toNodes(blocks));
+  const ids = new Map<string, string>();
+  for (const block of flat) ids.set(block.key, await postBlockId(invocationId, block.key, within));
+  const planned: PlannedBlock[] = flat.map((block) => {
+    const id = ids.get(block.key)!;
+    blockAt(blocks, block.path)!._key = id;
+    const stored = blockAt(uploaded, block.path);
+    if (stored) stored._key = id;
+    return {
+      key: block.key,
+      entity: block.entity,
+      fields: block.fields,
+      ...(block.parentKey !== undefined ? { parent: ids.get(block.parentKey)! } : {}),
+    };
+  });
 
   const rootFields = new Set(propertyNames('CollectionBlock'));
   const root: Record<string, unknown> = {

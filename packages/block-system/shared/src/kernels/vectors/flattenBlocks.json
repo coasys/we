@@ -1,0 +1,277 @@
+[
+  {
+    "name": "an empty document",
+    "input": [],
+    "output": []
+  },
+  {
+    "name": "top-level blocks in order",
+    "input": [
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "one"
+        }
+      },
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "two"
+        }
+      },
+      {
+        "entity": "ImageBlock",
+        "fields": {
+          "altText": "a"
+        }
+      }
+    ],
+    "output": [
+      {
+        "key": "0",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "one"
+        },
+        "path": [0]
+      },
+      {
+        "key": "1",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "two"
+        },
+        "path": [1]
+      },
+      {
+        "key": "2",
+        "entity": "ImageBlock",
+        "fields": {
+          "altText": "a"
+        },
+        "path": [2]
+      }
+    ]
+  },
+  {
+    "name": "a collection and what is inside it",
+    "input": [
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "intro"
+        }
+      },
+      {
+        "entity": "CollectionBlock",
+        "fields": {
+          "kind": "group"
+        },
+        "content": [
+          {
+            "entity": "TextBlock",
+            "fields": {
+              "text": "inside"
+            }
+          },
+          {
+            "entity": "TextBlock",
+            "fields": {
+              "text": "also inside"
+            }
+          }
+        ]
+      },
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "outro"
+        }
+      }
+    ],
+    "output": [
+      {
+        "key": "0",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "intro"
+        },
+        "path": [0]
+      },
+      {
+        "key": "1",
+        "entity": "CollectionBlock",
+        "fields": {
+          "kind": "group"
+        },
+        "path": [1]
+      },
+      {
+        "key": "1.0",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "inside"
+        },
+        "parentKey": "1",
+        "path": [1, 0]
+      },
+      {
+        "key": "1.1",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "also inside"
+        },
+        "parentKey": "1",
+        "path": [1, 1]
+      },
+      {
+        "key": "2",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "outro"
+        },
+        "path": [2]
+      }
+    ]
+  },
+  {
+    "name": "collections nested two deep",
+    "input": [
+      {
+        "entity": "CollectionBlock",
+        "fields": {},
+        "content": [
+          {
+            "entity": "CollectionBlock",
+            "fields": {},
+            "content": [
+              {
+                "entity": "TextBlock",
+                "fields": {
+                  "text": "deep"
+                }
+              }
+            ]
+          },
+          {
+            "entity": "TextBlock",
+            "fields": {
+              "text": "beside"
+            }
+          }
+        ]
+      }
+    ],
+    "output": [
+      {
+        "key": "0",
+        "entity": "CollectionBlock",
+        "fields": {},
+        "path": [0]
+      },
+      {
+        "key": "0.0",
+        "entity": "CollectionBlock",
+        "fields": {},
+        "parentKey": "0",
+        "path": [0, 0]
+      },
+      {
+        "key": "0.0.0",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "deep"
+        },
+        "parentKey": "0.0",
+        "path": [0, 0, 0]
+      },
+      {
+        "key": "0.1",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "beside"
+        },
+        "parentKey": "0",
+        "path": [0, 1]
+      }
+    ]
+  },
+  {
+    "name": "an unknown block keeps its position, so the next key does not move",
+    "input": [
+      {
+        "fields": {}
+      },
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "after"
+        }
+      }
+    ],
+    "output": [
+      {
+        "key": "1",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "after"
+        },
+        "path": [1]
+      }
+    ]
+  },
+  {
+    "name": "an unknown block takes what is under it with it",
+    "input": [
+      {
+        "fields": {},
+        "content": [
+          {
+            "entity": "TextBlock",
+            "fields": {
+              "text": "lost"
+            }
+          }
+        ]
+      },
+      {
+        "entity": "TextBlock",
+        "fields": {
+          "text": "kept"
+        }
+      }
+    ],
+    "output": [
+      {
+        "key": "1",
+        "entity": "TextBlock",
+        "fields": {
+          "text": "kept"
+        },
+        "path": [1]
+      }
+    ]
+  },
+  {
+    "name": "an empty collection",
+    "input": [
+      {
+        "entity": "CollectionBlock",
+        "fields": {
+          "kind": "group"
+        },
+        "content": []
+      }
+    ],
+    "output": [
+      {
+        "key": "0",
+        "entity": "CollectionBlock",
+        "fields": {
+          "kind": "group"
+        },
+        "path": [0]
+      }
+    ]
+  }
+]
