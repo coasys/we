@@ -20,31 +20,40 @@
  * A seed's bundles are built in rather than installed (see `seedBundles.ts`), so they are never asked
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
  */
-import { type BootSnapshot, selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
-import { currentProductName } from '@shared/bundles/brand';
-import { syncBundleOperations } from '@shared/bundles/bundleOperations';
-import { bundlePieces } from '@shared/bundles/bundlePieces';
-import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
+import type { WorkflowDefinition } from '@we/backend-shared';
+import type { ThemeData } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+import {
+  type Bundle,
+  type BundleRecordType,
+  type BundleTheme,
+  readBundle,
+  type TemplateSchema,
+} from '@we/schema-shared';
+
+import { selectBootSnapshot, writeBootSnapshot } from '../bundles/bootSnapshot';
+import { currentProductName } from '../bundles/brand';
+import { syncBundleOperations } from '../bundles/bundleOperations';
+import { bundlePieces } from '../bundles/bundlePieces';
+import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '../bundles/consent';
 import {
   installedEntry,
   installedThemes,
   readInstalledBundles,
   withInstalled,
   withoutInstalled,
-} from '@shared/bundles/installedBundles';
-import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
-import { judgeBundle, modulesNamedBy } from '@shared/bundles/judgeBundle';
-import { setUpForApp } from '@shared/bundles/setUpForApp';
-import { moduleRegistry } from '@shared/registries/moduleRegistry';
-import { seedBundlePieces } from '@shared/registries/seedBundles';
-import { explain } from '@shared/userMessage';
-import type { WorkflowDefinition } from '@we/backend-shared';
-import { toastService } from '@we/components/solid';
-import { CORE_MANIFEST } from '@we/entities/manifest';
-import { type Bundle, type BundleRecordType, readBundle, type TemplateSchema } from '@we/schema-shared';
-import { type Accessor, createEffect, createMemo, createSignal } from 'solid-js';
-
-import type { StoreRegistry } from './useStore';
+} from '../bundles/installedBundles';
+import { installBundleWorkflows } from '../bundles/installWorkflows';
+import { judgeBundle, modulesNamedBy } from '../bundles/judgeBundle';
+import { setUpForApp } from '../bundles/setUpForApp';
+import { distinctSignal } from '../distinctSignal';
+import { moduleRegistry } from '../registries/moduleRegistry';
+import { seedBundlePieces } from '../registries/seedBundles';
+import type { Toasts } from '../toasts';
+import { explain } from '../userMessage';
+import type { DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
 
 /** Bigger than any app has reason to be, small enough that reading one cannot hang the page. */
 const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
@@ -158,12 +167,61 @@ function fileOf(input: unknown): File | null {
   return typeof File !== 'undefined' && first instanceof File ? first : null;
 }
 
-export function createBundleStore(
-  deps: Pick<
-    StoreRegistry,
-    'datasetStore' | 'sessionStore' | 'shapeStore' | 'spaceStore' | 'templateStore' | 'themeStore'
-  >,
-): BundleStore {
+/** What the bundle store writes through in the template library: an app's templates, and its choice. */
+export interface BundleTemplates {
+  loading: Accessor<boolean>;
+  allTemplates: Accessor<TemplateSchema[]>;
+  writeLibraryTemplates: (templates: TemplateSchema[], origin: string) => Promise<void>;
+  writeSpaceTemplates: (templates: TemplateSchema[], origin: string, datasetId?: string) => Promise<void>;
+  setAppTemplate: (id: string) => Promise<boolean>;
+  deleteTemplate: (templateId: string) => Promise<void>;
+}
+
+/** What it writes through in the theme library. */
+export interface BundleThemes {
+  installedThemes: Accessor<ThemeData[]>;
+  writeLibraryTheme: (theme: BundleTheme) => Promise<string>;
+  deleteTheme: (themeId: string) => Promise<void>;
+}
+
+/** What it reads and writes of a space's models: which it has, and an app's record types added. */
+export interface BundleShapes {
+  spaceShapes: Accessor<{ name: string }[]>;
+  addRecordTypes: (bundleId: string, types: readonly BundleRecordType[], datasetId?: string) => Promise<string[]>;
+}
+
+/** A space this agent has, as the set-up list reads it. */
+export interface BundleSpaceRow {
+  id: string;
+  name: string;
+  avatar: string;
+  isWeSpace: boolean;
+  canAdminister: boolean;
+  views: { id: string; enabled: boolean }[];
+}
+
+/** What it reads and writes of the spaces: which this agent runs, and the modules and sections on. */
+export interface BundleSpaces {
+  spaceList: Accessor<BundleSpaceRow[]>;
+  installedModules: Accessor<string[]>;
+  setModuleInstalled: (moduleId: string, installed: boolean) => Promise<void>;
+  setViewEnabled: (viewId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
+}
+
+export interface BundleStoreDeps {
+  reactivity: ReactivityPort;
+  toasts: Pick<Toasts, 'success' | 'error'>;
+  sessionStore: Pick<SessionStore, 'me' | 'backendPorts'>;
+  datasetStore: Pick<DatasetStore, 'agentSettings' | 'currentDataset' | 'datasets' | 'updateAgentSettings'>;
+  templateStore: BundleTemplates;
+  themeStore: BundleThemes;
+  shapeStore: BundleShapes;
+  spaceStore: BundleSpaces;
+}
+
+export function createBundleStore(deps: BundleStoreDeps): BundleStore {
+  const { reactivity, toasts } = deps;
+  const { signal, memo, effect, untrack } = reactivity;
   const templateStore = deps.templateStore;
   const themeStore = deps.themeStore;
   const shapeStore = deps.shapeStore;
@@ -174,28 +232,28 @@ export function createBundleStore(
   /*
     Keep what the app somebody is in was drawn with, for the first frame of the next reload — see
     `bundles/bootSnapshot.ts`. Only once the settings and the library have both answered, so a
-    snapshot is never written from the stand-in it is itself standing in for; and only when it
-    changes, since the template list moves on every space switch.
+    snapshot is never written from the stand-in it is itself standing in for; and only when what it
+    would write changes, since the template list moves on every space switch. What was last written
+    is remembered as its text, the one way a snapshot compares by value.
   */
-  const snapshot = createMemo(() => {
+  let written = '';
+  effect(() => {
     const settings = datasetStore.agentSettings();
-    if (!settings || templateStore.loading()) return null;
-    return JSON.stringify(
-      selectBootSnapshot({
-        appTemplateId: settings.appTemplateId ?? '',
-        installedBundles: readInstalledBundles(settings.installedBundles),
-        library: templateStore.allTemplates(),
-        installedThemes: themeStore.installedThemes(),
-      }),
-    );
-  });
-  createEffect(() => {
-    const json = snapshot();
-    // The string is the memo's own JSON of a BootSnapshot, kept as text only so it compares by value.
-    if (json) writeBootSnapshot(session.me()?.did, JSON.parse(json) as BootSnapshot);
+    if (!settings || templateStore.loading()) return;
+    const snapshot = selectBootSnapshot({
+      appTemplateId: settings.appTemplateId ?? '',
+      installedBundles: readInstalledBundles(settings.installedBundles),
+      library: templateStore.allTemplates(),
+      installedThemes: themeStore.installedThemes(),
+    });
+    const did = session.me()?.did;
+    const text = `${did ?? ''}\n${JSON.stringify(snapshot)}`;
+    if (text === written) return;
+    written = text;
+    writeBootSnapshot(did, snapshot);
   });
 
-  const [pending, setPending] = createSignal<{
+  const [pending, setPending] = signal<{
     bundle: Bundle;
     view: PendingBundleInstall;
     /** What confirming agrees to, kept on the install record. */
@@ -203,7 +261,7 @@ export function createBundleStore(
     /** The file's digest, kept on the install record. */
     digest: string;
   } | null>(null);
-  const [busy, setBusy] = createSignal(false);
+  const [busy, setBusy] = distinctSignal(reactivity, false);
 
   const installedList = () => readInstalledBundles(datasetStore.agentSettings()?.installedBundles);
 
@@ -211,7 +269,7 @@ export function createBundleStore(
     The operations of every app this agent has — built in or installed — under each app's id, and
     only while it is here: an uninstall takes them with it. See `bundleOperations.ts`.
   */
-  createEffect(() =>
+  effect(() =>
     syncBundleOperations([
       ...seedBundlePieces.map((pieces) => ({
         id: pieces.bundleId,
@@ -241,11 +299,11 @@ export function createBundleStore(
     })),
   ];
 
-  const [chosen, setChosen] = createSignal<string[]>([]);
-  const [pickerFor, setPickerFor] = createSignal<string | null>(null);
+  const [chosen, setChosen] = signal<string[]>([]);
+  const [pickerFor, setPickerFor] = distinctSignal<string | null>(reactivity, null);
 
   /** The spaces this agent runs — the only ones an app's record types and sections may go into. */
-  const spacesYouRun = createMemo(() => spaceStore.spaceList().filter((row) => row.isWeSpace && row.canAdminister));
+  const spacesYouRun = memo(() => spaceStore.spaceList().filter((row) => row.isWeSpace && row.canAdminister));
 
   const needsSpace = (source: Pick<SetUpSource, 'recordTypes' | 'sections'> & { workflows?: unknown[] }) =>
     source.recordTypes.length > 0 || source.sections.length > 0 || (source.workflows?.length ?? 0) > 0;
@@ -270,7 +328,7 @@ export function createBundleStore(
     return spacesYouRun().every((row) => isSetUpIn(source, row.id)) ? 'done' : 'available';
   };
 
-  const installed = createMemo<InstalledBundleView[]>(() => [
+  const installed = memo<InstalledBundleView[]>(() => [
     ...seedBundlePieces.map((pieces) => ({
       id: pieces.bundleId,
       name: pieces.name,
@@ -303,7 +361,7 @@ export function createBundleStore(
     return id ? (sources().find((s) => s.id === id) ?? null) : null;
   };
 
-  const spaceChoices = createMemo<BundleSpaceChoice[]>(() => {
+  const spaceChoices = memo<BundleSpaceChoice[]>(() => {
     const about = subject();
     if (!about || !needsSpace(about)) return [];
     const ticked = new Set(chosen());
@@ -327,8 +385,10 @@ export function createBundleStore(
     return here && spacesYouRun().some((row) => row.id === here) ? [here] : [];
   };
 
-  const toggleSpace = (spaceId: string) =>
-    setChosen((list) => (list.includes(spaceId) ? list.filter((id) => id !== spaceId) : [...list, spaceId]));
+  const toggleSpace = (spaceId: string) => {
+    const list = untrack(chosen);
+    setChosen(list.includes(spaceId) ? list.filter((id) => id !== spaceId) : [...list, spaceId]);
+  };
 
   const settingUp = () => spaceChoices().filter((choice) => choice.chosen);
 
@@ -336,26 +396,26 @@ export function createBundleStore(
     const file = fileOf(input);
     if (!file) return;
     if (file.size > MAX_BUNDLE_BYTES) {
-      toastService.error('That file is too large to be an app');
+      toasts.error('That file is too large to be an app');
       return;
     }
     let decoded: unknown;
     try {
       decoded = JSON.parse(await file.text());
     } catch {
-      toastService.error('That file is not an app: it is not JSON');
+      toasts.error('That file is not an app: it is not JSON');
       return;
     }
     const read = readBundle(decoded);
     if (!read.bundle) {
       const first = read.problems[0];
       console.warn('Not a bundle:', read.problems);
-      toastService.error(`That file is not an app this version of ${currentProductName()} can read — ${first.message}`);
+      toasts.error(`That file is not an app this version of ${currentProductName()} can read — ${first.message}`);
       return;
     }
     const bundle = read.bundle;
     if (seedBundlePieces.some((pieces) => pieces.bundleId === bundle.id)) {
-      toastService.error(`“${bundle.name}” is built into this app already`);
+      toasts.error(`“${bundle.name}” is built into this app already`);
       return;
     }
 
@@ -374,7 +434,7 @@ export function createBundleStore(
     });
     if (judged.refusals.length) {
       console.warn(`The app “${bundle.name}” cannot be installed:`, judged.refusals);
-      toastService.error(`“${bundle.name}” cannot be installed — ${judged.refusals[0]}`);
+      toasts.error(`“${bundle.name}” cannot be installed — ${judged.refusals[0]}`);
       return;
     }
 
@@ -509,10 +569,10 @@ export function createBundleStore(
       }
 
       const done = view.updates ? `“${bundle.name}” updated to ${bundle.version}` : `“${bundle.name}” installed`;
-      if (!unset.length) toastService.success(spaces.length ? `${done}, and ${spacesAre(spaces)} set up for it` : done);
-      else toastService.error(`${done}, but ${unset[0]}`);
+      if (!unset.length) toasts.success(spaces.length ? `${done}, and ${spacesAre(spaces)} set up for it` : done);
+      else toasts.error(`${done}, but ${unset[0]}`);
     } catch (error) {
-      toastService.error(explain(error, `Could not install “${bundle.name}”`));
+      toasts.error(explain(error, `Could not install “${bundle.name}”`));
     } finally {
       setBusy(false);
       setPending(null);
@@ -609,8 +669,8 @@ export function createBundleStore(
     setBusy(true);
     try {
       const problems = await setUpSpaces(source.id, spaces);
-      if (problems.length) toastService.error(problems[0]);
-      else toastService.success(`${spacesAre(spaces)} set up for “${source.name}”`);
+      if (problems.length) toasts.error(problems[0]);
+      else toasts.success(`${spacesAre(spaces)} set up for “${source.name}”`);
     } finally {
       setBusy(false);
     }
@@ -631,9 +691,9 @@ export function createBundleStore(
       await datasetStore.updateAgentSettings({
         installedBundles: withoutInstalled(installedList(), bundleId),
       });
-      toastService.success(`“${entry.name}” removed`);
+      toasts.success(`“${entry.name}” removed`);
     } catch (error) {
-      toastService.error(explain(error, `Could not remove “${entry.name}”`));
+      toasts.error(explain(error, `Could not remove “${entry.name}”`));
     } finally {
       setBusy(false);
     }

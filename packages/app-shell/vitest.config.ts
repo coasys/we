@@ -44,6 +44,7 @@ const SOLID_TESTS = [
   'tests/presenceStore.test.ts',
   'tests/sessionStore.test.ts',
   'tests/datasetStore.test.ts',
+  'tests/bundleStore.test.ts',
   'tests/distinctSignal.test.ts',
   'tests/shellRouterRoot.test.tsx',
   'tests/shellPathMemory.test.tsx',

@@ -31,4 +31,4 @@ export {
   createBundleStore,
   type InstalledBundleView,
   type PendingBundleInstall,
-} from './BundleStore';
+} from '../../../shared/stores/BundleStore';

@@ -17,6 +17,7 @@
 import { consumeGuestBootTarget } from '@shared/guestLink';
 import { createAccountStore } from '@shared/stores/AccountStore';
 import { createAppStore } from '@shared/stores/AppStore';
+import { createBundleStore } from '@shared/stores/BundleStore';
 import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
 import { createDatasetStore } from '@shared/stores/DatasetStore';
@@ -37,7 +38,6 @@ import type { ParentProps } from 'solid-js';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
 import { startAppBridge } from '../services/appBridge';
-import { createBundleStore } from '../stores/BundleStore';
 import { createEditorStore } from '../stores/EditorStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
@@ -180,6 +180,8 @@ export function BootController(props: ParentProps) {
   // After every store an install writes through — templates, themes, record types, modules,
   // settings — none of which has to know what a bundle is.
   const bundleStore = createBundleStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
     sessionStore,
     datasetStore,
     templateStore,

@@ -12,6 +12,7 @@
  */
 import type { AccountStore } from '@shared/stores/AccountStore';
 import type { AppStore } from '@shared/stores/AppStore';
+import type { BundleStore } from '@shared/stores/BundleStore';
 import type { ChatStore } from '@shared/stores/ChatStore';
 import type { ClockStore } from '@shared/stores/ClockStore';
 import type { DatasetStore } from '@shared/stores/DatasetStore';
@@ -26,7 +27,6 @@ import type { SessionStore } from '@shared/stores/SessionStore';
 import type { WorkflowStore } from '@shared/stores/WorkflowStore';
 import { createContext, useContext } from 'solid-js';
 
-import type { BundleStore } from './BundleStore';
 import type { EditorStore } from './EditorStore';
 import type { RecordStore } from './RecordStore';
 import type { RuntimeStore } from './RuntimeStore';
