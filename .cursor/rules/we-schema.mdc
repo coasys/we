@@ -3118,7 +3118,7 @@ DeviceStore:
   - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
   - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
-  - canRemoveMaster: boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"
+  - canRemoveMaster: boolean — this computer keeps the master key and another device keeps it too: on log out, ask "Remove master key from this computer?" (false where this is the only copy, which cannot be removed)
   - masterWaiting: boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"
   - encMismatch: boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names and nothing the record says of the master key then; the warning on a revoked row, read from the key log, stays). Show a warning that says to revoke this computer from a device that holds the master key, then link it again
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
@@ -4139,13 +4139,13 @@ Needs: kernels records, interpretation.
   - callFeedHasMore — Whether there is more of the call beyond its Feed’s window.
   - callFeedLoaded — Whether the call’s Feed has answered for this call yet.
   - callFeedRoot — The call whose Feed is drawn — the one shown most recently — or empty.
-  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
+  - callFeedRows — The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things found in it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
   - feedOpen — Whether the Feed panel is open.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
-  - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
+  - feedRows — The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is the list it was started from, 'feed' or 'callFeed', so only that list's composer answers it.
   - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.

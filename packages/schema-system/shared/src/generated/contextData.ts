@@ -4772,7 +4772,7 @@ export const contextData: ContextData = {
         {
           name: 'callFeedRows',
           kind: 'state',
-          doc: "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things extracted from it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).",
+          doc: "The Feed of the call on screen: every line said, typed or answered in it, and a row per group of things found in it, merged by time. Rows are shaped as `feedRows`' are; a line's `source` says how it arrived ('spoken', 'typed', 'corrected', or none for a bot or the system).",
         },
         { name: 'cancelReply', kind: 'action', doc: 'Puts a reply down without sending it.', ambient: true },
         { name: 'closeFeed', kind: 'action', doc: 'Closes the Feed panel.', ambient: true },
@@ -4797,7 +4797,7 @@ export const contextData: ContextData = {
         {
           name: 'feedRows',
           kind: 'state',
-          doc: "The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
+          doc: "The Feed's window: every message in the space and a row per group of things interpretation found or somebody made, merged by time — newest first while following the live end, oldest first from the start. A message sent from here is in it at once, with `sending` true until a read has it. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo, sending } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.",
         },
         { name: 'openFeed', kind: 'action', doc: 'Opens the Feed panel.', ambient: true },
         {
