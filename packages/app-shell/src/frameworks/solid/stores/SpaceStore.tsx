@@ -1,12 +1,10 @@
 import { createBoardActions } from '@shared/boards';
-import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
   mentionsOf,
   unreadContainerIds,
 } from '@shared/containerActivity';
-import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { evidenceSubjectOf } from '@shared/evidenceSubjects';
 import { isoOf } from '@shared/interpretation/callExport';
 import {
@@ -25,15 +23,12 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
-import { pageOfPart } from '@shared/partPage';
-import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { isCommunityDecided, moduleRegistry, moduleStores, moduleSurface } from '@shared/registries/moduleRegistry';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { overrideTemplateId, type SpaceAppearance } from '@shared/spaceAppearance';
-import { landmarksByName, readSpaceLandmarks, readSpaceRoot, seedSpaceRoot } from '@shared/spaceLandmarks';
 import {
   createPolicyCheck,
   type GovernedSpace,
@@ -57,11 +52,10 @@ import {
   rolesView,
   type RoleView,
 } from '@shared/spaceRoles';
-import { isSpaceSelf, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent, withFields } from '@shared/spaceSync';
-import { type AppDataset, canonicalSpaceId } from '@shared/stores/DatasetStore';
+import { isSpaceSelf, removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/spaceSync';
 import { createSpaceContext } from '@shared/stores/space/context';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from '@shared/stores/space/enabledModules';
-import { sharedIdOf } from '@shared/stores/space/joining';
+import { createSpaceNavigation } from '@shared/stores/space/navigation';
 import { createSpaceList, SPACE_AVATAR_PX } from '@shared/stores/space/spaces';
 import type {
   CreatePostOptions,
@@ -71,6 +65,7 @@ import type {
   SpaceMetaUpdate,
   TaskStateView,
 } from '@shared/stores/space/types';
+import { createSpaceWrites } from '@shared/stores/space/writes';
 import type { SpaceStore } from '@shared/stores/SpaceStore';
 import { isSystemDataset } from '@shared/systemDatasets';
 import {
@@ -136,12 +131,10 @@ import {
   RoleGrant,
   SignalType,
   Space,
-  SpaceLandmark,
   SpacePreference,
   type TaskBlock,
   TaskState,
 } from '@we/entities';
-import { type Latest, latest } from '@we/module-shared';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { type SpaceStarter } from '@we/schema-shared';
@@ -231,8 +224,45 @@ export function createSpaceStore(
       writeStartingPolicy: (dataset, starter) => writeStartingPolicy(dataset, starter),
     },
   });
-  const { mySpaces, orderedSidebarItems, updateSpaceInCache } = spaces.members;
-  const { heldSpace, spaceRow, spaceForUuid } = spaces;
+  const { mySpaces, updateSpaceInCache } = spaces.members;
+  const { heldSpace, spaceForUuid } = spaces;
+
+  /*
+    How a setting on a space record is written and shown. Before the navigation part, which shows a
+    setting still being saved over the live read; the space on screen is reached only when a write is
+    made, by which time the navigation part is built.
+  */
+  const writes = createSpaceWrites({
+    ...ctx,
+    spaces,
+    onScreen: {
+      current: () => navigation.members.currentSpace(),
+      show: (ds, fields) => navigation.showOnScreen(ds, fields),
+    },
+  });
+  const { publishSpaceFields, writeSpaceFields, writeSpaceSetting } = writes;
+  const { defaultSaveFor, queueDefaultWrite, endDefaultSave, spaceRowForSave } = writes;
+
+  /*
+    Where the agent is. The sections a space has are the modules-and-views part's, composed after
+    this one and read only when somebody goes somewhere.
+  */
+  const navigation = createSpaceNavigation({
+    ...ctx,
+    routeStore,
+    templateStore,
+    shellStore,
+    spaces,
+    writes,
+    sections: {
+      routableViews: () => routableViews(),
+      spaceViews: () => spaceViews(),
+      usesSectionsFor: (uuid) => usesSectionsFor(uuid),
+    },
+    ensureBoardFor: (collectionId, dataset) => boards.ensureBoardFor(collectionId, dataset),
+  });
+  const { currentSpace, root: spaceRoot, landmarks: spaceLandmarks } = navigation.members;
+  const { reloadSpaceStructure, pushedOnScreen } = navigation;
 
   /**
    * Whether this agent may change what every member of a space sees.
@@ -507,106 +537,6 @@ export function createSpaceStore(
   templateStore.provideSpaceAppearance(appearance);
   themeStore.provideSpaceAppearance(appearance);
 
-  // Derived: all non-system datasets with Space avatar/name when available, plain dataset data
-  // otherwise. Prepends a virtual pre-join entry for the global space when it is configured but
-  // the user hasn't joined yet.
-  /*
-    Lend modules the ability to name a space and to go to one.
-
-    Published from here because this is the store that holds both halves — the names and pictures the
-    sidebar renders, and `navigateToSpace`. A module needs them now that its state can outlive the
-    space on screen: a call the user has walked away from has to be able to say which space it is in
-    and offer the way back, and before that "the space" was always the one being looked at.
-
-    Keyed by uri and normalised through `sharedIdOf`, so a module holding `neighbourhood://<cid>` and
-    a sidebar row holding the bare cid are the same space — the comparison this store already has to
-    make everywhere else.
-  */
-  onCleanup(
-    provideModuleHostServices({
-      // Extraction's hook — see the declaration on `ModuleHostServices`, and `ensureBoardFor` for
-      // why it only fires once the collection holds a task.
-      ensureBoardFor: (collectionId: string, dataset?: string) => boards.ensureBoardFor(collectionId, dataset),
-      /*
-        The call the address names — published here because this is a store that reads routes and a
-        module is not.
-
-        The param rather than anything derived: it is what a reload restores and what a pasted link
-        carries, which is the whole reason a module cannot hold this itself. Empty reads as null, so
-        "no call named" and "named nothing" are the same answer rather than an empty string a caller
-        might act on.
-      */
-      callOnScreen: () => routeStore.params().call || null,
-      // The write half, for the moment this agent joins a call — see `callParamToWrite` for when it
-      // writes. Replaces rather than pushes: joining a call is not a page somebody navigated to.
-      showCallOnScreen: (recordId, datasetUri) => {
-        const value = callParamToWrite({
-          segments: routeStore.segments(),
-          current: routeStore.params().call || null,
-          recordId,
-          datasetUri,
-          spaceIdOf: sharedIdOf,
-        });
-        if (value) routeStore.setParam('call', value);
-      },
-      /*
-        A module's part, on the page of this space that draws it: the template as written, and the
-        sections this space's navigation lists — see `pageOfPart`. Fresh: `pageOfPart` answers for the
-        page as it draws with nothing in its query, so the address is that page with none. Restoring
-        the query last used there could land on another view of that page — a channel or a canvas
-        named in the query, which draws something else — or, from that view, not move at all.
-      */
-      showPart: (part: string) => {
-        const base = spacePath();
-        if (!base) return false;
-        const page = pageOfPart(templateStore.currentTemplate, spaceViews(), part);
-        if (page === null) return false;
-        routeStore.navigate(page ? `${base}/${page}` : base, { fresh: true });
-        return true;
-      },
-      datasets: {
-        get: (uri: string) => {
-          const id = sharedIdOf(uri);
-          if (!id) return undefined;
-          const item = orderedSidebarItems().find((row) => row.spaceId === id || row.uuid === id);
-          return item ? { name: item.name, avatar: item.avatar } : undefined;
-        },
-        open: (uri: string) => {
-          const id = sharedIdOf(uri);
-          if (id) void navigateToSpace(id);
-        },
-        /*
-          Removal, as an event, so a module can end what belongs to a dataset that is gone.
-
-          Translated from the dataset id `onDatasetRemoved` reports into the uri a module actually
-          holds — a call anchors on `Focus.datasetUri`, and the two are different strings for the same
-          space. Resolved before the removal lands, because afterwards there is nothing left to
-          resolve it from.
-        */
-        onRemoved: (cb: (datasetUri: string) => void) => {
-          const listener = (uuid: string) => {
-            /*
-              The uri, from whatever still remembers it.
-
-              `onDatasetRemoved` reports the dataset id; a module holds `Focus.datasetUri`, and for a
-              shared space those are different strings for the same thing. `mySpaces` is filtered by
-              the handler above, which runs first, so the Space record is already gone — the sidebar
-              list is not, and it carries the shared id. A personal space has no uri and no module
-              anchors to one, so answering nothing for it is right rather than a gap.
-            */
-            const row = orderedSidebarItems().find((item) => item.uuid === uuid);
-            const uri = row?.spaceId ? `neighbourhood://${row.spaceId}` : undefined;
-            if (uri) cb(uri);
-          };
-          return spaces.onRemoved(listener);
-        },
-        // The host parses the reference and knows where a record's page is; a module holding one
-        // should not have to restate either. See `ModuleDatasetAccess.openRef`.
-        openRef: (ref: string) => void openRecordRef(ref),
-      },
-    }),
-  );
-
   async function createPost(json: unknown, options: CreatePostOptions = {}): Promise<string | undefined> {
     const p = datasetStore.currentDataset()?.handle;
     const me = session.me()?.did;
@@ -756,239 +686,6 @@ export function createSpaceStore(
     const p = datasetStore.currentDataset()?.handle;
     if (!p) return;
     await deleteBlocks(p, collectionId);
-  }
-
-  /**
-   * Where somebody last was in each space this session — the screen and its query — by dataset id.
-   *
-   * A space's address carries what is being looked at: the workshop names its call in `?call=`, a view
-   * its sort and filters. Walking to another space and back must return to that screen and query,
-   * not to the space's root — which for a self-routing template redirects to a screen with no query
-   * at all. The router remembers a query per path, but under the
-   * screen's path, which is not the one a sidebar click asks for.
-   *
-   * In memory, not persisted: a reload starts from the address, which is what somebody sharing or
-   * bookmarking a space meant by it.
-   */
-  const lastPlaceInSpace = new Map<string, string>();
-  createEffect(() => {
-    const segs = routeStore.segments();
-    const path = routeStore.currentPath();
-    const params = routeStore.params();
-    const ds = datasetStore.currentDataset();
-    if (!ds || segs[0] !== 'space' || !datasetAddressedBy(ds, segs[1] ?? '')) return;
-    const query = new URLSearchParams(params).toString();
-    lastPlaceInSpace.set(ds.id, query ? `${path}?${query}` : path);
-  });
-
-  async function navigateToSpace(spaceId: string, view?: string): Promise<void> {
-    // spaceId may be a local id or a shared id — no shape-guessing needed with refs.
-    const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, spaceId));
-
-    /*
-      Back to the space you are standing in, from an overlay in front of it: close the overlay, and go
-      nowhere.
-
-      Settings, profile and about are drawn over the space without touching its address, so the space
-      is still exactly where it was underneath. Navigating as well sent it to its own root — for a
-      self-routing template that is a different screen, and what somebody had selected lives in the
-      address it left. The workshop's call is `?call=`, so returning from a profile page dropped the
-      call, and every panel about it went blank until it was chosen again.
-
-      Only from an overlay, and only for the space already on screen. Clicking the current space with
-      nothing in front of it still goes to its root, which is how the sidebar takes you home, and a
-      caller naming a view knows where it wants to be.
-    */
-    const segs = routeStore.segments();
-    if (
-      shellStore.activeShellView() &&
-      !view &&
-      ds &&
-      datasetStore.currentDataset()?.id === ds.id &&
-      segs[0] === 'space' &&
-      datasetAddressedBy(ds, segs[1] ?? '')
-    ) {
-      shellStore.closeShellView();
-      return;
-    }
-
-    /*
-      Switching only when the space is actually changing — the same guard the route effect below
-      carries, and missing here.
-
-      Clicking the space you are already in is ordinary: it is how you get back from the settings
-      overlay, which leaves the route where it was. Re-switching to it costs a `hasCoreSchema`, an
-      `installModules` and a `refreshSpace` round trip for nothing, so it is skipped — which also
-      keeps the two navigation paths saying the same thing.
-    */
-    // Asked before the switch below, which makes every space the current one.
-    const arrivingFromHere = Boolean(
-      ds && datasetStore.currentDataset()?.id === ds.id && segs[0] === 'space' && datasetAddressedBy(ds, segs[1] ?? ''),
-    );
-    if (ds && datasetStore.currentDataset()?.id !== ds.id) {
-      // Pre-load space templates before switching so the template and data arrive together
-      await templateStore.preloadSpaceTemplates(ds);
-      await datasetStore.switchDataset(ds.id);
-    }
-    // If no dataset found, route change alone will show the join gate
-
-    /*
-      The section being read, if that is what the segment on screen is.
-
-      Carrying it across is what keeps somebody on About as they walk from space to space, and it
-      has to ask whether the segment names a section at all. Two things live at that depth and are
-      not sections: a host route (`record`), and a self-routing template's own screen (Workshop's
-      `canvas`, Discord's `channel`). Both were carried, and both name a section no space has.
-
-      Against `routableViews` rather than this space's enabled list — the destination decides what
-      it has, and gating on the *source's* switches would refuse to carry a section the reader is
-      looking at merely because they had hidden it somewhere else.
-    */
-    const here = segs[0] === 'space' ? (segs[2] ?? '') : '';
-    const carried = routableViews().some((v) => v.segment === here) ? here : '';
-    /*
-      The canonical segment, not the one the caller happened to hold. `spaceId` here may be either
-      form — a sidebar row passes the local id, a share link the shared one — and both resolve, so
-      without this one space ended up with two addresses depending on how you reached it.
-    */
-    const base = '/space/' + (ds ? canonicalSpaceId(ds) : spaceId);
-    /*
-      A section only where the destination HAS sections, and otherwise the space itself — whose own
-      index decides, exactly as `switchTemplate` leaves it.
-
-      This said `'about'`, which assumed the space shape of every template. A space whose default is
-      a self-routing one — Workshop, Discord — has no `about` route, so entering it from the sidebar
-      landed on its catch-all and said "No such page" until you pressed a nav button. It is also the
-      last of the four places that spelled a space path by hand; the rest went when `SPACE_ROUTE_PATH`
-      became one literal.
-
-      A named `view` is always taken: a caller that asked for one knows what it is asking for, and
-      `openRecordRef`'s is a host route rather than a section.
-    */
-    const section = view ?? (ds && !usesSectionsFor(ds.id) ? '' : carried);
-    shellStore.closeShellView();
-    /*
-      Back where you were in it, when you have been in it this session and are arriving from somewhere
-      else — see `lastPlaceInSpace`. Not for the space already on screen, where a click is the way to
-      its root; not for a caller naming a view, which knows where it wants to be; and a space not yet
-      visited still carries the section across, as above.
-    */
-    const returning = ds && !view && !arrivingFromHere ? lastPlaceInSpace.get(ds.id) : undefined;
-    if (returning) {
-      routeStore.navigate(returning);
-      broadcastPerspectiveNavigation(spaceId);
-      return;
-    }
-    routeStore.navigate(section ? `${base}/${section}` : base);
-    // Notify embedded app iframes (e.g. Flux) after the dataset has switched
-    broadcastPerspectiveNavigation(spaceId);
-  }
-
-  /**
-   * Go to whatever a record reference names.
-   *
-   * One implementation behind three surfaces — this store member, `ModuleDatasetAccess.openRef` for
-   * a feature module, and `BlockHostValue.openRef` for an embed inside a composition. All three are
-   * the same question, and answering it three times is how the route and the link came to disagree
-   * before `RECORD_ROUTE_PATH` was one literal.
-   *
-   * Four cases, and each is a decision rather than a fallthrough:
-   *
-   * - **A record** — the space, and its page within it.
-   * - **A dataset alone** — the space itself. What a gathered space is: its identity *is* its
-   *   dataset, so there is no record to open.
-   * - **Relative (`we:./…`)** — resolved against the space on screen, which is what "the dataset
-   *   this reference is read in" means. The segment comes off the route rather than from the
-   *   dataset, so following an embed cannot silently rewrite a shared space's URL from its CID to
-   *   its local id.
-   * - **A person** — nothing. An agent has no page yet; a profile route would be a real feature and
-   *   is not this one, and navigating somewhere arbitrary would be worse than staying put.
-   * - **A system dataset** — nothing. A note kept in the Pocket names the personal space, which is
-   *   not a space anyone navigates into: it has no `Space` record, no template and no sidebar row, so
-   *   "going there" would land on a shell with nothing in it. The note is already where it is read,
-   *   in the notes panel.
-   */
-  async function openRecordRef(ref: string): Promise<void> {
-    const segs = routeStore.segments();
-    const here = segs[0] === 'space' ? (segs[1] ?? '') : '';
-    const destination = resolveRecordRef(ref, here);
-    if (!destination || datasetStore.systemDatasetUuids().includes(destination.datasetId)) return;
-    return navigateToSpace(destination.datasetId, destination.view);
-  }
-
-  function broadcastPerspectiveNavigation(communityId: string): void {
-    const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
-      'we-iframe',
-    );
-    iframes.forEach((el) => {
-      if (typeof el.postMessage === 'function') {
-        el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
-      }
-    });
-  }
-
-  /**
-   * Show fields on the cached row and, when the dataset is on screen, on `currentSpace` — onto the
-   * record only when it is that dataset's own, since a switch moves the dataset ahead of the record.
-   *
-   * Each as a *new* instance: both are plain signals and Solid dedupes on `===`, so handing back the
-   * object just written through notifies nothing and every reader keeps the previous value.
-   */
-  function publishSpaceFields(ds: AppDataset, fields: Partial<Space>): void {
-    updateSpaceInCache(ds, fields);
-    if (isCurrent(ds)) setCurrentSpace((prev) => (prev && isSpaceSelf(prev, ds) ? withFields(prev, fields) : prev));
-  }
-
-  /**
-   * How a failed space write is told to the person: logged, and the same toast whatever it was.
-   * A setting that reports success without persisting is worse than one that fails visibly,
-   * because the setting is a community decision and the next member to open the page sees the old
-   * one.
-   */
-  const reportSpaceSave = (what: string, error: unknown): void => {
-    console.error(`SpaceStore: could not persist ${what}`, error);
-    toastService.error('Could not save this change for the space.');
-  };
-
-  /**
-   * Persist fields on a space's own record, then publish them — unless `shouldPublish` says a newer
-   * save has since taken over what is shown.
-   */
-  async function writeSpaceFields(
-    ds: AppDataset,
-    space: Space,
-    fields: Partial<Space>,
-    shouldPublish: () => boolean = () => true,
-  ): Promise<void> {
-    try {
-      await Space.update(ds.handle, space.id, fields);
-    } catch (error) {
-      reportSpaceSave(Object.keys(fields).join(', '), error);
-      throw error;
-    }
-    if (shouldPublish()) publishSpaceFields(ds, fields);
-  }
-
-  /**
-   * Change one setting on a space's own record through the operation that holds its rule — worked
-   * out from what the record holds when the write is made, not from the copy this screen has — then
-   * publish the value it wrote.
-   */
-  async function writeSpaceSetting<K extends keyof Space>(
-    ds: AppDataset,
-    space: Space,
-    operation: string,
-    field: K,
-    args: Record<string, unknown>,
-  ): Promise<void> {
-    let written: Space[K];
-    try {
-      written = await runCore<Space[K]>(operation, { space: space.id, ...args }, ds.handle);
-    } catch (error) {
-      reportSpaceSave(String(field), error);
-      throw error;
-    }
-    publishSpaceFields(ds, { [field]: written });
   }
 
   async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
@@ -1203,121 +900,6 @@ export function createSpaceStore(
     exportMeta: collectionInterpretationFor,
   });
 
-  const [currentSpace, setCurrentSpace] = createSignal<Space | null>(null);
-
-  /*
-    ── The space's structure ────────────────────────────────────────────────────────────────────
-
-    Its collection and its landmarks, read on entering the space. Both are written once, at the create
-    press, so there is nothing to follow live: a landmark somebody adds later is picked up on the next
-    entry. `root` is read through the relation and never by looking for "the collection of kind
-    space", which is the read a second one would silently split.
-
-    Two landmarks of one name are not prevented — landmarks are written at creation, by one person — and the
-    newest wins. A landmark whose record has since been deleted still reads here; a template reading it
-    finds nothing at that id and treats it as absent, which is what it must do for a missing landmark
-    anyway.
-  */
-  const [spaceRoot, setSpaceRoot] = createSignal('');
-  const [spaceLandmarks, setSpaceLandmarks] = createSignal<Record<string, string>>({});
-  /**
-   * The landmarks have answered for the space on screen. Its own flag, set with them, so a template
-   * asking "is there a board?" never hears "no" before they are in — `root` arrives first.
-   */
-  const [landmarksLoaded, setLandmarksLoaded] = createSignal(false);
-  /** `root` has answered for the space on screen. See the interface. */
-  const [rootLoaded, setRootLoaded] = createSignal(false);
-  // The collection to modules too, so the Feed starts from this answer rather than reading the space
-  // record again for it.
-  onCleanup(provideModuleHostServices({ spaceRoot: () => spaceRoot() }));
-  /**
-   * Read the space collection and the landmarks again — after an action made a record the space's.
-   * The watch on entering reads the collection only (`landmarks: false`): its first result is the
-   * landmarks.
-   */
-  async function reloadSpaceStructure(landmarks = true): Promise<void> {
-    const ds = datasetStore.currentDataset();
-    const dataset = ds?.handle;
-    if (!ds || !dataset || !datasetStore.isWeSpace()) return;
-    const here = () => datasetStore.currentDataset()?.id === ds.id; // not navigated away while loading
-    /*
-      The list has read this space's row, and that row carries its collection's id, so the collection
-      is known without asking — the read below answers from it. The two reads are independent and run
-      together; each is set the moment it is in. The Feed and every channel branch wait on `root`,
-      and only a template asking about a landmark waits on the landmarks, through `landmarksLoaded`.
-    */
-    seedSpaceRoot(
-      dataset,
-      untrack(mySpaces).find((space) => isSpaceSelf(space, ds)),
-    );
-    const root = readSpaceRoot(dataset).then(
-      (space) => {
-        if (!here()) return;
-        batch(() => {
-          setSpaceRoot(space?.root ?? '');
-          setRootLoaded(true);
-        });
-      },
-      (error: unknown) => {
-        // Answered, if with nothing: a template waiting on it shows the space without a collection
-        // rather than waiting for ever. The landmark watch reads it again when it next pushes.
-        if (here()) setRootLoaded(true);
-        throw error;
-      },
-    );
-    const landmarkRead = landmarks
-      ? readSpaceLandmarks(dataset).then((found) => {
-          if (!here()) return;
-          batch(() => {
-            setSpaceLandmarks(found);
-            setLandmarksLoaded(true);
-          });
-        })
-      : Promise.resolve();
-    const failed = (await Promise.allSettled([root, landmarkRead])).find((r) => r.status === 'rejected');
-    if (failed) console.warn('SpaceStore: could not read the space’s collection and landmarks', failed.reason);
-  }
-  /*
-    Read on entering the space, then follow its landmarks.
-
-    Read once, a landmark written after entering never arrived: a space entered while its starter was
-    still writing showed "make a board" beside the board the starter had just made, and a board a
-    peer made reached nobody until they switched space. Task states are followed for the same reason.
-  */
-  createEffect(() => {
-    const dataset = datasetStore.currentDataset()?.handle;
-    const weSpace = datasetStore.isWeSpace();
-    setSpaceRoot('');
-    // Nothing to wait for outside a WE space: its root is '' and stays so.
-    setRootLoaded(!(dataset && weSpace));
-    setSpaceLandmarks({});
-    setLandmarksLoaded(false);
-    /*
-      The pushed rows are the landmarks, whole: the same query `readSpaceLandmarks` makes. Only a space
-      whose collection was not there yet when it was read — a starter still writing — is read again,
-      since the collection is not what this query watches.
-    */
-    if (dataset && weSpace) {
-      // Its first result is the landmarks as they are now; a change after that is applied as it comes.
-      // A watch that never opened has nothing else answering for the landmarks, so they are read once;
-      // the space's collection is read by the `reloadSpaceStructure(false)` below.
-      followLive(solidReactivity, SpaceLandmark.query(dataset, {}), {
-        store: 'SpaceStore',
-        what: 'the space’s landmarks',
-        map: landmarksByName,
-        apply: (landmarks, opened) => {
-          if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
-          batch(() => {
-            setSpaceLandmarks(landmarks);
-            setLandmarksLoaded(true);
-          });
-        },
-        stored: { read: () => readSpaceLandmarks(dataset) },
-      });
-    }
-    void untrack(() => reloadSpaceStructure(false));
-  });
-
   /**
    * Which modules this space has on.
    *
@@ -1482,12 +1064,10 @@ export function createSpaceStore(
    * Re-run whenever the space record changes, which is how a peer's reorder reaches this screen, and
    * how this agent's own write is confirmed after `reorderTaskStates` has already shown it.
    */
-  /** Space records exactly as the live query delivered them — not a copy made for an optimistic write. */
-  const pushedSpaces = new WeakSet<Space>();
 
   /** The state order a pushed record carries, or null for a record that is not a push or carries none. */
   function pushedTaskStateOrder(space: Space): string[] | null {
-    if (!pushedSpaces.has(space) || !Array.isArray(space.taskStates)) return null;
+    if (!pushedOnScreen(space) || !Array.isArray(space.taskStates)) return null;
     return taskStateIds(space.taskStates);
   }
 
@@ -3500,19 +3080,6 @@ export function createSpaceStore(
   });
 
   /*
-    And which perspective is on screen, for the instances bound to one — a space chat shows only
-    while its space is current. Same shape as the module gate, same reason: `ShellStore` mounts
-    above the store that knows.
-  */
-  /*
-    A chat is bound to the *local* perspective id, not `Space.uuid` — that field is the creator's
-    own local uuid, synced verbatim into every member's copy (see `spaceSelfWhere`). On a joined
-    space it names a perspective this device does not hold, so a gate on it would hide the chat of
-    every member but the creator, and the chat it did open would pin a session to nobody's graph.
-  */
-  shellStore.provideSpaceGate((perspectiveUuid: string) => datasetStore.currentDataset()?.id === perspectiveUuid);
-
-  /*
     And the other thing the shell cannot see for itself: the template on screen and a library to
     save into, for "save this arrangement as a template". Same shape as the gate, same reason.
   */
@@ -3728,8 +3295,7 @@ export function createSpaceStore(
       if (isNewest()) publishSpaceFields(ds, { extractionTargets: save.confirmed });
       throw error;
     } finally {
-      save.pending -= 1;
-      if (!save.pending) defaultSaves.delete(save.key);
+      endDefaultSave(save);
     }
   }
 
@@ -3811,136 +3377,10 @@ export function createSpaceStore(
     await writeSpacePreference('setViewVisible', uuid, { view: viewId, visible });
   }
 
-  // Subscribe to current space data reactively whenever the dataset changes.
-  // include: { location: true } so AboutRoute can access location without a separate query.
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
-    if (!ds || !datasetStore.isWeSpace()) {
-      setCurrentSpace(null);
-      return;
-    }
-    // `taskStates` too: the order of the space's states rides on the same record — see the effect
-    // beside `loadTaskStateOrder`.
-    const live = Space.query(ds.handle, {
-      where: spaceSelfWhere(ds),
-      include: { location: true, taskStates: true },
-    });
-    const handleResult = (results: Space[]) => {
-      const row = results[0] ?? null;
-      // A default still being saved stays shown over the row the record last took, which is the
-      // older choice until the write lands.
-      const pending = row ? pendingDefaults(ds) : {};
-      const space = row && Object.keys(pending).length ? withFields(row, pending) : row;
-      if (space) pushedSpaces.add(space);
-      setCurrentSpace(space);
-    };
-    followLive(solidReactivity, live, {
-      store: 'SpaceStore',
-      what: 'the space on screen',
-      apply: handleResult,
-      // Never told after a switch, so the old effect cannot clear the new space.
-      settled: (loaded) => {
-        if (!loaded) setCurrentSpace(null);
-      },
-    });
-  });
-
-  // The space list follows the subscription above, for the space on screen — see `holdSpace`.
-  createEffect(() => {
-    const space = currentSpace();
-    const ds = untrack(datasetStore.currentDataset);
-    if (!space || !ds || !isSpaceSelf(space, ds)) return;
-    spaces.holdSpace(space, ds);
-  });
-
   const [memberDids, setMemberDids] = createSignal<string[]>([]);
   // Read off the space on screen. An optimistic write publishes the field onto that space.
   const spaceDefaultTemplateId = createMemo(() => currentSpace()?.defaultTemplateId ?? '');
   const spaceDefaultThemeId = createMemo(() => currentSpace()?.defaultThemeId ?? '');
-
-  /*
-    A default save paints its choice before it is stored, and two can be out at once — so what a
-    failed save puts back is kept here rather than re-read off the screen, where mid-save it is
-    the other save's paint, not anything the record took. `confirmed` is the last value the record
-    took: seeded while nothing is pending (the value shown is then the value stored) and moved on
-    each save that lands. `ops` says whether a save is still the newest for its field — an earlier
-    one failing or landing must not take back or overwrite a later one's paint with it. `tail` is
-    the store writes in the order they were asked, so the backend cannot finish an older choice
-    after a newer one and leave it stored. The record is dropped when nothing is pending, so the
-    next save seeds its baseline from what the cache says then, which the live read may have
-    moved on.
-  */
-  const defaultSaves = new Map<
-    string,
-    {
-      key: string;
-      /** The field's value — an id for a default, a list of entity names for the interpretation list. */
-      confirmed: unknown;
-      value: unknown;
-      ops: Latest;
-      pending: number;
-      tail: Promise<unknown>;
-    }
-  >();
-
-  /**
-   * The newest choice of each default still being saved, and of the interpretation list, for a live row
-   * to show over. The interpretation list is one of these saves too: a switch merges into the list
-   * already published, and a row from before that write must not put the old list back.
-   */
-  const pendingDefaults = (ds: AppDataset): Partial<Space> => {
-    const fields: Partial<Space> = {};
-    for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
-      const save = defaultSaves.get(`${ds.id}:${field}`);
-      if (save) (fields as Record<string, unknown>)[field] = save.value;
-    }
-    return fields;
-  };
-
-  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId' | 'extractionTargets') => {
-    const key = `${ds.id}:${field}`;
-    let save = defaultSaves.get(key);
-    if (!save) {
-      // The shown fallback asks for ds's own record, not just the dataset: a switch moves the
-      // dataset ahead of the record on screen, and the space being left's record is not a baseline.
-      const shown = currentSpace();
-      save = {
-        key,
-        confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),
-        value: undefined,
-        ops: latest(),
-        pending: 0,
-        tail: Promise.resolve(),
-      };
-      defaultSaves.set(key, save);
-    }
-    return save;
-  };
-
-  /** Run a default's store write after the ones already asked for the same field, whether they landed or not. */
-  const queueDefaultWrite = (save: { tail: Promise<unknown> }, write: () => Promise<void>): Promise<void> => {
-    const run = save.tail.catch(() => {}).then(write);
-    save.tail = run;
-    return run;
-  };
-
-  /*
-    The row a default save writes through, inside the same failure boundary as the write — and read
-    inside the queued write, so two saves whose reads finish out of order still write in the order
-    they were asked. A read that cannot answer, and a space with no record at all, were silent
-    successes: the paint already up stayed, with nothing saved and nothing said. Reported the way
-    the write reports, so the caller's failure path takes the publish back.
-  */
-  const spaceRowForSave = async (ds: AppDataset): Promise<Space> => {
-    try {
-      const space = await spaceRow(ds);
-      if (!space) throw new Error(`SpaceStore: no space record for ${ds.id}`);
-      return space;
-    } catch (error) {
-      reportSpaceSave('the space record', error);
-      throw error;
-    }
-  };
 
   async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
     const ds = targetDataset(spaceUuid);
@@ -3968,8 +3408,7 @@ export function createSpaceStore(
       if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed as string | undefined });
       throw error;
     } finally {
-      save.pending -= 1;
-      if (!save.pending) defaultSaves.delete(save.key);
+      endDefaultSave(save);
     }
   }
 
@@ -3992,8 +3431,7 @@ export function createSpaceStore(
       if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed as string | undefined });
       throw error;
     } finally {
-      save.pending -= 1;
-      if (!save.pending) defaultSaves.delete(save.key);
+      endDefaultSave(save);
     }
   }
 
@@ -4032,155 +3470,15 @@ export function createSpaceStore(
       .filter((a): a is AgentProfileSummary => a != null);
   });
 
-  /**
-   * The space this route points at is one the agent has not joined — as a settled fact, not a
-   * momentary absence.
-   *
-   * A join gate cannot key off `currentDataset` being null, because that is also true for the first
-   * frames of a refresh: the dataset list is still arriving, and then the switch to the matching
-   * dataset is itself async. Someone reloading a space they are already in got "Join this Space"
-   * flashed at them in the gap.
-   *
-   * So this is false while the answer is unknown, and a gate reading it renders nothing until there
-   * is something true to say. Both halves matter — the list having arrived, and no dataset in it
-   * matching the route — because a matching dataset that has not been switched to yet is also not
-   * grounds for asking someone to join.
-   */
-  /**
-   * The path a space's own pages hang off — `/space/<segment>`, or empty outside a space.
-   *
-   * Exists because a template cannot build one. A link to a record has to be absolute (a browser
-   * resolves a relative `href` against the current *URL*, which is wrong the moment a section has
-   * sub-routes of its own), and the space's segment is not a value a schema can reach: for a shared
-   * space it is the neighbourhood CID, for a personal one the dataset id, and only the URL says
-   * which this is.
-   *
-   * The segment as it currently appears rather than one recomputed from the dataset, so a link
-   * built here lands in the same space the reader is already looking at — following the shape
-   * `TemplateProvider` itself uses when it redirects to a space's first section.
-   */
-  const spacePath = createMemo<string>(() => {
-    const segs = routeStore.segments();
-    return segs[0] === 'space' && segs[1] ? `/space/${segs[1]}` : '';
-  });
-
-  const routeSpaceUnjoined = createMemo<boolean>(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space' || !segs[1]) return false;
-    if (!datasetStore.datasetsLoaded()) return false;
-    return !datasetStore.datasets().some((d) => datasetAddressedBy(d, segs[1]));
-  });
-
-  // Resolve the route segment to a local dataset whenever the route changes.
-  // Handles deep links, page refresh, and browser back/forward navigation.
-  // For intentional navigation via navigateToSpace, this becomes a no-op
-  // (dataset already switched; guard prevents double-call).
-  createEffect(() => {
-    const segs = routeStore.segments();
-    if (segs[0] !== 'space' || !segs[1]) return;
-    const seg = segs[1];
-
-    const ds = datasetStore.datasets().find((d) => datasetAddressedBy(d, seg));
-    if (!ds) {
-      // Routing policy, not backend dialect: a segment that isn't a local id is treated as a
-      // shared link the agent hasn't joined — clear the current dataset so the join gate shows.
-      // Local ids (UUIDs, with hyphens) may just be momentarily missing; leave the view alone.
-      if (!seg.includes('-')) datasetStore.clearCurrentDataset();
-      return;
-    }
-    const current = untrack(datasetStore.currentDataset);
-    if (current?.id === ds.id) return;
-    /*
-      A switch the address asked for publishes only if the address still asks for it.
-
-      `navigateToSpace` switches the dataset first and navigates second, so for a moment the stores
-      describe the new space while the URL still names the old one. A template that redirects its own
-      unknown addresses — Workshop's catch-all sends `/space/<old>/about` to `./canvas` — rewrites the
-      *old* space's address in that moment, and this effect read the rewrite as the reader asking for
-      the old space back. The switch it started was several round trips long; by the time it landed
-      the navigate had put the URL on the new space, and it published anyway: the previous space's
-      data and template under the current space's URL, with nothing left to match the route and
-      nothing to move it — the section guard rightly refuses to correct an address about a space it
-      is not reading from.
-
-      So the switch is told how to check, at the last moment, that the URL it was started from is
-      still the URL. Untracked, because the check runs inside the switch and not in this effect.
-    */
-    const stillAddressed = () => {
-      const now = untrack(routeStore.segments);
-      return now[0] === 'space' && datasetAddressedBy(ds, now[1] ?? '');
-    };
-    void (async () => {
-      const started = performance.now();
-      await templateStore.preloadSpaceTemplates(ds);
-      // Its own line because the switch waits on it: a space's templates are file-storage reads.
-      trace('dataset', 'switch:templates', {
-        dataset: ds.id,
-        ms: Math.round(performance.now() - started),
-        sincePageStartMs: Math.round(performance.now()),
-      });
-      await datasetStore.switchDataset(ds.id, { stillWanted: stillAddressed });
-    })();
-  });
-
-  // Prefill data for the "Initialize as WE space" gate — detected from a foreign app's own
-  // model (currently just Flux's Community) when the current dataset isn't a WE space yet.
-  const [foreignSpacePrefill, setForeignSpacePrefill] = createSignal<{
-    name: string;
-    description: string;
-    avatar: string | null;
-  } | null>(null);
-
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
-    const weSpace = datasetStore.isWeSpace();
-    // Force a re-run once the dataset's foreign schemas have been registered — that happens in
-    // switchDataset's background pass, strictly before currentDatasetEntities is set, so tracking
-    // it here guarantees a second run right when model resolution is ready.
-    void datasetStore.currentDatasetEntities();
-
-    if (!ds || weSpace) {
-      setForeignSpacePrefill(null);
-      return;
-    }
-
-    // A foreign app's own model, so WE declares none of it; this is the one read made of it.
-    const CommunityClass = getEntityForDataset('Community', ds.handle) as
-      | {
-          findOne(
-            dataset: unknown,
-            query: object,
-          ): Promise<{ name?: string; description?: string; thumbnail?: string } | null>;
-        }
-      | undefined;
-    if (!CommunityClass) {
-      setForeignSpacePrefill(null);
-      return;
-    }
-
-    CommunityClass.findOne(ds.handle, {})
-      .then((instance: { name?: string; description?: string; thumbnail?: string } | null) => {
-        if (!instance || untrack(datasetStore.currentDataset)?.id !== ds.id) return;
-        setForeignSpacePrefill({
-          name: instance.name ?? '',
-          description: instance.description ?? '',
-          avatar: instance.thumbnail ?? null,
-        });
-      })
-      .catch(() => setForeignSpacePrefill(null));
-  });
-
   const store: SpaceStore = {
     ...spaces.members,
+    ...navigation.members,
     // State
     memberDids,
     members,
     spaceDefaultTemplateId,
     spaceDefaultThemeId,
-    currentSpace,
     spaceList,
-    routeSpaceUnjoined,
-    spacePath,
     enabledModules,
     taskStates,
     offeredTaskStates,
@@ -4198,7 +3496,6 @@ export function createSpaceStore(
     routableViews,
     enabledViewIds,
     viewNav,
-    foreignSpacePrefill,
 
     // Actions
     createPost,
@@ -4220,10 +3517,6 @@ export function createSpaceStore(
     setSpaceDefaultTheme,
     setModuleEnabled,
     autoInterpret,
-    root: spaceRoot,
-    landmarks: spaceLandmarks,
-    landmarksLoaded,
-    rootLoaded,
     firstScreenOpen: () => firstScreen.open(),
     autoInterpretFor,
     setAutoInterpretFor,
@@ -4264,8 +3557,6 @@ export function createSpaceStore(
     setInvolvementTypeRetired,
     upsertSignal,
     withdrawSignal,
-    navigateToSpace,
-    openRecordRef,
     canAdministerSpace,
     canAdministerCurrentSpace,
     roles: roleViews,

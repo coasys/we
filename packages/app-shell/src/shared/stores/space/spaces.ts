@@ -302,6 +302,12 @@ export function createSpaceList(deps: SpaceListDeps) {
     });
   });
 
+  /*
+    The sidebar's rows: every dataset the agent holds in the sidebar's order, named and pictured by
+    its space record where there is one and by the dataset where there is not — with a row for
+    joining the deployment's global space while it is configured and not joined yet, and never the
+    marketplace.
+  */
   const orderedSidebarItems = memo(() => {
     // For joined spaces, s.uuid is the creator's local UUID, which never matches the joiner's
     // dataset id. Space.url stores only the bare shared id, never the backend's own URI for it,
