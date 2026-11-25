@@ -81,7 +81,7 @@ export const baseFallback: TemplateSchema & { id: string } = {
     icon: 'power',
     role: 'base',
   },
-  props: { styles: { display: 'contents' } },
+  props: { display: 'contents' },
   children: [
     {
       type: '$if',

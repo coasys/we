@@ -638,7 +638,7 @@ export const coasysBase: TemplateSchema & { id: string } = {
     icon: 'hexagon',
     role: 'base',
   },
-  props: { styles: { display: 'contents' } },
+  props: { display: 'contents' },
   children: [
     stage("baseStore.stage == 'starting'", waiting('base__starting', 'Starting Coasys…')),
     stage("baseStore.stage == 'failed'", failed),
