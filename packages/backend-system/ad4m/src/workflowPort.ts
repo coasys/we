@@ -54,7 +54,6 @@ import {
   Literal,
   type ModelQuery,
   type PerspectiveProxy,
-  RpcError,
   SHACLFlow,
 } from '@coasys/ad4m';
 import type {
@@ -77,6 +76,7 @@ import { approvalsFor, evidenceFor, trace, tracing, validateWorkflowDefinition }
 import { type EngineProposal, ENTRY_STATE, itemOf, openMoves, type Run, runFor, stateOf, stepsOf } from './flowRuns';
 import { recordMissingMethod } from './missingMethods';
 import { coreEntities, predicateOfRelation, relationOfPredicate } from './relationPredicates';
+import { rpcStatus } from './rpcStatus';
 
 /** The entities a workflow's records may be: those it names, or any WE declares. */
 const recordEntities = (entities: readonly string[]) => (entities.length ? entities : coreEntities());
@@ -517,11 +517,15 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 const asError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
 /**
- * The refusal the executor sent, or `undefined` when the error is not one. A refusal is an `RpcError`
- * with status 409 whose `data` is a `FlowRefusal`; a real failure has status 500 and no `data`.
+ * The refusal the executor sent, or `undefined` when the error is not one. A refusal is a rejection
+ * with status 409 whose `data` is a `FlowRefusal`; a real failure has status 500 and no `data`. Read
+ * from the error's shape, never with `instanceof RpcError` (see {@link rpcStatus}).
  */
-const refusalOf = (error: unknown): FlowRefusal | undefined =>
-  error instanceof RpcError && error.status === 409 ? (error.data as FlowRefusal | undefined) : undefined;
+const refusalOf = (error: unknown): FlowRefusal | undefined => {
+  if (rpcStatus(error) !== 409) return undefined;
+  const data = (error as { data?: unknown }).data;
+  return typeof (data as { kind?: unknown } | null | undefined)?.kind === 'string' ? (data as FlowRefusal) : undefined;
+};
 
 /** The call outlived the caller's patience; the executor may well still be doing it. */
 const timedOut = (error: unknown) => /timed out|timeout/i.test(messageOf(error));

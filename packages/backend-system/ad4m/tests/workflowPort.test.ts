@@ -282,8 +282,34 @@ describe('installing beside a flow of the same name written another way', () => 
 });
 
 describe('moveRefusal', () => {
+  /**
+   * A rejection as the app's client throws it: the `RpcError` of the SDK copy bundled in
+   * `@coasys/ad4m-connect`, a class other than the one `@coasys/ad4m` exports. Only its shape matches.
+   */
+  class BundledRpcError extends Error {
+    constructor(
+      readonly status: number,
+      message: string,
+      readonly data?: unknown,
+    ) {
+      super(message);
+    }
+  }
   /** What the executor sends for a refused move: status 409 and the typed refusal as `data`. */
-  const refused = (data: FlowRefusal) => new RpcError(409, 'refused', data);
+  const refused = (data: FlowRefusal) => new BundledRpcError(409, 'refused', data);
+
+  it('reads a refusal from its shape, whichever RpcError class carries it', () => {
+    const error = refused({ kind: 'guard-unmet', to: 'shipped' });
+    expect(error).not.toBeInstanceOf(RpcError);
+    expect(moveRefusal(error, 'shipped', 'doing')).toMatchObject({ outcome: 'refused', reason: 'unmet' });
+    const imported = new RpcError(409, 'refused', { kind: 'contested', instance: 'ad4m://x', from: 'vote' });
+    expect(moveRefusal(imported, 'adopted', 'vote')).toEqual({ outcome: 'stalled', state: 'vote' });
+  });
+
+  it('is not a refusal without a kind: a 409 whose data has no string kind', () => {
+    expect(moveRefusal(new BundledRpcError(409, 'conflict'), 'done', 'doing')).toBeUndefined();
+    expect(moveRefusal(new BundledRpcError(409, 'conflict', { reason: 'x' }), 'done', 'doing')).toBeUndefined();
+  });
 
   it('reads "not reachable from where you asked to go" as already there', () => {
     // The board showed Done; a rule change had the engine re-judge the run into Doing.
@@ -335,7 +361,7 @@ describe('moveRefusal', () => {
   });
 
   it('leaves a real failure to be thrown: status 500, no data', () => {
-    expect(moveRefusal(new RpcError(500, 'store failed'), 'done', 'doing')).toBeUndefined();
+    expect(moveRefusal(new BundledRpcError(500, 'store failed'), 'done', 'doing')).toBeUndefined();
   });
 
   it('does not read the message: a plain error with the old sentence is not a refusal', () => {
