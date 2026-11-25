@@ -647,14 +647,13 @@ export interface SpaceStore {
   root: Accessor<string>;
   /**
    * The records this space names by landmark, as name → id: `landmarks.canvas` is the space's canvas. A landmark
-   * the space never named is simply absent, and a template must handle that, since a space can
-   * switch template and a template must never assume what another set up.
+   * the space never named is simply absent.
+   *
+   * The host's own read, for deciding where content made on the space's canvas lives. A template
+   * reads the `SpaceLandmark` records with a query instead, which every host answers.
    */
   landmarks: Accessor<Record<string, string>>;
-  /**
-   * The landmarks have answered for the space on screen. Until then an absent landmark means "not
-   * known yet", not "none": gate a "there is no board" on this, never on `root`, which arrives first.
-   */
+  /** The landmarks have answered for the space on screen: an absent one means "none" rather than "not yet". */
   landmarksLoaded: Accessor<boolean>;
   /**
    * `root` has answered for the space on screen — the collection's id, or '' for a space with none.

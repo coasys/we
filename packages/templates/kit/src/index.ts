@@ -48,6 +48,7 @@ export type { MediaGridOptions } from './lists/mediaGrid.ts';
 // WE-domain — these name WE's stores or its agent machinery.
 export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from './we/anchor.ts';
 export type { AnchorBannerOptions } from './we/anchor.ts';
+export { landmark, LANDMARKS, LANDMARKS_LOADED, landmarksQuery } from './we/landmarks.ts';
 export {
   answerButton,
   CHANGED,

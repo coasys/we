@@ -55,7 +55,7 @@ import {
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
 /** The space's canvas, by role — what the workshop's canvas, its actions and its key are about. */
-const SPACE_CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
+const SPACE_CANVAS_EXPR = "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''";
 
 type QueryNode = { $queries?: Record<string, unknown> };
 type GateNode = { type?: string; props?: { condition?: { $?: string }; else?: unknown } };

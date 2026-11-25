@@ -23,8 +23,6 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   'spaceStore.offeredInvolvementTypes': "a $query of 'InvolvementType' where retired is false",
   'spaceStore.roles': "a $query of 'Role', with 'RoleGrant' for its holders",
   'spaceStore.memberRoles': "a $query of 'RoleGrant'",
-  'spaceStore.landmarks': "a $query of 'SpaceLandmark'",
-  'spaceStore.landmarksLoaded': "local.<name>Loaded of the 'SpaceLandmark' $queries entry",
   'spaceStore.readMarkers': "a $query of 'ReadMarker' where author is me.did",
   'spaceStore.members': 'spaceStore.memberDids with profileStore.profiles, in an expression',
   'spaceStore.spaceList': 'spaceStore.mySpaces, arranged in an expression',

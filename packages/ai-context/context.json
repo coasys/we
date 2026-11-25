@@ -7332,10 +7332,6 @@
         "createAgentLoading": {
           "type": "boolean"
         },
-        "me": {
-          "type": "object",
-          "properties": ["did", "perspective", "directMessageLanguage"]
-        },
         "host": {
           "type": "object",
           "properties": [
@@ -7992,17 +7988,8 @@
         "agentModuleSettings": {
           "type": "array"
         },
-        "autoInterpret": {
-          "type": "boolean"
-        },
         "root": {
           "type": "string"
-        },
-        "landmarks": {
-          "type": "object"
-        },
-        "landmarksLoaded": {
-          "type": "boolean"
         },
         "rootLoaded": {
           "type": "boolean"
@@ -8012,9 +7999,6 @@
         },
         "interpretationTargets": {
           "type": "array"
-        },
-        "taskWorkflowRule": {
-          "type": "string"
         },
         "taskWorkflowEnabled": {
           "type": "boolean"

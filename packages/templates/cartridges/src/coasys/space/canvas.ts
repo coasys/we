@@ -9,6 +9,8 @@ import {
   KIND_CARD_RULES,
   KIND_STYLES_QUERY,
   kindGlyph,
+  landmark,
+  landmarksQuery,
   newNoteModal,
   newThingChooser,
   PLACED_CARD_STYLE,
@@ -100,7 +102,7 @@ const LENS = scopeLens({
 const SCOPED = `(${CALL}) || (${CALLS}) || (${PERSON}) || (${WORKFLOW})`;
 
 /** The space's canvas — its `canvas` landmark, whose placements are its children. */
-const CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
+const CANVAS_EXPR = `${landmark('canvas')} ?? ''`;
 const CANVAS = { $: CANVAS_EXPR };
 
 /** A record's own page, which a double-click opens. */
@@ -289,6 +291,8 @@ export const canvasPane: SchemaNode = {
     ),
     // The space's colours by kind, which the cards and the chooser below are drawn in.
     typeStyles: KIND_STYLES_QUERY,
+    // Which canvas is the space's own: its `canvas` landmark.
+    ...landmarksQuery(),
     focusCall: {
       entity: 'CollectionBlock',
       where: { id: { $: CALL } },

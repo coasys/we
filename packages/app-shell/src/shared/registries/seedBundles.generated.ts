@@ -21477,6 +21477,7 @@ export const seedBundles: Bundle[] = [
                         limit: 50,
                         when: { $: 'spaceStore.currentSpace.id' },
                       },
+                      spaceLandmarks: { entity: 'SpaceLandmark' },
                       focusCall: {
                         entity: 'CollectionBlock',
                         where: {
@@ -22019,7 +22020,9 @@ export const seedBundles: Bundle[] = [
                               seeds: {
                                 source: 'canvas',
                                 options: {
-                                  canvas: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  canvas: {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   members: { id: { $: 'spaceStore.root' }, via: 'children' },
                                   contains: { $: 'shapeStore.interpretationCandidates' },
                                   origin: 'extractedFrom',
@@ -22123,7 +22126,7 @@ export const seedBundles: Bundle[] = [
                               },
                               resizable: { $: '!local.treeMode' },
                               empty: {
-                                $: "(spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
+                                $: "(find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
                               },
                               emptyIcon: 'squares-four',
                               emptyGradient: 'accent',
@@ -22135,42 +22138,54 @@ export const seedBundles: Bundle[] = [
                               onNodeDragEnd: {
                                 $invoke: 'recordStore.dragOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onNodeResize: {
                                 $invoke: 'recordStore.resizeOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeAnchor: {
                                 $invoke: 'recordStore.anchorOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeReroute: {
                                 $invoke: 'recordStore.rerouteOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeRetarget: {
                                 $invoke: 'recordStore.retargetOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onDrop: {
                                 $invoke: 'recordStore.dropOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
@@ -22193,11 +22208,19 @@ export const seedBundles: Bundle[] = [
                               ],
                               onUndo: {
                                 $invoke: 'recordStore.undoCanvas',
-                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                                args: [
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
+                                ],
                               },
                               onRedo: {
                                 $invoke: 'recordStore.redoCanvas',
-                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                                args: [
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
+                                ],
                               },
                               carry: true,
                               selectionActions: [
@@ -22226,7 +22249,9 @@ export const seedBundles: Bundle[] = [
                                     then: {
                                       $invoke: 'recordStore.setCardStyle',
                                       args: [
-                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        {
+                                          $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                        },
                                         { $: 'event.records.map(r, r.recordId)' },
                                         'color',
                                         { $: 'event.value' },
@@ -22304,7 +22329,9 @@ export const seedBundles: Bundle[] = [
                                       {
                                         $invoke: 'recordStore.placeOnCanvas',
                                         args: [
-                                          { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                          {
+                                            $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                          },
                                           { $: 'event.recordId' },
                                           { $: 'event.recordType' },
                                           { $: 'event.x' },
@@ -22351,7 +22378,9 @@ export const seedBundles: Bundle[] = [
                                     then: {
                                       $invoke: 'recordStore.setCardStyle',
                                       args: [
-                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        {
+                                          $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                        },
                                         { $: 'event.recordId' },
                                         { $: 'event.action' },
                                         { $: 'event.value' },
@@ -22363,7 +22392,9 @@ export const seedBundles: Bundle[] = [
                               onNodeArrange: {
                                 $invoke: 'recordStore.arrangeOnTree',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'treeSpine({ value: local.spine })' },
                                   { $: 'event' },
                                 ],
@@ -22371,7 +22402,9 @@ export const seedBundles: Bundle[] = [
                               onSeedSummary: { $setLocal: 'voiceSummary', value: { $: 'event' } },
                               onCanvasDoubleClick: {
                                 $if: {
-                                  condition: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  condition: {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   then: [
                                     { $setLocal: 'newAt', value: { $: 'event' } },
                                     { $setLocal: 'chooserOpen', value: true },
@@ -24386,7 +24419,7 @@ export const seedBundles: Bundle[] = [
                                                     $invoke: 'recordStore.createOnCanvas',
                                                     args: [
                                                       {
-                                                        $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                        $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                       },
                                                       { $: 'local.newAt.x' },
                                                       { $: 'local.newAt.y' },
@@ -24481,7 +24514,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -24632,7 +24665,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -24783,7 +24816,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -24995,7 +25028,7 @@ export const seedBundles: Bundle[] = [
                                             { $: 'arg' },
                                             {
                                               canvas: {
-                                                $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                               },
                                               at: { $: 'local.newAt' },
                                             },

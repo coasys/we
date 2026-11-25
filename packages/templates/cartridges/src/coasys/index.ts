@@ -65,7 +65,7 @@ export const coasys: Cartridge = {
           children: ['coasys-canvas', 'card-brief', 'card-pilot', 'card-venue', 'card-invites'],
         },
       },
-      // The canvas itself, named by the landmark the shell reads as `spaceStore.landmarks.canvas`.
+      // The canvas itself, named by the landmark a template reads from its `SpaceLandmark` query.
       // Its children are the placements — the canvas's membership.
       {
         entity: 'CollectionBlock',

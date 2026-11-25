@@ -494,8 +494,6 @@ export const storeEntries: StoreEntry[] = [
       root: { type: 'string' },
       rootLoaded: { type: 'boolean' },
       firstScreenOpen: { type: 'boolean' },
-      landmarks: { type: 'object' },
-      landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },

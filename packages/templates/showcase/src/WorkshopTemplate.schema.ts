@@ -72,6 +72,9 @@ import {
   formModal,
   inspectorPanel,
   kindGlyph,
+  landmark,
+  LANDMARKS_LOADED,
+  landmarksQuery,
   modelMark,
   newNoteModal,
   newThingChooser,
@@ -178,7 +181,11 @@ const CALL = { $: CALL_EXPR };
  * finds it by that name. Found rather than assumed, since a space can switch template and arrive
  * here without one — an empty string then, which the canvas reads as "nothing to load".
  */
-const SPACE_CANVAS_EXPR = "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''";
+/**
+ * The space's canvas — its `canvas` landmark. Read from `local.spaceLandmarks`, which every part of
+ * this template naming it binds (`landmarksQuery`): the canvas route, the chrome over it, the key.
+ */
+const SPACE_CANVAS_EXPR = `${landmark('canvas')} ?? ''`;
 const SPACE_CANVAS = { $: SPACE_CANVAS_EXPR };
 
 /**
@@ -1110,6 +1117,12 @@ const historyPill: SchemaNode = {
     },
   },
 };
+
+/** A panel's node with the space's landmarks bound: a panel is drawn in a scope of its own. */
+const withLandmarks = (node: SchemaNode): SchemaNode => ({
+  ...node,
+  $queries: { ...node.$queries, ...landmarksQuery() },
+});
 
 const callChrome: SchemaNode = {
   type: 'Row',
@@ -2100,7 +2113,7 @@ const canvasBody: Omit<RouteSchema, 'path'> = {
     route is rendered through its own pass with nothing inherited, so a query hoisted to the root
     would validate and then resolve to nothing here. Each of the three pages declares its own.
   */
-  $queries: { typeStyles: TYPE_STYLES_QUERY, ...TREE_QUERIES },
+  $queries: { typeStyles: TYPE_STYLES_QUERY, ...TREE_QUERIES, ...landmarksQuery() },
   /*
     The canvas itself, always — never a placeholder standing in front of it.
 
@@ -2273,6 +2286,8 @@ const kanbanRoute: RouteSchema = {
     should leave nothing to be misread.
   */
   $localState: { pressedCard: { type: 'boolean', initial: false } },
+  // The space's own board is its `board` landmark.
+  $queries: landmarksQuery(),
   props: {
     width: '100%',
     minHeight: '100%',
@@ -2341,7 +2356,7 @@ const kanbanRoute: RouteSchema = {
             {
               type: '$if',
               props: {
-                condition: { $: 'spaceStore.landmarks.board' },
+                condition: { $: landmark('board') },
                 then: {
                   type: 'Column',
                   props: { width: '100%', ...ROUTE_BAND },
@@ -2349,7 +2364,7 @@ const kanbanRoute: RouteSchema = {
                     taskBoard({
                       // The space's own board, which gathers from the space collection — a fact the
                       // board carries, so nothing here has to say so.
-                      boardId: { $: 'spaceStore.landmarks.board' },
+                      boardId: { $: landmark('board') },
                       // The scope lens — see `SCOPE_PARAM`.
                       onlyFrom: { record: { $: SCOPE_RECORD }, param: FROM_PARAM },
                       // Its control, beside the board's own filters.
@@ -2439,13 +2454,13 @@ const kanbanRoute: RouteSchema = {
                 },
                 /*
                   "No board yet" is an answer, and it is only given once the space's landmarks have
-                  been read — which `spaceStore.landmarksLoaded` says. Before that the same spinner the
+                  been read — which `LANDMARKS_LOADED` says. Before that the same spinner the
                   board itself shows holds the place.
                 */
                 else: {
                   type: '$if',
                   props: {
-                    condition: { $: 'spaceStore.landmarksLoaded' },
+                    condition: { $: LANDMARKS_LOADED },
                     then: callGate(
                       'kanban',
                       'This space has no board yet. Making one arranges the work in it — it never moves anything.',
@@ -3657,12 +3672,14 @@ export const workshopTemplate: TemplateSchema = {
       {
         id: 'key',
         // The space's canvas, over the space collection, and every kind the space could extract.
-        node: keyPanel({
-          call: SPACE_CANVAS,
-          callExpr: SPACE_CANVAS_EXPR,
-          members: { $: 'spaceStore.root' },
-          interpretable: INTERPRETABLE.$,
-        }),
+        node: withLandmarks(
+          keyPanel({
+            call: SPACE_CANVAS,
+            callExpr: SPACE_CANVAS_EXPR,
+            members: { $: 'spaceStore.root' },
+            interpretable: INTERPRETABLE.$,
+          }),
+        ),
         title: 'Key',
         snap: 'top-right',
         box: { width: 252, height: 545 },
@@ -3700,6 +3717,9 @@ export const workshopTemplate: TemplateSchema = {
     clipped (no `overflow` here), and scrolls in that container exactly as before.
   */
   props: { bg: 'page', width: '100%', height: '100%' },
+  // For the chrome above the routes, whose undo and redo act on the space's canvas. A route is a
+  // scope of its own, so the canvas route binds the same query again — one subscription for both.
+  $queries: landmarksQuery(),
   children: [callChrome, switcher, { type: '$routes' }],
   routes: [
     /*

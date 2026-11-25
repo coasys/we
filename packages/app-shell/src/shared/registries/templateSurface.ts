@@ -559,8 +559,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     root: state('content'),
     rootLoaded: state('content'),
     firstScreenOpen: state('content'),
-    landmarks: state('content'),
-    landmarksLoaded: state('content'),
+    // The host's own read. A template asks for the space's `SpaceLandmark` records with a query.
+    landmarks: WIRING,
+    landmarksLoaded: WIRING,
     taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),

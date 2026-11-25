@@ -419,7 +419,7 @@ describe('the Coasys cartridge', () => {
     const graph = findNode(coasys.shell, (n) => n.type === 'GraphView')!;
     const props = graph.props as Record<string, unknown>;
     const options = (props.seeds as { options: Record<string, unknown> }).options;
-    expect(JSON.stringify(options.canvas)).toContain('spaceStore.landmarks.canvas');
+    expect(JSON.stringify(options.canvas)).toContain("{ name: 'canvas' }).node");
     expect(options.contains).toEqual({ $: 'shapeStore.interpretationCandidates' });
     expect(options.connections).toBe('Relationship');
     expect(options.pending).toBeTruthy();
@@ -505,10 +505,10 @@ describe('the Coasys cartridge', () => {
     const at = (path: string[], params: Record<string, string>, extra: Record<string, unknown> = {}) => {
       const roots: Record<string, unknown> = {
         routeStore: { templateSegments: path, params },
-        spaceStore: { spacePath: '/space/s1', landmarks: { canvas: 'c1' }, policy: { sentences: [] } },
+        spaceStore: { spacePath: '/space/s1', policy: { sentences: [] } },
         workflowStore: { open: null },
         shapeStore: { spaceShapes: [] },
-        local: { others: 'dim' },
+        local: { others: 'dim', spaceLandmarks: [{ id: 'l1', name: 'canvas', node: 'c1' }] },
         ...extra,
       };
       return (prop: unknown) =>
@@ -549,7 +549,7 @@ describe('the Coasys cartridge', () => {
     it('says what to do on an empty canvas, rather than the canvas’s address', () => {
       const empty = (graph.props as { empty: unknown }).empty;
       expect(at([], { view: 'canvas' })(empty)).toMatch(/^Nothing on this canvas yet\. Double-click/);
-      const noCanvas = at([], { view: 'canvas' }, { spaceStore: { landmarks: {}, policy: { sentences: [] } } });
+      const noCanvas = at([], { view: 'canvas' }, { local: { others: 'dim', spaceLandmarks: [] } });
       expect(noCanvas(empty)).toMatch(/^This space has no canvas/);
     });
 
