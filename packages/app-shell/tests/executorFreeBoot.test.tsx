@@ -1427,8 +1427,8 @@ describe('dataset lifecycle through the real stores', () => {
 
     const rowOf = async (name: string) => {
       const uuid = (await lifecycle.list()).find((d) => d.name === name)!.id;
-      await vi.waitFor(() => expect(stores.spaces.spaceList().find((r) => r.uuid === uuid)?.isWeSpace).toBe(true));
-      return stores.spaces.spaceList().find((r) => r.uuid === uuid)!;
+      await vi.waitFor(() => expect(stores.spaces.spaceList().find((r) => r.id === uuid)?.isWeSpace).toBe(true));
+      return stores.spaces.spaceList().find((r) => r.id === uuid)!;
     };
     expect((await rowOf('In Coasys')).defaultThemeId).toBe('coasys--glow');
     expect((await rowOf('Bare in Coasys')).defaultThemeId).not.toBe('coasys--glow');
@@ -1447,7 +1447,7 @@ describe('dataset lifecycle through the real stores', () => {
     await ready(stores);
     await stores.spaces.createSpace('Row Space', '', 'personal', 'hidden');
     const uuid = (await lifecycle.list()).find((d) => d.name === 'Row Space')!.id;
-    const rowOf = () => stores.spaces.spaceList().find((r) => r.uuid === uuid);
+    const rowOf = () => stores.spaces.spaceList().find((r) => r.id === uuid);
     await vi.waitFor(() => expect(rowOf()?.isWeSpace).toBe(true));
     expect(rowOf()?.id).toBe(uuid);
 
@@ -2783,7 +2783,7 @@ describe('creating a shared space in stages', () => {
     expect(stores.spaces.mySpaces().map((s) => s.name)).toContain('Workbench');
     expect(row(stores, 'Workbench')).toMatchObject({ kind: 'personal', shareLink: '' });
 
-    const retry = stores.spaces.shareSpace(row(stores, 'Workbench').uuid);
+    const retry = stores.spaces.shareSpace(row(stores, 'Workbench').id);
     await vi.waitFor(() => expect(row(stores, 'Workbench').sharing).toBe('sharing'));
     publish[1].resolve();
     await retry;
@@ -2812,7 +2812,7 @@ describe('creating a shared space in stages', () => {
     publish[0].reject(new Error('the network said no'));
     await vi.waitFor(() => expect(row(stores, 'Orchard').sharing).toBe('failed'));
 
-    const retry = stores.spaces.shareSpace(row(stores, 'Orchard').uuid);
+    const retry = stores.spaces.shareSpace(row(stores, 'Orchard').id);
     await vi.waitFor(() => expect(publish).toHaveLength(2));
     publish[1].resolve();
     await retry;
@@ -2860,7 +2860,7 @@ describe('creating a shared space in stages', () => {
     await stores.spaces.createSpace('Kiln', 'x', 'shared', 'hidden');
     await vi.waitFor(() => expect(row(stores, 'Kiln').sharing).toBe('failed'));
 
-    await stores.spaces.shareSpace(row(stores, 'Kiln').uuid);
+    await stores.spaces.shareSpace(row(stores, 'Kiln').id);
 
     expect(publishes).toBe(1);
     expect(row(stores, 'Kiln')).toMatchObject({ sharing: '', kind: 'shared' });

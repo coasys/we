@@ -1318,7 +1318,6 @@ export function createSpaceStore(
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
       return {
         id: ds.id,
-        uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
         description: space?.description ?? '',
@@ -5065,7 +5064,7 @@ export function createSpaceStore(
    * left pasting whatever they had before.
    */
   async function copyShareLink(uuid: string): Promise<void> {
-    const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
+    const link = spaceList().find((s) => s.id === uuid)?.shareLink;
     if (!link) return;
     if (await copyText(link)) toastService.success('Link copied');
     else toastService.error('Could not copy the link');
@@ -5079,7 +5078,7 @@ export function createSpaceStore(
    * server URL (local executor).
    */
   async function copyGuestLink(uuid: string): Promise<void> {
-    const link = spaceList().find((s) => s.uuid === uuid)?.guestLink;
+    const link = spaceList().find((s) => s.id === uuid)?.guestLink;
     if (!link) {
       toastService.error('Guest links require a hosted node');
       return;

@@ -2899,7 +2899,6 @@ const spaceSettingsRows = (): Scenario => {
   const [recording, setRecording] = createSignal(false);
   const spaceRow = () => ({
     id: 'space-1',
-    uuid: 'space-1',
     ...space(),
     avatar: '',
     kind: 'shared',

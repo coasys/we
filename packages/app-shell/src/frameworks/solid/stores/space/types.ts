@@ -21,12 +21,11 @@ import type { FileData, Space } from '@we/entities';
  */
 export interface SpaceListEntry {
   /**
-   * The row's identity, the dataset id: what a page keeps the row by while its fields change, so a
-   * settings screen drawn over the list is not drawn again on every write.
+   * The dataset id — stable whether or not a Space record exists, so it keys navigation and settings,
+   * and what a page keeps the row by while its fields change, so a settings screen drawn over the
+   * list is not drawn again on every write.
    */
   id: string;
-  /** The dataset id — stable whether or not a Space record exists, so it keys navigation and settings. */
-  uuid: string;
   name: string;
   description: string;
   avatar: string;

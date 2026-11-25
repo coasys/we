@@ -50,7 +50,7 @@ const openSpaceFirst: SchemaNode = {
         variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.id' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },
@@ -307,7 +307,7 @@ export const spacePeopleSection: SchemaNode = {
   type: '$if',
   props: {
     // The row being configured is the dataset currently open — see the docblock.
-    condition: { $: 'space.uuid == datasetStore.currentDataset.id' },
+    condition: { $: 'space.id == datasetStore.currentDataset.id' },
     then: {
       type: 'Column',
       props: { gap: '400' },

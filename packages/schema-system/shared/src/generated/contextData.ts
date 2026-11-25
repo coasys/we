@@ -3284,7 +3284,7 @@ export const contextData: ContextData = {
         spaceList: {
           type: 'array',
           properties: [
-            'uuid',
+            'id',
             'name',
             'description',
             'avatar',

@@ -67,7 +67,7 @@ const defaultPickerRow = (opts: {
                   // The space is named explicitly. On the route this replaced it could be omitted,
                   // because there was only ever one space in question; here the row being configured
                   // is usually not the one on screen.
-                  onClick: { $invoke: opts.setDefault, args: [{ $: `${opts.as}.id` }, { $: 'space.uuid' }] },
+                  onClick: { $invoke: opts.setDefault, args: [{ $: `${opts.as}.id` }, { $: 'space.id' }] },
                 },
                 children: ['Set as default'],
               },

@@ -63,7 +63,7 @@ const spaceCard: SchemaNode = {
         variant: 'bare',
         flex: '1',
         ax: 'start',
-        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.id' }] },
       },
       children: [
         {
@@ -117,7 +117,7 @@ const spaceCard: SchemaNode = {
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`/spaces/${space.uuid}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`/spaces/${space.id}`' }] },
       },
       children: [{ type: 'we-icon', props: { name: 'gear' } }],
     },
