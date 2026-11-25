@@ -25,9 +25,9 @@ run _before_ `pnpm record` for `style.json`'s computed values to resolve.
 
 Navigation and render vectors mount real Solid on jsdom (a RouteStore over real history; the
 renderer itself), so `pnpm record` is two steps: `tsx src/record.ts` writes six files, then
-`vitest.config.record.ts` runs `tests/record-navigation.test.tsx` and `tests/record-render.test.tsx`
-(excluded from the default projects on purpose), which write `vectors/navigation.json` and
-`vectors/render.json`.
+`vitest.config.record.ts` runs `tests/record-navigation.test.tsx`, `tests/record-render.test.tsx`
+and `tests/record-profiles.test.tsx` (excluded from the default projects on purpose), which write
+`vectors/navigation.json`, `vectors/render.json` and `vectors/profiles.json`.
 
 ## Files
 
@@ -41,6 +41,7 @@ vectors/query-compile.json  resolveQueryProp / pruneUnresolvedWhere / scopeIsAnc
 vectors/host-functions.json host source name + options → result
 vectors/style.json          DS props + theme → emitted style + per-prop token & computed value
 vectors/tokens/<theme>.json every --we-* custom property's computed value, per theme (6 files)
+vectors/profiles.json       a world + an address + a capability-profile action → state before/after, events
 ```
 
 ## Formats
@@ -168,6 +169,16 @@ what each var records beyond that is decided by what its value _is_, not its nam
 `--we-theme-*` vars are a theme's heterogeneous inputs — colours, lengths and numbers each record
 by the rules above. The six ids: `light`, `dark`, `black`, `retro`, `cyberpunk`, `glow` (the
 bundle's own theme; `glow` counts as a preset in coverage).
+
+### profiles.json
+
+The capability profiles' vectors, in their own format: `{ version, profiles, worlds, entities,
+cases }`, each case a world, an address and one profile action (or none, for a read), with what the
+host's state reads before and after it and the events it caused. The format and how a host runs it
+are `docs/spec/profiles/README.md#conformance`. Recorded on WE's real stores, composed and booted on
+the in-memory backend by `app-shell/tests/support/profileHost.tsx`; `tests/profiles.test.tsx` runs
+every vector from the file again, and `tests/profilesCoverage.test.ts` holds every action and state
+member of every profile to some case. A full run boots the host once per case, about two seconds each.
 
 ## For Rust implementers
 
