@@ -43,7 +43,7 @@ const shapeStub = {
   interpretationCandidatesLoaded: () => true,
 };
 
-import { connectionKey, createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
+import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 
 function mount(): RecordStore {
   let store!: RecordStore;
@@ -233,12 +233,6 @@ describe('a connection’s key', () => {
     const store = mount();
     await store.updateRecordField('TaskBlock', 'q', 'title', 'New name');
     expect((await linkOf('qx')).connection).toBe('New name \u2192 x');
-  });
-
-  it('trims, and leaves the label off when there is none', () => {
-    expect(connectionKey(' Launch ', 'Guide', '  depends on ')).toBe('Launch \u2192 Guide: depends on');
-    expect(connectionKey('Launch', 'Guide', '')).toBe('Launch \u2192 Guide');
-    expect(connectionKey('Launch', 'Guide')).toBe('Launch \u2192 Guide');
   });
 });
 

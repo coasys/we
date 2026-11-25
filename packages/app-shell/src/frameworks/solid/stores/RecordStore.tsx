@@ -73,6 +73,7 @@ import { routeWrite } from '../../../shared/edgeRoute';
 import { followLive } from '../../../shared/followLive';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
+import { connectionKey } from '../../../shared/kernels/connectionKey';
 import { isRank, isUnder, rowFor, seatInRow } from '../../../shared/kernels/treeRanks';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
@@ -166,24 +167,6 @@ function entityNamed(name: string): AnyEntity {
  * and on a map of what the space has defined — each as the fields its settings form asks for.
  */
 const DISPLAY_ONLY = [RELATIONSHIP, 'SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] as const;
-
-/**
- * A connection's dedup key — the format `Relationship.connection`'s hint asks an interpretation pass for.
- *
- * Written on every connection a person makes, not only on what a pass writes, because the executor
- * shows a model only the instances whose identity property is set: a connection drawn by hand
- * without a key was invisible to the pass meant to extend the structure it belonged to.
- *
- * Each end by its **title** — the value the prompt lists an existing record under — rather than its
- * id. Ids were tried first, and the first real pass showed both costs: the model had to resolve
- * every key against the task list to read the tree at all, and it wrote titles in its own keys
- * anyway, so a key drawn by hand and the same claim extracted could never dedup into each other. The
- * label is left off when there is none, rather than leaving a dangling colon.
- */
-export function connectionKey(source: string, target: string, label?: unknown): string {
-  const pair = `${source.trim()} \u2192 ${target.trim()}`;
-  return typeof label === 'string' && label.trim() ? `${pair}: ${label.trim()}` : pair;
-}
 
 /**
  * A stored placement, as this file reads one back.
