@@ -36,6 +36,13 @@
  * `templateSurface.test.ts` asserts that every member of every store interface appears here. A new
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
+ *
+ * ## What another host provides
+ *
+ * This file is WE's bag. Which of its members a template may expect of any host is a separate
+ * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): five versioned
+ * member lists, each member keeping the group it has here. `capabilityProfiles.test.ts` holds the
+ * two together. A member outside every profile is WE-host-only, and the validator says so.
  */
 import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';

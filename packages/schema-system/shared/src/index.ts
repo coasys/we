@@ -59,6 +59,10 @@ export type {
   OperationEntry,
 } from './contextTypes';
 
+// What a host provides a template beyond records, queries and operations — see `profiles/profiles.ts`.
+export { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, NEUTRAL_NAMESPACES, PROFILE_MEMBERS, profileOf } from './profiles';
+export type { CapabilityProfile, ProfileArg, ProfileEvent, ProfileMember } from './profiles';
+
 export {
   asHostChrome,
   buildValidationContext,
