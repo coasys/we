@@ -30,6 +30,7 @@ import {
 } from '@we/template-kit';
 import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner, spaceSettingsPanel } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { boardsView } from '@we/template-views';
 import {
   SHOWCASE_THEME_PRESETS,
   THEME_PRESETS,
@@ -2958,6 +2959,78 @@ const spaceSettingsRows = (): Scenario => {
   };
 };
 
+/**
+ * A space's People page, read from records rather than from the store's view of them.
+ *
+ * The members are the space's DIDs joined to the profiles the host holds; the roles are the space's
+ * `Role` records and who holds one its `RoleGrant` records, a revoked grant held by nobody. Cy is a
+ * member whose profile has not arrived, and is not drawn until it does.
+ */
+const spacePeople = (): Scenario => ({
+  node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [spaceSettingsPanel] },
+  tables: {
+    Role: [
+      { id: 'r-mod', slug: 'moderator', name: 'Moderator', description: 'Looks after posts' },
+      { id: 'r-admin', slug: 'admin', name: 'Admin', description: '' },
+    ],
+    RoleGrant: [
+      { id: 'g1', role: 'admin', agent: 'did:test:ann' },
+      { id: 'g2', role: 'moderator', agent: 'did:test:ann' },
+      { id: 'g3', role: 'moderator', agent: 'did:test:ben', revokedAt: '2026-11-01T00:00:00.000Z' },
+    ],
+  },
+  stores: {
+    datasetStore: { currentDataset: { id: 'space-1' } },
+    shellStore: { spaceSettingsTab: 'people' },
+    profileStore: {
+      profiles: [
+        { did: 'did:test:ann', name: 'Ann Okafor', avatar: '' },
+        { did: 'did:test:ben', name: 'Ben Ruiz', avatar: '' },
+      ],
+    },
+    spaceStore: {
+      mutedDids: [],
+      memberDids: ['did:test:ann', 'did:test:ben', 'did:test:cy'],
+      spaceList: [
+        {
+          id: 'space-1',
+          name: 'Riverside',
+          description: '',
+          avatar: '',
+          kind: 'shared',
+          isWeSpace: true,
+          loading: false,
+          canAdminister: true,
+          modules: [],
+          views: [],
+          usesSections: true,
+          location: null,
+        },
+      ],
+      spaceModuleSettings: [],
+      myModuleSettings: [],
+      agentModuleSettings: [],
+      policy: { loaded: true, preset: 'community', sentences: [] },
+    },
+  },
+});
+
+/**
+ * The Boards view's list, with the space's own board named by its `board` landmark — or with no
+ * landmark, where the list offers to make one.
+ */
+const boardsList = (landmarked: boolean): Scenario => ({
+  node: { type: 'Column', props: { width: '100%' }, children: [boardsView] },
+  tables: {
+    CollectionBlock: [
+      { id: 'b-space', kind: 'board', title: 'Riverside board', createdAt: '2026-11-01T00:00:00.000Z' },
+      { id: 'b-other', kind: 'board', title: 'Garden plans', createdAt: '2026-11-02T00:00:00.000Z' },
+    ],
+    SpaceLandmark: landmarked ? [{ id: 'l-board', name: 'board', node: 'b-space' }] : [],
+  },
+  stores: { spaceStore: { mutedDids: [] } },
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
@@ -3035,4 +3108,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:unshrinkable-box': unshrinkableBox,
   'ds:folding-section': foldingSection,
   'space:settings-rows': spaceSettingsRows,
+  'space:people': spacePeople,
+  'boards:landmark': () => boardsList(true),
+  'boards:no-landmark': () => boardsList(false),
 };
