@@ -797,7 +797,7 @@ const purpose: SchemaNode = {
  * d12's "Find or ask": one field for finding something in the space and asking the space's assistant.
  *
  * Typing only holds the draft on `local.findQuery` — nothing searches as it is typed.
- * Enter asks: the question opens a chat scoped to this one perspective, a window over the space
+ * Enter asks: the question opens a chat scoped to this one dataset, a window over the space
  * (a sheet on a phone) whose tools may not reach any other.
  */
 const findOrAsk: SchemaNode = {
@@ -821,7 +821,7 @@ const findOrAsk: SchemaNode = {
                 $invoke: 'chatStore.openChat',
                 args: [
                   {
-                    $: `{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }`,
+                    $: `{ datasetId: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }`,
                   },
                 ],
               },

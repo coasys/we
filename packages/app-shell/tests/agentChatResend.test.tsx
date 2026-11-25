@@ -72,7 +72,7 @@ function ChatStores(props: ParentProps) {
 }
 
 /** The chat mounted over the real store, a conversation open in it. */
-async function openConversation(inputs: ChatInputs = { perspectiveUuid: 'uuid-9' }) {
+async function openConversation(inputs: ChatInputs = { datasetId: 'uuid-9' }) {
   const { container } = render(() => (
     <ChatStores>
       <AgentChat inputs={inputs} />
@@ -210,7 +210,7 @@ describe('a space switch and back', () => {
           return null;
         })()}
         <Show when={mounted()}>
-          <AgentChat inputs={{ perspectiveUuid: 'uuid-9' }} />
+          <AgentChat inputs={{ datasetId: 'uuid-9' }} />
         </Show>
       </ChatStores>
     ));

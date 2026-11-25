@@ -37,7 +37,7 @@ export interface ChatOpen {
    * The dataset the chat is scoped to — set by a space's ask, absent for the global chat.
    * A scoped chat's tools may only act in that one dataset.
    */
-  perspectiveUuid?: string;
+  datasetId?: string;
   /** The space's own name, for the badge the scoped chat wears. */
   spaceName?: string;
   /**
@@ -60,7 +60,7 @@ export interface ChatOpen {
  * sends nothing.
  */
 export interface ChatInputs {
-  perspectiveUuid?: string;
+  datasetId?: string;
   spaceName?: string;
   /** Words in the composer, not sent — see {@link ChatOpen.prefill}. */
   prefill?: string;
@@ -75,12 +75,12 @@ export interface ChatInputs {
 export interface PendingQuestion {
   text: string;
   /** The scope it was asked in — bound at issue, so a stolen nonce cannot redirect it. */
-  perspectiveUuid?: string;
+  datasetId?: string;
 }
 
 export interface ChatStore {
   /**
-   * Open a chat. No `perspectiveUuid` is the global chat; with one, the chat scoped to that
+   * Open a chat. No `datasetId` is the global chat; with one, the chat scoped to that
    * dataset. `draft` asks once the chat is up; `prefill` only fills its composer.
    */
   openChat: (input?: ChatOpen) => void;
@@ -118,12 +118,12 @@ export interface ChatStore {
 
 /** The panel the request lands in, on a window with room for panels. */
 function panelFor(input: ChatOpen): string {
-  return input.perspectiveUuid ? 'chat-space' : 'chat-global';
+  return input.datasetId ? 'chat-space' : 'chat-global';
 }
 
 /** One window per place a chat is about: the global chat, or the space's own. */
 function keyFor(input: ChatOpen): string {
-  return input.perspectiveUuid ?? 'global';
+  return input.datasetId ?? 'global';
 }
 
 /** What the chat store asks of the shell store: a panel opened, under a key and a scope. */
@@ -207,12 +207,12 @@ export function createChatStore({
         loaded yet) is not a request for the global chat: opening one would answer a question
         about one space with a chat that reaches all of them.
       */
-      if ('perspectiveUuid' in input && !input.perspectiveUuid) {
+      if ('datasetId' in input && !input.datasetId) {
         console.warn('ChatStore: a space chat was asked for before its dataset was known; not opened');
         return;
       }
       const inputs: ChatInputs = {};
-      if (input.perspectiveUuid) inputs.perspectiveUuid = input.perspectiveUuid;
+      if (input.datasetId) inputs.datasetId = input.datasetId;
       if (input.spaceName) inputs.spaceName = input.spaceName;
       if (input.prefill) inputs.prefill = input.prefill;
       /*
@@ -222,7 +222,7 @@ export function createChatStore({
       */
       if (typeof input.draft === 'string' && input.draft.trim()) {
         const nonce = crypto.randomUUID();
-        pendingFor(agentDid()).set(nonce, { text: input.draft, perspectiveUuid: input.perspectiveUuid });
+        pendingFor(agentDid()).set(nonce, { text: input.draft, datasetId: input.datasetId });
         inputs.nonce = nonce;
       }
       if (isNarrow()) {

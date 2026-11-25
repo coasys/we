@@ -53,7 +53,7 @@ afterEach(() => {
 describe('the sheet as a dialog', () => {
   it('announces itself as a modal dialog and takes focus when it opens', async () => {
     const { container } = render(() => <AgentChatSheet />);
-    setSheet({ perspectiveUuid: 'u1', spaceName: 'Garden' });
+    setSheet({ datasetId: 'u1', spaceName: 'Garden' });
 
     const dialog = await vi.waitFor(() => {
       const el = container.querySelector<HTMLElement>('[role="dialog"]');

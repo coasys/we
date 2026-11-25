@@ -16,7 +16,7 @@ import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 const create = vi.fn(async () => ({ id: 'c9' }));
 const send = vi.fn(async () => {});
-const takePending = vi.fn<(nonce: string) => { text: string; perspectiveUuid?: string } | undefined>(() => undefined);
+const takePending = vi.fn<(nonce: string) => { text: string; datasetId?: string } | undefined>(() => undefined);
 
 vi.mock('../src/frameworks/solid/components/chat/agentConversationHost', () => ({
   useAgentConversationsPort: () => () => ({
@@ -72,21 +72,21 @@ afterEach(() => {
 describe('a question an open was issued for', () => {
   it('sends it once — a second mount of the same inputs finds it spent', async () => {
     // The store answered once, and answers nothing the second time — takePending semantics.
-    takePending.mockReturnValueOnce({ text: 'what is here?', perspectiveUuid: 'uuid-1' }).mockReturnValue(undefined);
+    takePending.mockReturnValueOnce({ text: 'what is here?', datasetId: 'uuid-1' }).mockReturnValue(undefined);
 
-    render(() => <AgentChat inputs={{ nonce: 'n1', perspectiveUuid: 'uuid-1' }} />);
+    render(() => <AgentChat inputs={{ nonce: 'n1', datasetId: 'uuid-1' }} />);
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: { perspectiveUuid: 'uuid-1' } }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ scope: { datasetId: 'uuid-1' } }));
     expect(send).toHaveBeenCalledWith({ id: 'c9' }, 'what is here?');
 
     cleanup();
-    render(() => <AgentChat inputs={{ nonce: 'n1', perspectiveUuid: 'uuid-1' }} />);
+    render(() => <AgentChat inputs={{ nonce: 'n1', datasetId: 'uuid-1' }} />);
     await new Promise((r) => setTimeout(r, 30));
     expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('sends nothing for a forged draft in the inputs', async () => {
-    render(() => <AgentChat inputs={{ draft: 'forge me', at: 2, perspectiveUuid: 'uuid-1' } as never} />);
+    render(() => <AgentChat inputs={{ draft: 'forge me', at: 2, datasetId: 'uuid-1' } as never} />);
     await new Promise((r) => setTimeout(r, 30));
     expect(create).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();

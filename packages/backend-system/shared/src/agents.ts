@@ -65,8 +65,8 @@ export interface AgentPort {
 export interface AgentConversationRef {
   /**
    * The dataset the conversation is kept in, where the backend keeps conversations in one.
-   * Absent where the backend keeps them beside it instead — ad4m's `ai.session*` rows live in
-   * the executor's own store, not in any perspective, so its refs carry only `id`.
+   * Absent where the backend keeps them beside it instead, in a store of its own outside every
+   * dataset, so its refs carry only `id`.
    */
   dataset?: DatasetHandle;
   id: string;
@@ -75,10 +75,10 @@ export interface AgentConversationRef {
 /** How far a kept conversation's tools may reach. */
 export interface AgentConversationScope {
   /**
-   * The one perspective the conversation's tools may touch; absent means it reaches everything
+   * The one dataset the conversation's tools may touch; absent means it reaches everything
    * the caller's token does. What a "this space only" chat carries and a global chat leaves out.
    */
-  perspectiveUuid?: string;
+  datasetId?: string;
 }
 
 /** Where a reply is. Only `running` changes. `interrupted`: the backend stopped while it ran. */
@@ -92,7 +92,7 @@ export type AgentReplyStatus = 'running' | 'done' | 'failed' | 'cancelled' | 'in
  */
 export interface AgentStep {
   tool: string;
-  /** The thing the call aimed at — a record id, a perspective uuid — where the backend knows it. */
+  /** The thing the call aimed at — a record id, a dataset id — where the backend knows it. */
   target?: string;
   outcome: 'running' | 'ok' | 'error' | 'stopped';
   error?: string;
@@ -137,7 +137,7 @@ export interface AgentConversationSummary {
 export interface AgentConversationsPort {
   /**
    * Start a conversation the backend keeps. Its replies' agent works inside `scope` — one
-   * perspective, or everything the caller's token reaches when `scope` is absent; the backend
+   * dataset, or everything the caller's token reaches when `scope` is absent; the backend
    * keeps that setting with the conversation.
    */
   create(input: { title?: string; model?: string; scope?: AgentConversationScope }): Promise<AgentConversationRef>;

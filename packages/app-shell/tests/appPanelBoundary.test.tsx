@@ -127,7 +127,7 @@ describe("a template's openPanel aimed at the app's chat panels", () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const id = bag.shellStore.openPanel('chat-space', {
-      perspectiveUuid: 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2',
+      datasetId: 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2',
       prefill: 'x',
     });
 

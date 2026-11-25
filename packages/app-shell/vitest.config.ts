@@ -128,7 +128,7 @@ const SOLID_TESTS = [
   // Send-again, the Enter guards, draft restore, refresh clearing, and the remembered conversation
   // are all reads on the mounted chat — they need the browser build's event dispatch and effects.
   'tests/agentChatResend.test.tsx',
-  // A space's ask without its perspective id opens nothing, not the global chat.
+  // A space's ask without its dataset id opens nothing, not the global chat.
   'tests/chatStoreOpen.test.ts',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',

@@ -182,7 +182,7 @@ describe('an instance kept under the app', () => {
 
     const bound = store.openPanel(
       'inspector',
-      { perspectiveUuid: 'uuid-a', name: 'Ada' },
+      { datasetId: 'uuid-a', name: 'Ada' },
       { key: 'uuid-a', scope: APP_PANEL_SCOPE },
     );
     const global = store.openPanel('inspector', { name: 'Bo' }, { key: 'global', scope: APP_PANEL_SCOPE });
@@ -215,8 +215,8 @@ describe('a logout that does not reload', () => {
     const [who, setWho] = createSignal('did:test:me');
     store.provideAgentDid(who);
 
-    // An app-scope chat open under one agent — the sort whose inputs name a perspective.
-    store.openPanel('inspector', { name: 'Ada', perspectiveUuid: 'uuid-a' }, { scope: APP_PANEL_SCOPE });
+    // An app-scope chat open under one agent — the sort whose inputs name a dataset.
+    store.openPanel('inspector', { name: 'Ada', datasetId: 'uuid-a' }, { scope: APP_PANEL_SCOPE });
     expect(store.panelInstances()).toHaveLength(1);
 
     // Out and in as somebody else, no reload: her panels are not there for him.

@@ -129,7 +129,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       'template:inspector~s': {
         id: 'template:inspector~s',
         panel: 'inspector',
-        inputs: { perspectiveUuid: 'space-1' },
+        inputs: { datasetId: 'space-1' },
         opened: 1,
       },
     }));

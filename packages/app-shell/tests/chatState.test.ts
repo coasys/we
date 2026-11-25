@@ -80,9 +80,9 @@ describe('a refused step inside a space chat — foreign reach or boundary doing
   ];
 
   it('shows the card only when the refused step reached past the space on screen', () => {
-    // A step refused for an agent-wide tool names no perspective — the reply answered anyway.
+    // A step refused for an agent-wide tool names no dataset — the reply answered anyway.
     expect(refusalOf(replied('Capability is not matched: agent'), SPACE)).toBeNull();
-    // A step refused for the space's own perspective is the boundary in the right place.
+    // A step refused for the space's own dataset is the boundary in the right place.
     expect(refusalOf(replied(`capability domain perspective pointer ${SPACE} is not covered`), SPACE)).toBeNull();
     // Naming another space is the reach the card describes.
     expect(refusalOf(replied(`capability domain perspective pointer ${OTHER} is not covered`), SPACE)).toBe(
@@ -92,7 +92,7 @@ describe('a refused step inside a space chat — foreign reach or boundary doing
 
   it("reads the step's target before its error — the executor dumps the session's own capabilities into the error", () => {
     // The live refusal: describe_perspective aimed at another space failed, and the error text
-    // only ever named the chat's own perspective. Reading the error alone never showed the card.
+    // only ever named the chat's own dataset. Reading the error alone never showed the card.
     const messages = [
       msg({ role: 'user', text: 'look at the other space' }),
       msg({

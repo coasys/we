@@ -4,7 +4,7 @@
  */
 import type { AgentConversationMessage } from '@we/backend-shared';
 
-/** The executor's name for a call refused because the session may not reach that perspective. */
+/** The executor's name for a call refused because the session may not reach that dataset. */
 export const CAPABILITY_REFUSAL = 'Capability is not matched';
 
 /** A reply is still working — what shows the spinner and swaps Send for Stop. */
@@ -30,34 +30,34 @@ export function askBefore(messages: AgentConversationMessage[], replyId: string)
   return '';
 }
 
-/** A perspective id where an error names one — the executor spells them out in refusals. */
+/** A dataset id where an error names one — the executor spells them out in refusals. */
 const UUID_IN_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /**
  * Whether a refused step reached past the chat's own boundary. In the global chat every refusal is
  * the account's boundary, so it counts. In a space chat only a refusal naming *another*
- * perspective does: a step refused for an agent-wide tool (no uuid, or this space's own) is the
+ * dataset does: a step refused for an agent-wide tool (no uuid, or this space's own) is the
  * boundary being narrower than the tool, not the reply having reached outside the space — and a
  * reply that went on to answer shows no card for it.
  */
-function reachedOutside(step: { target?: string; error?: string }, perspectiveUuid: string | undefined): boolean {
-  if (!perspectiveUuid) return true;
+function reachedOutside(step: { target?: string; error?: string }, datasetId: string | undefined): boolean {
+  if (!datasetId) return true;
   /*
     `target` first — the thing the step aimed at. The error text is a trap: the executor's refusal
     dumps the session's *own* capabilities into it, so the uuid it names is the chat's own
-    perspective, never the one it reached for.
+    dataset, never the one it reached for.
   */
   const named = step.target ?? step.error?.match(UUID_IN_TEXT)?.[0];
-  return named !== undefined && named.toLowerCase() !== perspectiveUuid.toLowerCase();
+  return named !== undefined && named.toLowerCase() !== datasetId.toLowerCase();
 }
 
 /**
  * The capability refusal the last settled reply ended on, or null. Read off the reply's own
  * `refused` mark — the backend's flag that the reply itself was refused — or a step that reached
- * outside the chat's own perspective. A refused step recovered from inside the space (its reply
+ * outside the chat's own dataset. A refused step recovered from inside the space (its reply
  * answered anyway) names nothing foreign and shows no card.
  */
-export function refusalOf(messages: AgentConversationMessage[], perspectiveUuid?: string): string | null {
+export function refusalOf(messages: AgentConversationMessage[], datasetId?: string): string | null {
   const reply = [...messages].reverse().find((m) => m.role === 'assistant' && m.status && m.status !== 'running');
   if (!reply) return null;
   // The flag is the adapter's word; the error itself is what every adapter wrote before it — read
@@ -65,7 +65,7 @@ export function refusalOf(messages: AgentConversationMessage[], perspectiveUuid?
   if (reply.refused || (reply.error ?? '').includes(CAPABILITY_REFUSAL)) {
     return reply.error ?? CAPABILITY_REFUSAL;
   }
-  const outside = reply.steps?.find((s) => s.refused && reachedOutside(s, perspectiveUuid));
+  const outside = reply.steps?.find((s) => s.refused && reachedOutside(s, datasetId));
   return outside ? (outside.error ?? CAPABILITY_REFUSAL) : null;
 }
 

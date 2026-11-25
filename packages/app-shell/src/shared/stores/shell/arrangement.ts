@@ -178,8 +178,7 @@ export function createShellArrangement(deps: {
         ...(all[APP_PANEL_SCOPE] ?? {}),
         ...(all[templatePanelScope()] ?? {}),
       }).filter(
-        ([, instance]) =>
-          typeof instance.inputs.perspectiveUuid !== 'string' || spaceGate()(instance.inputs.perspectiveUuid),
+        ([, instance]) => typeof instance.inputs.datasetId !== 'string' || spaceGate()(instance.inputs.datasetId),
       ),
     );
   const [allInstances, setAllInstances] = signal(loadInstances(untrack(agentDid)));
