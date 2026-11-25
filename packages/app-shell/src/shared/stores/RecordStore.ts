@@ -52,15 +52,15 @@ import {
 } from '@we/graph-expanders';
 import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
-import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
+import { createOptimism, keyOf, sameValue } from '@we/optimism';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../bringIn';
+import type { PendingConnectionWrites } from '../canvas/connectionHolds';
 import { distinctSignal } from '../distinctSignal';
 import { routeWrite } from '../edgeRoute';
 import { toEntityShape } from '../graphEntityShape';
 import { hostSlot } from '../hostSlot';
-import { connectionKey } from '../kernels/connectionKey';
 import { isRank, isUnder, rowFor, seatInRow } from '../kernels/treeRanks';
 import { notifyCopiedIn } from '../registries/moduleHostServices';
 import { type CreatableEntity, imagePropertyOf } from '../shapes/creatableKinds';
@@ -86,6 +86,7 @@ import {
 import { modelManifestEntries, parseSpine, type Spine } from '../sources/treeSpines';
 import type { Toasts } from '../toasts';
 import type { AppDataset } from './DatasetStore';
+import { createRecordConnections } from './records/connections';
 import { entityNamed, operationRunner, type RecordDatasets, RELATIONSHIP } from './records/context';
 import { createRecordKinds } from './records/kinds';
 import type { SessionStore } from './SessionStore';
@@ -144,13 +145,6 @@ async function drawnPlacement(
   nodeId: string,
 ): Promise<{ drawn?: PlacementRow; duplicates: string[] }> {
   return drawnAmong((await Placement.findAll(dataset, { parent })) as unknown as PlacementRow[], nodeId);
-}
-
-/** Connections held ahead of the data — see `RecordStore.pendingConnections`. Record ids throughout. */
-export interface PendingConnectionWrites {
-  added: { key: string; source: string; target: string; data?: Record<string, string> }[];
-  moved: { id: string; end: 'source' | 'target'; to: string }[];
-  removed: string[];
 }
 
 /**
@@ -672,16 +666,9 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
 
   const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
   const { creatableEntities, displays, schemaFor, entityClass, relationTarget, titleField } = kinds;
+  const connections = createRecordConnections({ ...context, kinds });
+  const { pendingConnections, observeConnections, rekeyConnection } = connections;
 
-  /** A connection between two records, as one write — answering with its id. */
-  async function connect(
-    handle: unknown,
-    ends: { source: string; sourceType?: string; target: string; targetType?: string },
-    extra: { key?: string; kind?: string; fields?: Record<string, unknown>; home?: string } = {},
-  ): Promise<string> {
-    const id = await runOp<string>('core.connectRecords', { ...ends, ...extra }, handle);
-    return String(id ?? '');
-  }
   const shapeStore = deps.shapeStore;
 
   const [recordDraft, setRecordDraft] = distinctSignal<RecordDraft | null>(reactivity, null);
@@ -1068,12 +1055,12 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
       // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
-      const id = await withConnectionHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
-        connect(
+      const id = await connections.withHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
+        connections.connect(
           dataset.handle,
           { source: link.sourceId, sourceType: link.sourceType, target: link.targetId, targetType: link.targetType },
           {
-            key: await keyFor(
+            key: await connections.keyFor(
               dataset.handle,
               { id: link.sourceId, type: link.sourceType },
               { id: link.targetId, type: link.targetType },
@@ -1362,7 +1349,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
       return false;
     }
     try {
-      await withConnectionHold({ kind: 'removed', id: linkId }, () =>
+      await connections.withHold({ kind: 'removed', id: linkId }, () =>
         runOp('core.detachConnection', { connection: linkId }, handle),
       );
     } catch (error) {
@@ -1397,13 +1384,13 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     hold = true,
   ): Promise<string> {
     const write = async () =>
-      connect(
+      connections.connect(
         handle,
         { source: parent.id, sourceType: parent.type, target: card.id, targetType: card.type },
-        { key: await keyFor(handle, parent, card), kind: relationshipTypeId || undefined },
+        { key: await connections.keyFor(handle, parent, card), kind: relationshipTypeId || undefined },
       );
     if (!hold) return write();
-    return withConnectionHold(
+    return connections.withHold(
       {
         kind: 'added',
         source: parent.id,
@@ -2214,101 +2201,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
 
   // ─── Connections written and not yet seen ────────────────────────────────────
 
-  /*
-    A connection is a record like any other, and every gesture that makes, moves or deletes one waited a
-    round trip for the line to change — the line somebody drew appeared a second later, the one they
-    deleted lingered, the end they moved snapped back first. Held here and drawn at once, on the same
-    rules as every other hold in the app (`@we/optimism`): kept until the data has moved, released on a
-    failed write, disbelieved after the backstop.
-
-    What each hold draws, and what it waits to see, is kept beside the value — the optimism package holds
-    one comparable value per key, and a line needs its two ends to be drawn at all:
-    - **added** — a line between two records. Waits for the connection's own id to appear, which it
-      learns when the create returns; until then there is nothing to recognise it by, and the write is
-      still in flight anyway, so the hold stands regardless.
-    - **moved** — one end re-attached. Waits for the connection to say the new end.
-    - **removed** — a connection being deleted. Waits for it to be gone.
-  */
-  type ConnectionHold =
-    | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
-    | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
-    | { kind: 'removed'; id: string };
-  const connections = createOptimism<string | number>(reactivity.signal, { same: sameValue });
-  const connectionHolds = new Map<string, ConnectionHold>();
-  let addedSerial = 0;
-
-  /** Draw this connection change from now on; answers the key its write reports back under. */
-  function holdConnection(change: ConnectionHold): string {
-    const key =
-      change.kind === 'added'
-        ? keyOf('added', String(++addedSerial))
-        : change.kind === 'moved'
-          ? keyOf('moved', change.id, change.end)
-          : keyOf('removed', change.id);
-    connectionHolds.set(key, change);
-    connections.hold(key, change.kind === 'moved' ? change.to : change.kind === 'added' ? 1 : 0);
-    return key;
-  }
-
-  const pendingConnections = reactivity.memo((): PendingConnectionWrites => {
-    const held = connections.holds();
-    const out: PendingConnectionWrites = { added: [], moved: [], removed: [] };
-    const now = Date.now();
-    for (const [key, entry] of Object.entries(held)) {
-      const change = connectionHolds.get(key);
-      if (!change || now - entry.at > DEFAULT_TTL_MS) continue;
-      if (change.kind === 'added') {
-        out.added.push({
-          key,
-          source: change.source,
-          target: change.target,
-          ...(change.data ? { data: change.data } : {}),
-        });
-      } else if (change.kind === 'moved') {
-        out.moved.push({ id: change.id, end: change.end, to: change.to });
-      } else {
-        out.removed.push(change.id);
-      }
-    }
-    return out;
-  });
-
-  function observeConnections(drawn: readonly { id: string; source: string; target: string }[]): void {
-    if (!connections.inFlight()) return;
-    const byId = new Map(drawn.map((line) => [line.id, line]));
-    connections.settle((key) => {
-      const change = connectionHolds.get(key);
-      if (!change) return undefined;
-      if (change.kind === 'added') return change.id ? (byId.has(change.id) ? 1 : 0) : undefined;
-      if (change.kind === 'removed') return byId.has(change.id) ? 1 : 0;
-      return byId.get(change.id)?.[change.end];
-    });
-    // What the holder let go of needs nothing kept about what it drew.
-    const live = connections.holds();
-    for (const key of [...connectionHolds.keys()]) if (!(key in live)) connectionHolds.delete(key);
-  }
-
-  /**
-   * Hold a connection change around the write that makes it: drawn at once, released if the write fails,
-   * and otherwise left for the data to overtake. `write` answers the new connection's id for an added
-   * line, so the hold knows what to wait for.
-   */
-  async function withConnectionHold<T>(change: ConnectionHold, write: () => Promise<T>): Promise<T> {
-    const key = holdConnection(change);
-    try {
-      const result = await write();
-      if (change.kind === 'added' && typeof result === 'string') {
-        if (result) change.id = result;
-        else connections.release(key);
-      }
-      connections.done(key);
-      return result;
-    } catch (error) {
-      connections.release(key);
-      throw error;
-    }
-  }
-
   /**
    * Patch the placement for one node on one canvas.
    *
@@ -2489,7 +2381,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     if (!dataset || !event.recordId || !event.end || !event.nodeId || !event.nodeType) return;
 
     // The end drawn at its new card from now, not when the write comes back — see `holdConnection`.
-    const held = holdConnection({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
+    const held = connections.hold({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
       const Model = entityNamed(event.recordType || RELATIONSHIP);
       const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
@@ -2519,8 +2411,8 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
         // The end, its type and the key, as one write — `core.retargetConnection`.
         const key = other.id
           ? event.end === 'source'
-            ? await keyFor(dataset.handle, to, other, record.label)
-            : await keyFor(dataset.handle, other, to, record.label)
+            ? await connections.keyFor(dataset.handle, to, other, record.label)
+            : await connections.keyFor(dataset.handle, other, to, record.label)
           : undefined;
         await runOp(
           'core.retargetConnection',
@@ -2850,72 +2742,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
       is making any more — and the next interpretation pass reads the tree from those keys.
     */
     if (entity === RELATIONSHIP && field === 'label') await rekeyConnection(id);
-    else if (field === titleField(entity)) await rekeyConnectionsOf(dataset.handle, id);
-  }
-
-  /** What an extraction prompt calls one record, read now — falling back to its id. */
-  async function promptTitle(handle: unknown, end: { id: string; type: string }): Promise<string> {
-    const field = titleField(end.type);
-    if (!field) return end.id;
-    try {
-      const row = (await entityClass(end.type, handle).findOne(handle, {
-        where: { id: end.id },
-      } as never)) as Record<string, unknown> | null;
-      const value = row?.[field];
-      return typeof value === 'string' && value.trim() ? value : end.id;
-    } catch {
-      return end.id;
-    }
-  }
-
-  /** The key for a connection between two records, as it stands — see `connectionKey`. */
-  async function keyFor(
-    handle: unknown,
-    source: { id: string; type: string },
-    target: { id: string; type: string },
-    label?: unknown,
-  ): Promise<string> {
-    const [from, to] = await Promise.all([promptTitle(handle, source), promptTitle(handle, target)]);
-    return connectionKey(from, to, label);
-  }
-
-  /**
-   * Bring one connection's key back in line with its ends and its label.
-   *
-   * A store action as well as a helper, for the surfaces that save a connection through the generic
-   * `record.update` rather than through this store — the knowledge map's edge panel — and so cannot
-   * be followed here. Never throws: a stale key costs a duplicate on the next pass, and a failed save
-   * is not the place to say so.
-   */
-  async function rekeyConnection(id: string): Promise<void> {
-    const dataset = datasetStore.currentDataset();
-    if (!dataset || !id) return;
-    try {
-      const Model = entityNamed(RELATIONSHIP);
-      const row = (await Model.findOne(dataset.handle, { where: { id } } as never)) as Record<string, unknown> | null;
-      if (!row || typeof row.source !== 'string' || typeof row.target !== 'string') return;
-      const key = await keyFor(
-        dataset.handle,
-        { id: row.source, type: typeof row.sourceType === 'string' ? row.sourceType : '' },
-        { id: row.target, type: typeof row.targetType === 'string' ? row.targetType : '' },
-        row.label,
-      );
-      if (key !== row.connection) await runOp('core.rekeyConnection', { connection: id, key }, dataset.handle);
-    } catch (error) {
-      console.warn('RecordStore: could not refresh a connection key', error);
-    }
-  }
-
-  /** Every connection touching a record, rekeyed — after the record's title changed. */
-  async function rekeyConnectionsOf(handle: unknown, id: string): Promise<void> {
-    try {
-      const rows = (await entityNamed(RELATIONSHIP).findAll(handle, {
-        where: { OR: [{ source: id }, { target: id }] },
-      } as never)) as unknown as { id?: string }[];
-      for (const row of rows) if (typeof row?.id === 'string') await rekeyConnection(row.id);
-    } catch (error) {
-      console.warn('RecordStore: could not refresh the keys of a renamed record', error);
-    }
+    else if (field === titleField(entity)) await connections.rekeyConnectionsOf(dataset.handle, id);
   }
 
   /**
@@ -3058,7 +2885,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     // Connections among them stop being drawn now rather than when the delete comes back.
     const held = rows
       .filter((row) => row.recordType === RELATIONSHIP)
-      .map((row) => holdConnection({ kind: 'removed', id: row.recordId! }));
+      .map((row) => connections.hold({ kind: 'removed', id: row.recordId! }));
     try {
       await runOp(
         'core.deleteRecords',
@@ -3131,7 +2958,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
             sourceType: link.sourceType,
             target: link.targetId,
             targetType: link.targetType,
-            key: await keyFor(
+            key: await connections.keyFor(
               dataset.handle,
               { id: link.sourceId, type: link.sourceType },
               { id: link.targetId, type: link.targetType },
