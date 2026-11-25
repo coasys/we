@@ -452,7 +452,7 @@ async fn kept_and_listed_enc(node: &Node, dir: &Path, did: &str, key_id: &str) -
     let status = node.call("identity.status", json!({})).await;
     let device_key = status["deviceKey"].as_str().unwrap();
     let bytes: [u8; 32] = FileStore::new(dir)
-        .get(&enc_item_name(device_key))
+        .get(&enc_item_name(device_key).unwrap())
         .unwrap()
         .expect("the custody enc key item")
         .try_into()
@@ -1078,7 +1078,7 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     // this test has nothing to try it with.
     let status = b.call("identity.status", json!({})).await;
     let custody_secret: [u8; 32] = FileStore::new(&b_dir)
-        .get(&enc_item_name(status["deviceKey"].as_str().unwrap()))
+        .get(&enc_item_name(status["deviceKey"].as_str().unwrap()).unwrap())
         .unwrap()
         .unwrap()
         .try_into()

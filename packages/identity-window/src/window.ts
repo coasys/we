@@ -56,11 +56,18 @@ let offerTimer: number | undefined;
 /** The 12 word fields while the words entry is up, so a refusal keeps what was typed. */
 let wordFields: HTMLInputElement[] | null = null;
 /**
- * The "missing since" the person last sent for a revoke, drawn again when the custody service
- * answers with the same key's confirm screen (a wrong passphrase, a refused time): a retry without
- * it would revoke from now, and a revocation cannot be redone.
+ * The "missing since" the person last sent, and for which devices, drawn again when the custody
+ * service answers with a screen that revokes the same devices (a wrong passphrase, a refused time,
+ * the retry of a revoke a rotation left): a retry without it would revoke from now, and a revocation
+ * cannot be redone. Kept under the devices (`devicesKey`) on every screen, a revoke's and a
+ * restore's alike, so the retry finds it.
  */
-let picked: { keyId: string; value: string } | undefined;
+let picked: { key: string; value: string } | undefined;
+
+/** Where a time picked for revoking the device keys `keyIds` is kept: the same set, in any order. */
+function devicesKey(keyIds: string[]): string {
+  return [...keyIds].sort().join(' ');
+}
 
 /**
  * The "missing since" picker, filled with what the person sent last for `key` when it is drawn again.
@@ -68,7 +75,7 @@ let picked: { keyId: string; value: string } | undefined;
  */
 function sincePicker(key: string): { label: HTMLLabelElement; input: HTMLInputElement } {
   const input = el('input', { type: 'datetime-local' });
-  if (picked?.keyId === key) input.value = picked.value;
+  if (picked?.key === key) input.value = picked.value;
   const text = input.value ? 'Missing since' : 'Missing since (leave empty for now)';
   return { label: el('label', {}, text, input), input };
 }
@@ -77,7 +84,7 @@ function sincePicker(key: string): { label: HTMLLabelElement; input: HTMLInputEl
 function pickedSince(input: HTMLInputElement, key: string, again: () => void): number | undefined | null {
   const at = sinceMs(input.value, input.validity.badInput);
   if (at === null) again();
-  else picked = { keyId: key, value: input.value };
+  else picked = { key, value: input.value };
   return at;
 }
 
@@ -349,7 +356,7 @@ function body(screen: Screen): Child[] {
       waitFor({ kind: 'wait-claim' });
       return shareable(screen.link, screen.qrSvg, 'QR code for the link', screen.expires, 'Waiting for your device…');
     case 'enter-code': {
-      const code = textField('Code', '', 'coasys:device:1:…');
+      const code = textField('Code', '', 'Paste the link from the new device');
       const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
       return [
         code.label,
@@ -455,14 +462,14 @@ function body(screen: Screen): Child[] {
     }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const since = sincePicker(screen.keyId);
+      const since = sincePicker(devicesKey([screen.keyId]));
       const problem = errorSlot(screen.error);
       const rotate = el('input', { type: 'checkbox' });
       rotate.checked = screen.rotate;
       // With "Also replace master key" the rotation comes first and the revoke follows it, from the
       // same time: the picker stays.
       const go = () => {
-        const at = pickedSince(since.input, screen.keyId, () => problem.show(HALF_TIME));
+        const at = pickedSince(since.input, devicesKey([screen.keyId]), () => problem.show(HALF_TIME));
         if (at === null) return;
         void step(
           {
@@ -474,14 +481,18 @@ function body(screen: Screen): Child[] {
           p ? [p.input] : [],
         );
       };
+      // What replacing the master key adds, said only while it is ticked: unticked, no phrase is asked.
+      const rotateNote = el('p', {
+        className: 'note',
+        textContent:
+          "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
+      });
+      rotateNote.hidden = !rotate.checked;
+      rotate.addEventListener('change', () => (rotateNote.hidden = !rotate.checked));
       return [
         since.label,
         el('label', { className: 'check' }, rotate, 'Also replace master key'),
-        el('p', {
-          className: 'note',
-          textContent:
-            "Any copy this device has stops working. You'll enter your recovery phrase next, and the device is revoked from the time above after your master key is replaced.",
-        }),
+        rotateNote,
         ...(p ? [p.label] : []),
         problem.line,
         el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
@@ -503,14 +514,16 @@ function body(screen: Screen): Child[] {
         return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
       });
       const name = textField('Name for this computer', '', 'Home desktop');
-      const since = sincePicker(screen.did);
+      // Drawn for the devices ticked to start with, which is how the service sends the screen again.
+      const since = sincePicker(devicesKey(screen.devices.filter((d) => d.lockOut).map((d) => d.keyId)));
       const problem = errorSlot(null);
       const go = () => {
-        const at = pickedSince(since.input, screen.did, () => problem.show(HALF_TIME));
+        const keyIds = ticks.filter((t) => t.box.checked).map((t) => t.keyId);
+        const at = pickedSince(since.input, devicesKey(keyIds), () => problem.show(HALF_TIME));
         if (at === null) return;
         void step({
           kind: 'lock-out',
-          keyIds: ticks.filter((t) => t.box.checked).map((t) => t.keyId),
+          keyIds,
           name: typed(name.input),
           ...(at === undefined ? {} : { since: at }),
         });
@@ -603,10 +616,10 @@ function body(screen: Screen): Child[] {
       ];
     case 'rotated-not-revoked': {
       // The rotation stands: closing leaves it; trying again publishes only the revoke.
-      const since = sincePicker(picked?.keyId ?? '');
+      const since = sincePicker(devicesKey(screen.keyIds));
       const problem = errorSlot(null);
       const go = () => {
-        const at = pickedSince(since.input, picked?.keyId ?? '', () => problem.show(HALF_TIME));
+        const at = pickedSince(since.input, devicesKey(screen.keyIds), () => problem.show(HALF_TIME));
         if (at === null) return;
         void step({ kind: 'retry-revoke', ...(at === undefined ? {} : { since: at }) });
       };

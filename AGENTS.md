@@ -3153,7 +3153,7 @@ DeviceStore:
   - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key, has none waiting, and could open one (not encMismatch)
   - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
   - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
-  - canRemoveMaster: boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"
+  - canRemoveMaster: boolean — this computer keeps the master key and another device keeps it too: on log out, ask "Remove master key from this computer?" (false where this is the only copy, which cannot be removed)
   - masterWaiting: boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"
   - encMismatch: boolean — this computer lost the key that opens what is sent to it: no master key and no device names reach it (`devices` carries no names and nothing the record says of the master key then; the warning on a revoked row, read from the key log, stays). Show a warning that says to revoke this computer from a device that holds the master key, then link it again
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')

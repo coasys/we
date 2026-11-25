@@ -2351,7 +2351,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canRestore:
         'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
       canRemoveMaster:
-        'boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"',
+        'boolean — this computer keeps the master key and another device keeps it too: on log out, ask "Remove master key from this computer?" (false where this is the only copy, which cannot be removed)',
       masterWaiting:
         'boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"',
       encMismatch:
