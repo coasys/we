@@ -6,13 +6,14 @@
  * (ShapeStore, above it), what one collection extracts and whether it is interpreted as it grows (the
  * collections' own settings, which SpaceStore reads). It reads them directly; nothing is lent.
  */
-import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
-import { oneAtATime } from '@shared/oneAtATime';
-import type { ModuleHostServices } from '@shared/registries/moduleHostServices';
-import { readSpaceRoot } from '@shared/spaceLandmarks';
 import type { DatasetHandle, InterpretationPort, ParentRef } from '@we/backend-shared';
 import { type DatasetProxy, getEntityForDataset, ModelRun } from '@we/entities';
-import { untrack } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
+
+import { gatherTranscriptTurns, type TurnRecord } from '../../interpretation/transcriptTurns';
+import { oneAtATime } from '../../oneAtATime';
+import type { ModuleHostServices } from '../../registries/moduleHostServices';
+import { readSpaceRoot } from '../../spaceLandmarks';
 
 /*
   Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
@@ -161,6 +162,8 @@ const watchIdFor = (collectionId: string) => `we-call-${collectionId.replace(/[^
 const watchOps = oneAtATime();
 
 export interface InterpretationRuntimeDeps {
+  /** The port the dataset on screen is read through, untracked, when a watch is asked for. */
+  reactivity: Pick<ReactivityPort, 'untrack'>;
   /**
    * The backend's interpretation port, read on every call: the backend connects after the stores
    * are built, and a backend that cannot interpret never sets it.
@@ -301,7 +304,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       const port = deps.port();
       if (!port) throw new Error('interpretation: this backend cannot interpret');
       // The dataset this pass was asked for: a space switched mid-pass must not redirect its writes.
-      const handle = untrack(deps.dataset);
+      const handle = deps.reactivity.untrack(deps.dataset);
       if (!handle) throw new Error('interpretation: no dataset to interpret into');
 
       /*
