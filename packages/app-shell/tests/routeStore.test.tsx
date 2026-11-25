@@ -7,19 +7,14 @@
 import { render } from '@solidjs/testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import RouteStoreProvider, { type RouteStore, useRouteStore } from '../src/frameworks/solid/stores/RouteStore';
+import { createRouteStore, type RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 
 function mountStore(): RouteStore {
   let store!: RouteStore;
-  const Grab = () => {
-    store = useRouteStore();
+  render(() => {
+    store = createRouteStore();
     return null;
-  };
-  render(() => (
-    <RouteStoreProvider>
-      <Grab />
-    </RouteStoreProvider>
-  ));
+  });
   return store;
 }
 

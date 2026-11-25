@@ -101,6 +101,6 @@ export const EditTargetContext = createContext<EditTargetPort>();
 
 export function useEditTarget(): EditTargetPort {
   const ctx = useContext(EditTargetContext);
-  if (!ctx) throw new Error('useEditTarget must be used within EditorStoreProvider');
+  if (!ctx) throw new Error('useEditTarget must be used beneath BootController, which composes the edit target');
   return ctx;
 }

@@ -43,56 +43,48 @@ const session = vi.hoisted(() => ({
   url: 'https://node.test' as string | undefined,
 }));
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
-    backendPorts: () => ports,
-    signInStep: () => session.step,
-    me: () => ({ id: session.agent }),
-    serverUrl: () => session.url,
-    holdForAiSetup: () => {
-      session.held += 1;
-    },
-    finishSetup: () => {
-      session.finished += 1;
-    },
-  }),
-}));
+const sessionStub = {
+  backendPorts: () => ports,
+  signInStep: () => session.step,
+  me: () => ({ id: session.agent }),
+  serverUrl: () => session.url,
+  holdForAiSetup: () => {
+    session.held += 1;
+  },
+  finishSetup: () => {
+    session.finished += 1;
+  },
+};
 
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
 // explicitly. The load-on-open behaviour is asserted separately below. A signal, so a test can close
 // the page and see what stops listening.
 const [activeShellView, setActiveShellView] = createSignal<string | null>(null);
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ activeShellView }),
-}));
+const shellStub = { activeShellView };
 
-// Faked for the same reason as the stores above, and for one more: importing the real provider
-// pulls the whole app-shell provider graph (down to the block editor) into a test about a settings
-// page. Only `executor` is read here.
+// Only `executor` is read of the platform here.
 let executorHost: ExecutorHost | undefined;
-vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ executor: executorHost }),
-}));
 
 import {
+  createRuntimeStore,
   executorConfigRows,
   parsePeerInfos,
   type RuntimeStore,
-  RuntimeStoreProvider,
-  useRuntimeStore,
 } from '../src/frameworks/solid/stores/RuntimeStore';
+
+const build = (): RuntimeStore =>
+  createRuntimeStore({
+    sessionStore: sessionStub as never,
+    shellStore: shellStub as never,
+    platform: { executor: executorHost } as never,
+  });
 
 function mount(): RuntimeStore {
   let store!: RuntimeStore;
-  function Capture() {
-    store = useRuntimeStore();
+  render(() => {
+    store = build();
     return null;
-  }
-  render(() => (
-    <RuntimeStoreProvider>
-      <Capture />
-    </RuntimeStoreProvider>
-  ));
+  });
   return store;
 }
 
@@ -1943,15 +1935,10 @@ describe('the consent queue', () => {
     ports = { runtime: port };
 
     let store!: RuntimeStore;
-    function Capture() {
-      store = useRuntimeStore();
+    const { unmount } = render(() => {
+      store = build();
       return null;
-    }
-    const { unmount } = render(() => (
-      <RuntimeStoreProvider>
-        <Capture />
-      </RuntimeStoreProvider>
-    ));
+    });
 
     unmount();
     fire(capabilityRequest);

@@ -57,7 +57,8 @@ import { parseBorder, tokenVar } from '@we/design-utils';
 import type { PanelFrame } from '@we/schema-shared';
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
-import { type LaneSection, useShellStore } from '../stores/ShellStore';
+import { type LaneSection } from '../stores/ShellStore';
+import { useStore } from '../stores/useStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup, panelTitle, sectionKey } from './PanelGroup';
 
@@ -130,7 +131,7 @@ export function PanelLane(props: {
   borderLeft?: string;
   borderRight?: string;
 }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const lane = () => props.lane ?? '';
   const direction = () => props.direction ?? 'column';
   const narrow = createNarrow();
@@ -426,7 +427,7 @@ const sameIds = (a: readonly string[], b: readonly string[]) => a.length === b.l
  * several fills the room its place gives it.
  */
 function HomeSeat(props: { members: string[]; direction: 'column' | 'row'; grow?: number }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const front = () => shellStore.seatFront(props.members) ?? props.members[0];
   // A share being dragged, else the reader's, else the declaration's; a seat of several fills its room.
   const grow = () =>
@@ -452,7 +453,7 @@ function HomeSeat(props: { members: string[]; direction: 'column' | 'row'; grow?
 
 /** Where a section was, while it is away: says so, and offers the way back. */
 function Placeholder(props: { dockId: string }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const title = () => panelTitle(props.dockId, shellStore.panelDeclaration(props.dockId));
   return (
     <Row

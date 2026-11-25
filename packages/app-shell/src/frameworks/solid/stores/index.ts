@@ -1,34 +1,33 @@
-export { type AccountStore, useAccountStore, AccountStoreProvider } from './AccountStore';
-export { type SessionStore, type BootState, useSessionStore, SessionStoreProvider } from './SessionStore';
-export { type DatasetStore, useDatasetStore, DatasetStoreProvider } from './DatasetStore';
-export { type ProfileStore, useProfileStore, ProfileStoreProvider } from './ProfileStore';
-export { type RuntimeStore, useRuntimeStore, RuntimeStoreProvider } from './RuntimeStore';
-export { type ShapeStore, useShapeStore, ShapeStoreProvider } from './ShapeStore';
-export { type RecordStore, useRecordStore, RecordStoreProvider } from './RecordStore';
-export { type SpaceStore, useSpaceStore, SpaceStoreProvider } from './SpaceStore';
-export { type ThemeStore, type EditingTheme, useThemeStore, ThemeStoreProvider } from './ThemeStore';
-export { type TemplateStore, useTemplateStore, TemplateStoreProvider } from './TemplateStore';
-export { type RouteStore, useRouteStore, RouteStoreProvider } from './RouteStore';
-export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorStore';
-export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
-export { type ClockStore, type ClockView, useClockStore, ClockStoreProvider } from './ClockStore';
-export { type WorkflowStore, useWorkflowStore, WorkflowStoreProvider } from './WorkflowStore';
-export { type IdentityStore, useIdentityStore, IdentityStoreProvider } from './IdentityStore';
-export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
+export { type StoreKey, type StoreRegistry, useStore } from './useStore';
+export { type AccountStore, createAccountStore } from './AccountStore';
+export { type SessionStore, type BootState, createSessionStore } from './SessionStore';
+export { type DatasetStore, createDatasetStore } from './DatasetStore';
+export { type ProfileStore, createProfileStore } from './ProfileStore';
+export { type RuntimeStore, createRuntimeStore } from './RuntimeStore';
+export { type ShapeStore, createShapeStore } from './ShapeStore';
+export { type RecordStore, createRecordStore } from './RecordStore';
+export { type SpaceStore, createSpaceStore } from './SpaceStore';
+export { type ThemeStore, type EditingTheme, createThemeStore } from './ThemeStore';
+export { type TemplateStore, createTemplateStore } from './TemplateStore';
+export { type RouteStore, createRouteStore } from './RouteStore';
+export { type EditorStore, createEditorStore } from './EditorStore';
+export { type AppStore, createAppStore } from './AppStore';
+export { type ClockStore, type ClockView, createClockStore } from './ClockStore';
+export { type WorkflowStore, createWorkflowStore } from './WorkflowStore';
+export { type IdentityStore, createIdentityStore } from './IdentityStore';
+export { type DeviceStore, createDeviceStore } from './DeviceStore';
 export {
   type InterpretationActivityView,
   type InterpretationStore,
-  InterpretationStoreProvider,
-  useInterpretationStore,
+  createInterpretationStore,
 } from './InterpretationStore';
-export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
-export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';
-export { type ChatOpen, type ChatStore, useChatStore, ChatStoreProvider } from './ChatStore';
-export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';
+export { type PresenceStore, type PresentAgent, createPresenceStore } from './PresenceStore';
+export { type ShellStore, createShellStore } from './ShellStore';
+export { type ChatOpen, type ChatStore, createChatStore } from './ChatStore';
+export { createShellRouteStore, ShellRouterRoot } from './ShellRouteStore';
 export {
   type BundleStore,
-  BundleStoreProvider,
+  createBundleStore,
   type InstalledBundleView,
   type PendingBundleInstall,
-  useBundleStore,
 } from './BundleStore';

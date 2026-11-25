@@ -301,35 +301,27 @@ const FOREIGN: Record<string, unknown> = {
   Meeting: MeetingModel,
 };
 
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({
-    currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
-    datasets: () => [],
-    personalDataset: () => null,
-    currentDatasetEntities: () => ENTRIES,
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({ spaceShapes: () => [], interpretationCandidates: () => [] }),
-  BLOCK_ICONS: {},
-}));
+const datasetStub = {
+  currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
+  datasets: () => [],
+  personalDataset: () => null,
+  currentDatasetEntities: () => ENTRIES,
+};
+const sessionStub = { me: () => ({ did: 'did:key:z6Mk' }) };
+const shapeStub = { spaceShapes: () => [], interpretationCandidates: () => [] };
 
-import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
+import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 
 function mount(): RecordStore {
   let store!: RecordStore;
-  function Capture() {
-    store = useRecordStore();
+  render(() => {
+    store = createRecordStore({
+      datasetStore: datasetStub as never,
+      sessionStore: sessionStub as never,
+      shapeStore: shapeStub as never,
+    });
     return null;
-  }
-  render(() => (
-    <RecordStoreProvider>
-      <Capture />
-    </RecordStoreProvider>
-  ));
+  });
   return store;
 }
 

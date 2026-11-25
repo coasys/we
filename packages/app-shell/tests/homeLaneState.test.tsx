@@ -7,20 +7,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 
 function mountShellStore(): ShellStore {
   let store!: ShellStore;
-  const Grab = () => {
-    store = useShellStore();
+  render(() => {
+    store = createShellStore();
     return null;
-  };
-  render(() => (
-    <ShellStoreProvider>
-      <Grab />
-    </ShellStoreProvider>
-  ));
+  });
   return store;
 }
 
@@ -111,16 +107,14 @@ describe('customising the layout', () => {
 describe('a home lane folding', () => {
   function mountLane() {
     let store!: ShellStore;
-    const Grab = () => {
-      store = useShellStore();
-      return null;
-    };
-    const { container } = render(() => (
-      <ShellStoreProvider>
-        <Grab />
-        <PanelLane lane="side" width="280px" resize="end" />
-      </ShellStoreProvider>
-    ));
+    const { container } = render(() => {
+      store = createShellStore();
+      return (
+        <StoreRegistryContext.Provider value={{ shellStore: store }}>
+          <PanelLane lane="side" width="280px" resize="end" />
+        </StoreRegistryContext.Provider>
+      );
+    });
     const lane = container.firstElementChild as HTMLElement;
     const content = lane.firstElementChild!.firstElementChild as HTMLElement;
     return { store, lane, content };

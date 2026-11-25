@@ -182,33 +182,14 @@ import { type Latest, latest } from '@we/module-shared';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
-import {
-  Accessor,
-  batch,
-  createComputed,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, batch, createComputed, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { oneAtATime } from '../../../shared/oneAtATime';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
-import { useAppStore } from './AppStore';
-import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
-import { useProfileStore } from './ProfileStore';
-import { useRecordStore } from './RecordStore';
-import { useRouteStore } from './RouteStore';
-import { useSessionStore } from './SessionStore';
-import { useShapeStore } from './ShapeStore';
-import { useShellStore } from './ShellStore';
+import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
 import { createInterpretationRuntime } from './space/interpretationRuntime';
@@ -234,8 +215,7 @@ import type {
   StarterOption,
   TaskStateView,
 } from './space/types';
-import { useTemplateStore } from './TemplateStore';
-import { useThemeStore } from './ThemeStore';
+import type { StoreRegistry } from './useStore';
 /** What a reaction type is made from — the params of `core.createSignalType` beside its name. */
 const SIGNAL_TYPE_PARAMS = [
   'slug',
@@ -905,8 +885,6 @@ export interface SpaceStore {
   // Testing
 }
 
-const SpaceContext = createContext<SpaceStore>();
-
 /**
  * Longest edge of a space avatar, in px. The counterpart to `PROFILE_AVATAR_PX` in ProfileStore,
  * for the same reason: `compressImageToFileData` scales to a proportion of the original, which is
@@ -946,17 +924,31 @@ async function readStoredOnce<T>(
   }
 }
 
-export function SpaceStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const shapeStore = useShapeStore();
-  const recordStore = useRecordStore();
-  const profileStore = useProfileStore();
-  const routeStore = useRouteStore();
-  const templateStore = useTemplateStore();
-  const appStore = useAppStore();
-  const themeStore = useThemeStore();
-  const shellStore = useShellStore();
+export function createSpaceStore(
+  deps: Pick<
+    StoreRegistry,
+    | 'appStore'
+    | 'datasetStore'
+    | 'profileStore'
+    | 'recordStore'
+    | 'routeStore'
+    | 'sessionStore'
+    | 'shapeStore'
+    | 'shellStore'
+    | 'templateStore'
+    | 'themeStore'
+  >,
+): SpaceStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const shapeStore = deps.shapeStore;
+  const recordStore = deps.recordStore;
+  const profileStore = deps.profileStore;
+  const routeStore = deps.routeStore;
+  const templateStore = deps.templateStore;
+  const appStore = deps.appStore;
+  const themeStore = deps.themeStore;
+  const shellStore = deps.shellStore;
 
   const [mySpaces, setMySpaces] = createSignal<Space[]>([]);
   /**
@@ -6425,13 +6417,5 @@ export function SpaceStoreProvider(props: ParentProps) {
     prepareSpaceAt,
   };
 
-  return <SpaceContext.Provider value={store}>{props.children}</SpaceContext.Provider>;
+  return store;
 }
-
-export function useSpaceStore(): SpaceStore {
-  const context = useContext(SpaceContext);
-  if (!context) throw new Error('useSpaceStore must be used within a SpaceProvider');
-  return context;
-}
-
-export default SpaceStoreProvider;

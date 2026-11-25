@@ -17,9 +17,13 @@ contract, and product meet. These are the rules that keep it navigable.
 
 ## Stores
 
-- One provider per concern, nested in `StoreProvider.tsx`. **The nesting
-  order is load-bearing**: a store may read stores above it, never below.
-  A parent needing something from a child is a design smell — the existing
+- One store per concern, built by a `createXStore(deps)` factory and composed
+  in `providers/BootController.tsx`: the stores it reads are its arguments,
+  never a context lookup. **The composition order is load-bearing**: a store
+  may read stores built before it, never after. Components read stores
+  through `useStore('<name>Store')` (`stores/useStore.ts`), keyed by the names
+  templates use; it is the only Solid-specific piece of the wiring.
+  A store needing something from a later one is a design smell — the existing
   upward callbacks (`registerHistoryCallbacks`, `provideSpaceLookup`,
   `provideInstalledModules`, `setNavigateFunction`) are tolerated debt, not
   a pattern to extend.

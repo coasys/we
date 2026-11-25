@@ -17,7 +17,7 @@ import { RenderSchema } from '@we/schema-solid';
 import { createEffect, onCleanup, type ParentProps } from 'solid-js';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import RouteStoreProvider, { type RouteStore, useRouteStore } from '../src/frameworks/solid/stores/RouteStore';
+import { createRouteStore, type RouteStore } from '../src/frameworks/solid/stores/RouteStore';
 
 const go = (id: string, to: string): SchemaNode => ({
   type: 'button',
@@ -51,7 +51,7 @@ const template: SchemaNode = {
 function mount(): RouteStore {
   let routeStore!: RouteStore;
   function Grab() {
-    routeStore = useRouteStore();
+    routeStore = createRouteStore();
     return null;
   }
   const stores = () => ({ routeStore }) as never;
@@ -71,7 +71,7 @@ function mount(): RouteStore {
     );
   }
   render(() => (
-    <RouteStoreProvider>
+    <>
       <Grab />
       <Router root={Layout}>
         {buildRoutes(stores(), [
@@ -79,7 +79,7 @@ function mount(): RouteStore {
         ])}
         <Route path="*" component={() => null} />
       </Router>
-    </RouteStoreProvider>
+    </>
   ));
   return routeStore;
 }

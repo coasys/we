@@ -37,7 +37,7 @@ export const PlatformProvider: ParentComponent<{
   const seed = untrack(() => props.seed);
 
   // Initialize integrations with platform adapter BEFORE rendering children
-  // This must run synchronously so the launcher template is ready when TemplateStoreProvider reads the registry
+  // This must run synchronously so the launcher template is ready when the template store reads the registry
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
   initializeIntegrations(platform, seed, {

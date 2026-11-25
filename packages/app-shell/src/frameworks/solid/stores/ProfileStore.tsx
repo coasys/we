@@ -11,24 +11,12 @@ import { uploadOf } from '@shared/uploadOf';
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
-import {
-  Accessor,
-  createComputed,
-  createContext,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createComputed, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { useAccountStore } from './AccountStore';
-import { useRuntimeStore } from './RuntimeStore';
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 export interface ProfileStore {
   // State
@@ -123,12 +111,12 @@ export interface ProfileStore {
   }) => Promise<void>;
 }
 
-const ProfileContext = createContext<ProfileStore>();
-
-export function ProfileStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const runtime = useRuntimeStore();
-  const accounts = useAccountStore();
+export function createProfileStore(
+  deps: Pick<StoreRegistry, 'accountStore' | 'runtimeStore' | 'sessionStore'>,
+): ProfileStore {
+  const session = deps.sessionStore;
+  const runtime = deps.runtimeStore;
+  const accounts = deps.accountStore;
 
   const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
@@ -653,11 +641,5 @@ export function ProfileStoreProvider(props: ParentProps) {
     updateOwnLocation,
   };
 
-  return <ProfileContext.Provider value={store}>{props.children}</ProfileContext.Provider>;
-}
-
-export function useProfileStore(): ProfileStore {
-  const context = useContext(ProfileContext);
-  if (!context) throw new Error('useProfileStore must be used within the ProfileStoreProvider');
-  return context;
+  return store;
 }

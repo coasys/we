@@ -109,22 +109,11 @@ import {
   templatePanels,
   templatePanelScope,
 } from '@shared/registries/templatePanels';
-import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import { hasGesture } from '@we/schema-shared';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 /** A destructive action a template asked for, as the host's own dialog puts it. */
 /**
@@ -135,6 +124,8 @@ export interface TemplateSaver {
   current: () => TemplateSchema | undefined;
   save: (schema: TemplateSchema) => Promise<boolean>;
 }
+
+import type { PlatformAdapter } from '@shared/platform/types';
 
 import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
 
@@ -843,8 +834,6 @@ export interface ShellStore {
   provideTemplateSaver: (saver: TemplateSaver) => void;
 }
 
-const ShellContext = createContext<ShellStore>();
-
 /**
  * The overlay to open at boot: the landing page, unless the URL already points somewhere.
  *
@@ -1157,7 +1146,7 @@ function savePlacements(placements: Record<string, FloatPlacement>): void {
   if (first) queueMicrotask(flushPlacements);
 }
 
-export function ShellStoreProvider(props: ParentProps) {
+export function createShellStore(deps: { platform?: PlatformAdapter } = {}): ShellStore {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
   /**
@@ -1189,21 +1178,12 @@ export function ShellStoreProvider(props: ParentProps) {
   */
   const [pendingScreenSources, setPendingScreenSources] = createSignal<ScreenSource[]>([]);
   /*
-    Asked for softly, because this store outlives the question.
-
-    `usePlatform` throws where there is no provider, which is right for a store that cannot work
-    without one — and this one can. The shell's layout is mounted on its own in tests, and a host
-    that offers no screen picking is the ordinary case anyway (the web, and every desktop whose OS
-    draws its own). So a missing platform reads as "no capability", which is a state this already
-    has to handle, rather than as a failure to construct the shell.
+    The platform is optional, because this store can work without one. The shell's layout is built
+    on its own in tests, and a host that offers no screen picking is the ordinary case anyway (the
+    web, and every desktop whose OS draws its own). So a missing platform reads as "no capability",
+    which is a state this already has to handle, rather than as a failure to construct the shell.
   */
-  const screens = (() => {
-    try {
-      return usePlatform().screenSources;
-    } catch {
-      return undefined;
-    }
-  })();
+  const screens = deps.platform?.screenSources;
   if (screens) {
     const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
     onCleanup(stop);
@@ -5018,11 +4998,5 @@ export function ShellStoreProvider(props: ParentProps) {
   registerHostDockStore(SHELL_DOCK_STORE_ID, store as unknown as Record<string, unknown>);
   onCleanup(() => unregisterHostDockStore(SHELL_DOCK_STORE_ID));
 
-  return <ShellContext.Provider value={store}>{props.children}</ShellContext.Provider>;
-}
-
-export function useShellStore(): ShellStore {
-  const ctx = useContext(ShellContext);
-  if (!ctx) throw new Error('useShellStore must be used within ShellStoreProvider');
-  return ctx;
+  return store;
 }

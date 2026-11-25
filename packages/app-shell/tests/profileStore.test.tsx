@@ -39,24 +39,19 @@ let profilePort: {
   uploadFile: (data: string) => Promise<string>;
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore: () => sessionStub }));
-vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({ useAccountStore: () => accountsStub }));
-vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({ useRuntimeStore: () => runtimeStub }));
-
 import { credential } from '../src/frameworks/solid/credential';
-import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
+import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
 function mount(): ProfileStore {
   let store!: ProfileStore;
-  function Capture() {
-    store = useProfileStore();
+  render(() => {
+    store = createProfileStore({
+      sessionStore: sessionStub as never,
+      accountStore: accountsStub as never,
+      runtimeStore: runtimeStub as never,
+    });
     return null;
-  }
-  render(() => (
-    <ProfileStoreProvider>
-      <Capture />
-    </ProfileStoreProvider>
-  ));
+  });
   return store;
 }
 

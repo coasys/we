@@ -11,19 +11,9 @@
 import { type DeviceRow, deviceRows } from '@shared/identityRows';
 import type { DeviceKeyView, IdentityChangeOutcome } from '@we/backend-shared';
 import { latest } from '@we/module-shared';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, on } from 'solid-js';
 
-import { useIdentityStore } from './IdentityStore';
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
@@ -43,11 +33,9 @@ export interface DeviceStore {
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
 }
 
-const DeviceStoreContext = createContext<DeviceStore>();
-
-export function DeviceStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const identity = useIdentityStore();
+export function createDeviceStore(deps: Pick<StoreRegistry, 'identityStore' | 'sessionStore'>): DeviceStore {
+  const session = deps.sessionStore;
+  const identity = deps.identityStore;
   const port = () => session.backendPorts()?.identity ?? null;
 
   const [raw, setRaw] = createSignal<DeviceKeyView[]>([]);
@@ -113,11 +101,5 @@ export function DeviceStoreProvider(props: ParentProps) {
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
   };
 
-  return <DeviceStoreContext.Provider value={store}>{props.children}</DeviceStoreContext.Provider>;
-}
-
-export function useDeviceStore(): DeviceStore {
-  const store = useContext(DeviceStoreContext);
-  if (!store) throw new Error('useDeviceStore must be used within DeviceStoreProvider');
   return store;
 }

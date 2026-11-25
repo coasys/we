@@ -24,28 +24,19 @@ const sessionStub = {
   bootState: () => 'ready',
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore: () => sessionStub }));
-vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({
-  useAccountStore: () => ({ syncDisplay: async () => {} }),
-}));
-vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({
-  useRuntimeStore: () => ({ openAiStep: async () => false }),
-}));
-
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
-import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
+import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
 function mount(): ProfileStore {
   let store!: ProfileStore;
-  function Capture() {
-    store = useProfileStore();
+  render(() => {
+    store = createProfileStore({
+      sessionStore: sessionStub as never,
+      accountStore: { syncDisplay: async () => {} } as never,
+      runtimeStore: { openAiStep: async () => false } as never,
+    });
     return null;
-  }
-  render(() => (
-    <ProfileStoreProvider>
-      <Capture />
-    </ProfileStoreProvider>
-  ));
+  });
   return store;
 }
 

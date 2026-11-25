@@ -8,7 +8,7 @@
  *
  * ## Lifecycle: app-lifetime, not view-lifetime
  *
- * Mounted alongside the other stores in `StoreProvider`, not inside a view. Flux creates a signalling
+ * Composed alongside the other stores in `BootController`, not inside a view. Flux creates a signalling
  * service per community view and tears it down on unmount, so leaving the view loses every peer with
  * no path back except remounting. Here the store outlives navigation and simply re-scopes when the
  * perspective changes.
@@ -50,10 +50,6 @@ import { MAX_LEASES, reconcileLeases, unionPeers, wantedUris } from '@shared/pre
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { createTabCoordinator } from '@shared/tabCoordinator';
 import { firstScreen } from '@solid/firstScreen';
-import { useDatasetStore } from '@solid/stores/DatasetStore';
-import { useProfileStore } from '@solid/stores/ProfileStore';
-import { useRouteStore } from '@solid/stores/RouteStore';
-import { useSessionStore } from '@solid/stores/SessionStore';
 import type { AgentProfileSummary } from '@we/backend-shared';
 import type { Activity, Focus, FocusDepth, Peer, PresenceSource, PresenceTone } from '@we/backend-shared';
 import {
@@ -67,17 +63,9 @@ import {
   trace,
 } from '@we/backend-shared';
 import type { DatasetProxy } from '@we/entities';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  type ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+
+import type { StoreRegistry } from './useStore';
 
 /**
  * A peer joined with whatever profile the agent cache holds, plus its derived appearance.
@@ -110,13 +98,13 @@ export interface PresenceStore {
   clearActivity: (type: string, id?: string) => void;
 }
 
-const PresenceContext = createContext<PresenceStore>();
-
-export function PresenceStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const profileStore = useProfileStore();
-  const routeStore = useRouteStore();
+export function createPresenceStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'profileStore' | 'routeStore' | 'sessionStore'>,
+): PresenceStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const profileStore = deps.profileStore;
+  const routeStore = deps.routeStore;
 
   /** What each live source last reported, keyed by the space's uri. Unioned by {@link rawPeers}. */
   const [peersByUri, setPeersByUri] = createSignal<Record<string, Peer[]>>({});
@@ -523,11 +511,5 @@ export function PresenceStoreProvider(props: ParentProps) {
     clearActivity,
   };
 
-  return <PresenceContext.Provider value={store}>{props.children}</PresenceContext.Provider>;
-}
-
-export function usePresenceStore(): PresenceStore {
-  const store = useContext(PresenceContext);
-  if (!store) throw new Error('usePresenceStore must be used within a PresenceStoreProvider');
   return store;
 }

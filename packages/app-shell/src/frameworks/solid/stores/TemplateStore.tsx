@@ -48,18 +48,7 @@ import {
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, TEMPLATE_SCHEMA_VERSION, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, on, onCleanup, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
@@ -77,14 +66,12 @@ import {
   TEMPLATE_WATCH_FIELDS,
   templateChanges,
 } from '../../../shared/templateSync';
-import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { latestPerSpace } from './latestPerSpace';
-import { useRouteStore } from './RouteStore';
-import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
 import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
-import { useThemeStore } from './ThemeStore';
+import type { StoreRegistry } from './useStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = {
@@ -381,15 +368,15 @@ export interface TemplateStore {
  */
 const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.role === 'view' ? 'view' : '');
 
-const TemplateContext = createContext<TemplateStore>();
-
 const SPACE_PREFIX = 'space::';
 
-export function TemplateStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const themeStore = useThemeStore();
-  const routeStore = useRouteStore();
+export function createTemplateStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'routeStore' | 'sessionStore' | 'themeStore'>,
+): TemplateStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const themeStore = deps.themeStore;
+  const routeStore = deps.routeStore;
 
   /*
     Map template ID → the model instance, for we-root and for the current space's templates.
@@ -2623,13 +2610,5 @@ export function TemplateStoreProvider(props: ParentProps) {
     getTemplateRecord,
   };
 
-  return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;
+  return store;
 }
-
-export function useTemplateStore(): TemplateStore {
-  const ctx = useContext(TemplateContext);
-  if (!ctx) throw new Error('useTemplateStore must be used within TemplateStoreProvider');
-  return ctx;
-}
-
-export default TemplateStoreProvider;

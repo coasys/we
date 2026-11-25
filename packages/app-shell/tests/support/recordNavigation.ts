@@ -4,7 +4,7 @@
  * identity and the history stack looked like after every step.
  *
  * Lives in app-shell — not in the conformance package — because it needs jsdom, the browser build
- * of solid-js and the store's own provider. `@we/template-conformance` calls `runNavigationScript`
+ * of solid-js and the store itself. `@we/template-conformance` calls `runNavigationScript`
  * from its `solid` vitest project; nothing here is reachable from the plain node project.
  *
  * The router itself is mocked: `routeStore.navigate` hands its target to whatever function was
@@ -20,7 +20,6 @@
  * either end, as a real browser does at the edge of its session.
  */
 import { render } from '@solidjs/testing-library';
-import { createComponent } from 'solid-js';
 
 // Source-relative, never the package's dist — a sabotage in shared/src is what the vectors see.
 // (The vitest configs that run this also alias @we/schema-shared to src, which is what makes
@@ -31,7 +30,7 @@ import {
   resolveLocalInitial,
   type RouteParamsBinding,
 } from '../../../schema-system/shared/src/index.ts';
-import RouteStoreProvider, { type RouteStore, useRouteStore } from '../../src/frameworks/solid/stores/RouteStore';
+import { createRouteStore, type RouteStore } from '../../src/frameworks/solid/stores/RouteStore';
 
 /** One step of a navigation script. `args` are decoded JSON — see the ops below. */
 export interface NavigationStep {
@@ -127,16 +126,10 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
   const issued: { to: string; options?: Record<string, unknown> }[] = [];
   // Render mounts once and is left to the test environment's cleanup — same convention as the
   // app-shell suite (each script's store is a fresh mount whose signals stay private).
-  render(() =>
-    createComponent(RouteStoreProvider, {
-      get children() {
-        return createComponent(function Grab() {
-          store = useRouteStore();
-          return null;
-        }, {});
-      },
-    }),
-  );
+  render(() => {
+    store = createRouteStore();
+    return null;
+  });
   store.setNavigateFunction(((to: string | number, options?: Record<string, unknown>) => {
     issued.push({ to: String(to), options });
   }) as Parameters<RouteStore['setNavigateFunction']>[0]);

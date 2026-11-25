@@ -16,7 +16,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createEffect } from 'solid-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 const ME = 'did:key:z6MkSelf';
 const ALICE = 'did:key:z6MkAlice';
@@ -35,23 +35,18 @@ let profilePort: {
   uploadFile: (data: string) => Promise<string>;
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore: () => sessionStub }));
-vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({ useAccountStore: () => accountsStub }));
-vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({ useRuntimeStore: () => ({}) }));
-
-import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
+import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
 function mount(): ProfileStore {
   let store!: ProfileStore;
-  function Capture() {
-    store = useProfileStore();
+  render(() => {
+    store = createProfileStore({
+      sessionStore: sessionStub as never,
+      accountStore: accountsStub as never,
+      runtimeStore: {} as never,
+    });
     return null;
-  }
-  render(() => (
-    <ProfileStoreProvider>
-      <Capture />
-    </ProfileStoreProvider>
-  ));
+  });
   return store;
 }
 

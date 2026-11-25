@@ -18,9 +18,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coasysApp } from '../../templates/cartridges/src/coasys/app';
 import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHost';
-import { ChatStoreProvider } from '../src/frameworks/solid/stores/ChatStore';
+import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
@@ -47,17 +48,14 @@ const conversations = {
   follow: vi.fn(() => () => {}),
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ datasets: () => [] }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ mySpaces: () => [] }),
-}));
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+} as unknown as Partial<StoreRegistry>;
 
 let release: (() => void)[] = [];
 
@@ -86,24 +84,21 @@ function mount() {
   let store!: ShellStore;
   /** The space tier's bag — what a synced template's calls go through. */
   let bag!: { shellStore: ShellStore };
-  const Grab = () => {
-    store = useShellStore();
+  const { container } = render(() => {
+    store = createShellStore();
     store.provideAgentDid(() => 'did:test:me');
     bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.
     release.push(provideTemplateBag(bag as never));
-    return null;
-  };
-  const { container } = render(() => (
-    <ShellStoreProvider>
-      <Grab />
-      <ChatStoreProvider>
+    const chatStore = createChatStore({ shellStore: store });
+    return (
+      <StoreRegistryContext.Provider value={{ ...stores, shellStore: store, chatStore }}>
         {/* Every open instance's body, the way a frame's own PanelSlot draws it. */}
         <For each={store.panelInstances()}>{(instance) => <PanelSlot id={instance.id} />}</For>
         <PanelHost />
-      </ChatStoreProvider>
-    </ShellStoreProvider>
-  ));
+      </StoreRegistryContext.Provider>
+    );
+  });
   return { store, bag, container };
 }
 

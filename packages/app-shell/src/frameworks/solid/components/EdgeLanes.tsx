@@ -31,7 +31,8 @@ import { weProps } from '@we/design-utils/solid';
 import type { DockEdge } from '@we/module-shared';
 import { createMemo, For, Index, Show, untrack } from 'solid-js';
 
-import { type EdgeLane, type EdgeSeat, useShellStore } from '../stores/ShellStore';
+import { type EdgeLane, type EdgeSeat, type ShellStore } from '../stores/ShellStore';
+import { useStore } from '../stores/useStore';
 import { LaneDivider } from './LaneDivider';
 import { PanelGroup } from './PanelGroup';
 import { PanelMotion } from './PanelMotion';
@@ -55,7 +56,7 @@ const px = (value: number | undefined) => (value === undefined ? undefined : `${
 const INBOARD: Record<Edge, Edge> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
 
 /** The seat's panel that is showing — the one its grips act for. */
-function showing(seat: EdgeSeat | undefined, geometry: ReturnType<ReturnType<typeof useShellStore>['dockGeometry']>) {
+function showing(seat: EdgeSeat | undefined, geometry: ReturnType<ShellStore['dockGeometry']>) {
   return seat?.ids.find((id) => !geometry[id]?.hidden) ?? seat?.ids[0];
 }
 
@@ -94,7 +95,7 @@ function Divider(props: {
   /** How far across the lane it reaches, against the edge — absent, the whole lane. */
   across?: number;
 }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   return (
     <LaneDivider
@@ -128,7 +129,7 @@ function Divider(props: {
  * back towards the edge, the lane is put away — see `STOW_DRAG_PX`.
  */
 function InnerEdge(props: { first: () => string | undefined; edge: Edge }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const side = untrack(() => INBOARD[props.edge]);
   const across = side === 'left' || side === 'right';
   return (
@@ -171,7 +172,7 @@ function InnerEdge(props: { first: () => string | undefined; edge: Edge }) {
  * wrong shape.
  */
 function StowStrip(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const ids = () => props.lane()?.seats.flatMap((seat) => seat.ids) ?? [];
   const away = () => Boolean(shellStore.dockGeometry()[ids()[0] ?? '']?.awayFaded);
@@ -240,7 +241,7 @@ function StowStrip(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
 
 function Lane(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
   const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const seatKeys = createMemo(() => props.lane()?.seats.map((seat) => seat.key) ?? [], [], { equals: sameStrings });
   const seatAt = (index: number) => props.lane()?.seats[index];
   const foldedFlat = () => !vertical && (props.lane()?.seats.every((seat) => seat.folded) ?? false);
@@ -298,7 +299,7 @@ function Lane(props: { lane: () => EdgeLane | undefined; edge: Edge }) {
 }
 
 function EdgeOf(props: { edge: Edge }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const lanes = () => shellStore.edgeLanes().lanes[props.edge];
   const keys = createMemo(() => lanes().map((lane) => lane.key), [], { equals: sameStrings });
   const box = () => shellStore.edgeLanes().boxes[props.edge];
@@ -340,7 +341,7 @@ function EdgeOf(props: { edge: Edge }) {
  * drawn here — that card stays at its snap.
  */
 function CoverOf(props: { edge: Edge }) {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const vertical = untrack(() => props.edge === 'left' || props.edge === 'right');
   const lane = () => shellStore.edgeLanes().covers[props.edge];
   const seatKeys = createMemo(() => lane()?.seats.map((seat) => seat.key) ?? [], [], { equals: sameStrings });

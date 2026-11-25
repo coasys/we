@@ -19,7 +19,7 @@ export type { WeSeedFile } from '../../types/seed';
 export * from './stores';
 
 // Providers
-export { default as StoreProvider } from './providers/StoreProvider';
+export { BootController } from './providers/BootController';
 export { default as TemplateProvider } from './providers/TemplateProvider';
 
 // Registries

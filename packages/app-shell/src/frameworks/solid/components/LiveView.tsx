@@ -45,11 +45,11 @@ import {
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { chromeBag } from '@shared/registries/templateBag';
 import { chromeComponentRegistry as registry } from '@solid/registries/componentRegistry';
-import { useRouteStore } from '@solid/stores/RouteStore';
-import { useShellStore } from '@solid/stores/ShellStore';
 import type { LiveDecoration, ViewFrame, ViewKernel } from '@we/module-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+
+import { useStore } from '../stores/useStore';
 
 /**
  * Bumped whenever the set of registered things changes — a module calling `decorate`, a canvas mounting
@@ -156,8 +156,8 @@ export function registerLiveCanvas(canvasId: string) {
 const DEFAULT_EASE_MS = 90;
 
 export function LiveViewHost() {
-  const routeStore = useRouteStore();
-  const shellStore = useShellStore();
+  const routeStore = useStore('routeStore');
+  const shellStore = useStore('shellStore');
 
   /**
    * The box a template's own content occupies — the window, less what displacing panels have taken.

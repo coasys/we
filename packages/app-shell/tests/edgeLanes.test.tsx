@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { declareAppEdges } from '../src/shared/registries/appFrame';
 import {
   DOCK_FRAME_ATTR,
@@ -52,21 +53,16 @@ afterEach(() => {
 
 function mount() {
   let store!: ShellStore;
-  const Chrome = () => {
-    store = useShellStore();
+  render(() => {
+    store = createShellStore();
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return (
-      <>
+      <StoreRegistryContext.Provider value={{ shellStore: store }}>
         <EdgeLanes />
         <PanelHost />
-      </>
+      </StoreRegistryContext.Provider>
     );
-  };
-  render(() => (
-    <ShellStoreProvider>
-      <Chrome />
-    </ShellStoreProvider>
-  ));
+  });
   return { store, lane: () => document.querySelector<HTMLElement>('[data-we-edge-lanes="right"]') };
 }
 

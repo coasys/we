@@ -1,15 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { resolvePath, SPACE_ROUTE_DEPTH } from '@we/schema-shared';
-import {
-  Accessor,
-  createContext,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 type NavigateFunction = ReturnType<typeof useNavigate>;
 
@@ -127,8 +118,6 @@ export function resolveNavigation(to: string, here: string, root: number, base?:
   return resolvePath(to, here, { depth: typeof depth === 'number' ? depth : root, root });
 }
 
-const RouteContext = createContext<RouteStore>();
-
 /**
  * Query values as a query string, without its `?`. Empty values are left out.
  *
@@ -161,7 +150,7 @@ function readParams(search?: string): Record<string, string> {
   return Object.fromEntries(new URLSearchParams(search ?? window.location.search));
 }
 
-export function RouteStoreProvider(props: ParentProps) {
+export function createRouteStore(): RouteStore {
   const [currentPath, setCurrentPathSignal] = createSignal('');
   const [navigateFunction, setNavigateFunction] = createSignal<NavigateFunction | null>(null);
 
@@ -316,13 +305,5 @@ export function RouteStoreProvider(props: ParentProps) {
     back: () => window.history.back(),
   };
 
-  return <RouteContext.Provider value={store}>{props.children}</RouteContext.Provider>;
+  return store;
 }
-
-export function useRouteStore(): RouteStore {
-  const ctx = useContext(RouteContext);
-  if (!ctx) throw new Error('useRouteStore must be used within RouteStoreProvider');
-  return ctx;
-}
-
-export default RouteStoreProvider;

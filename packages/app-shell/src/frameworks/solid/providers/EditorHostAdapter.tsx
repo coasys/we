@@ -5,21 +5,14 @@ import { compressImageToFileData, ImageBlock } from '@we/entities';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { ParentProps } from 'solid-js';
 
-import { useDatasetStore } from '../stores/DatasetStore';
-import { useEditorStore } from '../stores/EditorStore';
 import { useEditTarget } from '../stores/editTarget';
-import { useProfileStore } from '../stores/ProfileStore';
-import { useSessionStore } from '../stores/SessionStore';
-import { useShellStore } from '../stores/ShellStore';
-import { useSpaceStore } from '../stores/SpaceStore';
-import { useTemplateStore } from '../stores/TemplateStore';
-import { useThemeStore } from '../stores/ThemeStore';
+import { useStore } from '../stores/useStore';
 import { createOwnersPort } from './ownersPort';
 
 /**
  * WE's implementation of the editor's host port.
  *
- * The editor used to call `useAiStore()` / `useThemeStore()` / … directly, which is what made it
+ * The editor used to call `useAiStore()` / `useStore('themeStore')` / … directly, which is what made it
  * unusable outside WE — and what made the dependency graph circular, since the shell also imports
  * the editor's components. This file is the whole of that coupling, in one place, pointing one way.
  *
@@ -30,14 +23,14 @@ import { createOwnersPort } from './ownersPort';
  * of it changes this file and nothing in the editor.
  */
 export function EditorHostAdapter(props: ParentProps) {
-  const editor = useEditorStore();
-  const template = useTemplateStore();
-  const theme = useThemeStore();
-  const sessionStore = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const profileStore = useProfileStore();
-  const space = useSpaceStore();
-  const shell = useShellStore();
+  const editor = useStore('editorStore');
+  const template = useStore('templateStore');
+  const theme = useStore('themeStore');
+  const sessionStore = useStore('sessionStore');
+  const datasetStore = useStore('datasetStore');
+  const profileStore = useStore('profileStore');
+  const space = useStore('spaceStore');
+  const shell = useStore('shellStore');
   const edit = useEditTarget();
 
   /*

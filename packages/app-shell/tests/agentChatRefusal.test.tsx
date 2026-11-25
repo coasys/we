@@ -4,16 +4,12 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import {
-  type ChatInputs,
-  type ChatStore,
-  ChatStoreProvider,
-  useChatStore,
-} from '../src/frameworks/solid/stores/ChatStore';
+import { type ChatInputs, type ChatStore, createChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 
@@ -30,38 +26,42 @@ const conversations = {
   }),
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
+const mockOpenPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
+
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
+  },
   // The joined-space shape: the member's local perspective id `uuid-9`, the shared address its
   // Space record answers under — `isSpaceSelf` pairs the two.
-  useDatasetStore: () => ({ datasets: () => [{ id: 'uuid-9', sharedId: 'we://garden' }] }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] }),
-}));
-const mockOpenPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel: mockOpenPanel }),
-}));
+  datasetStore: { datasets: () => [{ id: 'uuid-9', sharedId: 'we://garden' }] },
+  spaceStore: { mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] },
+  shellStore: { openPanel: mockOpenPanel },
+} as unknown as Partial<StoreRegistry>;
+
+/** The chat store itself, over the stubs above — composed as the host composes it. */
+function ChatStores(props: ParentProps) {
+  const chatStore = createChatStore({ shellStore: stores.shellStore! });
+  return (
+    <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
+  );
+}
 
 /** Mount the chat as `openChat` opened it — the nonce, not the question, in the inputs. */
 function openedChat(open: Parameters<ChatStore['openChat']>[0]) {
   const [inputs, setInputs] = createSignal<ChatInputs>({});
   let store!: ChatStore;
   const result = render(() => (
-    <ChatStoreProvider>
+    <ChatStores>
       {(() => {
-        store = useChatStore();
+        store = useStore('chatStore');
         return null;
       })()}
       <Show when={inputs().nonce}>
         <AgentChat inputs={inputs()} />
       </Show>
-    </ChatStoreProvider>
+    </ChatStores>
   ));
   store.openChat(open);
   setInputs(mockOpenPanel.mock.calls.at(-1)![1] as ChatInputs);
@@ -221,9 +221,9 @@ describe('the refusal card', () => {
       { ref: { id: 'g1' }, title: 'Global chat', createdAt: 0, updatedAt: 0 },
     ] as never);
     const { container } = render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         <AgentChat inputs={{ perspectiveUuid: 'uuid-9', spaceName: 'Garden club' }} />
-      </ChatStoreProvider>
+      </ChatStores>
     ));
 
     const rowEl = await vi.waitFor(() => {

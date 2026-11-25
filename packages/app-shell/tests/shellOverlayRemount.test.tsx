@@ -16,52 +16,44 @@ import { createSignal, Show } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
 import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
-import {
-  ShellRouterRoot,
-  ShellRouteStoreProvider,
-  useShellRouteStore,
-} from '../src/frameworks/solid/stores/ShellRouteStore';
+import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 
 /**
  * Mount the overlay under a key we control, standing in for the main Router's `routeKey`.
  *
- * `ShellStoreProvider` is outside the keyed part, exactly as it is in the real tree — it lives in
- * `StoreProvider`, above `TemplateProvider` — while everything from `ShellRouteStoreProvider` down
- * is inside, because in the real tree all of that is mounted by `TemplateLayout`.
+ * The shell store is made outside the keyed part, exactly as it is in the real tree — it is composed
+ * at `BootController`, above `TemplateProvider` — while the overlay's route store and everything
+ * below it are made inside, because in the real tree all of that is built by `TemplateLayout`.
  */
 function mountOverlay() {
   let shell!: ShellStore;
   let route: RouteStore | undefined;
   const [routeKey, setRouteKey] = createSignal(1);
 
-  const GrabShell = () => {
-    shell = useShellStore();
-    return null;
-  };
-  const GrabRoute = () => {
-    route = useShellRouteStore();
-    return null;
-  };
-
-  render(() => (
-    <ShellStoreProvider>
-      <GrabShell />
-      {/* The key is taken as an argument, mirroring `TemplateProvider`'s `{(_key) => …}`. A child
+  render(() => {
+    shell = createShellStore();
+    return (
+      <StoreRegistryContext.Provider value={{ shellStore: shell }}>
+        {/* The key is taken as an argument, mirroring `TemplateProvider`'s `{(_key) => …}`. A child
           that ignores it is not re-invoked on a change, so the subtree would never rebuild and the
           test would assert nothing. */}
-      <Show when={routeKey()} keyed>
-        {(_key) => (
-          <ShellRouteStoreProvider>
-            <MemoryRouter root={ShellRouterRoot}>
-              <Route path="*" component={GrabRoute} />
-            </MemoryRouter>
-          </ShellRouteStoreProvider>
-        )}
-      </Show>
-    </ShellStoreProvider>
-  ));
+        <Show when={routeKey()} keyed>
+          {(_key) => {
+            const shellRoute = createShellRouteStore();
+            route = shellRoute;
+            return (
+              <MemoryRouter root={(props) => <ShellRouterRoot store={shellRoute}>{props.children}</ShellRouterRoot>}>
+                <Route path="*" component={() => null} />
+              </MemoryRouter>
+            );
+          }}
+        </Show>
+      </StoreRegistryContext.Provider>
+    );
+  });
 
   return {
     shell,

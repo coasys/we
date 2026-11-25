@@ -27,19 +27,9 @@ import type {
   KeyLogFork,
 } from '@we/backend-shared';
 import { latest } from '@we/module-shared';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, on, onCleanup } from 'solid-js';
 
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 export interface IdentityStore {
   /** The backend can say who this device speaks for (it has a key log). */
@@ -97,8 +87,6 @@ export interface IdentityStore {
   startWithoutIdentity: () => void;
 }
 
-const IdentityStoreContext = createContext<IdentityStore>();
-
 /**
  * Where "Start now" is remembered for one account on this computer. Keyed by the account's own
  * device key, so choosing it in one account does not put the question away in another.
@@ -116,8 +104,8 @@ function readStartNow(deviceKey: string): boolean {
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function IdentityStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
+export function createIdentityStore(deps: Pick<StoreRegistry, 'sessionStore'>): IdentityStore {
+  const session = deps.sessionStore;
 
   const port = () => session.backendPorts()?.identity ?? null;
   const ready = () => session.bootState() === 'ready' || session.bootState() === 'finishing';
@@ -291,11 +279,5 @@ export function IdentityStoreProvider(props: ParentProps) {
     },
   };
 
-  return <IdentityStoreContext.Provider value={store}>{props.children}</IdentityStoreContext.Provider>;
-}
-
-export function useIdentityStore(): IdentityStore {
-  const store = useContext(IdentityStoreContext);
-  if (!store) throw new Error('useIdentityStore must be used within IdentityStoreProvider');
   return store;
 }

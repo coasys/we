@@ -29,8 +29,8 @@ import {
   recordAiSetupAnswer,
 } from '@shared/aiSetupStep';
 import type { ExecutorSettings } from '@shared/platform/types';
+import type { PlatformAdapter } from '@shared/platform/types';
 import { copyText } from '@shared/utils';
-import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
   AI_SERVICES,
   type AiDetectedView,
@@ -62,8 +62,6 @@ import {
   withService,
 } from '@solid/stores/aiModelDraft';
 import { describeLocalAi, isManaged, type LocalAiView, reduceProgress } from '@solid/stores/localAiView';
-import { useSessionStore } from '@solid/stores/SessionStore';
-import { useShellStore } from '@solid/stores/ShellStore';
 import type {
   AiDetectedEndpoint,
   AiDiscoveredModel,
@@ -83,19 +81,10 @@ import type {
   UnsupportedCapability,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import {
-  type Accessor,
-  batch,
-  createComputed,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, batch, createComputed, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
+
+import type { StoreRegistry } from './useStore';
 
 /**
  * How long a first run waits to hear what AI the node has before deciding whether to ask about it.
@@ -353,8 +342,6 @@ export interface RuntimeStore {
   dismissConsentSecret: () => void;
 }
 
-const RuntimeContext = createContext<RuntimeStore>();
-
 /** One key of the backend's config file, ready for a settings row. */
 export interface ExecutorConfigRow {
   /** The key, so a row keeps its place while its value changes. */
@@ -404,10 +391,12 @@ export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfi
   });
 }
 
-export function RuntimeStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const shell = useShellStore();
-  const platform = usePlatform();
+export function createRuntimeStore(
+  deps: Pick<StoreRegistry, 'sessionStore' | 'shellStore'> & { platform: PlatformAdapter },
+): RuntimeStore {
+  const session = deps.sessionStore;
+  const shell = deps.shellStore;
+  const platform = deps.platform;
 
   // The port's records, kept raw: the views below are derived, so an event that changes one record
   // re-describes it without another round trip.
@@ -1707,7 +1696,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     dismissConsentSecret: () => setConsentSecret(''),
   };
 
-  return <RuntimeContext.Provider value={store}>{props.children}</RuntimeContext.Provider>;
+  return store;
 }
 
 /** JSON array first, then one-per-line. Exported for the test that pins both shapes. */
@@ -1724,10 +1713,4 @@ export function parsePeerInfos(text: string): string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-export function useRuntimeStore(): RuntimeStore {
-  const context = useContext(RuntimeContext);
-  if (!context) throw new Error('useRuntimeStore must be used within the RuntimeStoreProvider');
-  return context;
 }

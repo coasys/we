@@ -43,12 +43,16 @@ never imports `@coasys/*` itself.
 
 ## Stores
 
-`src/frameworks/solid/stores/` — one provider per concern, nested in
-`StoreProvider.tsx` (the nesting order is load-bearing: a store may read the
-stores above it):
+`src/frameworks/solid/stores/` — one store per concern, each a `createXStore(deps)`
+factory. `providers/BootController.tsx` composes them, passing each the stores it
+reads as arguments (the order is the dependency graph: a store may read the stores
+built before it):
 
 Route → Shell → Account → Session → Runtime → Dataset → Profile → Theme →
 Template → Editor → App → Space → Presence.
+
+Components reach them through one typed hook, `useStore('spaceStore')`, keyed by
+the same names templates use.
 
 The store surface a schema can reach through expressions and `$invoke` is documented in
 the generated reference (`CLAUDE.md`, "Stores" section) and kept honest by

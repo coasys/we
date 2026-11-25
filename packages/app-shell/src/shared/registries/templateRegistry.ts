@@ -28,7 +28,7 @@
  * 2. PlatformProvider mounts → calls initializeIntegrations(adapter)
  * 3. Seed file loaded and validated
  * 4. Launcher template generated from the seed with platform-aware URL resolution
- * 5. TemplateStoreProvider reads the registry
+ * 5. The template store reads the registry
  */
 import { bundledTemplates } from './bundledTemplates.generated';
 import { withDerivedIdsAll } from './derivedIds';

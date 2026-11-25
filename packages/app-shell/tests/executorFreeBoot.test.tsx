@@ -1,6 +1,6 @@
 /**
  * The executor-free boot suite: the REAL session/dataset/profile/space stores, the real
- * BootController, and real entities — no AD4M executor anywhere.
+ * boot sequence (`startBoot`), and real entities — no AD4M executor anywhere.
  *
  * Boot (already-unlocked and lock→login flows), system-dataset creation, dataset switching, and
  * space create/publish/join/remove all run as vitest tests. Entities used to be stubbed here,
@@ -129,7 +129,7 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
   route.go = setHref;
   const url = () => new URL(href(), 'http://we.test');
   return {
-    useRouteStore: () => ({
+    createRouteStore: () => ({
       navigate,
       segments: () => url().pathname.split('/').filter(Boolean),
       currentPath: () => url().pathname,
@@ -140,7 +140,7 @@ vi.mock('../src/frameworks/solid/stores/RouteStore', async () => {
 
 // Stubbed rather than mounted: these two pull in the whole template and theme registries, and this
 // file is about the boot and dataset flow. The cost is that they must carry every member SpaceStore
-// reads — a missing one is a `not a function` at provider construction, which fails every test in
+// reads — a missing one is a `not a function` when SpaceStore is built, which fails every test in
 // the file at once rather than the one that cares.
 /** The app in use, as the stub hands it out: WE's own unless a test puts the agent in another. */
 type AppInUse = { id: string; source?: { bundle: string } };
@@ -148,7 +148,7 @@ const app = vi.hoisted(() => ({
   use: (_app: AppInUse) => {},
   /*
     The template registry and the template on screen, so a test can put one up and watch what a
-    save swaps in and rolls back. `put`/`shown` are rebound to each mounted provider — the mock
+    save swaps in and rolls back. `put`/`shown` are rebound to each store built — the mock
     owns the signal — and `list` is cleared in `beforeEach`.
   */
   templates: {
@@ -162,13 +162,12 @@ const app = vi.hoisted(() => ({
 
 vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
   const { createSignal, createEffect } = await import('solid-js');
-  const { useDatasetStore } = await import('../src/frameworks/solid/stores/DatasetStore');
   const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
   const { latestPerSpace } = await import('../src/frameworks/solid/stores/latestPerSpace');
   const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
   app.use = setInUse;
   return {
-    useTemplateStore: () => {
+    createTemplateStore: ({ datasetStore: datasets }: { datasetStore: DatasetStore }) => {
       /*
         A signal behind the property, so a template put up and one repainted both read — the
         real store is a Solid store for the same reason.
@@ -180,7 +179,6 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
       };
       app.templates.put = (t) => setCurrent(t as never);
       app.templates.shown = current;
-      const datasets = useDatasetStore();
 
       /*
         The real store's space-template follow, modelled rather than stubbed: when the record the
@@ -241,7 +239,7 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
 });
 
 vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
-  useThemeStore: () => ({
+  createThemeStore: () => ({
     allThemes: () => [],
     defaultThemeId: () => 'default',
     // Templates may suggest a theme; the boot suite has none, so the value only has to exist.
@@ -257,18 +255,22 @@ import { completeResponse, runOperation } from '@we/entities';
 import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
-import { BootController } from '../src/frameworks/solid/providers/BootController';
-import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
-import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
-import { ChatStoreProvider } from '../src/frameworks/solid/stores/ChatStore';
-import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
-import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
-import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
-import { type RuntimeStore, RuntimeStoreProvider, useRuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
-import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
-import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
-import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
-import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { startBoot } from '../src/frameworks/solid/providers/BootController';
+import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
+import { createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
+import { createAppStore } from '../src/frameworks/solid/stores/AppStore';
+import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
+import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
+import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
+import { createRouteStore } from '../src/frameworks/solid/stores/RouteStore';
+import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
+import { createSessionStore, type SessionStore } from '../src/frameworks/solid/stores/SessionStore';
+import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
+import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
+import { createThemeStore } from '../src/frameworks/solid/stores/ThemeStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
@@ -291,53 +293,61 @@ interface Stores {
 
 function mountShell(): Stores {
   const out = {} as Stores;
-  function Capture() {
-    out.profiles = useProfileStore();
-    out.runtime = useRuntimeStore();
-    out.session = useSessionStore();
-    out.datasets = useDatasetStore();
-    out.spaces = useSpaceStore();
-    out.records = useRecordStore();
-    out.shapes = useShapeStore();
+  /*
+    The stores this suite is about, composed in BootController's order with the stores they read
+    passed in — the route, template and theme stores as the fakes above. Built inside the render so
+    their effects and cleanups belong to the tree `cleanup()` takes down.
+  */
+  function Shell() {
+    const platform = usePlatform();
+    const backend = useBackend();
+    const routeStore = createRouteStore();
+    const shellStore = createShellStore({ platform });
+    // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
+    // BootController builds it.
+    const chatStore = createChatStore({ shellStore });
+    // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
+    // is what the profile write-through has to tolerate.
+    const accountStore = createAccountStore({ platform });
+    const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+    // Setting up an account asks it whether there is an AI question, as the real order has it.
+    const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
+    const datasetStore = createDatasetStore({ sessionStore });
+    // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
+    // enroller, and hands the record layer the vocabularies this community owns — a task's own
+    // states — so these are built in the order BootController uses.
+    const shapeStore = createShapeStore({ sessionStore, datasetStore });
+    const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+    const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
+    const themeStore = createThemeStore({ sessionStore, datasetStore });
+    const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
+    // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
+    const appStore = createAppStore();
+    const spaceStore = createSpaceStore({
+      sessionStore,
+      datasetStore,
+      shapeStore,
+      recordStore,
+      profileStore,
+      routeStore,
+      templateStore,
+      appStore,
+      themeStore,
+      shellStore,
+    });
+    startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+    Object.assign(out, {
+      profiles: profileStore,
+      runtime: runtimeStore,
+      session: sessionStore,
+      datasets: datasetStore,
+      spaces: spaceStore,
+      records: recordStore,
+      shapes: shapeStore,
+    });
     return null;
   }
-  render(() => (
-    <ShellStoreProvider>
-      {/* Session hands the signed-in DID down to Chat as well as Shell — the same wiring the real
-          StoreProvider makes, so the chat store mounts where it mounts there. */}
-      <ChatStoreProvider>
-        {/* The mocked platform supplies no `accounts`, so this mounts in its web-degraded form —
-          which is what the profile write-through has to tolerate. */}
-        <AccountStoreProvider>
-          <SessionStoreProvider>
-            {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
-            <RuntimeStoreProvider>
-              <DatasetStoreProvider>
-                {/* SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back
-                an enroller, so the two mount in the order the real StoreProvider uses. */}
-                <ShapeStoreProvider>
-                  {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
-                  own states — so the two mount in the order the real StoreProvider uses. */}
-                  <RecordStoreProvider>
-                    <ProfileStoreProvider>
-                      {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
-                  inside one — the same nesting the real StoreProvider uses. */}
-                      <AppStoreProvider>
-                        <SpaceStoreProvider>
-                          <BootController />
-                          <Capture />
-                        </SpaceStoreProvider>
-                      </AppStoreProvider>
-                    </ProfileStoreProvider>
-                  </RecordStoreProvider>
-                </ShapeStoreProvider>
-              </DatasetStoreProvider>
-            </RuntimeStoreProvider>
-          </SessionStoreProvider>
-        </AccountStoreProvider>
-      </ChatStoreProvider>
-    </ShellStoreProvider>
-  ));
+  render(() => <Shell />);
   return out;
 }
 

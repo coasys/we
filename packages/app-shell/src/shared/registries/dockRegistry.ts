@@ -162,7 +162,7 @@ export function registerHostChromeReserve(
  * yields nothing — and, crucially, the memo doing the looking never touches the accessor, so it
  * registers no dependency on it and has nothing to re-run for. It cannot recover on its own.
  *
- * That is not hypothetical ordering paranoia: `ShellStoreProvider` wraps `EditorStoreProvider`, so
+ * That is not hypothetical ordering paranoia: the shell store is built before the editor store, so
  * the shell's dock geometry is computed before the editor store exists. The theme panel could not be
  * opened at all — its flag went true, the memo never re-read the edge, and no amount of clicking or
  * reloading helped. Opening any *other* panel fixed it, because that changed something the memo did

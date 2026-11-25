@@ -45,30 +45,6 @@ interface RecordModel {
 const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import {
-  useAccountStore,
-  useAppStore,
-  useBundleStore,
-  useChatStore,
-  useClockStore,
-  useDatasetStore,
-  useDeviceStore,
-  useEditorStore,
-  useIdentityStore,
-  useInterpretationStore,
-  usePresenceStore,
-  useProfileStore,
-  useRecordStore,
-  useRouteStore,
-  useRuntimeStore,
-  useSessionStore,
-  useShapeStore,
-  useShellStore,
-  useSpaceStore,
-  useTemplateStore,
-  useThemeStore,
-  useWorkflowStore,
-} from '@solid/stores';
 import type { Stores } from '@solid/types';
 import { Route, Router } from '@solidjs/router';
 import { manifestEntries, type RecordInstance } from '@we/backend-shared';
@@ -102,34 +78,35 @@ import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
 import { useEditTarget } from '../stores/editTarget';
+import { useStore } from '../stores/useStore';
 import { buildRoutes } from '../utils/buildRoutes';
 
 export default function TemplateProvider() {
   // Stores
-  const sessionStore = useSessionStore();
-  const accountStore = useAccountStore();
-  const runtimeStore = useRuntimeStore();
-  const datasetStore = useDatasetStore();
-  const profileStore = useProfileStore();
-  const editorStore = useEditorStore();
-  const appStore = useAppStore();
-  const spaceStore = useSpaceStore();
-  const shapeStore = useShapeStore();
-  const recordStore = useRecordStore();
-  const themeStore = useThemeStore();
-  const templateStore = useTemplateStore();
+  const sessionStore = useStore('sessionStore');
+  const accountStore = useStore('accountStore');
+  const runtimeStore = useStore('runtimeStore');
+  const datasetStore = useStore('datasetStore');
+  const profileStore = useStore('profileStore');
+  const editorStore = useStore('editorStore');
+  const appStore = useStore('appStore');
+  const spaceStore = useStore('spaceStore');
+  const shapeStore = useStore('shapeStore');
+  const recordStore = useStore('recordStore');
+  const themeStore = useStore('themeStore');
+  const templateStore = useStore('templateStore');
   /** What the editor edits — the app is an edit surface only while it is the target. */
   const editTarget = useEditTarget();
-  const routeStore = useRouteStore();
-  const shellStore = useShellStore();
-  const chatStore = useChatStore();
-  const presenceStore = usePresenceStore();
-  const interpretationStore = useInterpretationStore();
-  const clockStore = useClockStore();
-  const bundleStore = useBundleStore();
-  const workflowStore = useWorkflowStore();
-  const identityStore = useIdentityStore();
-  const deviceStore = useDeviceStore();
+  const routeStore = useStore('routeStore');
+  const shellStore = useStore('shellStore');
+  const chatStore = useStore('chatStore');
+  const presenceStore = useStore('presenceStore');
+  const interpretationStore = useStore('interpretationStore');
+  const clockStore = useStore('clockStore');
+  const bundleStore = useStore('bundleStore');
+  const workflowStore = useStore('workflowStore');
+  const identityStore = useStore('identityStore');
+  const deviceStore = useStore('deviceStore');
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.

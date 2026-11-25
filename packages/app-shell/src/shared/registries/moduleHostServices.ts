@@ -3,14 +3,14 @@
  *
  * ## Why this exists at all
  *
- * Modules are registered in `PlatformProvider`, which sits *above* `StoreProvider`: the launcher
- * template has to be in the registry before the stores render, so registration cannot wait. But the
+ * Modules are registered in `PlatformProvider`, which sits *above* `BootController`: the launcher
+ * template has to be in the registry before the stores are built, so registration cannot wait. But the
  * ports a module wants (transport, presence, the current dataset) all live in stores that do not
  * exist yet at that moment.
  *
  * Rather than reorder the tree, the deps handed to a module store are **stable objects whose methods
  * dereference at call time**. A module holds `deps.kernels.presence` forever; what it points at is
- * filled in when `PresenceStoreProvider` mounts. Every accessor answers safely before then, which is
+ * filled in when the presence store is built. Every accessor answers safely before then, which is
  * the same degrade-don't-throw contract the kernels already require for a personal space with no
  * neighbourhood.
  *

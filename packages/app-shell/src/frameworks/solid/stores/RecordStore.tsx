@@ -65,18 +65,7 @@ import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
 import { solidReactivity } from '@we/reactivity-solid';
-import {
-  Accessor,
-  batch,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
@@ -114,9 +103,9 @@ import {
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
-import { useSessionStore } from './SessionStore';
-import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
+import { type AppDataset } from './DatasetStore';
+import { BLOCK_ICONS } from './ShapeStore';
+import type { StoreRegistry } from './useStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
 export interface CreatableEntity {
@@ -746,11 +735,11 @@ export interface RecordStore {
   ) => Promise<void>;
 }
 
-const RecordStoreContext = createContext<RecordStore>();
-
-export function RecordStoreProvider(props: ParentProps) {
-  const datasetStore = useDatasetStore();
-  const session = useSessionStore();
+export function createRecordStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore'>,
+): RecordStore {
+  const datasetStore = deps.datasetStore;
+  const session = deps.sessionStore;
 
   /**
    * Run one of the canvas operations (`core.placeCard` …) as the signed-in agent. The writes are
@@ -771,7 +760,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const id = await runOp<string>('core.connectRecords', { ...ends, ...extra }, handle);
     return String(id ?? '');
   }
-  const shapeStore = useShapeStore();
+  const shapeStore = deps.shapeStore;
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
@@ -3729,13 +3718,7 @@ export function RecordStoreProvider(props: ParentProps) {
     saveRecord,
   };
 
-  return <RecordStoreContext.Provider value={store}>{props.children}</RecordStoreContext.Provider>;
-}
-
-export function useRecordStore(): RecordStore {
-  const ctx = useContext(RecordStoreContext);
-  if (!ctx) throw new Error('useRecordStore must be used within RecordStoreProvider');
-  return ctx;
+  return store;
 }
 
 // Re-exported so a consumer needs one import for the store and the shape of what it holds.

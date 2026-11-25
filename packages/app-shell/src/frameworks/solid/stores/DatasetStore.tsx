@@ -27,21 +27,10 @@ import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@w
 import { toastService } from '@we/components/solid';
 import { AgentSettings, type DatasetProxy } from '@we/entities';
 import { latest } from '@we/module-shared';
-import {
-  Accessor,
-  batch,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { firstScreen } from '../firstScreen';
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 export type { EntityManifestEntry, EntityManifestProperty } from '@we/backend-shared';
 
@@ -182,10 +171,8 @@ export interface DatasetStore {
   getDatasetOrder: () => string[];
 }
 
-const DatasetContext = createContext<DatasetStore>();
-
-export function DatasetStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
+export function createDatasetStore(deps: Pick<StoreRegistry, 'sessionStore'>): DatasetStore {
+  const session = deps.sessionStore;
 
   const [datasets, setDatasets] = createSignal<AppDataset[]>([]);
   const [datasetsLoaded, setDatasetsLoaded] = createSignal(false);
@@ -944,11 +931,5 @@ export function DatasetStoreProvider(props: ParentProps) {
     getDatasetOrder,
   };
 
-  return <DatasetContext.Provider value={store}>{props.children}</DatasetContext.Provider>;
-}
-
-export function useDatasetStore(): DatasetStore {
-  const context = useContext(DatasetContext);
-  if (!context) throw new Error('useDatasetStore must be used within the DatasetStoreProvider');
-  return context;
+  return store;
 }

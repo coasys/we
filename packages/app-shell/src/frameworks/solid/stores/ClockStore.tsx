@@ -32,7 +32,7 @@ import {
   toIso,
   toTime,
 } from '@we/clock';
-import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, useContext } from 'solid-js';
+import { type Accessor, createSignal, onCleanup } from 'solid-js';
 
 /** One clock, ready to render. */
 export interface ClockView {
@@ -112,9 +112,7 @@ function view(clock: Clock, state: ClockState): ClockView {
   };
 }
 
-const ClockContext = createContext<ClockStore>();
-
-export function ClockStoreProvider(props: ParentProps) {
+export function createClockStore(): ClockStore {
   const [clocks, setClocks] = createSignal<Record<string, ClockView>>({});
 
   const publish = (id: string, clock: Clock) => {
@@ -151,13 +149,5 @@ export function ClockStoreProvider(props: ParentProps) {
     configure: (id, settings) => clock(id).configure(settings ?? {}),
   };
 
-  return <ClockContext.Provider value={store}>{props.children}</ClockContext.Provider>;
+  return store;
 }
-
-export function useClockStore(): ClockStore {
-  const ctx = useContext(ClockContext);
-  if (!ctx) throw new Error('useClockStore must be used within ClockStoreProvider');
-  return ctx;
-}
-
-export default ClockStoreProvider;

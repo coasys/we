@@ -10,7 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 import { slotRegistry } from '../src/shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
@@ -44,19 +45,17 @@ afterEach(() => {
 
 function mountLane(frame?: 'window' | 'flush' | 'none') {
   let store!: ShellStore;
-  const Grab = () => {
-    store = useShellStore();
+  const { container } = render(() => {
+    store = createShellStore();
     // Wrapped as the app wraps chrome's stores, so the frames read values rather than accessors.
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
-    return null;
-  };
-  const { container } = render(() => (
-    <ShellStoreProvider>
-      <Grab />
-      <PanelLane lane="side" width="320px" resize="start" foldEmpty frame={frame} />
-      <PanelHost />
-    </ShellStoreProvider>
-  ));
+    return (
+      <StoreRegistryContext.Provider value={{ shellStore: store }}>
+        <PanelLane lane="side" width="320px" resize="start" foldEmpty frame={frame} />
+        <PanelHost />
+      </StoreRegistryContext.Provider>
+    );
+  });
   return { store, lane: container.firstElementChild as HTMLElement };
 }
 
