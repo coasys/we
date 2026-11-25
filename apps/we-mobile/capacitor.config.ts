@@ -2,11 +2,25 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 import { ERROR_PAGE_PATH, MIN_WEBVIEW_MAJOR } from './src/webViewFloor';
 
+// Read by the Capacitor CLI, which runs this file under Node.
+declare const process: { env: Record<string, string | undefined> };
+
+/**
+ * Whether the WebView can be inspected over DevTools (chrome://inspect, Safari's Develop menu).
+ * Anyone with the phone over USB could then call the identity plugin from the page, so it is off in
+ * every build unless the build was synced with `WE_MOBILE_INSPECTABLE=1`, for local work with
+ * `scripts/cdp-eval.mjs`. Capacitor's own default is on for every debug build, CI's included.
+ */
+export const INSPECTABLE = process.env.WE_MOBILE_INSPECTABLE === '1';
+
 const config: CapacitorConfig = {
   appId: 'org.coasys.app',
   appName: 'Coasys',
   // WE's web build plus the app's error page: `pnpm build:web` here assembles it.
   webDir: 'www',
+  // Capacitor logs every plugin call with its options in a debug build, and the identity plugin's
+  // options carry the recovery words.
+  loggingBehavior: 'none',
   server: {
     // The WebView's own origin is https://localhost: a secure context, and WE's stored session
     // (ad4m-connect's localStorage) lives under it.
@@ -18,6 +32,10 @@ const config: CapacitorConfig = {
     // WE reaches its executor over https/wss; a page on https://localhost never loads http.
     allowMixedContent: false,
     minWebViewVersion: MIN_WEBVIEW_MAJOR,
+    webContentsDebuggingEnabled: INSPECTABLE,
+  },
+  ios: {
+    webContentsDebuggingEnabled: INSPECTABLE,
   },
   plugins: {
     SystemBars: {

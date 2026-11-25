@@ -262,9 +262,12 @@ signed statement names the origin the phone dials, and an executor with no `--pu
 accepts only its own loopback origins on its own API port. The offer link names the identity store
 by its URL, so forward the store's port the same way.
 
-To read or drive the WebView without tapping (a debug build enables WebView debugging):
+To read or drive the WebView without tapping, sync with WebView debugging on, then build and install
+as above. It is off unless asked for, in debug builds too, since it lets anyone with the phone over
+USB call the identity plugin from the page:
 
 ```sh
+WE_MOBILE_INSPECTABLE=1 pnpm exec cap sync android
 node scripts/cdp-eval.mjs "location.href"
 node scripts/cdp-eval.mjs --page error.html "document.body.innerText"
 ```
