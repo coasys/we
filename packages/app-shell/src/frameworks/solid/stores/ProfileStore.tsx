@@ -6,13 +6,14 @@
  * and owns the own-profile write path (text fields, images, location). Identity itself (`me`,
  * the DID) belongs to SessionStore — this store is about the human-facing profile data.
  */
+import { createKeyedSignals } from '@shared/keyedSignals';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { uploadOf } from '@shared/uploadOf';
 import { type AgentProfileSummary, displayName, isProfileEmpty, type PublishProfileFields } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { compressImageToFileData, dataURIToFileData, shrinkDataUri } from '@we/entities';
-import { Accessor, createComputed, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
-import { createStore, reconcile } from 'solid-js/store';
+import { solidReactivity } from '@we/reactivity-solid';
+import { Accessor, batch, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
@@ -111,6 +112,22 @@ export interface ProfileStore {
   }) => Promise<void>;
 }
 
+/**
+ * Whether two profiles read the same, field by field. A fetch and an edit hand back new objects for
+ * an agent whose profile did not change, and those must not wake anything that reads that agent.
+ */
+function sameProfile(a: AgentProfileSummary | undefined, b: AgentProfileSummary | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a) as (keyof AgentProfileSummary)[];
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) => {
+    const [x, y] = [a[key], b[key]];
+    if (Object.is(x, y)) return true;
+    return typeof x === 'object' && typeof y === 'object' && JSON.stringify(x) === JSON.stringify(y);
+  });
+}
+
 export function createProfileStore(
   deps: Pick<StoreRegistry, 'accountStore' | 'runtimeStore' | 'sessionStore'>,
 ): ProfileStore {
@@ -118,7 +135,7 @@ export function createProfileStore(
   const runtime = deps.runtimeStore;
   const accounts = deps.accountStore;
 
-  const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
+  const [rawProfiles, setRawProfiles] = createSignal<AgentProfileSummary[]>([]);
   const [pendingAvatar, setPendingAvatarSignal] = createSignal('');
   /**
    * DIDs whose fetch has settled, however it settled.
@@ -153,29 +170,32 @@ export function createProfileStore(
   /**
    * The same cache keyed by DID, so one agent can be read without depending on the rest.
    *
-   * A **store** rather than a memo returning a Map, and that is the whole point: a store proxy
-   * tracks each key separately, so `index[did]` is its own dependency. A Map behind a memo would be
-   * one signal again and every reader would wake on every change, which is the thing being fixed.
-   *
-   * `reconcile` is what keeps that true through an update. It writes only the paths that actually
-   * differ, so a peer arriving touches that peer's key and leaves the others untouched — where a
-   * plain `setIndex(next)` would replace the object and notify everybody holding any key.
+   * A signal per DID rather than a memo returning a Map, and that is the whole point: each key is
+   * its own dependency. A Map behind a memo would be one signal again and every reader would wake on
+   * every change, which is the thing being fixed. A key is written only when that agent's profile
+   * reads differently, so a peer arriving wakes the readers of that peer and leaves the others be.
    *
    * Reading a key that is **not there yet** registers a dependency on it too, which is the case
    * that decides this is workable at all: a row renders before its profile has been fetched, and
    * has to be woken when it lands.
    *
-   * `createComputed` rather than `createEffect` so the index is up to date within the same reactive
-   * pass that changed `profiles()` — a row reading it in an effect would otherwise see the previous
-   * answer for a tick.
+   * Written in the same update as the list (see `setProfiles`), so the index is never behind it: a
+   * reader of both sees one answer.
    */
-  const [profileIndex, setProfileIndex] = createStore<Record<string, AgentProfileSummary>>({});
-  createComputed(() => {
-    const next: Record<string, AgentProfileSummary> = {};
-    for (const profile of profiles()) if (profile.did) next[profile.did] = profile;
-    setProfileIndex(reconcile(next));
-  });
-  const profileFor = (did: string): AgentProfileSummary | undefined => (did ? profileIndex[did] : undefined);
+  const profileIndex = createKeyedSignals<string, AgentProfileSummary>(solidReactivity, sameProfile);
+  /** Change the cache: the list, and in the same update the keys of the agents whose profile changed. */
+  function setProfiles(update: (prev: AgentProfileSummary[]) => AgentProfileSummary[]): void {
+    batch(() => {
+      const next = update(untrack(rawProfiles));
+      setRawProfiles(next);
+      profileIndex.replace(
+        next
+          .filter((profile) => profile.did)
+          .map((profile) => [profile.did, { ...profile, name: displayName(profile) }] as const),
+      );
+    });
+  }
+  const profileFor = (did: string): AgentProfileSummary | undefined => (did ? profileIndex.get(did) : undefined);
 
   // In-flight deduplication for fetchProfile — prevents concurrent fetches for the same DID
   const inflightFetches = new Map<string, Promise<void>>();

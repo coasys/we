@@ -37,6 +37,8 @@ const SOLID_TESTS = [
   'tests/routeStore.test.ts',
   // The same, for following a live query: a page arriving must wake the port's effects.
   'tests/followLive.test.ts',
+  // And for a lookup of one signal per key: a write must wake the port's effects for its own key.
+  'tests/keyedSignals.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',

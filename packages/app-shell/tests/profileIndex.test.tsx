@@ -141,6 +141,26 @@ describe('profile cache granularity', () => {
     expect(runs).toBeGreaterThan(before);
   });
 
+  it('a profile already held does not wake its readers when somebody else arrives', async () => {
+    const store = mount();
+    await store.fetchProfile(ALICE);
+    await Promise.resolve();
+    let aliceRuns = 0;
+
+    // Every arrival rebuilds the list as new objects; Alice's reads the same, so nothing about her moved.
+    createEffect(() => {
+      store.profileFor(ALICE);
+      aliceRuns += 1;
+    });
+    await Promise.resolve();
+    const before = aliceRuns;
+
+    await store.fetchProfile(BOB);
+    await Promise.resolve();
+
+    expect(aliceRuns).toBe(before);
+  });
+
   it('carries the assembled display name, like profiles() does', async () => {
     const store = mount();
     await store.fetchProfile(ALICE);
