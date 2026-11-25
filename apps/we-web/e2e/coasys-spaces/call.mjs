@@ -19,6 +19,11 @@ import { getEntityForDataset } from '@we/backend-ad4m';
 import { until } from '@we/e2e/waits';
 
 import { inTheCall } from '../steps/space.mjs';
+import { timings } from './context.mjs';
+import { endWatches, markClick, ms, readMark, watchPage } from './probe.mjs';
+
+/** The page's own live mark of a call: the "Live" tag on its row in the space's tree. */
+const LIVE = { selector: 'we-badge', texts: ['Live'] };
 
 /** The call this page is in, by the `call` query the app writes into the URL. */
 export function callIdOf(page) {
@@ -27,13 +32,23 @@ export function callIdOf(page) {
 
 /** Starts a call from the space's own "Start a call" and resolves with the call's id. */
 export async function startCall(page) {
+  await timings.attempt('call.join_ms', async () => {
+    await markClick(page, 'call.join', 'Start a call');
+    await watchPage(page, 'call.live', LIVE);
+  });
   await page.getByRole('button', { name: 'Start a call' }).first().click();
   await until(
     () => inTheCall(page),
     (n) => n === 1,
     { timeout: 60_000, what: 'the call bar to show one in the call' },
   );
-  return until(() => callIdOf(page), Boolean, { timeout: 30_000, what: 'the call id in the URL' });
+  const id = await until(() => callIdOf(page), Boolean, { timeout: 30_000, what: 'the call id in the URL' });
+  // The click that starts the call to the "Live" tag on its row.
+  await timings.attempt('call.join_ms', async () => {
+    const live = await until(() => readMark(page, 'call.live'), Boolean, { timeout: 30_000, what: 'the live mark' });
+    timings.add('call.join_ms', ms(await readMark(page, 'call.join'), live));
+  });
+  return id;
 }
 
 /**
@@ -59,25 +74,79 @@ export async function unmute(page) {
 
 /** Leaves the call through the call bar's own button, and waits until the bar has gone. */
 export async function leaveCall(page) {
+  await timings.attempt('call.leave_ms', async () => {
+    await markClick(page, 'call.leave', 'Leave the call');
+    await watchPage(page, 'call.gone', { ...LIVE, gone: true });
+  });
   await page.getByRole('button', { name: 'Leave the call' }).first().click();
   await until(
     () => inTheCall(page),
     (n) => n === null,
     { timeout: 30_000, what: 'the call bar to go' },
   );
+  // The click that leaves to the "Live" tag gone from the call's row.
+  await timings.attempt('call.leave_ms', async () => {
+    const gone = await until(() => readMark(page, 'call.gone'), Boolean, {
+      timeout: 30_000,
+      what: 'the live mark to go',
+    });
+    timings.add('call.leave_ms', ms(await readMark(page, 'call.leave'), gone));
+  });
 }
 
-/** Writes lines into a call as `who` typed them, one after another, in order. */
+/**
+ * Writes lines into a call as `who` typed them, one after another, in order. Resolves with the time
+ * (`Date.now()`) each line's write began, for the timings.
+ */
 export async function typeIntoCall(who, perspective, callId, lines) {
   const TextBlock = getEntityForDataset('TextBlock', perspective);
   if (!TextBlock) throw new Error('TextBlock is not registered: createAd4mBackendPorts must run first.');
+  const started = [];
   for (const text of lines) {
+    started.push(Date.now());
     await TextBlock.create(
       perspective,
       { text, source: 'typed' },
       { parent: { id: callId, relation: 'children', entity: 'CollectionBlock' } },
     );
   }
+  return started;
+}
+
+/**
+ * Arms the page's marks for what is said in a call and what is found of it. Names the page marks:
+ * `said.first` and `said.last` (the first and last line shown), `line.<i>` (each typed line), and
+ * `found.first` and `found.count#<n>` (the call's Interpretation button naming its first suggestion,
+ * and the frame it first named each number of them). `lines` is the stub tier's typed lines; the real
+ * tier names `heard`, the words only its recording says, in place of lines.
+ */
+export async function watchSaid(page, { lines, heard, within }) {
+  const said = lines ? { first: [lines[0]], last: [lines.at(-1)] } : { first: heard, last: heard };
+  await watchPage(page, 'said.first', { texts: said.first, within });
+  await watchPage(page, 'said.last', { texts: said.last, all: !lines, within });
+  for (const [i, line] of (lines ?? []).entries()) await watchPage(page, `line.${i}`, { texts: [line], within });
+  const suggestions = { selector: 'we-button, button', within };
+  await watchPage(page, 'found.first', { ...suggestions, texts: ['Interpretation,'] });
+  await watchPage(page, 'found.count', { ...suggestions, texts: ['Interpretation,'], counted: true });
+}
+
+/**
+ * Reads the marks {@link watchSaid} armed, once the records are stored: from the first line shown to
+ * the first suggestion shown, and, with `stored` (how many suggestions the call holds, when the
+ * suite knows), from the last line shown to the button naming that many.
+ */
+export async function timeInterpretation(page, stored) {
+  const shown = (name) =>
+    until(() => readMark(page, name), Boolean, { timeout: 15_000, what: `${name} on the screen` });
+  timings.add('interpretation.first_record_ms', ms(await readMark(page, 'said.first'), await shown('found.first')));
+  if (stored) {
+    timings.add(
+      'interpretation.all_records_ms',
+      ms(await readMark(page, 'said.last'), await shown(`found.count#${stored}`)),
+    );
+  }
+  // The count's watch never ends by itself: nothing reads it after this.
+  await endWatches(page);
 }
 
 /**

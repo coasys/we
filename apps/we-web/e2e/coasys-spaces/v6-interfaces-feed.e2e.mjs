@@ -8,8 +8,9 @@ import assert from 'node:assert/strict';
 import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../steps/space.mjs';
-import { CALL_STEP, SLOW, STUB, until, vertical } from './context.mjs';
+import { CALL_STEP, SLOW, STUB, timings, until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, spacePerspective } from './dna.mjs';
+import { markClick, ms, readMark, timeCanvas, watchPage } from './probe.mjs';
 import { LINES } from './stub-llm.mjs';
 import { callThatFinds, enableTargets, expectedRecords, FEED_BUG, openSpacePath, openSpaceSettings } from './steps.mjs';
 
@@ -67,10 +68,23 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
   v.step('the space reads as a canvas, and as a page again', async () => {
     const { page } = alice;
     await openSpacePath(page, shared);
+    // The canvas opens from a page load of the space: the click to its first node and to every record drawn.
+    await timings.attempt('graph.load_ms', async () => {
+      await markClick(page, 'canvas.open', 'Canvas');
+      await watchPage(page, 'canvas.node', { selector: '.we-graph__node', within: SLOW });
+      await watchPage(page, 'canvas.records', { selector: '.we-graph', texts: titles, all: true, within: SLOW });
+    });
     await page.getByRole('button', { name: 'Canvas', exact: true }).click();
     // In the canvas's own element: the Interpretation panel lists the same titles.
     const canvas = page.locator('.we-graph');
     for (const title of titles) await canvas.getByText(title).first().waitFor({ timeout: SLOW });
+    await timings.attempt('graph.load_ms', async () => {
+      const opened = await readMark(page, 'canvas.open');
+      timings.add('graph.first_node_ms', ms(opened, await readMark(page, 'canvas.node')));
+      timings.add('graph.all_records_ms', ms(opened, await readMark(page, 'canvas.records')));
+    });
+    // Then the gestures, as the page's mouse makes them, each timed from its input to the frame after.
+    await timings.attempt('graph gestures', () => timeCanvas(page, (kind, t) => timings.add(`graph.${kind}_ms`, t)));
     if (STUB) {
       // The canvas draws records, not the conversation they came from.
       assert.equal(await canvas.getByText(Object.values(LINES)[0]).count(), 0, 'no transcript line on the canvas');

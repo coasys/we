@@ -4,4 +4,5 @@ export * from './browser.mjs';
 export * from './env.mjs';
 export * from './executor.mjs';
 export * from './mcp.mjs';
+export * from './metrics.mjs';
 export * from './waits.mjs';

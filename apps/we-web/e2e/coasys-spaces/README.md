@@ -214,6 +214,50 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 | `WE_LIVE_LOG`                                      | Writes the executor's output to this file.                                                                 |
 | `GITHUB_TOKEN` / `GH_TOKEN`                        | For the executor download.                                                                                 |
 
+## Timings
+
+The suite measures how long the product takes from a person's action to what the person sees. It
+adds no test of its own. It times the steps of V2 and V6 while they run.
+
+A metric is in milliseconds and lower is better. A step that fails or is skipped records nothing:
+its metrics are left out of the file. A metric is never written as 0. A timing that cannot be taken
+is said in the log and left out. Timing never decides if a step passes. A metric that repeats is
+reported as its median. Some also report the largest sample as `<name>_max_ms`.
+
+The page takes the times (`probe.mjs`). A watcher in the page marks the frame in which a thing
+shows. All the watchers of a page share one loop, which reads the page once a frame and stops when
+no watcher is left. A click starts the clock at the event's own time stamp. Where a step writes data from Node,
+the clock starts at that write.
+
+| Metric                                         | Start                                                       | End                                                      | Tier                                                                  |
+| ---------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------------------- |
+| `call.join_ms`                                 | The click on "Start a call".                                | The "Live" tag shows on the call's row in the tree.      | Both. Samples from V2 and V6.                                         |
+| `call.leave_ms`                                | The click on "Leave the call".                              | The "Live" tag is gone from the call's row.              | Both.                                                                 |
+| `transcript.line_ms`, `transcript.line_max_ms` | Stub: the suite writes a line into the call (one per line). | The line's text shows on the page.                       | Stub: the write-to-screen time of a line.                             |
+|                                                | Real: the click on "Unmute" (one sample).                   | The first heard word shows on the page.                  | Real: includes the recording, the speech model and the write.         |
+| `interpretation.first_record_ms`               | The first transcript line shows.                            | The Interpretation button names at least one suggestion. | Stub: the scripted model. Real: the language model named in `params`. |
+| `interpretation.all_records_ms`                | The last transcript line shows.                             | The button names all the suggestions that are stored.    | Stub only. The real model may still write more, so no total is known. |
+| `graph.first_node_ms`                          | The click on "Canvas".                                      | The first node is in the graph.                          | Both.                                                                 |
+| `graph.all_records_ms`                         | The click on "Canvas".                                      | The title of every record shows in the graph.            | Both.                                                                 |
+| `graph.zoom_ms`, `graph.zoom_max_ms`           | A wheel event (5 rounds).                                   | The frame after the graph layer's transform changes.     | Both.                                                                 |
+| `graph.pan_ms`, `graph.pan_max_ms`             | The first pointer move of a drag on bare ground (5 rounds). | The frame after the graph layer's transform changes.     | Both.                                                                 |
+| `graph.drag_ms`, `graph.drag_max_ms`           | The first pointer move of a drag on a node (5 rounds).      | The frame after the node's position changes.             | Both.                                                                 |
+| `graph.select_ms`, `graph.select_max_ms`       | The pointer up of a click on a node (5 rounds).             | The frame after the node gets its selected class.        | Both.                                                                 |
+
+The graph gestures use the page's real mouse, because the graph captures the pointer. A gesture that
+changes nothing (no bare ground, or no node under the pointer) records nothing.
+
+`params` says what the numbers depend on, so no run is compared with a run of another tier:
+
+- Stub tier: `{"tier": "stub"}`.
+- Real tier: `{"tier": "real", "llm": <model>, "transcription": <model>}`. When the stub server
+  writes the transcript, `transcription` is `"stub transcript"`.
+
+At the end of the suite, the suite writes `{"job": "coasys-spaces", "metrics": [...], "detail": {...}}`
+to `metrics.json` in `COASYS_SPACES_ARTIFACTS`. `detail` holds every sample. When `PERF_RESULTS_DIR` is
+set, the suite also writes the metrics alone to `$PERF_RESULTS_DIR/coasys-spaces.json`. The writer is
+`writeMetrics` in `@we/e2e`; the feed-scale suite uses it too.
+
 ## Artifacts
 
 When a step fails, the suite writes these to `COASYS_SPACES_ARTIFACTS` (else `WE_E2E_ARTIFACTS`),

@@ -896,12 +896,7 @@ test(`feed-scale: the Feed of a space with ${MESSAGES} messages`, { timeout: 6 *
       writeFileSync(join(ARTIFACTS, 'results.json'), `${JSON.stringify(doc, null, 2)}\n`);
       // The same metrics alone, as `scripts/perf/record` reads a results file (`{"metrics": [...]}`):
       // beside results.json, and in `PERF_RESULTS_DIR` when the job gives one.
-      const perf = `${JSON.stringify({ metrics: doc.metrics }, null, 2)}\n`;
-      writeFileSync(join(ARTIFACTS, 'metrics.json'), perf);
-      if (process.env.PERF_RESULTS_DIR) {
-        mkdirSync(process.env.PERF_RESULTS_DIR, { recursive: true });
-        writeFileSync(join(process.env.PERF_RESULTS_DIR, `${JOB}.json`), perf);
-      }
+      h.writeMetrics({ dir: ARTIFACTS, job: JOB, metrics: doc.metrics });
       log(`artifacts in ${ARTIFACTS}`);
     } finally {
       // The browser, the server and the executor go away however writing the artifacts went.

@@ -42,6 +42,10 @@
       "types": "./src/mcp.d.mts",
       "import": "./src/mcp.mjs"
     },
+    "./metrics": {
+      "types": "./src/metrics.d.mts",
+      "import": "./src/metrics.mjs"
+    },
     "./fake-ai": {
       "types": "./src/fake-ai.d.mts",
       "import": "./src/fake-ai.mjs"

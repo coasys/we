@@ -95,22 +95,32 @@ metrics file ad4m's `scripts/perf/record` reads. That script, its name and those
 same kind of contract. The suite's own README (`apps/we-web/e2e/feed-scale/README.md`) covers what
 it measures and how it reads the numbers.
 
+**The coasys-spaces suite also reports timings.** It times the call, the transcript, the
+interpretation and the graph in V2 and V6 (its README, "Timings", lists each metric).
+
+**The `PERF_RESULTS_DIR` contract.** A suite that reports metrics calls `writeMetrics` from
+`@we/e2e`. It writes `metrics.json` in its own artifacts directory. When `PERF_RESULTS_DIR` is set,
+it also writes the metrics alone, as `{"metrics": [...]}`, to `$PERF_RESULTS_DIR/<job>.json`. Each
+metric is `{metric, value, unit, better, params}`. A metric that was not measured is left out, never
+written as 0.
+
 ## `@we/e2e`: what the live tests share
 
 `packages/e2e` holds the pieces every live test needs, so that no suite keeps its own copy. It is
 plain ES modules with hand-written types and no build step. Import a piece from its own entry
 (`@we/e2e/executor`) or import everything from `@we/e2e`.
 
-| Entry       | Exports                                                                                                                                                             |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env`       | `ROOT`; `executorBinary()`: the binary `scripts/ad4m-executor.mjs --path` chooses; `chromePath(env?)` and `chromeCandidates()`                                      |
-| `executor`  | `startExecutor(options?)`, `signUp(executor, email, password?)`, `registerLlm(admin, server)`, `registerTranscriber(admin, server)`, `freePort()`, `DATA_PREFIX`    |
-| `app`       | `serveDist(dir, { seed?, host? })`: a built app served with the production CSP header; `productionCsp()`, `currentSeed()`                                           |
-| `browser`   | `launchBrowser({ fakeAudio?, headless? })`, `device(browser, executor, account, { name?, viewport? })`: a signed-in browser context; `openConnections`, `videoFlow` |
-| `waits`     | `until(read, accept, { timeout?, interval?, what? })`, `within(promise, ms, what?)`, `sleep(ms)`                                                                    |
-| `artifacts` | `artifactsDir({ dir?, prefix? })`, `captureFailure({ dir, name, pages, executor? })`, `capturing(capture, fn)`, `saveArtifact`, `slug`                              |
-| `fake-ai`   | `fakeAiAdmin({ unlisted? })`: a stand-in for an admin client's `ai` calls that refuses them as the executor does, for unit tests of model setup                     |
-| `mcp`       | `mcpSession(url, token)`: an MCP client session with `tools()` and `call(name, args)`                                                                               |
+| Entry       | Exports                                                                                                                                                                |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env`       | `ROOT`; `executorBinary()`: the binary `scripts/ad4m-executor.mjs --path` chooses; `chromePath(env?)` and `chromeCandidates()`                                         |
+| `executor`  | `startExecutor(options?)`, `signUp(executor, email, password?)`, `registerLlm(admin, server)`, `registerTranscriber(admin, server)`, `freePort()`, `DATA_PREFIX`       |
+| `app`       | `serveDist(dir, { seed?, host? })`: a built app served with the production CSP header; `productionCsp()`, `currentSeed()`                                              |
+| `browser`   | `launchBrowser({ fakeAudio?, headless? })`, `device(browser, executor, account, { name?, viewport? })`: a signed-in browser context; `openConnections`, `videoFlow`    |
+| `metrics`   | `writeMetrics({ dir, job, metrics, doc? })`: `metrics.json`, and `$PERF_RESULTS_DIR/<job>.json` when that is set; `median(values)`, `max(values)`, `round(n, places?)` |
+| `waits`     | `until(read, accept, { timeout?, interval?, what? })`, `within(promise, ms, what?)`, `sleep(ms)`                                                                       |
+| `artifacts` | `artifactsDir({ dir?, prefix? })`, `captureFailure({ dir, name, pages, executor? })`, `capturing(capture, fn)`, `saveArtifact`, `slug`                                 |
+| `fake-ai`   | `fakeAiAdmin({ unlisted? })`: a stand-in for an admin client's `ai` calls that refuses them as the executor does, for unit tests of model setup                        |
+| `mcp`       | `mcpSession(url, token)`: an MCP client session with `tools()` and `call(name, args)`                                                                                  |
 
 `startExecutor` starts a fresh executor that is **multi-user** by default, the way a hosted node runs.
 It has fresh data in a temp directory named `we-live-web-…`, free ports, and no bootstrap, proxy or

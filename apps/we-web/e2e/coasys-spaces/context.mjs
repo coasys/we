@@ -21,7 +21,9 @@
  *   them: it types its lines into the call.
  * - `COASYS_SPACES_WAV` — the real tier's recording the fake microphone plays.
  * - `COASYS_SPACES_ARTIFACTS` — where failure screenshots, traces and the executor log go; else
- *   `WE_E2E_ARTIFACTS`, as for every journey; else a new temp directory.
+ *   `WE_E2E_ARTIFACTS`, as for every journey; else a new temp directory. The run's `metrics.json`
+ *   (README, "Timings") goes there too.
+ * - `PERF_RESULTS_DIR` — when set, the metrics alone are also written to `coasys-spaces.json` there.
  * - `SOCIAL_DNA_PACKAGE` — the social DNA package to install (see `dna.mjs`).
  */
 import { dirname, join, resolve } from 'node:path';
@@ -41,11 +43,13 @@ import {
   slug,
   startExecutor,
   until,
+  writeMetrics,
 } from '@we/e2e';
 
 import { dismissNamePrompt } from '../steps/space.mjs';
-import { modelsFor, needsStubServer, registerModels } from './models.mjs';
+import { modelsFor, needsStubServer, registerModels, transcriptionNote } from './models.mjs';
 import { startStubLlm } from './stub-llm.mjs';
+import { createTimings, JOB, paramsFor } from './timings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -132,10 +136,28 @@ async function stopStarted() {
   }
 }
 
+/** What the steps measured, written by {@link closeWorld}. The README's "Timings" section lists each metric. */
+export const timings = createTimings();
+
+/**
+ * Writes the run's timings: `metrics.json` in the artifacts, and the metrics alone in
+ * `PERF_RESULTS_DIR`. A failed write is said and does not fail the run: timing never decides a result.
+ */
+function writeTimings({ llm, transcriber }) {
+  try {
+    const params = paramsFor(TIER, { llm, transcriber });
+    const detail = { params, samples: timings.samples(), transcription: transcriptionNote(transcriber) };
+    writeMetrics({ dir: ARTIFACTS, job: JOB, metrics: timings.metrics(params), doc: { job: JOB, detail } });
+  } catch (error) {
+    console.log(`coasys-spaces: could not write the timings: ${error.message}`);
+  }
+}
+
 /** Closes the world, whether it was made or failed half-way. */
 async function closeWorld() {
   if (!made) return;
-  await made.catch(() => null);
+  const servers = await made.catch(() => null);
+  if (servers) writeTimings(servers);
   await stopStarted();
   console.log(`coasys-spaces: artifacts in ${ARTIFACTS}`);
 }
