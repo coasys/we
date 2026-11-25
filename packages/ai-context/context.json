@@ -6332,7 +6332,7 @@
         },
         "created": {
           "type": "object",
-          "properties": ["name", "matchCode", "confirmBy", "token"]
+          "properties": ["name", "matchCode", "confirmBy"]
         },
         "createError": {
           "type": "string"

@@ -3050,7 +3050,7 @@ BotStore:
   - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now
   - loaded: boolean — the list has been read once
   - error: string — why the last read or change failed, or empty
-  - created: { name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated
+  - created: { name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on
   - createError: string — why making the bot failed, or empty
   - creating: boolean — making the bot is under way
   - selected: the row of the bot open in the editor (as in `bots`), or null for the list
@@ -3065,7 +3065,7 @@ BotStore:
   - refresh(): reads the bots again
   - addBot(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome
   - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made
-  - dismissCreated(): lets the credential go
+  - dismissCreated(): lets the bot just made go
   - select(did: string): opens that bot in the grant editor and reads its activity
   - close(): back to the list
   - toggleSpace(id: string): adds that space to the draft grant, or takes it out

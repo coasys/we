@@ -1,7 +1,7 @@
 /**
  * botStore: what it reads from the backend's bot port, the grant it sends (whole, with the version it
  * replaces), what it does when another change came first, paging the activity log, and that the
- * bot's credential is shown once and let go.
+ * bot's credential is shown once and let go, when dismissed or when the person leaves its page.
  */
 import { render } from '@solidjs/testing-library';
 import {
@@ -26,6 +26,7 @@ const SWAP = 'QmSwap';
 
 const [ports, setPorts] = createSignal<{ identity?: { bots?: BotPort } } | null>(null);
 const [holdsMaster, setHoldsMaster] = createSignal(true);
+const [shellPage, setShellPage] = createSignal<string | null>('/bots');
 const opened: IdentityChange[] = [];
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
@@ -47,6 +48,10 @@ vi.mock('../src/frameworks/solid/stores/IdentityStore', () => ({
       return 'done';
     },
   }),
+}));
+
+vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
+  useShellStore: () => ({ shellPage }),
 }));
 
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
@@ -147,6 +152,7 @@ const entry = (id: number, allowed: boolean): BotActivityView => ({
 beforeEach(() => {
   setPorts(null);
   setHoldsMaster(true);
+  setShellPage('/bots');
   opened.length = 0;
 });
 
@@ -192,6 +198,24 @@ describe('botStore', () => {
     store.dismissCreated();
     expect(store.created()).toBeNull();
     expect(JSON.stringify(store.bots())).not.toContain('throwaway-token');
+  });
+
+  it('lets the credential go when the person leaves the page it was shown on', async () => {
+    setPorts({ identity: { bots: fakePort().port } });
+    const store = mount();
+    await settle();
+    expect(await store.create('coasys:offer:1:x', 'Test bot')).toBe(true);
+    // Still on the page that made it: the person can read and copy it.
+    expect(store.created()?.token).toBe('throwaway-token');
+    setShellPage('/account');
+    expect(store.created()).toBeNull();
+
+    // Closing the overlay is leaving it too.
+    setShellPage('/bots');
+    expect(await store.create('coasys:offer:1:x', 'Test bot')).toBe(true);
+    expect(store.created()?.token).toBe('throwaway-token');
+    setShellPage(null);
+    expect(store.created()).toBeNull();
   });
 
   it('edits the grant as a draft over the person’s spaces and sends it whole, with its version', async () => {

@@ -6,8 +6,8 @@
  * computer that keeps the master key can sign: `addBot` asks for that as an identity change
  * (`add-bot`), and the identity window shows an offer. The bot's **agent** is made here, from that
  * offer (`create`): the backend answers the match code the identity window asks the person to check,
- * and the bot's credential. The credential is shown once and let go (`dismissCreated`); it is never
- * kept beyond that, nor logged.
+ * and the bot's credential. The credential is shown once and let go: when the person dismisses it
+ * (`dismissCreated`) or leaves the page it was shown on. It is never kept beyond that, nor logged.
  *
  * The grant is replaced whole and names the version it replaces. When another change came first
  * the save is refused, the grant is read again and shown as it is now, with a line that says so.
@@ -46,11 +46,13 @@ import {
   createSignal,
   on,
   type ParentProps,
+  untrack,
   useContext,
 } from 'solid-js';
 
 import { useIdentityStore } from './IdentityStore';
 import { useSessionStore } from './SessionStore';
+import { useShellStore } from './ShellStore';
 import { useSpaceStore } from './SpaceStore';
 
 /** How many activity entries one read asks for. */
@@ -63,7 +65,10 @@ export interface CreatedBotCard {
   matchCode: string;
   /** Until when the person can confirm it there. */
   confirmBy: string;
-  /** The bot's credential, for the program that runs it. Gone after `dismissCreated`. */
+  /**
+   * The bot's credential, for the program that runs it. Gone after `dismissCreated`, or once the
+   * person leaves the page it was shown on.
+   */
   token: string;
 }
 
@@ -111,7 +116,7 @@ export interface BotStore {
   loaded: Accessor<boolean>;
   /** Why the last read or change failed; empty when it did not. */
   error: Accessor<string>;
-  /** The bot just made, until `dismissCreated`. */
+  /** The bot just made, until `dismissCreated` or until the person leaves the page. */
   created: Accessor<CreatedBotCard | null>;
   /** Why making the bot failed; empty when it did not. */
   createError: Accessor<string>;
@@ -159,6 +164,7 @@ export function BotStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const identity = useIdentityStore();
   const spaces = useSpaceStore();
+  const shell = useShellStore();
   const port = (): BotPort | null => session.backendPorts()?.identity?.bots ?? null;
   const available = () => session.identityCapabilities().bots && !!port();
 
@@ -208,6 +214,22 @@ export function BotStoreProvider(props: ParentProps) {
       setError(message(e));
     }
   }
+
+  /*
+    The credential is for the person to copy, once, from the page that made the bot. Any chrome
+    template can read this store, so it is not left here after that page is gone: leaving the page
+    (another settings page, or the overlay closed) lets it go, as dismissing it does.
+  */
+  let createdOn: string | null = null;
+  createEffect(
+    on(
+      () => shell.shellPage(),
+      (page) => {
+        if (created() && page !== createdOn) setCreated(null);
+      },
+      { defer: true },
+    ),
+  );
 
   // The list follows the key log: a bot's key verdict changes when the log does.
   createEffect(() => {
@@ -387,6 +409,7 @@ export function BotStoreProvider(props: ParentProps) {
       setCreateError('');
       try {
         const made = await p.create(offer, name);
+        createdOn = untrack(shell.shellPage);
         setCreated({
           name: name.trim() || 'Unnamed bot',
           matchCode: made.matchCode,

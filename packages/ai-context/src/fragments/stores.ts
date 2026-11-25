@@ -914,7 +914,7 @@ export const storeEntries: StoreEntry[] = [
       },
       loaded: { type: 'boolean' },
       error: { type: 'string' },
-      created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy', 'token'] },
+      created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy'] },
       createError: { type: 'string' },
       creating: { type: 'boolean' },
       selected: {
@@ -2405,7 +2405,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       loaded: 'boolean — the list has been read once',
       error: 'string — why the last read or change failed, or empty',
       created:
-        "{ name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated",
+        '{ name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on',
       createError: 'string — why making the bot failed, or empty',
       creating: 'boolean — making the bot is under way',
       selected: 'the row of the bot open in the editor (as in `bots`), or null for the list',
@@ -2426,7 +2426,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome',
       create:
         '(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made',
-      dismissCreated: '(): lets the credential go',
+      dismissCreated: '(): lets the bot just made go',
       select: '(did: string): opens that bot in the grant editor and reads its activity',
       close: '(): back to the list',
       toggleSpace: '(id: string): adds that space to the draft grant, or takes it out',
