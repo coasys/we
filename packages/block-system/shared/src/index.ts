@@ -81,6 +81,7 @@ export {
   reconcileBlocks,
   refreshComposition,
   recordToTextBlock,
+  rowsToBlocks,
   resolveExpressionAddresses,
   textBlockToRecord,
   writePost,
