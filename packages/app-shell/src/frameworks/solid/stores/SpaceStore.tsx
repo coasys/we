@@ -1,14 +1,8 @@
 import { createBoardActions } from '@shared/boards';
-import {
-  CONTAINER_ACTIVITY_QUERY,
-  type ContainerActivity,
-  mentionsOf,
-  unreadContainerIds,
-} from '@shared/containerActivity';
 import { type SpaceAppearance } from '@shared/spaceAppearance';
 import { removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '@shared/spaceSync';
 import { createCallExports } from '@shared/stores/space/callExports';
-import { createSpaceContext, withRow } from '@shared/stores/space/context';
+import { createSpaceContext } from '@shared/stores/space/context';
 import { createSpaceExtraction } from '@shared/stores/space/extraction';
 import { createSpaceInvolvements } from '@shared/stores/space/involvements';
 import { createSpaceModules } from '@shared/stores/space/modules';
@@ -17,6 +11,7 @@ import { createSpaceRoles } from '@shared/stores/space/roles';
 import { createSpaceList, SPACE_AVATAR_PX } from '@shared/stores/space/spaces';
 import { createSpaceTaskStates } from '@shared/stores/space/taskStates';
 import type { CreatePostOptions, SpaceListEntry, SpaceMetaUpdate } from '@shared/stores/space/types';
+import { createSpaceUnread } from '@shared/stores/space/unread';
 import { createSpaceWrites } from '@shared/stores/space/writes';
 import type { SpaceStore } from '@shared/stores/SpaceStore';
 import { uploadOf } from '@shared/uploadOf';
@@ -37,8 +32,6 @@ import {
   type DatasetProxy,
   dataURIToFileData,
   LocationBlock,
-  MutedAgent,
-  ReadMarker,
   Space,
 } from '@we/entities';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -202,8 +195,9 @@ export function createSpaceStore(
     signalOrder,
   });
 
-  const [readMarkers, setReadMarkers] = createSignal<ReadMarker[]>([]);
-  const [mutedAgents, setMutedAgents] = createSignal<MutedAgent[]>([]);
+  // What is new to this agent in each space, and who it has muted.
+  const unread = createSpaceUnread(ctx);
+
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each
     job — whether this agent administers the space (its roles), what it runs and shows and this
@@ -458,108 +452,6 @@ export function createSpaceStore(
     }),
   );
 
-  // Per-agent private state, loaded from the root dataset alongside space preferences and for the
-  // same reason: it is not any one space's, and a feed has to filter on the mute list before it can
-  // render a single row.
-  createEffect(() => {
-    const root = datasetStore.rootDataset();
-    if (!root) {
-      setReadMarkers([]);
-      setMutedAgents([]);
-      return;
-    }
-    void ReadMarker.findAll(root.handle)
-      .then(setReadMarkers)
-      .catch(() => setReadMarkers([]));
-    void MutedAgent.findAll(root.handle)
-      .then(setMutedAgents)
-      .catch(() => setMutedAgents([]));
-  });
-
-  /**
-   * Mark a node read, as of now.
-   *
-   * Upsert on `nodeId` — one marker per node, moved forward rather than accumulated. Called on
-   * opening a channel, so it runs often and stays silent on failure: a lost marker shows a stale
-   * unread dot, which is not worth a toast interrupting what the user opened the channel to do.
-   */
-  async function markRead(nodeId: string, spaceUuid?: string): Promise<void> {
-    const root = datasetStore.rootDataset();
-    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!root || !nodeId || !uuid) return;
-    try {
-      const marker = await runCore<Partial<ReadMarker>>('markRead', { node: nodeId, space: uuid }, root.handle);
-      setReadMarkers((rows) => withRow(rows, marker));
-    } catch (error) {
-      console.error('SpaceStore: could not write read marker', error);
-    }
-  }
-
-  /**
-   * The space's containers, read once for both unread dots and mentions — see `containerActivity.ts`.
-   *
-   * Once per space: marking a container read changes the markers, not the containers, so the unread
-   * set is recomputed from these rows rather than by reading the space again.
-   */
-  const [activityRows, setActivityRows] = createSignal<ContainerActivity[]>([]);
-
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
-    setActivityRows([]);
-    if (!ds) return;
-
-    void (async () => {
-      try {
-        const rows = await CollectionBlock.findAll(ds.handle, CONTAINER_ACTIVITY_QUERY);
-        // A read that lands after a space switch belongs to the space that was left.
-        if (datasetStore.currentDataset() === ds) setActivityRows(rows);
-      } catch (error) {
-        console.error('SpaceStore: could not read container activity', error);
-      }
-    })();
-  });
-
-  /**
-   * Containers holding something newer than this agent's marker for them.
-   *
-   * One read for the whole space rather than a projection per row: the rail asked the same question
-   * for every channel, so a space with thirty channels opened thirty of them.
-   */
-  const unreadNodeIds = createMemo(() => unreadContainerIds(activityRows(), readMarkers()));
-
-  /*
-    Messages in this space naming this agent — posts and transcript lines alike, newest first.
-
-    Asked from the agent's end, through the backend's references (`we://mention` to this DID): one
-    lookup however many messages the space holds, and it finds a mention in a transcript line, which
-    the container read below it never could. Read again on entering the space and whenever its
-    containers' activity changes — a new line in a running call is not one of those, and is found on
-    the next. A backend that cannot answer falls back to filtering the container read, which is what
-    this was.
-  */
-  const [mentionRows, setMentionRows] = createSignal<{ id: string; author: string; createdAt: number }[] | null>(null);
-  createEffect(() => {
-    const ds = datasetStore.currentDataset();
-    const did = session.me()?.did;
-    const references = session.backendPorts()?.references;
-    void activityRows();
-    setMentionRows(null);
-    if (!ds || !did || !references) return;
-    void references
-      .referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })
-      .then((rows) => {
-        if (datasetStore.currentDataset() !== ds) return;
-        setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
-      })
-      .catch((error: unknown) => console.warn('SpaceStore: could not read who mentions this agent', error));
-  });
-  const myMentions = createMemo(() => {
-    const did = session.me()?.did;
-    const found = mentionRows();
-    if (found) return found;
-    return did ? mentionsOf(activityRows(), did) : [];
-  });
-
   /**
    * Store a file and return the URL that points at it.
    *
@@ -592,51 +484,6 @@ export function createSpaceStore(
       return null;
     }
   }
-
-  /**
-   * Mute or unmute an agent for this agent, everywhere.
-   *
-   * Phrased positively — `muted: boolean` — so a switch can pass `$event.detail` bare; the same
-   * constraint `setModuleVisible` documents.
-   *
-   * Reports failure, unlike `markRead`: this one was asked for deliberately, and someone who thinks
-   * they have muted an account and has not is worse off than someone who knows it did not work.
-   */
-  /** Just the DIDs — what a feed filter wants, without every consumer mapping the records. */
-  const mutedDids = createMemo(() => mutedAgents().map((m) => m.did));
-
-  /**
-   * Markers as `{ nodeId, lastReadAt }` rows.
-   *
-   * An array rather than a map keyed by node id, because **a schema cannot index a map
-   * dynamically**: a store read resolves a static dot path, so `spaceStore.readMarkers.<some context
-   * ref>` is not expressible — the path would be taken literally. The read is always "this row's
-   * marker" from inside a `$each`, which means `find()` over an array with a context ref in `where`,
-   * the only form the resolver supports. Linear per rendered row, over a list the size of the
-   * channels one agent has opened.
-   */
-  const readMarkerRows = createMemo(() => readMarkers().map((m) => ({ nodeId: m.nodeId, lastReadAt: m.lastReadAt })));
-
-  async function setAgentMuted(did: string, muted: boolean, description = ''): Promise<void> {
-    const root = datasetStore.rootDataset();
-    if (!root || !did) return;
-    try {
-      await runCore('setAgentMuted', { did, muted, description }, root.handle);
-      // What the operation leaves: one record while muted, none after. Its id is not needed to read it.
-      setMutedAgents((rows) =>
-        muted
-          ? rows.some((m) => m.did === did)
-            ? rows
-            : [...rows, { did, description } as MutedAgent]
-          : rows.filter((m) => m.did !== did),
-      );
-    } catch (error) {
-      console.error('SpaceStore: could not update mute list', error);
-      toastService.error(muted ? 'Could not mute that account' : 'Could not unmute that account');
-    }
-  }
-
-  /** Turn a module on or off for this agent everywhere. See `AgentSettings.installedModules`. */
 
   /*
     And the other thing the shell cannot see for itself: the template on screen and a library to
@@ -766,6 +613,7 @@ export function createSpaceStore(
     ...roles.members,
     ...taskStates.members,
     ...involvements.members,
+    ...unread.members,
     // State
     memberDids,
     members,
@@ -777,13 +625,6 @@ export function createSpaceStore(
     createPost,
     updatePost,
     ...boards,
-    mutedDids,
-    mutedAgents,
-    setAgentMuted,
-    readMarkers: readMarkerRows,
-    markRead,
-    unreadNodeIds,
-    myMentions,
     uploadFile,
     deleteCollection,
     updateSpaceImage,
