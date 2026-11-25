@@ -13,12 +13,12 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationsPort } from '@we/backend-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import { For } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coasysApp } from '../../templates/cartridges/src/coasys/app';
 import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHost';
-import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
@@ -26,6 +26,7 @@ import { activePanels } from '../src/shared/panelScope';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateSurface';
+import { createChatStore } from '../src/shared/stores/ChatStore';
 
 let agentChatMounts = 0;
 
@@ -90,7 +91,7 @@ function mount() {
     bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.
     release.push(provideTemplateBag(bag as never));
-    const chatStore = createChatStore({ shellStore: store });
+    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore: store });
     return (
       <StoreRegistryContext.Provider value={{ ...stores, shellStore: store, chatStore }}>
         {/* Every open instance's body, the way a frame's own PanelSlot draws it. */}

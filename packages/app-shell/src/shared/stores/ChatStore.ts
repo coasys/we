@@ -26,11 +26,10 @@
  * invents answers nothing — the map only holds what a real `openChat` wrote — and a `draft` it
  * forges is just an input nothing reads.
  */
-import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
-import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
-import { type Accessor, createEffect, createSignal, onCleanup } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import type { StoreRegistry } from './useStore';
+import { NARROW_VIEWPORT_PX } from '../dockGeometry';
+import { APP_PANEL_SCOPE } from '../panelScope';
 
 /** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
@@ -127,19 +126,37 @@ function keyFor(input: ChatOpen): string {
   return input.perspectiveUuid ?? 'global';
 }
 
-export function createChatStore(deps: Pick<StoreRegistry, 'shellStore'>): ChatStore {
-  const shellStore = deps.shellStore;
+/** What the chat store asks of the shell store: a panel opened, under a key and a scope. */
+export interface ChatPanels {
+  openPanel: (panel: string, inputs?: Record<string, unknown>, options?: { key?: string; scope?: string }) => string;
+}
 
-  const [isNarrow, setNarrow] = createSignal(
+export function createChatStore({
+  reactivity,
+  shellStore,
+}: {
+  reactivity: ReactivityPort;
+  shellStore: ChatPanels;
+}): ChatStore {
+  const { signal, effect, untrack, onCleanup } = reactivity;
+
+  const [isNarrow, writeNarrow] = signal(
     typeof window === 'undefined' ? false : window.innerWidth < NARROW_VIEWPORT_PX,
   );
   if (typeof window !== 'undefined') {
-    const onResize = () => setNarrow(window.innerWidth < NARROW_VIEWPORT_PX);
+    /*
+      Compared first: a resize fires for every pixel dragged, and only a crossing of the width is a
+      change. Whether an equal write wakes the readers is not the port's to say.
+    */
+    const onResize = () => {
+      const narrow = window.innerWidth < NARROW_VIEWPORT_PX;
+      if (untrack(isNarrow) !== narrow) writeNarrow(narrow);
+    };
     window.addEventListener('resize', onResize);
     onCleanup(() => window.removeEventListener('resize', onResize));
   }
 
-  const [sheet, setSheet] = createSignal<ChatInputs | null>(null);
+  const [sheet, setSheet] = signal<ChatInputs | null>(null);
 
   /*
     Whose these records are — the signed-in agent's DID, provided the same way the shell's kept
@@ -148,7 +165,8 @@ export function createChatStore(deps: Pick<StoreRegistry, 'shellStore'>): ChatSt
     changes — a logout without a reload, or a switch — rather than waiting for the restart that
     used to hide the hand-off. See `provideAgentDid`.
   */
-  const [didOf, setDidOf] = createSignal<(() => string | undefined) | undefined>(undefined);
+  // Holds a function, which the port's setter stores as the value rather than calling.
+  const [didOf, setDidOf] = signal<(() => string | undefined) | undefined>(undefined);
   const agentDid = () => didOf()?.() ?? '';
   /*
     Questions an open was issued for, by nonce — host memory, not persisted, so a nonce cannot
@@ -173,8 +191,8 @@ export function createChatStore(deps: Pick<StoreRegistry, 'shellStore'>): ChatSt
     nothing one agent kept is the next's to find, and nothing is kept to find again if the first
     agent comes back. `was` tracks what the effect already saw so its first run clears nothing.
   */
-  let was = agentDid();
-  createEffect(() => {
+  let was = untrack(agentDid);
+  effect(() => {
     const now = agentDid();
     if (now === was) return;
     was = now;
@@ -232,7 +250,7 @@ export function createChatStore(deps: Pick<StoreRegistry, 'shellStore'>): ChatSt
     sheet,
     closeSheet: () => setSheet(null),
     isNarrow,
-    provideAgentDid: (did) => setDidOf(() => did),
+    provideAgentDid: (did) => setDidOf(did),
   };
 
   return store;

@@ -74,7 +74,7 @@ import {
   widestMin,
   withChromeCovered,
 } from '@shared/dockGeometry';
-import { isAppPanel } from '@shared/panelScope';
+import { APP_PANEL_SCOPE, isAppPanel } from '@shared/panelScope';
 import type { ScreenSource } from '@shared/platform/types';
 import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
@@ -93,7 +93,6 @@ import {
 import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import {
-  APP_PANEL_SCOPE,
   declaredPanelOf,
   instanceDockId,
   instanceKeyOf,

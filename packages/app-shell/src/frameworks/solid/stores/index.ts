@@ -23,7 +23,7 @@ export {
 } from './InterpretationStore';
 export { type PresenceStore, type PresentAgent, createPresenceStore } from './PresenceStore';
 export { type ShellStore, createShellStore } from './ShellStore';
-export { type ChatOpen, type ChatStore, createChatStore } from './ChatStore';
+export { type ChatOpen, type ChatStore, createChatStore } from '../../../shared/stores/ChatStore';
 export { createShellRouteStore } from '../../../shared/stores/ShellRouteStore';
 export { ShellRouterRoot } from '../layouts/ShellRouterRoot';
 export {

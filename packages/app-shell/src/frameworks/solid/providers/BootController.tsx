@@ -16,6 +16,7 @@
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
 import { createAppStore } from '@shared/stores/AppStore';
+import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
 import { createEditTarget } from '@shared/stores/editTarget';
 import { createRouteStore } from '@shared/stores/RouteStore';
@@ -26,7 +27,6 @@ import type { ParentProps } from 'solid-js';
 import { firstScreen } from '../firstScreen';
 import { createAccountStore } from '../stores/AccountStore';
 import { createBundleStore } from '../stores/BundleStore';
-import { createChatStore } from '../stores/ChatStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createDeviceStore } from '../stores/DeviceStore';
 import { createEditorStore } from '../stores/EditorStore';
@@ -57,7 +57,7 @@ export function BootController(props: ParentProps) {
   const clockStore = createClockStore({ reactivity: solidReactivity });
   const shellStore = createShellStore({ platform });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
-  const chatStore = createChatStore({ shellStore });
+  const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The
   // boot screen needs them while the session is still locked.
   const accountStore = createAccountStore({ platform });

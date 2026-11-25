@@ -258,7 +258,6 @@ import { credential } from '../src/frameworks/solid/credential';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
-import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
@@ -277,6 +276,7 @@ import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
 import { createAppStore } from '../src/shared/stores/AppStore';
+import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
@@ -305,7 +305,7 @@ function mountShell(): Stores {
     const shellStore = createShellStore({ platform });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
     // BootController builds it.
-    const chatStore = createChatStore({ shellStore });
+    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
     const accountStore = createAccountStore({ platform });
