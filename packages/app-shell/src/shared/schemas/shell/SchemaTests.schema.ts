@@ -27,7 +27,7 @@
  *               ships.
  *   - Routing   verifies $routes against the app's *actual* router configuration.
  *   - Queries   validates the AD4M adapter against a real node. In a local-first app the backend is
- *               the user's own install (SDNA versions, perspective state), which cannot be
+ *               the user's own install (SDNA versions, dataset state), which cannot be
  *               reproduced elsewhere — so being able to run this in situ has real diagnostic value.
  *   - Mutations needs templateStore.
  *
