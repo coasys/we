@@ -4,6 +4,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
+import { operationFailureMessage } from '@shared/operationFailure';
 import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '@shared/recordsRead';
 import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
@@ -21,7 +22,7 @@ import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withInterpretationDefaults } from '@we/entities';
-import { completeResponse, isOperationError, respondsThrough, runOperation, threadSubject } from '@we/entities';
+import { completeResponse, respondsThrough, runOperation, threadSubject } from '@we/entities';
 
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
@@ -167,9 +168,8 @@ export default function TemplateProvider() {
   /*
     Declared operations from a template: the dataset named the way `record.create` takes one (the
     space on screen when none is), the signed-in agent as invoker, and a fresh invocation — the
-    runner fills its id and time. A refused write was already said in a toast by the write check, as
-    for any write; any other failure of the operation is said the same way here, so a press that did
-    nothing never does so silently. The error still reaches the template's onError.
+    runner fills its id and time. A failure is said as `operationFailureMessage` says it, so a press
+    that did nothing never does so silently; the error still reaches the template's onError.
   */
   const operationHost: OperationHost = {
     run: async (name, params, options) => {
@@ -180,7 +180,11 @@ export default function TemplateProvider() {
       try {
         return await runOperation(name, params, { dataset, invoker });
       } catch (error) {
-        if (isOperationError(error) && error.code !== 'refused') toastService.error(error.message);
+        const message = operationFailureMessage(error);
+        if (message) {
+          console.error(`ops.${name} failed`, error);
+          toastService.error(message);
+        }
         throw error;
       }
     },

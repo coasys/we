@@ -33,6 +33,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { operationFailureMessage } from '@shared/operationFailure';
 import { pageOfPart } from '@shared/partPage';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
@@ -144,7 +145,6 @@ import { toastService } from '@we/components/solid';
 import {
   collectionInterpretationDefaults,
   entityListOf,
-  isOperationError,
   LEGACY_INTERPRETATION_TARGETS,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
@@ -2573,13 +2573,10 @@ export function createSpaceStore(
    * write check, once, for every write.
    */
   function reportOperation(what: string, fallback: string, error: unknown): void {
-    if (isOperationError(error) && error.code === 'refused') return;
-    if (isOperationError(error) && error.class === 'precondition') {
-      toastService.error(error.message);
-      return;
-    }
+    const message = operationFailureMessage(error, fallback);
+    if (!message) return;
     console.error(`SpaceStore: could not ${what}`, error);
-    toastService.error(fallback);
+    toastService.error(message);
   }
 
   /**
