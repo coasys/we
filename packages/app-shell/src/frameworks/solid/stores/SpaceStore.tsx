@@ -75,7 +75,6 @@ import {
   cannotRevoke,
   type GrantRow,
   type RoleRow,
-  rolesByPerson,
   rolesOf,
   rolesView,
   type RoleView,
@@ -351,12 +350,13 @@ export interface SpaceStore {
   /**
    * The standings people hold across the space — admin, moderator, whatever this community names —
    * each with the people holding it: `{ id, slug, name, description, holders }`. Admin first.
+   *
+   * The host's own view, behind `myRoles`, the policy and who administers the space. A template
+   * reads the space's `Role` and `RoleGrant` records with a query.
    */
   roles: Accessor<RoleView[]>;
   /** The slugs of the roles the viewer holds here. */
   myRoles: Accessor<string[]>;
-  /** By person, the slugs of the roles they hold — for a badge beside a member. */
-  memberRoles: Accessor<Record<string, string[]>>;
   /** The space has been asked for its roles. An empty list is otherwise "not fetched yet". */
   rolesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
@@ -3883,7 +3883,6 @@ export function createSpaceStore(
   });
 
   const myRoles = createMemo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
-  const memberRoles = createMemo<Record<string, string[]>>(() => rolesByPerson(roleViews()));
 
   /** The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. */
   async function writeAdminGrant(dataset: DatasetProxy): Promise<void> {
@@ -6263,7 +6262,6 @@ export function createSpaceStore(
     canAdministerCurrentSpace,
     roles: roleViews,
     myRoles,
-    memberRoles,
     rolesLoaded,
     createRole,
     updateRole,

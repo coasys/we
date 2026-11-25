@@ -2591,7 +2591,12 @@ describe('what the stores actually wrote', () => {
 
     await stores.spaces.createRole({ name: 'Moderator', description: 'Looks after posts' });
     await stores.spaces.grantRole('moderator', 'did:test:ben');
-    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toEqual(['moderator']));
+    const held = (did: string) =>
+      stores.spaces
+        .roles()
+        .filter((r) => r.holders.includes(did))
+        .map((r) => r.slug);
+    await vi.waitFor(() => expect(held('did:test:ben')).toEqual(['moderator']));
     expect(stores.spaces.roles().find((r) => r.slug === 'moderator')).toMatchObject({
       name: 'Moderator',
       description: 'Looks after posts',
@@ -2602,7 +2607,7 @@ describe('what the stores actually wrote', () => {
     expect(stores.spaces.myRoles()).toEqual(['admin']);
 
     await stores.spaces.revokeRole('moderator', 'did:test:ben');
-    await vi.waitFor(() => expect(stores.spaces.memberRoles()['did:test:ben']).toBeUndefined());
+    await vi.waitFor(() => expect(held('did:test:ben')).toEqual([]));
   }, 10000);
 
   it('answers who administers a shared space from its roles, not from who made it', async () => {

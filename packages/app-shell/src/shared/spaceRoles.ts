@@ -110,13 +110,6 @@ export function rolesOf(views: readonly RoleView[], person: string | null | unde
   return views.filter((r) => r.holders.includes(person)).map((r) => r.slug);
 }
 
-/** Every person holding any role, mapped to the slugs they hold. */
-export function rolesByPerson(views: readonly RoleView[]): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const view of views) for (const person of view.holders) (out[person] ??= []).push(view.slug);
-  return out;
-}
-
 /**
  * Whether `person` administers the space: they hold {@link ADMIN_ROLE} — or nobody does, and they made
  * the space.

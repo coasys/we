@@ -506,9 +506,7 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       involvementTypesLoaded: { type: 'boolean' },
-      roles: { type: 'array', properties: ['id', 'slug', 'name', 'description', 'holders'] },
       myRoles: { type: 'array' },
-      memberRoles: { type: 'object' },
       rolesLoaded: { type: 'boolean' },
       policy: { type: 'object', properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'] },
       unreadNodeIds: { type: 'array' },
@@ -1493,11 +1491,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       offeredInvolvementTypes:
         '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
       involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
-      roles:
-        "{ id, slug, name, description, holders }[] — the standings people hold across this space, admin first: its Role records, with `holders` the people granted each. Not the same thing as an involvement kind, which is a part in one record; a role is a part in the space. `slug` is what a grant and a rule name it by. `admin` is the role administering the space takes. A role a grant names that no record describes is listed under its slug, so nobody's standing is hidden",
-      myRoles: "string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`",
-      memberRoles:
-        'Record<did, string[]> — by person, the slugs of the roles they hold, for a badge beside a member: `spaceStore.memberRoles[member.did] ?? []`. A person here is who a member speaks for, so a member on two devices holds one set of roles',
+      myRoles:
+        "string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`. Everybody else's are the space's records: its roles are Role records { slug, name, description }, and who holds one its RoleGrant records { role, agent, revokedAt }, held until revokedAt is set. Bind $queries { roles: { entity: 'Role' }, roleGrants: { entity: 'RoleGrant' } } and read a member's slugs as local.roleGrants.filter(g, !g.revokedAt && g.agent == member.did).map(g, g.role). A role is a part in the space, not an involvement kind, which is a part in one record",
       rolesLoaded:
         'boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer',
       policy:

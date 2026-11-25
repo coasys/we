@@ -575,9 +575,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     involvementTypesLoaded: state('content'),
     // Who holds which standing in the space — read by any template that shows a member's badge, so
     // `content` for the reason the space's vocabulary is.
-    roles: state('content'),
+    // The host's own view of the roles; a template queries the `Role` and `RoleGrant` records.
+    roles: WIRING,
     myRoles: state('content'),
-    memberRoles: state('content'),
     rolesLoaded: state('content'),
     // What the space's policy allows — read by any template deciding what to offer, through `can()`.
     policy: state('content'),
