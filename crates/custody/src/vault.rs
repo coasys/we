@@ -1901,13 +1901,12 @@ mod tests {
         );
     }
 
-    /// Data's review test (we#431, r2), adapted to the contract with stage tokens. Two handles on
-    /// one custody folder, as two desktop apps on one computer have (`host.rs`): what one
-    /// stages, the other reads. The other's discard naming its own token (a rotation of its own
-    /// that was refused) leaves this app's key; only a discard naming no owner (a refresh whose
-    /// log is already past the staged index) takes another app's. This app's promote after its
-    /// publish lands works, or finds the key already promoted by the other app, which the client
-    /// counts as kept because the vault keeps that index.
+    /// Two handles on one custody folder, as two desktop apps on one computer have (`host.rs`):
+    /// what one stages, the other reads. The other's discard naming its own token (a rotation of
+    /// its own that was refused) leaves this app's key; only a discard naming no owner (a refresh
+    /// whose log is already past the staged index) takes another app's. This app's promote after
+    /// its publish lands works, or finds the key already promoted by the other app, which the
+    /// client counts as kept because the vault keeps that index.
     fn two_handles_share_the_staged_slot(
         this_app: &DesktopVault,
         other_app: &DesktopVault,
@@ -2188,10 +2187,9 @@ mod tests {
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
     }
 
-    /// Lal's review case (we#431): a refresh leaves a key staged ahead of the log, then forgets
-    /// the kept key behind it (kept #0, log at #1, another app's rebuild staged #2). The forget
-    /// takes the kept slot only: #2 stays staged, and its promote still works once its publish
-    /// lands, giving the staged key.
+    /// A refresh leaves a key staged ahead of the log, then forgets the kept key behind it (kept
+    /// #0, log at #1, another app's rebuild staged #2). The forget takes the kept slot only: #2
+    /// stays staged, and its promote still works once its publish lands, giving the staged key.
     fn forgetting_the_kept_key_leaves_a_stage_in_flight(
         vault: &DesktopVault,
         passphrase: Option<&str>,
@@ -2311,12 +2309,11 @@ mod tests {
         assert!(platform.all_bytes().is_empty());
     }
 
-    /// Data's review test (we#431), adapted to the contract: `store_master` once wrote the item,
-    /// then the index in a list beside it; when that second write failed, the item held master
-    /// #1 while `master_index` answered #0, and the client's `refresh_master` forgot the only
-    /// copy of the current key. The index now lives with the item, so after a write that the
-    /// lists' folder refuses `master_index` names the key `unlock` gives, or says it cannot tell
-    /// (`None`): never the replaced index.
+    /// `store_master` once wrote the item, then the index in a list beside it; when that second
+    /// write failed, the item held master #1 while `master_index` answered #0, and the client's
+    /// `refresh_master` forgot the only copy of the current key. The index now lives with the item,
+    /// so after a write that the lists' folder refuses `master_index` names the key `unlock` gives,
+    /// or says it cannot tell (`None`): never the replaced index.
     #[test]
     fn a_failed_index_write_leaves_the_item_ahead_of_the_index() {
         use std::os::unix::fs::PermissionsExt;
@@ -2371,11 +2368,11 @@ mod tests {
         std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
     }
 
-    /// Lal's review of we#431: a removal reads the epoch, then the epochs' file disappears
-    /// while the kept key stays (a partial clean-up, an incomplete restore of the folder), and
-    /// another app stores the same key again. Counted from nothing, its epoch would come back
-    /// to the value the removal read, and the removal would delete what was stored after its
-    /// checks. Lost metadata is an error, never a fresh start.
+    /// A removal reads the epoch, then the epochs' file disappears while the kept key stays (a
+    /// partial clean-up, an incomplete restore of the folder), and another app stores the same key
+    /// again. Counted from nothing, its epoch would come back to the value the removal read, and
+    /// the removal would delete what was stored after its checks. Lost metadata is an error, never
+    /// a fresh start.
     #[test]
     fn a_lost_epochs_file_is_an_error_and_a_stale_epoch_is_not_taken_up_again() {
         let dir = tempfile::tempdir().unwrap();
@@ -2527,9 +2524,9 @@ mod tests {
         );
     }
 
-    /// Lal's review of we#431 at 0d4501589: a second identity restored into a folder that
-    /// already counts an epoch (stage, then promote) is an ordinary restore, not a lost epoch.
-    /// The stage makes the identity's entry; the promote moves it.
+    /// A second identity restored into a folder that already counts an epoch (stage, then promote)
+    /// is an ordinary restore, not a lost epoch. The stage makes the identity's entry; the promote
+    /// moves it.
     #[test]
     fn a_second_identity_restored_into_a_counting_folder_is_kept() {
         let dir = tempfile::tempdir().unwrap();
@@ -2684,10 +2681,10 @@ mod tests {
         bytes.windows(32).any(|w| w == master)
     }
 
-    /// Lal's review of we#431: a keychain build prepares a restored key unsealed for the
-    /// keychain, and before it takes the custody lock a build without the keychain (sharing the
-    /// folder) stores the same identity in a sealed file. The write that follows lands on that
-    /// file: it must be sealed there, or refused — never the raw master on disk.
+    /// A keychain build prepares a restored key unsealed for the keychain, and before it takes the
+    /// custody lock a build without the keychain (sharing the folder) stores the same identity in a
+    /// sealed file. The write that follows lands on that file: it must be sealed there, or refused
+    /// — never the raw master on disk.
     #[test]
     fn a_key_prepared_for_the_keychain_never_lands_unsealed_in_a_file_another_build_made() {
         use crate::store::{FileStore, PlacedStore};
@@ -2857,9 +2854,9 @@ mod tests {
         }
     }
 
-    /// Lal's review of we#431: the public reads of a key's index (and whether one is held) ran
-    /// without the custody lock, so during another app's replace of a keychain item — delete,
-    /// then add — they answered that no key is kept. They now wait for the write under way.
+    /// The public reads of a key's index (and whether one is held) once ran without the custody
+    /// lock, so during another app's replace of a keychain item — delete, then add — they answered
+    /// that no key is kept. They now wait for the write under way.
     #[test]
     fn a_read_on_another_handle_waits_out_a_keychain_replace() {
         let dir = tempfile::tempdir().unwrap();
