@@ -18,9 +18,9 @@
  * Absent on web, where `accounts` is undefined: `canManageAccounts` stays false and the boot
  * screen renders no account controls.
  */
-import type { Account } from '@shared/platform/types';
-import type { PlatformAdapter } from '@shared/platform/types';
-import { type Accessor, createMemo, createSignal, onMount } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+
+import type { Account, PlatformAdapter } from '../platform/types';
 
 /**
  * The last-known account list, so the sign-in screen can draw itself before any IPC has answered.
@@ -153,32 +153,38 @@ export interface AccountStore {
   clearError: () => void;
 }
 
-export function createAccountStore(deps: { platform: PlatformAdapter }): AccountStore {
-  const platform = deps.platform;
+export function createAccountStore({
+  reactivity,
+  platform,
+}: {
+  reactivity: ReactivityPort;
+  platform: PlatformAdapter;
+}): AccountStore {
+  const { signal, memo, effect, untrack } = reactivity;
 
   // Seeded synchronously, before the first paint — see the cache notes above.
-  const [accounts, setAccounts] = createSignal<Account[]>(readCachedAccounts());
-  const [busy, setBusy] = createSignal(false);
-  const [error, setError] = createSignal('');
-  const [pendingRemovalId, setPendingRemovalId] = createSignal<string | null>(null);
+  const [accounts, setAccounts] = signal<Account[]>(readCachedAccounts());
+  const [busy, setBusy] = signal(false);
+  const [error, setError] = signal('');
+  const [pendingRemovalId, setPendingRemovalId] = signal<string | null>(null);
   // Held as the account itself, NOT derived from `accounts()`. A memo over the list evaporates
   // the moment the list is empty or reloading — which is exactly what happens mid-switch — and
   // the boot screen would fall through to a state that infers "no target, so this is a create".
-  const [switchingTo, setSwitchingTo] = createSignal<Account | null>(null);
-  const [creating, setCreating] = createSignal(false);
-  const [accountsLoaded, setAccountsLoaded] = createSignal(false);
+  const [switchingTo, setSwitchingTo] = signal<Account | null>(null);
+  const [creating, setCreating] = signal(false);
+  const [accountsLoaded, setAccountsLoaded] = signal(false);
   // Read once, synchronously, at construction — before the first paint.
 
   const host = () => platform.accounts;
-  const canManageAccounts = createMemo(() => !!host());
-  const activeAccount = createMemo(() => accounts().find((a) => a.active));
+  const canManageAccounts = memo(() => !!host());
+  const activeAccount = memo(() => accounts().find((a) => a.active));
   // Every account is a bare directory — nobody has finished setup here yet. Guarded on the host
   // having answered, so this is never true merely because the list has not arrived.
-  const isFirstRun = createMemo(() => accountsLoaded() && !accounts().some((a) => a.hasAgent));
+  const isFirstRun = memo(() => accountsLoaded() && !accounts().some((a) => a.hasAgent));
   // Derived from the list rather than stored, so a request cannot outlive the account it names —
   // a refresh that drops it (removed in another window, say) closes the dialog by itself.
-  const pendingRemoval = createMemo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
-  const hasOtherAccounts = createMemo(() => accounts().length > 1);
+  const pendingRemoval = memo(() => accounts().find((a) => a.id === pendingRemovalId()) ?? null);
+  const hasOtherAccounts = memo(() => accounts().length > 1);
 
   async function refresh(): Promise<void> {
     const accountHost = host();
@@ -347,9 +353,10 @@ export function createAccountStore(deps: { platform: PlatformAdapter }): Account
     }
   }
 
-  // Loaded once on mount rather than lazily: the boot screen reads it immediately, and it is a
-  // filesystem read in the host process rather than a network round trip.
-  onMount(() => void refresh());
+  // Loaded once the store is built rather than lazily: the boot screen reads it immediately, and it
+  // is a filesystem read in the host process rather than a network round trip. An effect that reads
+  // nothing runs once, which is what Solid's onMount was.
+  effect(() => void untrack(refresh));
 
   const store: AccountStore = {
     canManageAccounts,

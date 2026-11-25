@@ -15,6 +15,7 @@
  * is already unlocked, and again after login().
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { createAccountStore } from '@shared/stores/AccountStore';
 import { createAppStore } from '@shared/stores/AppStore';
 import { createChatStore } from '@shared/stores/ChatStore';
 import { createClockStore } from '@shared/stores/ClockStore';
@@ -27,7 +28,6 @@ import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
 import { firstScreen } from '../firstScreen';
-import { createAccountStore } from '../stores/AccountStore';
 import { createBundleStore } from '../stores/BundleStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createEditorStore } from '../stores/EditorStore';
@@ -60,7 +60,7 @@ export function BootController(props: ParentProps) {
   const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The
   // boot screen needs them while the session is still locked.
-  const accountStore = createAccountStore({ platform });
+  const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
   // Session → Dataset → Profile is the dependency spine: everything after reads them.
   const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
   // Straight after the session: it reads only the port bundle, and its consent subscription must be

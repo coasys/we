@@ -257,7 +257,6 @@ import { withInterpretationDefaults } from '@we/entities';
 import { credential } from '../src/frameworks/solid/credential';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
 import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
@@ -275,6 +274,7 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
+import { createAccountStore } from '../src/shared/stores/AccountStore';
 import { createAppStore } from '../src/shared/stores/AppStore';
 import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
@@ -308,7 +308,7 @@ function mountShell(): Stores {
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
-    const accountStore = createAccountStore({ platform });
+    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
     const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
     // Setting up an account asks it whether there is an AI question, as the real order has it.
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });

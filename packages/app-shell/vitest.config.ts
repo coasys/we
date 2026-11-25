@@ -19,7 +19,7 @@ const SOLID_TESTS = [
   // The real template store, its sibling stores doubled: which space a late read may still answer for.
   'tests/templateStoreSpaceSwitch.test.tsx',
   'tests/runtimeStore.test.tsx',
-  'tests/accountStore.test.tsx',
+  'tests/accountStore.test.ts',
   'tests/identityStore.test.ts',
   'tests/profileStore.test.tsx',
   // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.

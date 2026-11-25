@@ -26,7 +26,6 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createAccountStore } from '../../src/frameworks/solid/stores/AccountStore';
 import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
 import { createPresenceStore } from '../../src/frameworks/solid/stores/PresenceStore';
 import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
@@ -42,6 +41,7 @@ import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
+import { createAccountStore } from '../../src/shared/stores/AccountStore';
 import { createAppStore } from '../../src/shared/stores/AppStore';
 import { createChatStore } from '../../src/shared/stores/ChatStore';
 import { createClockStore } from '../../src/shared/stores/ClockStore';
@@ -464,7 +464,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     const clockStore = createClockStore({ reactivity: solidReactivity });
     const shellStore = createShellStore({ platform });
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
-    const accountStore = createAccountStore({ platform });
+    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
     const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
     const datasetStore = createDatasetStore({ sessionStore });
