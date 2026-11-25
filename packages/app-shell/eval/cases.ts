@@ -312,7 +312,10 @@ export const EVAL_CASES: EvalCase[] = [
       edited(s, (r) =>
         r.children!.splice(1, 0, {
           type: '$each',
-          props: { items: { $: 'spaceStore.members' }, as: 'member' },
+          props: {
+            items: { $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)' },
+            as: 'member',
+          },
           children: [{ type: 'we-text', children: [{ $: 'member.name' }] }],
         }),
       ),

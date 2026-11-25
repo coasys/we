@@ -494,9 +494,9 @@ const walk: SchemaNode = {
 
 /** Who agreed to a move, as faces — `step.approvers` are DIDs, and the space's members carry the faces. */
 const VOTER_FACES =
-  'step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })';
+  'step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })';
 /** The same people as a sentence, for the tooltip over the faces. */
-const VOTER_NAMES = "join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')";
+const VOTER_NAMES = "join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')";
 
 /**
  * What has happened to a record: one row per move, saying where it went, who agreed and when.

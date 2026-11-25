@@ -5,6 +5,7 @@
  */
 
 import type { TemplateSchema } from '@we/schema-shared';
+import { MEMBERS } from '@we/template-kit';
 
 import { agentModal } from './AgentModal.ts';
 import { spaceModal } from './SpaceModal.ts';
@@ -347,7 +348,7 @@ export const globeView: TemplateSchema = {
             id: 'locations',
             options: {
               data: {
-                $: "distinct(local.showSpaceLocations ? local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar, createdAt: s.createdAt }) : [], local.showUserLocations ? filter(spaceStore.members, local.searchText ? { location: { exists: true }, handle: { contains: local.searchText } } : { location: { exists: true } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar }) : [])",
+                $: `distinct(local.showSpaceLocations ? local.spaceRows.map(s, { id: s.id, kind: 'space', name: s.name, latitude: s.location.latitude, longitude: s.location.longitude, avatar: s.avatar, createdAt: s.createdAt }) : [], local.showUserLocations ? filter(${MEMBERS}, local.searchText ? { location: { exists: true }, handle: { contains: local.searchText } } : { location: { exists: true } }).map(item, { id: item.did, kind: 'agent', name: item.name, latitude: item.location.latitude, longitude: item.location.longitude, avatar: item.avatar }) : [])`,
               },
               label: 'name',
               cluster: true,

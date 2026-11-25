@@ -94,6 +94,7 @@ function makeContext(overrides?: Partial<ContextData>): ContextData {
         state: { themes: { type: 'array' }, currentTheme: { type: 'string' } },
         actions: ['setThemes', 'setCurrentTheme'],
       },
+      { name: 'spaceStore', state: { taskStates: { type: 'array' } }, actions: [] },
     ],
     ...overrides,
   };

@@ -1895,7 +1895,9 @@ export const seedBundles: Bundle[] = [
                               value: 'group|people',
                               open: { $: "'group|people' in local.openRows" },
                               onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|people' },
-                              expandable: { $: 'count(spaceStore.members) > 0' },
+                              expandable: {
+                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)) > 0',
+                              },
                             },
                             children: [
                               {
@@ -1915,11 +1917,17 @@ export const seedBundles: Bundle[] = [
                                       {
                                         type: '$if',
                                         props: {
-                                          condition: { $: 'count(spaceStore.members)' },
+                                          condition: {
+                                            $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                          },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(spaceStore.members)' }],
+                                            children: [
+                                              {
+                                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                              },
+                                            ],
                                           },
                                         },
                                       },
@@ -1929,7 +1937,12 @@ export const seedBundles: Bundle[] = [
                               },
                               {
                                 type: '$each',
-                                props: { items: { $: 'spaceStore.members' }, as: 'person' },
+                                props: {
+                                  items: {
+                                    $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                                  },
+                                  as: 'person',
+                                },
                                 children: [
                                   {
                                     type: 'we-tree-item',
@@ -5107,7 +5120,7 @@ export const seedBundles: Bundle[] = [
                                                       searchable: true,
                                                       searchPlaceholder: 'Find a member',
                                                       items: {
-                                                        $: 'involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })',
+                                                        $: 'involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })',
                                                       },
                                                       onSelect: {
                                                         $invoke: 'spaceStore.setInvolvement',
@@ -27793,7 +27806,7 @@ export const seedBundles: Bundle[] = [
                                                                                 props: {
                                                                                   placement: 'top',
                                                                                   content: {
-                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')",
+                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')",
                                                                                   },
                                                                                 },
                                                                                 children: [
@@ -27801,7 +27814,7 @@ export const seedBundles: Bundle[] = [
                                                                                     type: 'AvatarStack',
                                                                                     props: {
                                                                                       avatars: {
-                                                                                        $: 'step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })',
+                                                                                        $: 'step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })',
                                                                                       },
                                                                                       size: 'xs',
                                                                                       max: 5,
@@ -29030,7 +29043,9 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: '!count(spaceStore.members)' },
+                      condition: {
+                        $: '!count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                      },
                       then: {
                         type: 'we-text',
                         props: { variant: 'footnote', color: 'text-muted', italic: true },
@@ -29042,7 +29057,12 @@ export const seedBundles: Bundle[] = [
                         children: [
                           {
                             type: '$each',
-                            props: { items: { $: 'spaceStore.members' }, as: 'person' },
+                            props: {
+                              items: {
+                                $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                              },
+                              as: 'person',
+                            },
                             children: [
                               {
                                 type: 'we-button',

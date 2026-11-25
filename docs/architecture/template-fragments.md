@@ -127,7 +127,7 @@ call module hand-copied `peopleTooltip` rather than take that edge, which is dup
 packaging rather than by design.
 
 That split is not decoration. **The WE tier's real dependency is the host's store surface, and
-`package.json` cannot express it** — a fragment naming `spaceStore.members` resolves to nothing on a
+`package.json` cannot express it** — a fragment naming `spaceStore.mutedDids` resolves to nothing on a
 deployment without that store, silently. Keeping the tiers apart is how a consumer can tell which
 fragments will work for them, and it is the reason the store contract (below) matters.
 

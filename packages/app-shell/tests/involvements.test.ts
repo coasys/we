@@ -341,12 +341,13 @@ describe('the writes', () => {
 
 describe('the people on a card, as faces and as a picker', () => {
   const types = SEEDED_INVOLVEMENT_TYPES;
-  const members = [
+  const profiles = [
     { did: 'did:key:zed', name: 'Zed' },
     { did: ANA, name: 'Ana', avatar: 'ana.png' },
     { did: ME, name: 'Me' },
     { did: 'did:key:bo', name: 'Bo' },
   ];
+  const members = profiles.map((p) => p.did);
   const rows = [
     { node: 't1', agent: 'did:key:zed', kind: 'assignee' },
     { node: 't1', agent: ANA, kind: 'reviewer' },
@@ -369,7 +370,7 @@ describe('the people on a card, as faces and as a picker', () => {
   });
 
   it('offers the kinds anybody may give on this entity, holders ticked and first, then the viewer, then by name', () => {
-    const entries = involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, me: ME }) as {
+    const entries = involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, profiles, me: ME }) as {
       type?: string;
       id: string;
       label: string;
@@ -395,13 +396,14 @@ describe('the people on a card, as faces and as a picker', () => {
       rows: [...rows, { node: 't2', agent: ME, kind: 'assignee' }],
       types,
       members,
+      profiles,
       me: ME,
     }) as { id: string; collapsed?: boolean }[];
     expect(entries.map((e) => e.id)).toEqual(['assignee', 'reviewer']);
   });
 
   it('never offers an answer somebody gives about themselves, or a kind meant for another entity', () => {
-    const entries = involvementMenu({ node: 'e1', entity: 'EventBlock', rows, types, members, me: ME });
+    const entries = involvementMenu({ node: 'e1', entity: 'EventBlock', rows, types, members, profiles, me: ME });
     expect(entries).toEqual([]);
   });
 
@@ -411,8 +413,8 @@ describe('the people on a card, as faces and as a picker', () => {
       entity: 'TaskBlock',
       rows,
       types,
-      members: members.filter((m) => m.did !== 'did:key:zed'),
-      profiles: [{ did: 'did:key:zed', name: 'Zed (left)' }],
+      members: members.filter((did) => did !== 'did:key:zed'),
+      profiles: [...profiles.filter((p) => p.did !== 'did:key:zed'), { did: 'did:key:zed', name: 'Zed (left)' }],
       me: ME,
     }) as { items?: { label: string; checked: boolean }[] }[];
     expect(entries[1].items![0]).toMatchObject({ label: 'Zed (left)', checked: true });
@@ -421,14 +423,15 @@ describe('the people on a card, as faces and as a picker', () => {
 
 describe('the person a conversation named', () => {
   const types = SEEDED_INVOLVEMENT_TYPES;
-  const members = [
+  const profiles = [
     { did: 'did:key:jw', name: 'James Weir' },
     { did: 'did:key:jb', name: 'James Brown' },
     { did: ANA, name: 'Ana Ruiz' },
     { did: ME, name: 'Me' },
   ];
+  const members = profiles.map((p) => p.did);
   const menu = (said: string, rows: { node: string; agent: string; kind: string }[] = []) =>
-    involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, me: ME, said }) as {
+    involvementMenu({ node: 't1', entity: 'TaskBlock', rows, types, members, profiles, me: ME, said }) as {
       id: string;
       label: string;
     }[];

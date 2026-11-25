@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { peopleRow, peopleTooltip } from '@we/template-kit';
+import { MEMBERS, peopleRow, peopleTooltip } from '@we/template-kit';
 
 export const spaceHeader: SchemaNode = {
   type: 'Column',
@@ -99,7 +99,7 @@ export const spaceHeader: SchemaNode = {
                     // roster hangs off both rather than off the avatars alone. Hovering the words
                     // and getting nothing was the tell that the tooltip belonged out here.
                     peopleRow({
-                      items: { $: 'spaceStore.members' },
+                      items: { $: MEMBERS },
                       noun: 'Member',
                       // Members resolve on their own path, later than the space itself, so without
                       // a floor this row collapsed and then pushed the header down a second time.

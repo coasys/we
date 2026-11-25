@@ -911,7 +911,7 @@ const peopleSection: SchemaNode = {
                   searchable: true,
                   searchPlaceholder: 'Find a member',
                   items: {
-                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
                   },
                   onSelect: {
                     $invoke: 'spaceStore.setInvolvement',

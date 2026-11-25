@@ -58,7 +58,7 @@ const bundle = (): Bundle =>
         meta: { ...meta('Map', 'view'), requires: { modules: ['globe'] } },
         children: [
           { type: 'we-button', props: { onClick: { $invoke: 'runtimeStore.trustAgent', args: ['did:x'] } } },
-          { type: 'we-text', children: [{ $: 'spaceStore.members' }] },
+          { type: 'we-text', children: [{ $: 'spaceStore.memberDids' }] },
         ],
       },
     ],

@@ -609,7 +609,8 @@
             "label": "Assignee"
           }
         ],
-        "members": [
+        "members": ["did:a", "did:me"],
+        "profiles": [
           {
             "did": "did:a",
             "name": "Ada"
@@ -619,7 +620,6 @@
             "name": "Me"
           }
         ],
-        "profiles": [],
         "me": "did:me"
       },
       "result": []
@@ -638,7 +638,8 @@
             "semantic": "assignee"
           }
         ],
-        "members": [
+        "members": ["did:me"],
+        "profiles": [
           {
             "did": "did:me",
             "name": "Me"

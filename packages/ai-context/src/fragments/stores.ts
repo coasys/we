@@ -449,11 +449,7 @@ export const storeEntries: StoreEntry[] = [
       },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
-      memberDids: { type: 'array', properties: ['did'] },
-      members: {
-        type: 'array',
-        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
-      },
+      memberDids: { type: 'array' },
       spaceDefaultTemplateId: { type: 'string' },
       spaceDefaultThemeId: { type: 'string' },
       currentSpace: { type: 'object', model: 'Space' },
@@ -1463,8 +1459,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open',
       orderedSidebarItems:
         'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
-      memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
-      members: 'AgentProfileSummary[] — cached profiles for all memberDids',
+      memberDids:
+        'string[] — DIDs of all members in the current space (includes own DID). Their profiles are profileStore.profiles: the people of the space, drawn, are spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m) — bind it once where a list needs it, and look one person up by DID with find(profileStore.profiles, { did })',
       spaceDefaultTemplateId: "string — the current space's default template ID (empty string when no space is active)",
       spaceDefaultThemeId:
         "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",

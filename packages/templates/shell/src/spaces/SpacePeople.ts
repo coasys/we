@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, MEMBERS, sectionCard } from '@we/template-kit';
 
 /**
  * Who is in this space, and the standings they hold across it — its admins, its moderators, whatever
@@ -243,7 +243,7 @@ const policySection: SchemaNode = sectionCard({
 /** The roles a member holds, by name, as badges. */
 const memberBadges: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'spaceStore.memberRoles[member.did] ?? []' }, as: 'held' },
+  props: { items: { $: MEMBER_HOLDS }, as: 'held' },
   children: [
     {
       type: 'we-badge',
@@ -300,7 +300,7 @@ const memberRow: SchemaNode = {
 const membersSection: SchemaNode = sectionCard({
   title: 'Members',
   description: 'Everyone in this space, and the roles each of them holds here.',
-  children: [{ type: '$each', props: { items: { $: 'spaceStore.members' }, as: 'member' }, children: [memberRow] }],
+  children: [{ type: '$each', props: { items: { $: MEMBERS }, as: 'member' }, children: [memberRow] }],
 });
 
 export const spacePeopleSection: SchemaNode = {

@@ -1,12 +1,12 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
+import { cardList, cardShell, emptyState, MEMBERS, statChip } from '@we/template-kit';
 
 export const usersList: SchemaNode = cardList({
   // The roster is already in the store, so this list is filtered in place rather than queried —
   // and its placeholder needs no fade-in delay, since "no members" is known on the first frame.
   // With nothing typed the where is empty, so a member whose profile has not arrived still shows.
   items: {
-    $: 'filter(spaceStore.members, local.searchText ? { OR: [{ name: { contains: local.searchText } }, { handle: { contains: local.searchText } }] } : {})',
+    $: `filter(${MEMBERS}, local.searchText ? { OR: [{ name: { contains: local.searchText } }, { handle: { contains: local.searchText } }] } : {})`,
   },
   as: 'user',
   empty: emptyState({ icon: 'user', label: 'members', searchable: true, delay: 0 }),

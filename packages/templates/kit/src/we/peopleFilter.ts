@@ -1,5 +1,7 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { MEMBERS } from './members.ts';
+
 export interface PeopleFilterOptions {
   /** The `array` local holding the chosen DIDs. Declared by the caller, since what it filters reads it too. */
   people: string;
@@ -154,7 +156,7 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
                       searchable: true,
                       searchPlaceholder: 'Find a member',
                       items: {
-                        $: `spaceStore.members.map(m, { type: 'toggle', id: m.did, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
+                        $: `${MEMBERS}.map(m, { type: 'toggle', id: m.did, label: m.did == me.did ? m.name + ' (you)' : m.name, checked: m.did in ${people}, avatar: { image: m.avatar, hash: m.did } })`,
                       },
                       // A toggle reports before its tick changes; `$toggleLocalIn` adds what is absent and removes what is present.
                       onSelect: { $toggleLocalIn: opts.people, value: { $: 'arg.id' } },

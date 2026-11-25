@@ -5,6 +5,7 @@ import {
   chooseTheme,
   field,
   formModal,
+  MEMBERS,
   peopleTooltip,
   SPACE_TEMPLATE_CHOICES,
   SPACE_THEME_CHOICES,
@@ -297,7 +298,7 @@ const people = group(
   [
     {
       type: '$each',
-      props: { items: { $: 'spaceStore.members' }, as: 'person' },
+      props: { items: { $: MEMBERS }, as: 'person' },
       children: [
         treeRow({
           nested: true,
@@ -308,7 +309,7 @@ const people = group(
       ],
     },
   ],
-  { count: 'count(spaceStore.members)' },
+  { count: `count(${MEMBERS})` },
 );
 
 /*

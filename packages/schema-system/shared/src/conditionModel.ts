@@ -26,7 +26,7 @@ export const UNARY_OPERATORS: ComparisonOperator[] = ['truthy', 'falsy'];
 export type FormStateToken = 'formValid' | 'valid' | 'touched' | 'error';
 
 export type ConditionOperand =
-  /** A store member — `spaceStore.members`, `modules.notes.open`. */
+  /** A store member — `spaceStore.memberDids`, `modules.notes.open`. */
   | { kind: 'store'; path: string }
   /** A `$localState`/`$queries` field — the path after `local.`. */
   | { kind: 'local'; path: string }

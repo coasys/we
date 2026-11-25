@@ -3274,11 +3274,7 @@ export const contextData: ContextData = {
     {
       name: 'spaceStore',
       state: {
-        memberDids: { type: 'array', properties: ['did'] },
-        members: {
-          type: 'array',
-          properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
-        },
+        memberDids: { type: 'array' },
         spaceDefaultTemplateId: { type: 'string' },
         spaceDefaultThemeId: { type: 'string' },
         currentSpace: { type: 'object', model: 'Space' },
@@ -3334,9 +3330,7 @@ export const contextData: ContextData = {
           properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
         },
         involvementTypesLoaded: { type: 'boolean' },
-        roles: { type: 'array', properties: ['id', 'slug', 'name', 'description', 'holders'] },
         myRoles: { type: 'array' },
-        memberRoles: { type: 'object' },
         rolesLoaded: { type: 'boolean' },
         templateOverrideOptions: { type: 'array', properties: ['label', 'value'] },
         themeOverrideOptions: { type: 'array', properties: ['label', 'value'] },
@@ -3905,9 +3899,9 @@ export const contextData: ContextData = {
     {
       name: 'involvementMenu',
       params: ['options'],
-      doc: 'The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).',
+      doc: 'The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.memberDids), profiles (profileStore.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).',
       example:
-        "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })",
+        "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did })",
     },
     {
       name: 'signalTally',

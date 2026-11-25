@@ -10,7 +10,7 @@
  *
  * What stays here reads WE's own stores (`profileStore`, `runtimeStore`, `datasetStore`) or its
  * schema machinery (`$agent`). That is the tier whose real dependency is the host's store surface,
- * which no `package.json` can express — a fragment naming `spaceStore.members` resolves to nothing
+ * which no `package.json` can express — a fragment naming `spaceStore.mutedDids` resolves to nothing
  * on a deployment without that store, silently. Keeping the two apart is how a consumer can tell
  * which fragments will work for them, and it is now a package boundary rather than a directory one.
  *
@@ -49,6 +49,7 @@ export type { MediaGridOptions } from './lists/mediaGrid.ts';
 export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from './we/anchor.ts';
 export type { AnchorBannerOptions } from './we/anchor.ts';
 export { landmark, LANDMARKS, LANDMARKS_LOADED, landmarksQuery } from './we/landmarks.ts';
+export { MEMBERS } from './we/members.ts';
 export {
   answerButton,
   CHANGED,

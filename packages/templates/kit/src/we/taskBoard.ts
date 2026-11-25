@@ -592,7 +592,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {

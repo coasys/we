@@ -145,11 +145,11 @@ const CASES: HostFunctionCase[] = [
     entity: 'TaskBlock',
     rows: [{ id: 'i:1', nodeId: 'r:1', did: 'did:a', kind: 'assignee' }],
     types: [{ id: 'it:1', semantic: 'assignee', label: 'Assignee' }],
-    members: [
+    members: ['did:a', 'did:me'],
+    profiles: [
       { did: 'did:a', name: 'Ada' },
       { did: 'did:me', name: 'Me' },
     ],
-    profiles: [],
     me: 'did:me',
   }),
   H('involvementMenu', {
@@ -157,7 +157,8 @@ const CASES: HostFunctionCase[] = [
     entity: 'TaskBlock',
     rows: [],
     types: [{ id: 'it:1', semantic: 'assignee' }],
-    members: [{ did: 'did:me', name: 'Me' }],
+    members: ['did:me'],
+    profiles: [{ did: 'did:me', name: 'Me' }],
     me: 'did:me',
     said: 'Me',
   }),

@@ -23,7 +23,15 @@
  * feed that silently showed one community's posts under a global-looking header.
  */
 import type { RouteSchema, SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { agentByline, collectionFeed, commentThread, emptyState, noReplies, replyCount } from '@we/template-kit';
+import {
+  agentByline,
+  collectionFeed,
+  commentThread,
+  emptyState,
+  MEMBERS,
+  noReplies,
+  replyCount,
+} from '@we/template-kit';
 
 import { composerModal, KIND, signalRow, signalTypesQuery } from './shared.ts';
 
@@ -101,7 +109,7 @@ const membersSection: SchemaNode = {
     { type: 'we-text', props: { variant: 'heading-sm', tag: 'h4' }, children: ['People here'] },
     {
       type: '$each',
-      props: { items: { $: 'filter(spaceStore.members, {}, 6)' }, as: 'member' },
+      props: { items: { $: `slice(${MEMBERS}, 0, 6)` }, as: 'member' },
       children: [
         {
           type: 'Row',

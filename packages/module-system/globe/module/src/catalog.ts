@@ -109,7 +109,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
         ...TIME_OPTIONS,
         { name: 'onSelect', type: 'handler', description: 'Runs when a marker is pressed, with its row as event.' },
       ],
-      example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`,
+      example: `{ "factory": "pointsLayer", "id": "members", "options": { "data": { "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.location)" }, "latitude": "location.latitude", "longitude": "location.longitude", "label": "name", "style": [{ "style": { "color": "accent", "image": { "from": "data.avatar" } } }, { "when": { "data.role": "admin" }, "style": { "borderColor": "warning-500" } }], "cluster": true, "onSelect": { "$setLocal": "selected", "value": { "$": "event" } } } }`,
     },
     {
       id: 'pathsLayer',
@@ -192,7 +192,7 @@ export const GLOBE_LAYER_CATALOG: PluginCatalog = {
           description: 'Runs when a shape is pressed: with the row, or with area, { key, name, rows, count, value }.',
         },
       ],
-      example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.members.filter(m, m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] } } }] } }`,
+      example: `{ "factory": "areasLayer", "id": "members-by-country", "options": { "data": { "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.location)" }, "area": "countries", "key": "location.countryCode", "style": [{ "style": { "color": { "metric": "field", "options": { "from": "value" }, "scale": { "from": "success-500", "to": "danger-500" } }, "opacity": 0.7, "height": { "metric": "field", "options": { "from": "value" }, "range": [30000, 400000] } } }] } }`,
     },
     {
       id: 'hexbinLayer',

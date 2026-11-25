@@ -5,7 +5,7 @@
  * ## How a template writes one
  *
  *   { "disabled": { "$": "!local.name || spaceStore.joiningSpace != ''" } }
- *   { "children": [{ "$": "`${count(spaceStore.members)} ${plural(count(spaceStore.members), 'member', 'members')}`" }] }
+ *   { "children": [{ "$": "`${count(spaceStore.memberDids)} ${plural(count(spaceStore.memberDids), 'member', 'members')}`" }] }
  *
  * `{ "$": "…" }` is the whole marker. An object, not a string prefix, so it travels through every
  * path that already handles a token — the dispatcher, the validator, the children array, the

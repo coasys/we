@@ -29,7 +29,7 @@ This package is the lower of the two fragment tiers:
 
 The split is the kit's honest dependency declaration, and it is enforced rather than trusted:
 `kit.test.ts` in `@we/template-kit` reads this package's source to make sure nothing here names a
-store. A fragment naming `spaceStore.members` resolves to nothing on a deployment without that store
+store. A fragment naming `spaceStore.mutedDids` resolves to nothing on a deployment without that store
 — _silently_, since an unresolvable path is `undefined` — and `package.json` has no way to say so.
 
 `@we/template-kit` re-exports everything here, so a template importing that package sees one

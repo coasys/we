@@ -125,7 +125,7 @@ countries are shaded green to red; a rule can raise them too.
 {
   "factory": "areasLayer",
   "options": {
-    "data": { "$": "spaceStore.members.filter(m, m.location)" },
+    "data": { "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.location)" },
     "area": "countries",
     "key": "location.countryCode",
     "style": [

@@ -981,7 +981,7 @@ describe('the timeline’s sections', () => {
     // that a rail wired to nothing is a lie, so each section here reads a store or a query.
     expect(panels.map((panel) => panel.home)).toEqual(['right', 'right']);
     const json = JSON.stringify(panels);
-    expect(json).toContain('spaceStore.members');
+    expect(json).toContain('spaceStore.memberDids');
     expect(json).toContain('SignalType');
   });
 

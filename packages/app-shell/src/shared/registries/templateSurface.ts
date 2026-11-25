@@ -543,7 +543,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // ── content ──
     currentSpace: state('content'),
     memberDids: state('identity'),
-    members: state('identity'),
+    // The host's own join of the two below; a template joins them itself.
+    members: WIRING,
     createPost: action('content'),
     updatePost: action('content'),
     deleteCollection: destructive('content'),
