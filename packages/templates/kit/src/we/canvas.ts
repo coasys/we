@@ -32,6 +32,23 @@ import { CHANGED, UNCONFIRMED } from './suggestions.ts';
 /** The kinds of record extraction can make — what an unplaced card on a canvas can be. */
 export const INTERPRETABLE = 'shapeStore.interpretationCandidates';
 
+/**
+ * How many cards a space's canvas draws at most — its graph's `expansion.maxNodes`, placed and
+ * unplaced together. Past it the graph says the budget was reached and draws no more.
+ *
+ * Set by what drawing them costs, measured on the real card in Chrome: every card is mounted, and
+ * zooming in past the point where a card shows its content mounts every card's content at once —
+ * about 0.8 ms a card, so 3,000 is a couple of seconds' pause on the way in. Raise it once the graph
+ * mounts only what is in view.
+ */
+export const CANVAS_MAX_CARDS = 3000;
+
+/**
+ * How many cards of each kind the canvas reads — the seed's `limit`. Per kind because that is how
+ * the seed bounds its reads; generous, so the total above is what binds rather than one busy kind.
+ */
+export const CANVAS_CARDS_PER_KIND = 1000;
+
 export interface CanvasSeedOptions {
   /** The canvas record — its placements are its own. */
   canvas: SchemaProp;
@@ -66,6 +83,7 @@ export function canvasSeedOptions({ canvas, members }: CanvasSeedOptions): Recor
     changed: { $: CHANGED },
     // Reactions and replies each card has collected, carried in the reads the seed already makes.
     counts: ['signals', 'responses'],
+    limit: CANVAS_CARDS_PER_KIND,
   };
 }
 
