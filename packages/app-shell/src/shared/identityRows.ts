@@ -13,7 +13,7 @@
  *
  * Which key is this device's is the backend's to say (`DeviceKeyView.thisDevice`), except where the
  * custody service answers for a device of its own (`IdentityCustodyView.thisDevice`): a phone that
- * reaches a computer's executor is "This phone", and the computer is one more device.
+ * reaches a computer's backend is "This phone", and the computer is one more device.
  */
 import type {
   DeviceKeyView,
@@ -22,6 +22,8 @@ import type {
   IdentityCustodyView,
   KeyLogEvent,
 } from '@we/backend-shared';
+
+import { dateOf } from './dates';
 
 /** One row of Security → Key log. */
 export interface KeyLogRow {
@@ -69,8 +71,9 @@ export interface DeviceRow {
   status: string;
   /**
    * Whether an unlink may be offered: a key still active. This computer's own may leave too, without
-   * the master key (`identity.unlinkSelf`); it is then signed out. Not a phone's own row: the executor's
-   * `unlinkSelf` retires the executor's key, so there the phone's unlink is the custody window's.
+   * the master key (`identity.unlinkSelf`); it is then signed out. Not a phone's own row: the
+   * backend's `unlinkSelf` retires the key of the computer it reaches, so there the phone's unlink is
+   * the custody window's.
    */
   canUnlink: boolean;
   /** Whether a revoke may be offered: a key not yet revoked, unlinked or not, that is not this computer's. */
@@ -118,7 +121,7 @@ export interface CustodyDevice {
 export function custodyDevice(custody: IdentityCustodyView | null | undefined): CustodyDevice | null {
   const device = custody?.thisDevice;
   if (!device) return null;
-  const phone = device.kind === 'phone-app';
+  const phone = device.form === 'phone';
   return {
     keyId: device.keyId,
     label: phone ? THIS_PHONE : THIS_COMPUTER,
@@ -326,7 +329,7 @@ export function deviceRows(
               : 'Active',
         // Ending an expired key for good is still the key log's to record; this computer's own row
         // can end itself too (`deviceStore.unlinkThisComputer`) — except a phone's: `identity.unlinkSelf`
-        // unlinks the key of the executor the phone reaches, not the phone's own, so no phone row offers it.
+        // unlinks the key of the computer the phone reaches, not the phone's own, so no phone row offers it.
         canUnlink: !revoked && !unlinked && !(here && device.thisDevice),
         canRevoke: !revoked && !device.thisDevice,
         name,
@@ -351,7 +354,7 @@ const IN_USE = 'In use';
 /**
  * The device serving this session. On the desktop it is this computer. Where the custody service
  * answers for a device apart from the backend (`here`, a phone), the session is served by the
- * executor the phone signs in to: the key the backend marks as its own, named and drawn from the
+ * backend the phone signs in to: the key the backend marks as its own, named and drawn from the
  * private record when the record has it.
  */
 export function servingDevice(
@@ -368,11 +371,6 @@ export function servingDevice(
     subtitle: name ? `${YOUR_HOST} · ${IN_USE}` : IN_USE,
     icon: (record && DEVICE_ICONS[record.kind]) || 'hard-drives',
   };
-}
-
-/** A date as the device list shows it, in the person's own locale. */
-function dateOf(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** The seq of the last rotation in `events`, or `null` when the master key was never replaced. */

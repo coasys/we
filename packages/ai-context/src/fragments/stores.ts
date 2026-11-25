@@ -964,7 +964,7 @@ export const storeEntries: StoreEntry[] = [
       },
       loaded: { type: 'boolean' },
       error: { type: 'string' },
-      created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy', 'token'] },
+      created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy'] },
       createError: { type: 'string' },
       creating: { type: 'boolean' },
       selected: {
@@ -2460,7 +2460,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key, this computer's included (it leaves signed by itself, with no master key, after a confirm in the app, and is signed out) but not a phone's own row (a phone's unlink is the custody window's); `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don\'t have this device any more.', 'May still have your master key. Replace it if you don\'t have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid until the master key is replaced: a rotation at or after the key ended clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
+        "{ keyId, addedSeq, unlinkedSeq, revokedSeq, label, subtitle, icon, thisDevice, unlinked, revoked, valid, status, canUnlink, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither unlinked, revoked nor past its end; `status` 'Active', 'Unlinked' (retired: it signs nothing new, and what it signed before stays valid), 'Revoked' (lost or stolen) or 'Expired on 3 Dec 2026'; `canUnlink` is an active key, this computer's included (it leaves signed by itself, with no master key, after a confirm in the app, and is signed out) but not a phone's own row (a phone's unlink is the custody window's); `canRevoke` is a key not yet revoked, unlinked or not, that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked or unlinked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it (revoked: 'Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'; unlinked: 'Still has your master key. Replace it if you don\'t have this device any more.', 'May still have your master key. Replace it if you don\'t have this device any more.'): neither a revoke nor an unlink replaces the master key, so a copy stays valid until the master key is replaced: a rotation at or after the key ended clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
       serving:
         "{ label, subtitle, icon } — the device serving this session, for the top of Devices: 'This computer' on the desktop; on a phone, the host it signs in to, by its name in the private record or 'Your host'",
@@ -2478,7 +2478,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canRestore:
         'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
       canRemoveMaster:
-        'boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"',
+        'boolean — this computer keeps the master key and another device keeps it too: on log out, ask "Remove master key from this computer?" (false where this is the only copy, which cannot be removed)',
       masterWaiting:
         'boolean — a master key another device sent waits here and this computer can open it: offer "Accept master key"',
       encMismatch:
@@ -2532,7 +2532,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       loaded: 'boolean — the list has been read once',
       error: 'string — why the last read or change failed, or empty',
       created:
-        "{ name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated",
+        '{ name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on',
       createError: 'string — why making the bot failed, or empty',
       creating: 'boolean — making the bot is under way',
       selected: 'the row of the bot open in the editor (as in `bots`), or null for the list',
@@ -2553,7 +2553,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome',
       create:
         '(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made',
-      dismissCreated: '(): lets the credential go',
+      dismissCreated: '(): lets the bot just made go',
       select: '(did: string): opens that bot in the grant editor and reads its activity',
       close: '(): back to the list',
       toggleSpace: '(id: string): adds that space to the draft grant, or takes it out',

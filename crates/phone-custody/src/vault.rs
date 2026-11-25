@@ -5,7 +5,7 @@
 //! that needs the person's biometric for every use (`setUserAuthenticationRequired(true)`, a
 //! timeout of 0, `setInvalidatedByBiometricEnrollment(true)`), used through `BiometricPrompt` with
 //! a `CryptoObject`: each seal and each open is one prompt, which the app shows with the `prompt`
-//! sentence this crate passes. The device key's [`Sealer`] stays as phase 2a left it, with no user
+//! sentence this crate passes. The device key's [`Sealer`] stays without user
 //! auth, so a key login never prompts.
 //!
 //! `master-keys.json` holds, per identity, the master key's index, its public key, the seed
@@ -1526,8 +1526,7 @@ mod tests {
     }
 
     // A file without the history this vault writes — no incarnation, epochs or marks — is
-    // damaged, not an older format to open: the schema is phase 2b's and was never written
-    // without them.
+    // damaged, not an older format to open: this schema was never written without them.
     #[test]
     fn a_file_without_its_history_is_damaged() {
         let dir = tempfile::tempdir().unwrap();

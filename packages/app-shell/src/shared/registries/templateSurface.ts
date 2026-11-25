@@ -1198,6 +1198,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       surface's remembered location would be a way to redirect somebody else's page.
     */
     rememberShellPath: WIRING,
+    // Host wiring too: what a store reads to let go of what a page shows only while it is up.
+    shellPage: WIRING,
     createSpaceOpen: state('space-admin'),
     /*
       Opening the host's create-space dialog, which is not the same act as creating a space —

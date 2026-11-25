@@ -10555,10 +10555,9 @@ mod tests {
         ))
     }
 
-    /// Lal's review of we#431 at 0d4501589: a custody folder that lost its epochs file refuses
-    /// to change the kept key, and "Replace master key" is the way back. The words are
-    /// checked against the log's current master first; then the identity's epoch is recovered,
-    /// and the rotation goes on.
+    /// A custody folder that lost its epochs file refuses to change the kept key, and "Replace
+    /// master key" is the way back. The words are checked against the log's current master first;
+    /// then the identity's epoch is recovered, and the rotation goes on.
     #[tokio::test]
     async fn replacing_the_master_key_recovers_a_lost_custody_epoch_with_the_right_words() {
         let (events, _) = crate::keylog::tests::log_with_d2(true);
@@ -11081,12 +11080,11 @@ mod tests {
         screens
     }
 
-    /// Lal's review of we#431 at 564d9aaa0: on a computer not linked to an identity yet, a lost
-    /// custody epoch of the identity the words name is recovered by "Restore with recovery phrase" — the way
-    /// back the lost-epoch screen names there, "Replace master key" refusing an unlinked
-    /// computer. The words are checked against the log's current master first. Both losses: the
-    /// whole epochs file, and the identity's entry in a file that is there. Another identity
-    /// noted and lost stays lost.
+    /// On a computer not linked to an identity yet, a lost custody epoch of the identity the words
+    /// name is recovered by "Restore with recovery phrase" — the way back the lost-epoch screen
+    /// names there, "Replace master key" refusing an unlinked computer. The words are checked
+    /// against the log's current master first. Both losses: the whole epochs file, and the
+    /// identity's entry in a file that is there. Another identity noted and lost stays lost.
     #[tokio::test]
     async fn a_restore_on_an_unlinked_computer_recovers_a_lost_custody_epoch_with_the_right_words()
     {
@@ -11164,11 +11162,11 @@ mod tests {
             .is_err_and(crate::pending::is_lost_epoch));
     }
 
-    /// Lal's review of we#431 at 564d9aaa0, end to end: a first restore on an unlinked computer
-    /// stops as a crash would after the identity's first epoch entry and before its note (the
-    /// metadata's write fails: its temp name is taken), or before the entry (the epochs file's
-    /// write fails). The next start, the same words restore the identity: the epoch read as it
-    /// is in the first case, a fresh start in the second.
+    /// End to end: a first restore on an unlinked computer stops as a crash would after the
+    /// identity's first epoch entry and before its note (the metadata's write fails: its temp name
+    /// is taken), or before the entry (the epochs file's write fails). The next start, the same
+    /// words restore the identity: the epoch read as it is in the first case, a fresh start in the
+    /// second.
     #[tokio::test]
     async fn a_first_restore_stopped_around_its_first_epoch_restores_on_the_next_start() {
         let (events, _) = crate::keylog::tests::log_with_d2(true);
@@ -11997,11 +11995,11 @@ mod tests {
         events
     }
 
-    /// Lal's review case (we#431). This computer keeps master #0; another app here, rebuilding
-    /// from the words, staged #2 and its publish is on its way; the log is at #1. A refresh
-    /// leaves #2 (ahead of the log), forgets #0 (behind it) and asks for the current key — and
-    /// the forget must not take the stage with it. The publish of #2 then lands, the rotating
-    /// flow is cut off before its promote, and the next refresh promotes #2.
+    /// This computer keeps master #0; another app here, rebuilding from the words, staged #2 and
+    /// its publish is on its way; the log is at #1. A refresh leaves #2 (ahead of the log), forgets
+    /// #0 (behind it) and asks for the current key — and the forget must not take the stage with
+    /// it. The publish of #2 then lands, the rotating flow is cut off before its promote, and the
+    /// next refresh promotes #2.
     async fn a_stage_ahead_of_the_log_outlives_forgetting_the_kept_key(
         vault: &DesktopVault,
         passphrase: Option<&str>,

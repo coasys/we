@@ -455,14 +455,15 @@ export const deviceList: SchemaNode = {
 
 /**
  * "Unlink this computer?", raised by `deviceStore.unlink` on this computer's own row. Dismissing it
- * unlinks nothing. It adds the warning about the master key when this computer keeps the only copy
- * a linked device could use (`deviceStore.unlinkLeavesNoMaster`).
+ * unlinks nothing. Unlinking leaves a master key kept here in place, and the confirm says so. It adds
+ * the warning about the master key when this computer keeps the only copy a linked device could use
+ * (`deviceStore.unlinkLeavesNoMaster`).
  */
 export const unlinkThisComputerConfirm: SchemaNode = confirmModal({
   open: { $: 'deviceStore.confirmingUnlink' },
   close: { $invoke: 'deviceStore.cancelUnlink' },
   title: 'Unlink this computer?',
-  body: "This computer leaves your identity and is signed out. It can't act as you again until you link it from another device. What it did before stays yours.",
+  body: "This computer leaves your identity and is signed out. Unlinking doesn't remove a master key kept here: it stays on this computer. What it did before stays yours.",
   children: [
     {
       type: '$if',
@@ -472,7 +473,7 @@ export const unlinkThisComputerConfirm: SchemaNode = confirmModal({
           type: 'we-alert',
           props: { tone: 'warning' },
           children: [
-            'This computer keeps your master key, and no other device does. Once it is unlinked, your other devices have no master key to use.',
+            'This computer keeps your master key, and no other device does. The key stays on this computer after the unlink, so your other devices still have none to use.',
           ],
         },
       },

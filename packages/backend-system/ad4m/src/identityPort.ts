@@ -99,8 +99,11 @@ export interface Ad4mCustodyState {
    * and kind. Absent on the desktop, where the custody service and the executor share a computer.
    */
   thisDevice?: { keyId: string | null; kind: string } | null;
-  /** The key log lists an enc key for this computer other than the one the custody service keeps. */
-  encMismatch: boolean;
+  /**
+   * The key log lists an enc key for this computer other than the one the custody service keeps.
+   * Absent from a custody service that predates it.
+   */
+  encMismatch?: boolean;
 }
 
 type Raw = Record<string, unknown>;
@@ -108,6 +111,9 @@ type Raw = Record<string, unknown>;
 const record = (value: unknown): Raw => (value && typeof value === 'object' ? (value as Raw) : {});
 const text = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 const count = (value: unknown): number | null => (typeof value === 'number' ? value : null);
+
+/** The private record's kind for the phone app's device. */
+const PHONE_APP = 'phone-app';
 
 function readHead(value: unknown): KeyLogHead | null {
   if (!value || typeof value !== 'object') return null;
@@ -189,14 +195,15 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     masterWaiting: value.masterWaiting === true,
     thisDevice: readCustodyDevice(value.thisDevice),
     pending: text(value.pending),
-    encMismatch: value.encMismatch,
+    encMismatch: value.encMismatch === true,
   };
 }
 
 function readCustodyDevice(value: unknown): IdentityCustodyView['thisDevice'] {
   if (!value || typeof value !== 'object') return null;
   const device = record(value);
-  return { keyId: text(device.keyId), kind: text(device.kind) ?? '' };
+  const kind = text(device.kind) ?? '';
+  return { keyId: text(device.keyId), kind, form: kind === PHONE_APP ? 'phone' : 'computer' };
 }
 
 export function readIdentityStatus(value: unknown): IdentityStatusView {

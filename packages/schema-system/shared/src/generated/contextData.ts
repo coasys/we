@@ -90,7 +90,6 @@ export const contextData: ContextData = {
         { name: 'loading', type: 'boolean', optional: false, default: 'false' },
         { name: 'gradient', type: 'boolean', optional: false, default: 'false' },
         { name: 'square', type: 'boolean', optional: false, default: 'false' },
-        { name: 'autofocus', type: 'boolean', optional: false, default: 'false' },
       ],
     },
     {
@@ -2366,7 +2365,7 @@ export const contextData: ContextData = {
         },
         loaded: { type: 'boolean' },
         error: { type: 'string' },
-        created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy', 'token'] },
+        created: { type: 'object', properties: ['name', 'matchCode', 'confirmBy'] },
         createError: { type: 'string' },
         creating: { type: 'boolean' },
         selected: {

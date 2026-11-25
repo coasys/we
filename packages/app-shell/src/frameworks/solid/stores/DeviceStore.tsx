@@ -79,7 +79,11 @@ export interface DeviceStore {
    * no identity.
    */
   canRestore: Accessor<boolean>;
-  /** "Remove master key from this computer?" can be asked on sign out: it keeps one. */
+  /**
+   * "Remove master key from this computer?" can be asked on sign out: it keeps one, and another
+   * active device is recorded as keeping it too. The custody service refuses to remove the only
+   * copy, so where no other device keeps it, sign out does not ask.
+   */
   canRemoveMaster: Accessor<boolean>;
   /**
    * A master key another device sent waits here: "Accept master key". False while `encMismatch`
@@ -213,7 +217,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const encMismatch = () => !!identity.custody()?.encMismatch;
   // The record's names cannot have been read here then: whatever came is not this computer's to show.
   const names = () => (encMismatch() ? [] : (identity.custody()?.devices ?? []));
-  // A phone's custody service answers for the phone, not for the executor's computer it reaches.
+  // A phone's custody service answers for the phone, not for the computer it reaches.
   const here = createMemo(() => custodyDevice(identity.custody()));
   const rows = createMemo(() =>
     deviceRows(
@@ -237,6 +241,11 @@ export function DeviceStoreProvider(props: ParentProps) {
     !!identity.custody()?.holdsMaster &&
     !rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster !== 'no');
 
+  // Another active device is recorded as keeping the master key, not only being sent it: the custody
+  // service removes this computer's copy only then.
+  const anotherKeepsMaster = () =>
+    rows().some((d) => !d.thisDevice && !d.revoked && !d.unlinked && d.holdsMaster === 'yes');
+
   async function unlinkThisComputer(): Promise<UnlinkOutcome> {
     const p = port();
     if (!p) {
@@ -244,7 +253,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       return 'failed';
     }
     if (unlinking()) return 'cancelled';
-    // `unlinkSelf` retires the key of the executor reached, which on a phone is another device's.
+    // `unlinkSelf` retires the key of the backend reached, which on a phone is another device's.
     if (here()) {
       setConfirmingUnlink(false);
       setError("This phone can't unlink itself from here.");
@@ -264,15 +273,19 @@ export function DeviceStoreProvider(props: ParentProps) {
     // reads its own agent again too: the agent has a new DID, and the shell compares against it.
     // An unlink that may have happened is read again for the same reason, and the person tries again
     // from the row, which stays while the status still lists this computer.
-    if (outcome !== 'failed') {
-      await session.refreshMe();
-      await identity.refresh();
-      await refresh();
+    // A read that throws must not leave the flag set, or every device button stays disabled.
+    try {
+      if (outcome !== 'failed') {
+        await session.refreshMe();
+        await identity.refresh();
+        await refresh();
+      }
+    } finally {
+      // After the reads, which clear `error` when they succeed: why it failed outlives them.
+      if (reason) setError(reason);
+      setUnlinking(false);
+      setConfirmingUnlink(false);
     }
-    // After the reads, which clear `error` when they succeed: why it failed outlives them.
-    if (reason) setError(reason);
-    setUnlinking(false);
-    setConfirmingUnlink(false);
     return outcome;
   }
 
@@ -295,7 +308,7 @@ export function DeviceStoreProvider(props: ParentProps) {
       !encMismatch(),
     canReplaceMaster: () => words() && !!identity.did() && !!identity.keyId() && !identity.thisDeviceRevoked(),
     canRestore: () => words() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
-    canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster,
+    canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster && anotherKeepsMaster(),
     masterWaiting,
     encMismatch,
     requests: createMemo(() =>

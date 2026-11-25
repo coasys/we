@@ -6,10 +6,13 @@
  * bot did and what it was refused. These calls are the operator's, or an app's on the main agent,
  * which sees only the bots of the main agent's identity.
  *
- * What is translated here, and nowhere above: the executor's 409s on `bot.setGrant` (a stale
- * `version`, a revoked grant) become a neutral {@link BotGrantConflict}; `notInLog` becomes
- * `not-in-log`; an activity's `outcome` (`allowed`, or the refusal's code) becomes `allowed` and
- * `refusal`. The credential `createAgent` answers is passed up once and never kept or logged here.
+ * What is translated here, and nowhere above: a grant names a space by its neighbourhood URL, and
+ * the port by the space's shared id (`DatasetRef.sharedId`, the URL without its scheme), so the
+ * scheme is added on the way down and taken off on the way up, an activity's space included; the
+ * executor's 409s on `bot.setGrant` (a stale `version`, a revoked grant) become a neutral
+ * {@link BotGrantConflict}; `notInLog` becomes `not-in-log`; an activity's `outcome` (`allowed`,
+ * or the refusal's code) becomes `allowed` and `refusal`. The credential `createAgent` answers is
+ * passed up once and never kept or logged here.
  */
 import {
   BOT_ACTIONS,
@@ -48,6 +51,21 @@ const count = (value: unknown): number | null => (typeof value === 'number' && N
 const actions = (value: unknown): BotAction[] =>
   (Array.isArray(value) ? value : []).filter((a): a is BotAction => BOT_ACTIONS.includes(a as BotAction));
 
+const SCHEME = 'neighbourhood://';
+
+/** A space's shared id as the executor names it in a grant: its neighbourhood URL. */
+export function grantSpaceOf(sharedId: string): string {
+  return sharedId.includes('://') ? sharedId : SCHEME + sharedId;
+}
+
+/**
+ * A space the executor names, as the port does: a neighbourhood URL becomes the space's shared id.
+ * A perspective with no neighbourhood is named by its UUID, which is passed up as it came.
+ */
+export function sharedIdOf(space: string): string {
+  return space.startsWith(SCHEME) ? space.slice(SCHEME.length) : space;
+}
+
 const STATES: readonly BotGrantState[] = ['active', 'paused', 'revoked'];
 const VERDICTS: Record<string, BotKeyVerdict> = {
   valid: 'valid',
@@ -60,7 +78,9 @@ export function readGrant(value: unknown): BotGrantView {
   const grant = record(value);
   const state = STATES.find((s) => s === grant.state);
   return {
-    spaces: (Array.isArray(grant.spaces) ? grant.spaces : []).filter((s): s is string => typeof s === 'string'),
+    spaces: (Array.isArray(grant.spaces) ? grant.spaces : [])
+      .filter((s): s is string => typeof s === 'string')
+      .map(sharedIdOf),
     can: actions(grant.can),
     expires: count(grant.expires),
     // A state this build does not know is read as the safest one: nothing is offered but revoke.
@@ -98,12 +118,13 @@ export function readActivity(value: unknown): BotActivityView {
   const entry = record(value);
   const outcome = text(entry.outcome) ?? '';
   const action = BOT_ACTIONS.find((a) => a === entry.action) ?? null;
+  const space = text(entry.space);
   return {
     id: count(entry.id) ?? 0,
     at: count(entry.at) ?? 0,
     method: text(entry.method) ?? '',
     action,
-    space: text(entry.space),
+    space: space === null ? null : sharedIdOf(space),
     reason: text(entry.reason),
     allowed: outcome === 'allowed',
     refusal: outcome === 'allowed' ? null : outcome || 'refused',
@@ -158,7 +179,7 @@ export function createAd4mBotPort(bot: BotClientLike): BotPort {
       try {
         return readBot(
           await bot.setGrant(did, {
-            spaces: grant.spaces,
+            spaces: grant.spaces.map(grantSpaceOf),
             can: grant.can,
             expires: grant.expires,
             state: grant.state,

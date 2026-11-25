@@ -14,7 +14,7 @@ import uniffi.we_phone_custody.TransportException
  * the app's network security config apply. What the store answered, any status, goes back to the
  * Rust side to read; only a request that got no answer throws.
  *
- * [post] and [get] are a claim's two requests (phase 2a). [send] is everything else, the
+ * [post] and [get] are a claim's two requests, for joining. [send] is everything else, the
  * [StoreTransport] the Rust side's `ViaStore` speaks through ([Transport]): any method, the headers
  * the Rust side signed, and bytes both ways.
  *

@@ -2865,7 +2865,7 @@ const botDetail = (): Scenario => {
     owner: 'did:test:owner',
     createdAt: now - 86_400 * 3,
     grant: {
-      spaces: ['neighbourhood://QmTestShared'],
+      spaces: ['QmTestShared'],
       can: ['read', 'write'],
       expires: null,
       state: 'active',
@@ -2875,17 +2875,17 @@ const botDetail = (): Scenario => {
     key: { keyId: 'd3', verdict: 'valid', can: ['read', 'write', 'join'], expires: now + 86_400 * 30 },
   };
   const spaces = grantSpaces([
-    { uuid: 'p-test-shared', url: 'QmTestShared', name: 'Test garden' },
-    { uuid: 'p-test-other', url: 'QmTestOther', name: 'Test swap' },
+    { url: 'QmTestShared', name: 'Test garden' },
+    { url: 'QmTestOther', name: 'Test swap' },
   ]);
   const draft = draftOf(bot);
   const entries: BotActivityView[] = [
     {
       id: 2,
       at: now - 600,
-      method: 'perspective.addLink',
+      method: 'records.write',
       action: 'write',
-      space: 'p-test-shared',
+      space: 'QmTestShared',
       reason: 'Test reason',
       allowed: true,
       refusal: null,
@@ -2893,9 +2893,9 @@ const botDetail = (): Scenario => {
     {
       id: 1,
       at: now - 1200,
-      method: 'neighbourhood.join',
+      method: 'spaces.join',
       action: 'join',
-      space: 'neighbourhood://QmTestOther',
+      space: 'QmTestOther',
       reason: null,
       allowed: false,
       refusal: 'not-in-can',
@@ -2957,7 +2957,7 @@ const devicesOnPhone = (): Scenario => {
     endedHolders: [],
     requests: [],
     masterWaiting: false,
-    thisDevice: { keyId: 'd2', kind: 'phone-app' },
+    thisDevice: { keyId: 'd2', kind: 'phone-app', form: 'phone' },
     encMismatch: false,
   });
   return {
