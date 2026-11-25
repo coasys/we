@@ -1104,7 +1104,7 @@ export default function TemplateProvider() {
               // neighbourhood CID, and the settings page keys off the dataset id.
               onClick: {
                 $invoke: 'shellStore.openShellView',
-                args: ['settings', { $: '`/spaces/${datasetStore.currentDataset.id}`' }],
+                args: ['settings', { $: "'/spaces/space?id=' + datasetStore.currentDataset.id" }],
               },
             },
             children: [

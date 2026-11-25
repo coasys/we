@@ -49,8 +49,8 @@ import { spaceVocabularySection } from './SpaceVocabulary.ts';
  * that installs one which does not must still be able to change their template back.
  */
 
-/** Read the space the *page* is for out of the route. `/spaces/<id>` → segments[1]. */
-const routeSpaceId = { $: 'routeStore.segments[1]' };
+/** Read the space the *page* is for out of the address. `/spaces/space?id=<dataset id>`. */
+const routeSpaceId = { $: 'routeStore.params.id' };
 
 const backLink: SchemaNode = {
   type: 'we-button',

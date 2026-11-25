@@ -132,8 +132,8 @@ function ShellOverlayInner(props: {
 
     Substituting the raw store here would hand the schema untagged accessors, and `walkPath` calls
     only tagged ones — so `currentPath`, `segments` and `params` would all read as absent, silently.
-    That is not cosmetic: `/spaces/:id` in Settings filters the spaces list on
-    `routeStore.segments.1`, so an untagged read empties the filter and the page draws nothing at
+    That is not cosmetic: `/spaces/space` in Settings filters the spaces list on
+    `routeStore.params.id`, so an untagged read empties the filter and the page draws nothing at
     all. The bag also drops `setCurrentPath`/`setNavigateFunction`, which are ShellRouterRoot's to
     call and no schema's.
   */

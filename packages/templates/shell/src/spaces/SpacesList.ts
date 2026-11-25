@@ -117,7 +117,7 @@ const spaceCard: SchemaNode = {
         variant: 'ghost',
         size: 'sm',
         square: true,
-        onClick: { $invoke: 'routeStore.navigate', args: [{ $: '`/spaces/${space.id}`' }] },
+        onClick: { $invoke: 'routeStore.navigate', args: ['/spaces/space', { query: { id: { $: 'space.id' } } }] },
       },
       children: [{ type: 'we-icon', props: { name: 'gear' } }],
     },
