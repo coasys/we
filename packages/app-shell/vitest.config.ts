@@ -56,6 +56,7 @@ const SOLID_TESTS = [
   'tests/spaceSettingsTab.test.ts',
   // The shell store's parts, each under both ports.
   'tests/shellViews.test.ts',
+  'tests/shellPrompts.test.ts',
   'tests/templateDrafts.test.ts',
   'tests/editorStore.test.ts',
   // The record store's canvas, tree and connection writes, each under both ports.
