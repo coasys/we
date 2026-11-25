@@ -24,13 +24,13 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
 import { createEffect, createRoot, untrack } from 'solid-js';
 
+import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
-import { createSessionStore } from '../../src/frameworks/solid/stores/SessionStore';
 import { createShapeStore } from '../../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
@@ -46,6 +46,7 @@ import { createChatStore } from '../../src/shared/stores/ChatStore';
 import { createClockStore } from '../../src/shared/stores/ClockStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
+import { createSessionStore } from '../../src/shared/stores/SessionStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
 
@@ -465,7 +466,16 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     const shellStore = createShellStore({ platform });
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
-    const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+    const sessionStore = createSessionStore({
+      reactivity: solidReactivity,
+      platform,
+      backend,
+      credential,
+      firstScreen,
+      shellStore,
+      chatStore,
+      accountStore,
+    });
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
     const datasetStore = createDatasetStore({ sessionStore });
     const shapeStore = createShapeStore({ sessionStore, datasetStore });

@@ -255,13 +255,13 @@ import { completeResponse, runOperation } from '@we/entities';
 import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
+import { firstScreen } from '../src/frameworks/solid/firstScreen';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
-import { createSessionStore, type SessionStore } from '../src/frameworks/solid/stores/SessionStore';
 import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
@@ -278,6 +278,7 @@ import { createAccountStore } from '../src/shared/stores/AccountStore';
 import { createAppStore } from '../src/shared/stores/AppStore';
 import { createChatStore } from '../src/shared/stores/ChatStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
+import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -309,7 +310,16 @@ function mountShell(): Stores {
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
-    const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+    const sessionStore = createSessionStore({
+      reactivity: solidReactivity,
+      platform,
+      backend,
+      credential,
+      firstScreen,
+      shellStore,
+      chatStore,
+      accountStore,
+    });
     // Setting up an account asks it whether there is an AI question, as the real order has it.
     const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
     const datasetStore = createDatasetStore({ sessionStore });

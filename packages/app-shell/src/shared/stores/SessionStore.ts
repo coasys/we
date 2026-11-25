@@ -8,10 +8,10 @@
  * What it deliberately does NOT own: the user-data loading that follows a successful unlock
  * (system datasets, spaces, subscriptions). That spans several stores, so it is injected by the
  * boot controller via `onSessionUnlocked` — this store only knows *when* the session becomes
- * usable, not what the app loads into it.
+ * usable, not what the app loads into it. Nor the bridge that hands embedded apps their
+ * credentials: that is the host's, started where the stores are composed, over this store's
+ * connection details.
  */
-import type { BackendConnector } from '@shared/backend/types';
-import type { PlatformAdapter } from '@shared/platform/types';
 import {
   type AgentIdentity,
   type AgentSessionPort,
@@ -24,14 +24,16 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted, setTestPeopleOn, testPeopleEnabled } from '@we/module-shared';
-import { Accessor, batch, createEffect, createMemo, createSignal } from 'solid-js';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
 
-import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
-import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
-import { credential } from '../credential';
-import { firstScreen } from '../firstScreen';
-import { startAppBridge } from '../services/appBridge';
-import type { StoreRegistry } from './useStore';
+import type { BackendAccountInfo, BackendConnector, BackendHostInfo } from '../backend/types';
+import type { Credential } from '../credential';
+import { distinctSignal } from '../distinctSignal';
+import type { FirstScreen } from '../firstScreen';
+import type { PlatformAdapter } from '../platform/types';
+import { type SignInStep, signInStep as stepOf } from '../signInStep';
+import type { AccountStore } from './AccountStore';
+import type { ChatStore } from './ChatStore';
 
 /**
  * Where boot has got to.
@@ -222,28 +224,42 @@ export interface SessionStore {
   onSessionUnlocked: (handler: () => Promise<void>) => void;
 }
 
-export function createSessionStore(
-  deps: Pick<StoreRegistry, 'accountStore' | 'chatStore' | 'shellStore'> & {
-    platform: PlatformAdapter;
-    backend: BackendConnector;
-  },
-): SessionStore {
-  const platform = deps.platform;
-  const backend = deps.backend;
-  const shellStore = deps.shellStore;
-  const chatStore = deps.chatStore;
+/** What the session store reads of the shell store: whose kept panels it holds. */
+export interface SessionShell {
+  provideAgentDid: (did: () => string | undefined) => void;
+}
 
-  const [bootState, setBootState] = createSignal<BootState>('initialising');
-  const [bootError, setBootError] = createSignal('');
-  const [passwordError, setPasswordError] = createSignal(false);
-  const [loginError, setLoginError] = createSignal('');
-  const [loginLoading, setLoginLoading] = createSignal(false);
-  const [createAgentError, setCreateAgentError] = createSignal('');
-  const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+export interface SessionStoreDeps {
+  reactivity: ReactivityPort;
+  platform: PlatformAdapter;
+  backend: BackendConnector;
+  /** The host's password field state, which `unlock` submits — see `shared/credential.ts`. */
+  credential: Credential;
+  /** The host's first-screen gate, held from the moment the backend starts coming up. */
+  firstScreen: Pick<FirstScreen, 'hold' | 'whenOpen'>;
+  accountStore: Pick<AccountStore, 'switchingTo' | 'creating'>;
+  chatStore: Pick<ChatStore, 'provideAgentDid'>;
+  shellStore: SessionShell;
+}
+
+export function createSessionStore(deps: SessionStoreDeps): SessionStore {
+  const { reactivity, platform, backend, credential, firstScreen, shellStore, chatStore } = deps;
+  const { memo, effect, untrack, batch } = reactivity;
+  // Every flag and message here is written again with what it holds — a password field clears its
+  // error on each keystroke — and nothing reading one should wake for that.
+  const flag = <T>(initial: T) => distinctSignal(reactivity, initial);
+
+  const [bootState, setBootState] = flag<BootState>('initialising');
+  const [bootError, setBootError] = flag('');
+  const [passwordError, setPasswordError] = flag(false);
+  const [loginError, setLoginError] = flag('');
+  const [loginLoading, setLoginLoading] = flag(false);
+  const [createAgentError, setCreateAgentError] = flag('');
+  const [createAgentLoading, setCreateAgentLoading] = flag(false);
   /** A first run is holding the app back for the AI step — see `holdForAiSetup`. */
-  const [aiStepHeld, setAiStepHeld] = createSignal(false);
+  const [aiStepHeld, setAiStepHeld] = flag(false);
   const accounts = deps.accountStore;
-  const signInStep = createMemo(() =>
+  const signInStep = memo(() =>
     stepOf({
       bootState: bootState(),
       createAgentLoading: createAgentLoading(),
@@ -255,17 +271,17 @@ export function createSessionStore(
 
   // Set for the duration of a first run, so markReady() lands on 'finishing' instead of 'ready'.
   let settingUp = false;
-  const [client, setClient] = createSignal<unknown>(undefined);
-  const [agentSession, setAgentSession] = createSignal<AgentSessionPort | null>(null);
-  const [lifecycle, setLifecycle] = createSignal<DatasetLifecyclePort | null>(null);
-  const [me, setMe] = createSignal<SessionIdentity | undefined>(undefined);
-  const [port, setPort] = createSignal<number | undefined>(undefined);
-  const [token, setToken] = createSignal<string | undefined>(undefined);
-  const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
-  const [isGuest, setIsGuest] = createSignal(false);
-  const [identityCapabilities, setIdentityCapabilities] = createSignal(NO_IDENTITY_CAPABILITIES);
-  const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
-  const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
+  const [client, setClient] = flag<unknown>(undefined);
+  const [agentSession, setAgentSession] = flag<AgentSessionPort | null>(null);
+  const [lifecycle, setLifecycle] = flag<DatasetLifecyclePort | null>(null);
+  const [me, setMe] = flag<SessionIdentity | undefined>(undefined);
+  const [port, setPort] = flag<number | undefined>(undefined);
+  const [token, setToken] = flag<string | undefined>(undefined);
+  const [serverUrl, setServerUrl] = flag<string | undefined>(undefined);
+  const [isGuest, setIsGuest] = flag(false);
+  const [identityCapabilities, setIdentityCapabilities] = flag<IdentityCapabilities>(NO_IDENTITY_CAPABILITIES);
+  const [host, setHost] = flag<BackendHostInfo | undefined>(undefined);
+  const [hostAccount, setHostAccount] = flag<BackendAccountInfo | undefined>(undefined);
 
   // Whose kept panel instances the shell reads and writes — follows the signed-in agent, empty
   // while nobody is, so a logout that does not reload drops the last agent's records from reach.
@@ -274,7 +290,7 @@ export function createSessionStore(
   // pending question is one agent's, not the next sign-in's.
   chatStore.provideAgentDid(() => me()?.did);
 
-  const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
+  const [backendPorts, setBackendPorts] = flag<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.
   let disconnectBackend: (() => Promise<void>) | null = null;
 
@@ -288,9 +304,9 @@ export function createSessionStore(
     is reactive already. `DEV_FEATURES` is still the ceiling — `setDevTools` cannot raise it, since
     `devToolsEnabled` ands with the build flag on the way back in.
   */
-  const [devTools, setDevToolsSignal] = createSignal(devToolsEnabled(DEV_FEATURES));
+  const [devTools, setDevToolsSignal] = flag(devToolsEnabled(DEV_FEATURES));
   // The test people need the developer tools on, so either switch re-asks the reader.
-  const [testPeople, setTestPeopleSignal] = createSignal(testPeopleEnabled(DEV_FEATURES));
+  const [testPeople, setTestPeopleSignal] = flag(testPeopleEnabled(DEV_FEATURES));
   const setDevTools = (on: boolean) => {
     setDevToolsMuted(!on);
     setDevToolsSignal(devToolsEnabled(DEV_FEATURES));
@@ -305,22 +321,6 @@ export function createSessionStore(
   // before the connector's ports do — pre-connect it reports the capability as absent, which is
   // the contract's own degradation mode. Consumers hold one reference for the app's lifetime.
   const ephemeralPort: EphemeralPort = (dataset) => backendPorts()?.ephemeral(dataset) ?? null;
-
-  // Start the embed bridge synchronously, BEFORE any async boot work, so REQUEST_AD4M_CONFIG
-  // from embedded apps (e.g. Flux) is never dropped — including during the connector's auth
-  // flow on first load, where auth can take many seconds and the embedded app's 30-second
-  // timeout would otherwise expire.
-  // The session is usable from the moment the post-unlock load finishes — which is 'finishing' on
-  // a first run and 'ready' on every other boot. Both mean the executor will answer.
-  const agentUnlocked = () => bootState() === 'ready' || bootState() === 'finishing';
-
-  startAppBridge({
-    isDesktop: platform.isDesktop,
-    port,
-    token,
-    serverUrl,
-    agentUnlocked,
-  });
 
   // The post-unlock loader is registered by the boot controller (a child), which mounts during
   // the same synchronous render pass — before initialise()'s first await can resolve. The
@@ -364,7 +364,7 @@ export function createSessionStore(
     const session = agentSession();
     if (!session) return;
     try {
-      setMe((await session.me()) as SessionIdentity);
+      setMe(await session.me());
     } catch (error) {
       console.error('SessionStore: refreshMe error', error);
     }
@@ -607,7 +607,9 @@ export function createSessionStore(
     }
   }
 
-  createEffect(initialise);
+  // Once, as soon as the store's owner runs its effects. Untracked: nothing initialise reads on its
+  // way to its first await is a reason to connect again.
+  effect(() => void untrack(initialise));
 
   const store: SessionStore = {
     bootState,

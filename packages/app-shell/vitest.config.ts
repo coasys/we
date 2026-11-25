@@ -46,6 +46,8 @@ const SOLID_TESTS = [
   'tests/clockStore.test.ts',
   'tests/shellRouteStore.test.ts',
   'tests/presenceStore.test.ts',
+  'tests/sessionStore.test.ts',
+  'tests/distinctSignal.test.ts',
   'tests/shellRouterRoot.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',

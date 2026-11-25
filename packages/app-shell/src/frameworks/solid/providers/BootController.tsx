@@ -25,18 +25,20 @@ import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
+import { createSessionStore } from '@shared/stores/SessionStore';
 import { trace } from '@we/backend-shared';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
+import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
+import { startAppBridge } from '../services/appBridge';
 import { createBundleStore } from '../stores/BundleStore';
 import { createDatasetStore } from '../stores/DatasetStore';
 import { createEditorStore } from '../stores/EditorStore';
 import { createProfileStore } from '../stores/ProfileStore';
 import { createRecordStore } from '../stores/RecordStore';
 import { createRuntimeStore } from '../stores/RuntimeStore';
-import { createSessionStore } from '../stores/SessionStore';
 import { createShapeStore } from '../stores/ShapeStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
@@ -62,7 +64,30 @@ export function BootController(props: ParentProps) {
   // boot screen needs them while the session is still locked.
   const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
   // Session → Dataset → Profile is the dependency spine: everything after reads them.
-  const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+  const sessionStore = createSessionStore({
+    reactivity: solidReactivity,
+    platform,
+    backend,
+    credential,
+    firstScreen,
+    shellStore,
+    chatStore,
+    accountStore,
+  });
+  /*
+    The bridge that hands embedded apps (e.g. Flux) their credentials, started synchronously and
+    before any async boot work, so a REQUEST_AD4M_CONFIG is never dropped — including during the
+    connector's auth flow on first load, where auth can take many seconds and the embedded app's
+    30-second timeout would otherwise expire. The session is usable once the post-unlock load
+    finishes, which is 'finishing' on a first run and 'ready' on every other boot.
+  */
+  startAppBridge({
+    isDesktop: platform.isDesktop,
+    port: sessionStore.port,
+    token: sessionStore.token,
+    serverUrl: sessionStore.serverUrl,
+    agentUnlocked: () => sessionStore.bootState() === 'ready' || sessionStore.bootState() === 'finishing',
+  });
   // Straight after the session: it reads only the port bundle, and its consent subscription must be
   // live before anything can mount an embedded app that asks for credentials.
   const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
