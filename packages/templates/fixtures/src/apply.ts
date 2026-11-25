@@ -34,7 +34,7 @@ export interface ApplyDeps {
   /**
    * The dataset's *shared* id, when it has one.
    *
-   * Not decoration. `TemplateStore.resolveSpaceFromPerspective` matches a shared dataset to its
+   * Not decoration. `TemplateStore.resolveSpaceFor` matches a shared dataset to its
    * Space by `Space.url === dataset.sharedId`, and only falls back to `uuid === dataset.id` for a
    * personal one. A shared fixture space that sets `uuid` alone is therefore invisible to the
    * template resolver — the space appears in the sidebar, the content is all there, and the app

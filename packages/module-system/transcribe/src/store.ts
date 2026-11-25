@@ -108,7 +108,7 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Characters of transcript held before writing a block.
  *
  * Flux's number, kept. One block per utterance would be truer to the source but writes a record
- * every few seconds for every participant, into a perspective that syncs to all of them; one block
+ * every few seconds for every participant, into a dataset that syncs to all of them; one block
  * per call would be a single unreadable wall by the end. This is the compromise, and it is the level
  * a later knowledge map would want to re-segment from anyway.
  */
@@ -833,7 +833,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         The space the call is *in*, which is not necessarily the space on screen.
 
         A call survives navigation, so by the time somebody speaks the reader may be two spaces away;
-        a write to "the current dataset" would put the utterance in the wrong perspective. The call
+        a write to "the current dataset" would put the utterance in the wrong dataset. The call
         module publishes this on every activity.
       */
       datasetUri: anchor?.datasetUri ?? null,
@@ -2326,7 +2326,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     anything to name.
 
     Every recorder runs this, and that is intended rather than tolerated — the registration is one
-    row in the shared perspective keyed by collection id, so peers converge on it instead of
+    row in the shared dataset keyed by collection id, so peers converge on it instead of
     stacking up watches. Whoever gets there first writes it; the rest write the same thing.
 
     Best-effort throughout. A backend that cannot hold a watch, a space with the setting off, a
@@ -2340,7 +2340,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
    *
    * Kept rather than re-read at teardown, because teardown is usually *leaving the call*, and by then
    * the call's own activity, which is where its dataset is published, is already gone from the roster.
-   * Re-reading it then answered "the space on screen", which removed the watch from a perspective
+   * Re-reading it then answered "the space on screen", which removed the watch from a dataset
    * that never held it and left the real one polling forever.
    */
   let watchedTarget: DatasetTarget | undefined;
@@ -2628,7 +2628,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     when the answer has not changed, so this is a no-op on every other re-run.
 
     The list is a *group* fact rather than this agent's, and it has to be: the registration is one
-    row in the shared perspective and whichever peer runs the pass spends its own LLM call writing
+    row in the shared dataset and whichever peer runs the pass spends its own LLM call writing
     into everyone's copy, so every peer must compute the same list or they would each
     remove-then-add over the other's in a loop.
   */

@@ -1,8 +1,8 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { cardList, cardShell, emptyState, statChip } from '@we/template-kit';
 
-// Flux's Channel model only exists in perspectives where Flux SDNA is installed (e.g. a
-// Flux community synced into WE). Guard on presence in currentPerspectiveEntities so a plain
+// Flux's Channel model only exists in datasets where Flux SDNA is installed (e.g. a
+// Flux community synced into WE). Guard on presence in currentDatasetEntities so a plain
 // WE space just shows the empty-state message instead of firing a query for a model that
 // isn't registered here (which would otherwise surface as an error toast).
 const hasChannelRecord = { $: "find(datasetStore.currentDatasetEntities, { name: 'Channel' })" };

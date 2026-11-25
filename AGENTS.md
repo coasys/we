@@ -3106,10 +3106,10 @@ BundleStore:
 
 ChatStore:
 - State:
-  - sheet: the chat a narrow window is showing as a sheet — what it was asked for ({ perspectiveUuid?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates
+  - sheet: the chat a narrow window is showing as a sheet — what it was asked for ({ datasetId?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates
   - isNarrow: true below the viewport width where a floating panel stops being usable — the point at which openChat sends a chat to the sheet instead of a panel
 - Actions:
-  - openChat(input?: { perspectiveUuid?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no perspectiveUuid (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one perspective with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone
+  - openChat(input?: { datasetId?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no datasetId (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one dataset with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone
   - closeSheet(): puts the phone sheet away
 
 ClockStore:
@@ -3823,7 +3823,7 @@ TemplateStore:
   - setAppTemplate(id: string): chooses the app this agent is in, everywhere — persisted to AgentSettings.appTemplateId. Safe mode always draws WE's own
   - saveTemplate(name: string): saves the current template
   - saveTemplateAs(schema: TemplateSchema, destination?: 'root' | 'space', options?: { activate?: boolean; rename?: boolean }): saves a schema as a new template in your library or in the current space, and makes it the template on screen unless activate is false. A copy saved beside the built-in it came from is named (yours) unless rename is false. Resolves true on success. The editor's fork path; prefer editorStore.startFork from chrome
-  - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
+  - publishToSpace(datasetId: string, spaceName: string): copies the current template into that space, so its members get it. Resolves true on success
   - deleteMarketplaceTemplate(templateId: string): removes a template this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success
   - setFollowTemplateUpdates(on: boolean): sets followTemplateUpdates, for this agent everywhere. Boolean, so a we-switch can pass `event.detail` bare
@@ -3893,7 +3893,7 @@ ThemeStore:
   - uninstallTheme(themeId: string): removes an installed theme (deletes the model)
   - deleteMarketplaceTheme(themeId: string): removes a theme this agent published from the marketplace. Only its author may
   - publishToMarketplace(options: { name, description, icon?, slug?, screenshots: File[] }): publishes the current theme to the marketplace under those details. Resolves true on success
-  - publishToSpace(perspectiveUuid: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success
+  - publishToSpace(datasetId: string, spaceName: string): copies the current theme into that space, so its members get it. Resolves true on success
   - refreshSpaceThemes(): re-reads the current space's themes. The list follows the space on its own; call this after a publish the subscription might have missed
 
 WorkflowStore:

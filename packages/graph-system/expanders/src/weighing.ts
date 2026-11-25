@@ -43,7 +43,7 @@ export function effectiveAggregate(aggregate?: string, mode?: string): Aggregate
  * Each person's newest answer of one type, from a card's reaction rows — or null where the rows were not
  * read at all, which is not the same as nobody having answered.
  *
- * **One voice per person.** A shared perspective is last-write-wins and writable by every member, so the
+ * **One voice per person.** A shared dataset is last-write-wins and writable by every member, so the
  * same agent can end up holding two reactions of one kind on one record — two devices, or a write either
  * side of a partition. Counting both would let a card gain weight from somebody having been offline.
  *

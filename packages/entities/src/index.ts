@@ -140,9 +140,9 @@ export { completeResponse, respondsThrough, threadSubject } from './utils/respon
 
 /**
  * The dataset handle model statics accept — opaque on purpose. Which kind of handle "a dataset"
- * is (an AD4M PerspectiveProxy, an in-memory store, a connection) is the connected backend's
- * business; consumers hold one and pass it along. This used to alias PerspectiveProxy, which was
- * the last `@coasys` edge on this package's public face.
+ * is (a client-side proxy, an in-memory store, a connection) is the connected backend's
+ * business; consumers hold one and pass it along. This used to alias one backend's proxy type,
+ * which was the last edge on this package's public face that named a backend.
  */
 export type DatasetProxy = unknown;
 export * from './entityRegistry';

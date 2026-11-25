@@ -141,7 +141,7 @@ registerBlock({
 registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockEntityStatic, entity: 'ImageBlock' });
 
 // The dataset handle is opaque to the pipeline — an empty object is a complete fake.
-const perspective = {};
+const dataset = {};
 
 function paragraph(text: string, extra: Partial<TextContentBlock> = {}): TextContentBlock {
   return { _type: 'block', style: 'normal', text, ...extra };
@@ -160,12 +160,12 @@ function blobOf(root: FakeCollection): ContentBlock[] {
  * edit it. Writing a post through its operation is tested against a real backend in the app shell.
  */
 async function compose(blocks: ContentBlock[], kind = 'post'): Promise<FakeCollection> {
-  const root = (await FakeCollection.create(perspective, {})) as FakeCollection;
+  const root = (await FakeCollection.create(dataset, {})) as FakeCollection;
   // Set after: the fake's own field initialisers run after its constructor copies the data in.
   root.kind = kind;
   root.mode = 'document';
   await writeUnder(root, blocks);
-  await refreshComposition(perspective, root.id);
+  await refreshComposition(dataset, root.id);
   return root;
 }
 
@@ -174,10 +174,10 @@ async function writeUnder(parent: FakeCollection, blocks: readonly ContentBlock[
     const collection = block._type === 'collection';
     const made =
       block._type === 'block'
-        ? await FakeText.create(perspective, textBlockToRecord(block as TextContentBlock))
+        ? await FakeText.create(dataset, textBlockToRecord(block as TextContentBlock))
         : block._type === 'image'
-          ? await FakeImage.create(perspective, extractBlockData('ImageBlock', block))
-          : await FakeCollection.create(perspective, {});
+          ? await FakeImage.create(dataset, extractBlockData('ImageBlock', block))
+          : await FakeCollection.create(dataset, {});
     if (collection) Object.assign(made, extractBlockData('CollectionBlock', block));
     block._key = made.id;
     await parent.addChildren(made.id);
@@ -316,9 +316,9 @@ describe('refreshComposition', () => {
     document alone, so until this runs the post is blank however many blocks it holds.
   */
   async function writtenByHand() {
-    const root = (await FakeCollection.create(perspective, { kind: 'post' })) as FakeCollection;
-    const heading = await FakeText.create(perspective, { style: 'h2', text: 'Welcome' });
-    const body = await FakeText.create(perspective, {
+    const root = (await FakeCollection.create(dataset, { kind: 'post' })) as FakeCollection;
+    const heading = await FakeText.create(dataset, { style: 'h2', text: 'Welcome' });
+    const body = await FakeText.create(dataset, {
       style: 'normal',
       text: 'Say hello to Ann',
       marks: [{ start: 13, end: 16, type: 'mention', did: 'did:ann' }],
@@ -332,7 +332,7 @@ describe('refreshComposition', () => {
     const { root, heading, body } = await writtenByHand();
     expect(root.editorState).toBeUndefined();
 
-    expect(await refreshComposition(perspective, root.id)).toBe(true);
+    expect(await refreshComposition(dataset, root.id)).toBe(true);
 
     expect(blobOf(root).map((b) => b._key)).toEqual([heading.id, body.id]);
     expect(blobOf(root).map((b) => (b as TextContentBlock).text)).toEqual(['Welcome', 'Say hello to Ann']);
@@ -341,7 +341,7 @@ describe('refreshComposition', () => {
   });
 
   it('answers false for something that is not a composition', async () => {
-    expect(await refreshComposition(perspective, 'no-such-id')).toBe(false);
+    expect(await refreshComposition(dataset, 'no-such-id')).toBe(false);
   });
 });
 
@@ -371,7 +371,7 @@ describe('mentions', () => {
         paragraph('@dave', { _key: blocks[1]._key, marks: [mention('did:key:dave', '@dave')] }),
       ],
     };
-    await reconcileBlocks(perspective, root as never, edited);
+    await reconcileBlocks(dataset, root as never, edited);
     expect(root.mentions).toEqual(['did:key:alice', 'did:key:dave']);
   });
 });
@@ -399,7 +399,7 @@ describe('reconcileBlocks', () => {
       ],
     };
 
-    await reconcileBlocks(perspective, root as never, edited);
+    await reconcileBlocks(dataset, root as never, edited);
 
     expect(p2.text).toBe('two edited');
     expect(p2.deleted).toBe(false);
@@ -418,7 +418,7 @@ describe('reconcileBlocks', () => {
   it('keeps a block somebody else added while the author was editing — three-way membership', async () => {
     const { root, p1, p2 } = await seedPost();
     // Another agent appends a paragraph after the author loaded the post.
-    const theirs = await FakeText.create(perspective, { style: 'normal', text: 'theirs' });
+    const theirs = await FakeText.create(dataset, { style: 'normal', text: 'theirs' });
     root.children.push(theirs.id);
 
     const edited: ContentDocument = {
@@ -426,7 +426,7 @@ describe('reconcileBlocks', () => {
       base: [p1.id, p2.id], // what the author loaded — `theirs` is not in it
       blocks: [paragraph('one', { _key: p1.id })], // author removed p2
     };
-    await reconcileBlocks(perspective, root as never, edited);
+    await reconcileBlocks(dataset, root as never, edited);
 
     expect(p2.deleted).toBe(true); // the author's own removal
     expect(theirs.deleted).toBe(false); // not theirs to remove
@@ -438,7 +438,7 @@ describe('reconcileBlocks', () => {
 
   it('without a base — a legacy caller — everything unclaimed is treated as removed', async () => {
     const { root, p1, p2 } = await seedPost();
-    await reconcileBlocks(perspective, root as never, [paragraph('replacement')]);
+    await reconcileBlocks(dataset, root as never, [paragraph('replacement')]);
     expect(p1.deleted).toBe(true);
     expect(p2.deleted).toBe(true);
     expect(root.children).toHaveLength(1);
@@ -447,7 +447,7 @@ describe('reconcileBlocks', () => {
   it('treats a duplicate key (copy/paste) as brand new for the second occurrence', async () => {
     const { root, p1, p2 } = await seedPost();
 
-    await reconcileBlocks(perspective, root as never, {
+    await reconcileBlocks(dataset, root as never, {
       _type: 'document',
       base: [p1.id, p2.id],
       blocks: [
@@ -467,7 +467,7 @@ describe('reconcileBlocks', () => {
   it('a key unknown to the existing tree is not claimed — a fresh block is created', async () => {
     const { root, p1, p2 } = await seedPost();
 
-    await reconcileBlocks(perspective, root as never, {
+    await reconcileBlocks(dataset, root as never, {
       _type: 'document',
       base: [p1.id, p2.id],
       blocks: [paragraph('imported', { _key: 'id-from-somewhere-else' })],
@@ -486,7 +486,7 @@ describe('reconcileBlocks', () => {
     const nested = byId.get(root.children[0]) as unknown as FakeCollection;
     const [a, b] = nested.children.map((id) => byId.get(id)!) as FakeText[];
 
-    await reconcileBlocks(perspective, root as never, {
+    await reconcileBlocks(dataset, root as never, {
       _type: 'document',
       base: [nested.id, a.id, b.id],
       blocks: [{ _type: 'collection', _key: nested.id, layout: 'row', content: [paragraph('b!', { _key: b.id })] }],
@@ -516,7 +516,7 @@ describe('deleteBlocks', () => {
     post.responses = [reply.id];
     reply.responses = [nested.id];
 
-    await deleteBlocks(perspective, post.id);
+    await deleteBlocks(dataset, post.id);
 
     expect(post.deleted).toBe(true);
     // The post's own blocks, as before — `children` is untouched by any of this.
@@ -528,13 +528,13 @@ describe('deleteBlocks', () => {
   it('leaves a conversation held about it standing — a call is a response, and a feed of its own', async () => {
     const post = await compose([paragraph('a')]);
     const reply = await compose([paragraph('b')], 'reply');
-    const call = (await FakeCollection.create(perspective, {})) as FakeCollection;
+    const call = (await FakeCollection.create(dataset, {})) as FakeCollection;
     // Set after: the fake's own field initialisers run after its constructor copies the data in.
     call.kind = 'call';
     call.mode = 'feed';
     post.responses = [reply.id, call.id];
 
-    await deleteBlocks(perspective, post.id);
+    await deleteBlocks(dataset, post.id);
 
     expect(post.deleted).toBe(true);
     expect(reply.deleted).toBe(true);
@@ -547,7 +547,7 @@ describe('deleteBlocks', () => {
     const post = await compose([paragraph('a')]);
     post.responses = ['id-does-not-exist'];
 
-    await deleteBlocks(perspective, post.id);
+    await deleteBlocks(dataset, post.id);
 
     expect(post.deleted).toBe(true);
   });
@@ -563,7 +563,7 @@ describe('loadBlocks', () => {
     ];
     const root = await compose(blocks);
 
-    const loaded = await loadBlocks(perspective, root.id);
+    const loaded = await loadBlocks(dataset, root.id);
     expect(loaded).toEqual([
       { _type: 'block', _key: blocks[0]._key, style: 'normal', text: 'one', marks: [{ start: 0, end: 3, type: 'em' }] },
       {
@@ -584,13 +584,13 @@ describe('reconcileBlocks mode guard', () => {
   it('refuses a feed collection — reconciling one deletes other agents content', async () => {
     const { root } = await seedPost();
     root.mode = 'feed';
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
   });
 
   it('refuses before touching anything — the children survive the refusal', async () => {
     const { root, p1, p2 } = await seedPost();
     root.mode = 'feed';
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow();
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).rejects.toThrow();
     expect(p1.deleted).toBe(false);
     expect(p2.deleted).toBe(false);
     expect(root.children).toHaveLength(2);
@@ -599,24 +599,24 @@ describe('reconcileBlocks mode guard', () => {
   it('allows collaborative mode — a save materialises the shared session document', async () => {
     const { root } = await seedPost();
     root.mode = 'collaborative';
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).resolves.toBeDefined();
   });
 
   it('refuses an unrecognised mode — the check is an allow-list', async () => {
     const { root } = await seedPost();
     root.mode = 'something-later';
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).rejects.toThrow(/not 'document'/);
   });
 
   it('allows a document collection', async () => {
     const { root } = await seedPost();
     expect(root.mode).toBe('document');
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).resolves.toBeDefined();
   });
 
   it('allows a legacy collection with no mode — every post predating the field', async () => {
     const { root } = await seedPost();
     root.mode = undefined;
-    await expect(reconcileBlocks(perspective, root as never, emptyEdit)).resolves.toBeDefined();
+    await expect(reconcileBlocks(dataset, root as never, emptyEdit)).resolves.toBeDefined();
   });
 });

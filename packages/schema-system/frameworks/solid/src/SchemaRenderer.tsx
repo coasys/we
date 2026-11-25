@@ -373,7 +373,7 @@ function runQuery(request: {
       // Not known *yet*: the space's own models are still being read. Read inside the caller's
       // effect, so the query is asked again when they have been — see `$modelsPending`.
       if (stores.$modelsPending?.(dataset)) return false;
-      stores.$onError?.(`Model "${entity}" is not available in this perspective`);
+      stores.$onError?.(`Model "${entity}" is not available in this dataset`);
       if (union) continue;
       return false;
     }
@@ -453,7 +453,7 @@ function runQuery(request: {
       onCleanup(release);
     }
   } else {
-    // The effect re-runs when any reactive dep changes — perspective swap,
+    // The effect re-runs when any reactive dep changes — dataset swap,
     // resolved params, etc.  When that happens (or the component unmounts)
     // the previous findAll may still be in flight against a slow query.
     // An AbortController scoped to this iteration tells the executor to
@@ -461,7 +461,7 @@ function runQuery(request: {
     // serialise + WebSocket + deserialise cost.
     //
     // ad4m's `Ad4mModel.findAll` accepts `options?: { signal?: AbortSignal }`
-    // as the 3rd argument and forwards it through `perspective.modelQuery`
+    // as the 3rd argument and forwards it through `dataset.modelQuery`
     // to the executor's `request.cancel` machinery.
     const controller = new AbortController();
     onCleanup(() => controller.abort());
@@ -516,8 +516,8 @@ function createQuerySignal(
       // rather than making every template know which one a given store hands back.
       if (p && typeof p === 'object' && 'handle' in p) p = p.handle;
     } else {
-      // The host injects the backend-neutral $currentDataset() (AD4M's currentPerspective, another
-      // backend's equivalent) — no AD4M store reference in the renderer.
+      // The host injects the backend-neutral $currentDataset(), whatever handle its backend
+      // uses — no backend's store is referenced in the renderer.
       const currentDataset = stores.$currentDataset;
       p = typeof currentDataset === 'function' ? currentDataset() : null;
     }

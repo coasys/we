@@ -151,7 +151,7 @@ describe('$query token', () => {
     const [known, setKnown] = createSignal(false);
     const onError = vi.fn();
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: (name: string) => {
         if (name === 'Sighting' && known()) return MockEntity;
         throw new Error(`no model ${name}`);
@@ -190,7 +190,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => MockEntity,
     };
 
@@ -203,7 +203,7 @@ describe('$query token', () => {
 
     await tick();
 
-    // Should have called query with the perspective and subscribe
+    // Should have called query with the dataset and subscribe
     expect(MockEntity.query).toHaveBeenCalledOnce();
     expect(builder.subscribe).toHaveBeenCalledOnce();
 
@@ -216,7 +216,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => MockEntity,
     };
 
@@ -246,7 +246,7 @@ describe('$query token', () => {
     const builder = createMockBuilder();
     const MockEntity = { query: vi.fn(() => builder), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => MockEntity,
     };
 
@@ -271,9 +271,9 @@ describe('$query token', () => {
     expect(builder.dispose).toHaveBeenCalledOnce();
   });
 
-  // ---- Perspective reactivity ----
+  // ---- Dataset reactivity ----
 
-  it('re-subscribes when perspective changes', async () => {
+  it('re-subscribes when dataset changes', async () => {
     const builder1 = createMockBuilder();
     const builder2 = createMockBuilder();
     let callCount = 0;
@@ -282,9 +282,9 @@ describe('$query token', () => {
       findAll: vi.fn(),
     };
 
-    const [perspective, setPerspective] = createSignal<unknown>({ uuid: 'perspective-1' });
+    const [dataset, setDataset] = createSignal<unknown>({ uuid: 'dataset-1' });
     const stores = {
-      $currentDataset: perspective,
+      $currentDataset: dataset,
       $getEntity: () => MockEntity,
     };
 
@@ -303,8 +303,8 @@ describe('$query token', () => {
 
     expect(builder1.subscribe).toHaveBeenCalledOnce();
 
-    // Switch perspective — should dispose old builder and subscribe new one
-    setPerspective({ uuid: 'perspective-2' });
+    // Switch dataset — should dispose old builder and subscribe new one
+    setDataset({ uuid: 'dataset-2' });
     await tick();
 
     expect(builder1.dispose).toHaveBeenCalledOnce();
@@ -313,7 +313,7 @@ describe('$query token', () => {
     dispose!();
   });
 
-  it('returns empty array when perspective is null', async () => {
+  it('returns empty array when dataset is null', async () => {
     const MockEntity = { query: vi.fn(), findAll: vi.fn() };
     const stores = {
       $currentDataset: () => null,
@@ -328,7 +328,7 @@ describe('$query token', () => {
     const { container } = render(() => <RenderSchema node={node} stores={asStores(stores)} registry={registry} />);
     await tick();
 
-    // Should NOT have called query — no perspective
+    // Should NOT have called query — no dataset
     expect(MockEntity.query).not.toHaveBeenCalled();
 
     const el = container.querySelector('[data-testid="data"]');
@@ -570,9 +570,9 @@ describe('$query token', () => {
         });
       }),
     };
-    const [perspective, setPerspective] = createSignal<{ uuid: string } | null>({ uuid: 'p1' });
+    const [dataset, setDataset] = createSignal<{ uuid: string } | null>({ uuid: 'p1' });
     const stores = {
-      $currentDataset: perspective,
+      $currentDataset: dataset,
       $getEntity: () => MockEntity,
     };
 
@@ -586,8 +586,8 @@ describe('$query token', () => {
     expect(signals.length).toBe(1);
     expect(signals[0].aborted).toBe(false);
 
-    // Trigger effect re-run by changing the reactive perspective dep.
-    setPerspective({ uuid: 'p2' });
+    // Trigger effect re-run by changing the reactive dataset dep.
+    setDataset({ uuid: 'p2' });
     await tick();
 
     // Old run's controller aborted; new run got its own fresh signal.
@@ -704,7 +704,7 @@ describe('$queries reading each other', () => {
     const Board = { query: vi.fn(() => boards), findAll: vi.fn() };
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: (name: string) => (name === 'Board' ? Board : Task),
     };
 
@@ -739,7 +739,7 @@ describe('$queries reading each other', () => {
     const Board = { query: vi.fn(() => boards), findAll: vi.fn() };
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: (name: string) => (name === 'Board' ? Board : Task),
     };
 
@@ -779,7 +779,7 @@ describe('$query when', () => {
     const Board = { query: vi.fn(() => boards), findAll: vi.fn() };
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: (name: string) => (name === 'Board' ? Board : Task),
     };
 
@@ -821,7 +821,7 @@ describe('$query when', () => {
     const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
     const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => Task,
       routeStore: {
         get params() {
@@ -868,7 +868,7 @@ describe('$query when', () => {
     const Task = { query: vi.fn(() => builder), findAll: vi.fn() };
     const [params, setParams] = createSignal<Record<string, string>>({ card: 't1' });
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => Task,
       routeStore: {
         get params() {
@@ -910,7 +910,7 @@ describe('$query over several entities', () => {
     const Task = { query: vi.fn(() => tasks), findAll: vi.fn() };
     const Event = { query: vi.fn(() => events), findAll: vi.fn() };
     const stores = {
-      $currentDataset: () => ({ uuid: 'test-perspective' }),
+      $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: (name: string) => (name === 'TaskBlock' ? Task : Event),
     };
 

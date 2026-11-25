@@ -89,8 +89,8 @@ const datasetCard: SchemaNode = {
         /*
           The one delete in the app that can take everything, and it had no confirmation at all.
 
-          `spaceStore.removeSpace` is wired straight through `DatasetStore.removeDataset` to
-          `client.perspective.remove`, and this section lists the **system** datasets alongside the
+          `spaceStore.removeSpace` is wired straight through `DatasetStore.removeDataset` to the
+          backend's own delete, and this section lists the **system** datasets alongside the
           rest — so one tap on the `we-root` row destroys the agent's settings, installed templates
           and themes and profile cache together — and the `we-personal` row, every note and the Pocket. The sibling delete in the spaces list, which
           can only remove one community, asked first; this one did not.

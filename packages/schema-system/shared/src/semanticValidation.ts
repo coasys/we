@@ -2095,7 +2095,7 @@ function checkHoistedQueries(
  * walking them twice would report everything twice.
  *
  * Deliberately **not** checked here: relation names in `include`/`scope.via`, and entity names beyond
- * the existing `entity` check. Those resolve against the *perspective's* manifest at runtime, which
+ * the existing `entity` check. Those resolve against the *dataset's* manifest at runtime, which
  * includes foreign schemas synced in from other apps (Flux's `Channel`, `Conversation`) that this
  * validator has no picture of. Reporting them would be a stream of false positives on templates that
  * work.
@@ -2442,7 +2442,7 @@ function literalKind(value: unknown): string | undefined {
  * `dataset` names where the data lives, and naming one is the author saying the entity belongs to a
  * schema this validator has no manifest for: a foreign app's models synced into the space (Flux's
  * `Channel`, `Conversation`) or a manifest installed at runtime (the query test page's `TestItem`).
- * Both are real entities that resolve fine against the *perspective's* manifest; only `@we/entities`
+ * Both are real entities that resolve fine against the *dataset's* manifest; only `@we/entities`
  * is knowable statically.
  *
  * So the rule is the one the schema docs already state — external data carries `dataset` — and

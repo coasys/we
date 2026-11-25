@@ -22,7 +22,7 @@
  * ## The one place the consumers genuinely diverge
  *
  * `author` is a DID this file makes up, and the preview backend can seed a matching profile for it.
- * In a real AD4M perspective the author is the signing agent, so applying a fixture there produces
+ * On a real backend the author is the signing agent, so applying a fixture there produces
  * content authored entirely by whoever ran it — every row showing one face, which is exactly what
  * these templates are least able to survive. That is unresolved, and the reason consumer 2 is not
  * built yet rather than being assumed to fall out.

@@ -71,7 +71,7 @@ describe('what it writes', () => {
   it('gives the space the url the template resolver matches on', async () => {
     const { writes } = await apply(discordFixture);
     const space = writes.find((w) => w.model === 'Space')!.data;
-    // `resolveSpaceFromPerspective` matches a *shared* dataset by `url === sharedId` and only falls
+    // `resolveSpaceFor` matches a *shared* dataset by `url === sharedId` and only falls
     // back to `uuid` for a personal one. Without `url` the space renders under the default template.
     expect(space.url).toBe('preview-discord');
     expect(space.uuid).toBe('preview-discord');

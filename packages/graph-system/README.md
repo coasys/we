@@ -5,7 +5,7 @@ diagrams — and, later, free-positioned canvases. One engine, configured as dat
 
 ## The idea in one paragraph
 
-"Show the whole perspective", "map these query results", "open this collection's children", "zoom a
+"Show the whole dataset", "map these query results", "open this collection's children", "zoom a
 model out into its properties" and "explore spaces and neighbourhoods" are not five features. They
 are one: **a lazily-explored frontier over a heterogeneous source space**, where each _kind_ of node
 knows what is adjacent to it. An **expander** answers that question for the kinds it claims, and the
@@ -105,7 +105,7 @@ difference between "not here yet" and "nothing there", and without it every expa
   be added without touching the plugins; nothing needs it yet.
 - **Graph algorithms.** Community detection and centrality are what `MetricRef` points at. They should
   project the visible graph out to a library on demand rather than being hand-rolled here.
-- **A raw-link expander.** The true triple-level view of a perspective needs a neutral traversal port
+- **A raw-link expander.** The true triple-level view of a dataset needs a neutral traversal port
   (`links({ source?, predicate?, target? })`) with the backend declaring its own internal predicate
   namespaces, or it will render mostly plumbing.
 

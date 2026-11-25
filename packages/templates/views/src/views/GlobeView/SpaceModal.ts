@@ -113,7 +113,7 @@ export const spaceModal = {
             },
 
             // Enter / Join CTA — only shown for spaces with a neighbourhood URL.
-            // Spaces synced to the global perspective before the url fix may have url=null.
+            // Spaces synced to the global dataset before the url fix may have url=null.
             {
               type: '$if',
               props: {

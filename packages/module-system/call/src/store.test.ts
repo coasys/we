@@ -396,7 +396,7 @@ describe('transport and device lifetime', () => {
    * Two leaks with the same shape: something acquired on join that nothing gave back.
    *
    * `EphemeralScope` is refcounted, so ten joins left ten refs outstanding and the backend's signal
-   * handler for that perspective was never removed. And with no teardown in the module contract,
+   * handler for that dataset was never removed. And with no teardown in the module contract,
    * unregistering during a call — which a hot reload does — dropped the only reference to the live
    * peer connections and the media stream, leaving the camera on with nothing able to close it.
    */
@@ -970,7 +970,7 @@ describe('transport and device lifetime', () => {
     store.leave();
 
     // Each join released the previous one's scope; without that, ten joins leak ten refs and the
-    // backend's handler for the perspective outlives every one of them.
+    // backend's handler for the dataset outlives every one of them.
     expect(scopeDisposals()).toBe(3);
   });
 
@@ -990,8 +990,8 @@ describe('transport and device lifetime', () => {
 
   it('tears the call down when the space it is in is deleted', async () => {
     /*
-      Nothing did. `removeDataset` tore the perspective down and left this store holding the media
-      tracks, the peer connections and a presence lease heartbeating into a perspective that no
+      Nothing did. `removeDataset` tore the dataset down and left this store holding the media
+      tracks, the peer connections and a presence lease heartbeating into a dataset that no
       longer existed.
     */
     const { store, scopeDisposals, removeDataset } = callable();

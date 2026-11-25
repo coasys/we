@@ -23,7 +23,7 @@ the serialization pipeline between a composition and AD4M block models.
 
 - Anything framework-shaped — editor schemas, Solid components, plugins
   live in `../frameworks/solid` (`@we/block-solid`).
-- Anything backend-shaped beyond the `PerspectiveProxy` surface the
+- Anything backend-shaped beyond the opaque dataset handle (`BlockDataset`) the
   serialization functions take as a parameter.
 
 Tests: `pnpm --filter @we/block-shared test`.

@@ -180,7 +180,7 @@ const conversationSubgroupsList: SchemaNode = {
                 dataset: '$currentDataset',
                 // Neutral drill-down: the ConversationSubgroups anchored to this Conversation via its
                 // `subgroupEntities` relation. The AD4M adapter resolves `via`→predicate from the
-                // perspective's model manifest (→ `ad4m://has_child`), so no raw predicate lives in the
+                // dataset's model manifest (→ `ad4m://has_child`), so no raw predicate lives in the
                 // template — and it hands AD4M the `{ id, predicate }` form, sidestepping its broken
                 // relation-name resolver (`resolveParentPredicate`).
                 scope: { anchor: 'Conversation', via: 'subgroupEntities', anchorId: { $: 'conversation.id' } },

@@ -16,7 +16,7 @@ import { WeNode } from './WeNode';
  * want here, and which template and theme I want when I open it.
  *
  * **Held in the root dataset, never in the space.** That is the whole point: writing it into the
- * shared perspective would sync my choices to everyone else in the community, which is a privacy
+ * shared dataset would sync my choices to everyone else in the community, which is a privacy
  * leak wearing a setting's clothes.
  *
  * Keyed by the dataset id rather than by `Space.url`, because a personal space has no url and this
