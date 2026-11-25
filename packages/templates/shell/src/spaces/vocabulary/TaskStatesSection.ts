@@ -499,7 +499,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
             {
               type: 'we-select',
               props: {
-                value: { $: 'spaceStore.taskWorkflowRule' },
+                value: { $: "spaceStore.currentSpace.taskWorkflowRule ?? ''" },
                 options: {
                   $: "[{ label: 'To any state', value: '' }, { label: 'On to the next state', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }]",
                 },

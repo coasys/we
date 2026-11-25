@@ -17,8 +17,6 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
 
   // Reads of the space's own records.
   'spaceStore.root': 'spaceStore.currentSpace.root',
-  'spaceStore.taskWorkflowRule': 'spaceStore.currentSpace.taskWorkflowRule',
-  'spaceStore.autoInterpret': 'spaceStore.currentSpace.autoInterpret',
   'spaceStore.taskStates': "a $query of 'TaskState'",
   'spaceStore.offeredTaskStates': "a $query of 'TaskState' where retired is false",
   'spaceStore.involvementTypes': "a $query of 'InvolvementType'",

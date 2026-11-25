@@ -766,8 +766,6 @@ export interface SpaceStore {
   addTaskStateEvidence: (slug: string, requirement: { entity: string; via?: string; min?: number }) => Promise<void>;
   /** Take away the state's evidence requirement at that position in its `evidence`. */
   removeTaskStateEvidence: (slug: string, index: number) => Promise<void>;
-  /** How a task may move between this space's states — see `setTaskWorkflowRule`. */
-  taskWorkflowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
@@ -6247,7 +6245,6 @@ export function createSpaceStore(
     taskWorkflowEnabled,
     archivedWorkflows,
     setWorkflowArchived,
-    taskWorkflowRule,
     setTaskWorkflowRule,
     addTaskStateEvidence,
     removeTaskStateEvidence,

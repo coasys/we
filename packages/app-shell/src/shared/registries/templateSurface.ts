@@ -611,7 +611,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     withdrawTaskMove: action('content'),
     archivedWorkflows: state('content'),
     setWorkflowArchived: action('space-settings'),
-    taskWorkflowRule: state('content'),
     setTaskWorkflowRule: action('space-settings'),
     addTaskStateEvidence: action('signals'),
     removeTaskStateEvidence: action('signals'),
@@ -719,7 +718,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Exactly the check working: an unreadable member fell out as a failing test rather than as an
       indicator that silently never rendered.
     */
-    autoInterpret: state('space-settings'),
+    // Templates read the field off the space record: `spaceStore.currentSpace.autoInterpret`.
+    autoInterpret: WIRING,
     /*
       `content`, not `space-settings`, and the difference is who may press it.
 

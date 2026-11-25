@@ -499,7 +499,6 @@ export const storeEntries: StoreEntry[] = [
       starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
-      taskWorkflowRule: { type: 'string' },
       involvementTypes: {
         type: 'array',
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
@@ -1441,14 +1440,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
       firstScreenOpen:
         "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
-      landmarks:
-        "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
-      landmarksLoaded:
-        "boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first",
       starterChoices:
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
-      autoInterpret:
-        'boolean — whether a NEW collection here (a call, a channel) starts out interpreted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoInterpretFor. Readable by every member; writing it is space-settings',
       spaceModuleSettings:
         "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
       myModuleSettings:
@@ -1480,7 +1473,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       spaceDefaultThemeId:
         "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
       currentSpace:
-        'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
+        "Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, taskWorkflowRule, autoInterpret, plus id/author/createdAt). taskWorkflowRule is '' | 'next' | 'next-and-back': how a task may move between the space's states — anywhere, on to the next only, or on and back one; anything but '' runs the states as a workflow, so say so beside a picker of states. autoInterpret says whether a NEW collection here starts out interpreted (a conversation keeps its own answer, autoInterpretFor). The records the space names as its landmarks (its canvas, its board) are SpaceLandmark records { name, node }: bind $queries { spaceLandmarks: { entity: 'SpaceLandmark' } } and read find(local.spaceLandmarks, { name: 'board' }).node, gating a 'no board yet' on local.spaceLandmarksLoaded",
       foreignSpacePrefill:
         '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found',
       enabledModules:
@@ -1495,8 +1488,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
       taskWorkflowEnabled:
         'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
-      taskWorkflowRule:
-        "'' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states",
       archivedWorkflows:
         'string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`',
       involvementTypes:
@@ -1622,7 +1613,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       withdrawTaskMove:
         '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).workflow[card.id].mine',
       setTaskWorkflowRule:
-        "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskWorkflowRule. Only whoever administers the space; rejects otherwise",
+        "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — read it as currentSpace.taskWorkflowRule ('' when unset). Only whoever administers the space; rejects otherwise",
       addTaskStateEvidence:
         "(slug: string, evidence: { entity, via?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `via` ('responses' for what was made in response to it), or anywhere when `via` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first evidence requirement turns the space's states into a workflow",
       removeTaskStateEvidence:

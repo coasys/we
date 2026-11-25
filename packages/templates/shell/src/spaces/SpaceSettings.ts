@@ -1078,7 +1078,7 @@ const autoInterpretSection: SchemaNode = {
           type: 'we-switch',
           props: {
             size: 'sm',
-            checked: { $: 'spaceStore.autoInterpret' },
+            checked: { $: 'spaceStore.currentSpace.autoInterpret == true' },
             disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
