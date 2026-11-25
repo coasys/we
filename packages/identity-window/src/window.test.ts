@@ -76,3 +76,22 @@ describe('the revoke confirm screen', () => {
     expect(sent[0]).toEqual({ kind: 'revoke', passphrase: 'right' });
   });
 });
+
+describe('the enter-code screen', () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  it('asks for the link in plain words, not the link format', async () => {
+    vi.resetModules();
+    const { runIdentityWindow } = await import('./window');
+    runIdentityWindow({
+      start: () => Promise.resolve({ screen: 'enter-code', error: null }),
+      step: () => Promise.resolve({ screen: 'failed', message: 'unused' }),
+      cancel: () => Promise.resolve(null),
+      finish: () => Promise.resolve(),
+    });
+    await vi.waitFor(() => expect(document.querySelector('input[type=text]')).not.toBeNull());
+    const placeholder = document.querySelector<HTMLInputElement>('input[type=text]')!.placeholder;
+    expect(placeholder).toBe('Paste the link from the new device');
+    expect(placeholder).not.toContain('coasys');
+  });
+});
