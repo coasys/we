@@ -5,6 +5,8 @@
  * `storeEntries` is the structured source of truth; the `stores` text is derived from it.
  */
 
+import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, PROFILE_MEMBERS } from '@we/schema-shared';
+
 import type { StoreEntry } from '../types.js';
 
 export const storeEntries: StoreEntry[] = [
@@ -2396,6 +2398,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     'Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.',
     'Read state in an expression ({ "$": "storeName.member" }) and call actions with $invoke.',
     'For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).',
+    ...profilesIntro(),
   ];
 
   for (const entry of entries) {
@@ -2414,22 +2417,55 @@ export function generateStoresText(entries: StoreEntry[]): string {
     lines.push(`${storeName}:`);
 
     lines.push('- State:');
-    for (const key of Object.keys(entry.state)) {
+    for (const key of profileFirst(entry.name, Object.keys(entry.state))) {
       const typeDesc = desc.state[key];
       if (typeDesc === undefined) undescribedMembers.push(`${entry.name}.${key}`);
-      lines.push(`  - ${key}: ${typeDesc ?? 'unknown'}`);
+      lines.push(`  - ${memberMark(entry.name, key)}${key}: ${typeDesc ?? 'unknown'}${hostOnlyNote(entry.name, key)}`);
     }
 
     lines.push('- Actions:');
-    for (const key of entry.actions) {
+    for (const key of profileFirst(entry.name, entry.actions)) {
       const sig = desc.actions[key];
       if (sig === undefined) undescribedMembers.push(`${entry.name}.${key}()`);
-      lines.push(`  - ${key}${sig ?? '(): unknown'}`);
+      lines.push(`  - ${memberMark(entry.name, key)}${key}${sig ?? '(): unknown'}${hostOnlyNote(entry.name, key)}`);
     }
   }
 
   return lines.join('\n');
 }
+
+/*
+  The capability profiles, said before any store so a model reaches for them first.
+
+  The intro is the part of this section every lookup carries, whichever stores it asks for, so it
+  holds the profiles whole: a model choosing between two members of different stores has to see both
+  profiles to know which one travels. A member's own entry repeats its profile as a mark.
+*/
+function profilesIntro(): string[] {
+  return [
+    '',
+    'Capability profiles. A member listed with [navigation], [view-state], [presence], [identity] or [space-settings] belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.',
+    ...CAPABILITY_PROFILES.map(
+      (profile) => `- ${profile.id} ${profile.version}: ${profile.members.map((member) => member.path).join(', ')}`,
+    ),
+  ];
+}
+
+/** Profile members first, in the store's own order, then the rest in theirs. */
+function profileFirst(store: string, keys: string[]): string[] {
+  const inProfile = (key: string) => PROFILE_MEMBERS.has(`${store}.${key}`);
+  return [...keys.filter(inProfile), ...keys.filter((key) => !inProfile(key))];
+}
+
+const memberMark = (store: string, key: string): string => {
+  const held = PROFILE_MEMBERS.get(`${store}.${key}`);
+  return held ? `[${held.profile.id}] ` : '';
+};
+
+const hostOnlyNote = (store: string, key: string): string => {
+  const instead = HOST_ONLY_EQUIVALENTS[`${store}.${key}`];
+  return instead ? ` (WE-host-only; use ${instead} instead)` : '';
+};
 
 /**
  * Members that rendered as `unknown` — reachable from a schema, and with nothing saying what they do.
