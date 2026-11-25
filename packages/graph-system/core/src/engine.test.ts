@@ -395,6 +395,44 @@ describe('refreshing keeps the graph the user is looking at', () => {
     // One in flight plus one pass for everything that arrived while it ran — not three.
     expect(runs).toBe(2);
   });
+
+  it('keeps every node on a refresh past half the budget', async () => {
+    // The nodes a refresh hands back are mostly the ones already held, and those cost no room.
+    const rows = Array.from({ length: 15 }, (_, i) => `seed-${i}`);
+    const seed = mutableSeed(rows);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { maxNodes: 20 } },
+      registry,
+    );
+    await engine.start();
+    expect(engine.store.nodeCount).toBe(15);
+
+    await engine.refresh();
+    expect(engine.store.nodeCount).toBe(15);
+    expect(engine.getStatus().budgetReached).toBe(false);
+
+    await engine.refresh();
+    expect(engine.store.nodeCount).toBe(15);
+  });
+
+  it('spends what is left of the budget on new rows, and says so when it runs out', async () => {
+    const seed = mutableSeed(Array.from({ length: 15 }, (_, i) => `seed-${i}`));
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { maxNodes: 20 } },
+      registry,
+    );
+    await engine.start();
+
+    seed.rows = Array.from({ length: 30 }, (_, i) => `seed-${i}`);
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(20);
+    // The ones held before are still there; the cut fell on the newcomers.
+    for (let i = 0; i < 15; i += 1) expect(engine.store.hasNode(`seed-${i}`)).toBe(true);
+    expect(engine.getStatus().budgetReached).toBe(true);
+  });
 });
 
 /**

@@ -16,7 +16,7 @@
  * them. Clicking a record inspects it like any card; editing stays where it is, in the settings.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { vocabularyMap } from '@we/template-kit';
+import { CANVAS_MAX_CARDS, vocabularyMap } from '@we/template-kit';
 
 /** Which cards are open, by node address, comma-separated — like the fold, in the address. */
 export const OPEN_PARAM = 'open';
@@ -43,7 +43,12 @@ export const VOCAB_QUERY = `\${${VOCAB_ON} ? '&${VOCAB_PARAM}=1' : ''}`;
  * What a card on the content canvas opens into: its own fields, as leaves, and — for a note or a
  * post — what is inside it. The layout puts the fields to the card's right and its contents below it.
  */
-export const CANVAS_EXPANSION = { defaultDepth: 0, direction: 'out', expanders: ['property', 'collection'] } as const;
+export const CANVAS_EXPANSION = {
+  defaultDepth: 0,
+  direction: 'out',
+  expanders: ['property', 'collection'],
+  maxNodes: CANVAS_MAX_CARDS,
+} as const;
 
 /**
  * A field opened out of a card: a small box beside it, saying the field and its value.
