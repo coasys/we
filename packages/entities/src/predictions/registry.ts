@@ -82,9 +82,11 @@ const changed = (key: unknown) => {
   }
 };
 
+const NONE: readonly Prediction[] = Object.freeze([]);
+
 /** The predictions drawn in a dataset, oldest first — the order they were made in, which is the order they apply. */
 export function predictionsFor(dataset: unknown): readonly Prediction[] {
-  return registry.byDataset.get(datasetKey(dataset)) ?? [];
+  return registry.byDataset.get(datasetKey(dataset)) ?? NONE;
 }
 
 /** Whether any dataset has a prediction drawn — the cheap test a read makes before it overlays anything. */

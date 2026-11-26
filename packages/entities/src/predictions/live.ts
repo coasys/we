@@ -96,19 +96,25 @@ export function withPredictedPages<T>(
   */
   type Snap = ReturnType<LiveQuery<LivePage<T>>['getSnapshot']>;
   let version = 0;
-  let made: { from: Snap; version: number; snapshot: Snap } | undefined;
+  let made: { from: Snap; version: number; predictions: readonly Prediction[]; snapshot: Snap } | undefined;
   const snapshotOf = (from: Snap): Snap => {
     if (from.status !== 'ready' || !from.data) return from;
-    if (made && made.from === from && made.version === version) return made.snapshot;
+    // The registry hands out a new list whenever a dataset's predictions change.
+    const predictions = predictionsFor(dataset);
+    if (made && made.from === from && made.version === version && made.predictions === predictions)
+      return made.snapshot;
     const data = overlay(from.data, wake);
     const snapshot = data === from.data ? from : { ...from, data };
-    made = { from, version, snapshot };
+    made = { from, version, predictions, snapshot };
     return snapshot;
   };
   const listeners = new Set<(snapshot: Snap) => void>();
   let last: Snap | undefined;
+  // The snapshot the handle underneath last handed its listener, which is the newest it has.
+  let pushed: Snap | undefined;
+  const raw = () => pushed ?? live.getSnapshot();
   const publish = () => {
-    const next = snapshotOf(live.getSnapshot());
+    const next = snapshotOf(raw());
     if (next === last && next.status === 'ready') return;
     last = next;
     for (const fn of [...listeners]) fn(next);
@@ -118,18 +124,31 @@ export function withPredictedPages<T>(
     publish();
   }
   let disposed = false;
-  const stopPages = live.subscribe(() => publish());
-  const stopPredictions = onPredictionsChange((changed) => {
-    if (changed === key) wake();
-  });
+  // Followed from the first listener on, as the handle underneath is: a handle nobody listens to is
+  // read only through `getSnapshot`, which lays the predictions over on its own.
+  let stops: (() => void)[] | undefined;
+  const follow = () => {
+    stops ??= [
+      live.subscribe((snapshot) => {
+        pushed = snapshot;
+        publish();
+      }),
+      onPredictionsChange((changed) => {
+        if (changed === key) wake();
+      }),
+    ];
+  };
 
   return {
-    first: live.first.then((page) => snapshotOf(live.getSnapshot()).data ?? page),
-    getSnapshot: () => snapshotOf(live.getSnapshot()),
+    first: live.first.then((page) => snapshotOf({ status: 'ready', data: page, initial: true }).data ?? page),
+    getSnapshot: () => snapshotOf(raw()),
     subscribe: (fn) => {
       if (disposed) return () => undefined;
+      // Followed before this listener joins, so the opening snapshot reaches it once, below.
+      follow();
       listeners.add(fn);
-      const now = snapshotOf(live.getSnapshot());
+      const now = snapshotOf(raw());
+      last = now;
       if (now.status !== 'loading') fn(now);
       return () => void listeners.delete(fn);
     },
@@ -137,13 +156,20 @@ export function withPredictedPages<T>(
       if (disposed) return;
       disposed = true;
       listeners.clear();
-      stopPages();
-      stopPredictions();
+      for (const stop of stops ?? []) stop();
       clearTimeout(backstop);
       live.dispose();
     },
   };
 }
+
+/** Whether a read answered with something that has the live query's shape — a fake in a test may not. */
+const isLiveQuery = (value: unknown): value is LiveQuery<LivePage<unknown>> =>
+  !!value &&
+  typeof (value as LiveQuery<unknown>).subscribe === 'function' &&
+  typeof (value as LiveQuery<unknown>).getSnapshot === 'function' &&
+  typeof (value as LiveQuery<unknown>).dispose === 'function' &&
+  typeof (value as { first?: { then?: unknown } }).first?.then === 'function';
 
 /** Rows a one-shot read answered with, with the predictions still running laid over them. */
 export function withPredictedRows<T>(rows: readonly T[], dataset: unknown, shape: ReadShape): T[] {
@@ -171,11 +197,12 @@ export function withPredictions<C extends object>(cls: C, entities: readonly str
       if (typeof value !== 'function' || !READS.has(prop as string)) return value;
       const cached = wrapped.get(prop);
       if (cached) return cached;
-      const read = value as (this: unknown, ...args: unknown[]) => unknown;
       const fn = function (this: unknown, dataset: unknown, query?: unknown, ...rest: unknown[]) {
+        // Looked up when called, not when first wrapped: whatever the class holds now is the read.
+        const read = Reflect.get(target, prop) as (this: unknown, ...args: unknown[]) => unknown;
         const answer = read.call(this ?? target, dataset, query, ...rest);
         const shape = () => readShapeOf(entities, query);
-        if (prop === 'query') return withPredictedPages(answer as LiveQuery<LivePage<unknown>>, dataset, shape());
+        if (prop === 'query') return isLiveQuery(answer) ? withPredictedPages(answer, dataset, shape()) : answer;
         // Nothing pending anywhere is the usual case, and costs one test.
         if (!anyPredictions()) return answer;
         return Promise.resolve(answer).then((found) => {
