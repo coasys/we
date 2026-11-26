@@ -40,7 +40,7 @@ import {
   referencedRoots,
 } from '@we/expressions';
 
-import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
+import { datasetSharedId, getEntityForDataset, runEntityTransaction } from '../entityRegistry';
 import { declaredError, isOperationError, OperationError, preconditionError, staticError } from './errors';
 import { callSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
@@ -74,6 +74,12 @@ export interface RunOperationOptions {
    * summary already names. Absent, every chosen entity the `oneOf` admits is written.
    */
   admitChosen?: (entity: string) => boolean;
+  /**
+   * The dataset's shared id, which an identity-keyed create's id is derived within; `null` for a
+   * dataset with none. Absent, the one the host registered says (`registerDatasetSharedId`), so a
+   * caller passes it only where no host is (a vector, a test).
+   */
+  sharedId?: string | null;
   /**
    * What the steps read and write through, in place of the connected backend: the statics an entity
    * is reached by, and the write group the steps run in. A host's speculative run passes a view that
@@ -133,6 +139,8 @@ interface Run {
   invoker: string;
   invokedAt: string;
   admitChosen?: (entity: string) => boolean;
+  /** The dataset's shared id, or null when it has none: what identity ids derive within. */
+  sharedId: string | null;
   /** Instances a step made or found, by id, so a later write reaches a record the backend has only staged. */
   instances: Map<string, Instance>;
   /** Relation membership as this operation has left it, by `id`, then relation — for strict links. */
@@ -172,6 +180,7 @@ export async function runOperation(
     invocationId: options.invocationId ?? crypto.randomUUID(),
     invoker: options.invoker,
     invokedAt: options.invokedAt ?? new Date().toISOString(),
+    sharedId: options.sharedId !== undefined ? options.sharedId || null : datasetSharedId(options.dataset),
     ...(options.admitChosen ? { admitChosen: options.admitChosen } : {}),
     ...(options.view ? { view: options.view } : {}),
     instances: new Map(),
@@ -334,7 +343,7 @@ async function runStep(
       const Model = statics(run, entity, step);
       const fields = fieldsOf(value('fields'), step);
       const id = body.identity
-        ? await identityId(entity, body.identity as string[], fields, step)
+        ? await identityId(run, entity, body.identity as string[], fields, step)
         : await deriveRecordId(run.invocationId, segments);
       const parentSpec = body.parent as { id: unknown; relation: string; entity?: string } | undefined;
       // A parent whose id is absent is no parent, as an absent field is not written: one create
@@ -643,10 +652,12 @@ function inCategoryNow(category: OperationCategory, entity: string, run: Run): b
 
 /**
  * The id of a record a create keys by identity: derived from the entity and the identity fields'
- * values, so it is the same whichever invocation makes it. A field with no value cannot be part of
+ * values, within the dataset's shared id when it has one, so it is the same whichever invocation
+ * makes it, on whichever peer. A field with no value cannot be part of
  * an identity — two records without one would share an id for nothing they have in common.
  */
 async function identityId(
+  run: Run,
   entity: string,
   identity: readonly string[],
   fields: Record<string, unknown>,
@@ -658,7 +669,7 @@ async function identityId(
       throw staticError('malformed', `${step}.identity: "${field}" has no value to be the record's identity`, step);
     return [field, text];
   });
-  return deriveIdentityId(entity, pairs);
+  return deriveIdentityId(entity, pairs, run.sharedId);
 }
 
 /** A step's relation: the name written, or what its expression gives. */

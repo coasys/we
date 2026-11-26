@@ -19,6 +19,8 @@ import { provideFileSaver } from '@we/design-utils';
 import {
   AgentSettings,
   CollectionBlock,
+  datasetSharedId,
+  deriveIdentityId,
   getEntity,
   getEntityForDataset,
   ModelRun,
@@ -2587,6 +2589,55 @@ describe('what the stores actually wrote', () => {
       expect(landmarks.map((r) => [r.name, Array.isArray(r.node) ? r.node[0] : r.node])).toEqual([
         ['canvas', contained[0].id],
       ]);
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  }, 10000);
+
+  it('seeds a new space’s vocabulary with the ids its operations would give it, within its shared id once shared', async () => {
+    /*
+      A task state's id derives from what it is (its slug), so a member making "done" later names the
+      starter's record rather than a second one. Before the space is shared it has no shared id, so the
+      starter's records take the ids a personal dataset gives; a starter naming one twice writes one.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [
+        {
+          id: 'test',
+          records: [
+            { entity: 'TaskState', fields: { name: 'Doing', slug: 'doing' } },
+            { entity: 'TaskState', fields: { name: 'Done', slug: 'done' } },
+            { entity: 'TaskState', fields: { name: 'Done again', slug: 'done' } },
+          ],
+        },
+      ],
+    } as never);
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const id = (await stores.spaces.createSpace('Vocabulary', 'x', 'personal', 'hidden'))!;
+      const ref = (await lifecycle.list()).find((d) => d.id === id)!;
+      expect(datasetSharedId(ref.handle)).toBeNull();
+      const states = (await getEntityForDataset('TaskState', ref.handle)!.findAll(ref.handle)) as unknown as {
+        id: string;
+        slug: string;
+        name: string;
+      }[];
+      expect(states.map((s) => [s.slug, s.name]).sort()).toEqual([
+        ['doing', 'Doing'],
+        ['done', 'Done'],
+      ]);
+      for (const state of states) expect(state.id).toBe(await deriveIdentityId('TaskState', [['slug', state.slug]]));
+
+      // Once shared, the host names the dataset by its shared id, and an identity is derived within it.
+      await stores.spaces.shareSpace(id);
+      await vi.waitFor(async () => {
+        const shared = (await lifecycle.list()).find((d) => d.id === id)!;
+        expect(shared.sharedId).toBeTruthy();
+        expect(datasetSharedId(shared.handle)).toBe(shared.sharedId);
+      });
     } finally {
       provideSeed({ name: 'test', modules: [] } as never);
     }

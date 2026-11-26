@@ -13,6 +13,7 @@
 import { isPolicyRefusal, isRecordExists, SELF_PERSONS, validatePolicy } from '@we/backend-shared';
 import {
   type DatasetProxy,
+  datasetSharedId,
   deriveIdentityId,
   Policy,
   registerEntityWriteCheck,
@@ -22,6 +23,7 @@ import {
 } from '@we/entities';
 import type { SpaceStarter } from '@we/schema-shared';
 
+import { datasetOfHandle } from '../../datasetIdentity';
 import { distinctSignal } from '../../distinctSignal';
 import { followLive } from '../../followLive';
 import {
@@ -273,10 +275,10 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     gap: what decides who may write is never written by an operation, so a template cannot reach it
     through one. They follow the operations' slug rule all the same — derived from the name, refused
     when the space holds it — and its identity: a role's id derives from its slug as a vocabulary
-    create's does, so two nodes naming one role at once write one record.
+    create's does, within the space's shared id, so two nodes naming one role at once write one record.
   */
   async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
-    const id = await deriveIdentityId('Role', [['slug', fields.slug]]);
+    const id = await deriveIdentityId('Role', [['slug', fields.slug]], datasetSharedId(dataset));
     try {
       await Role.create(dataset, fields, { id });
     } catch (error) {
@@ -457,19 +459,14 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
   });
 
   /** The dataset a write names, among the ones this agent has open. */
-  function datasetOfHandle(handle: unknown) {
+  function datasetOfWrite(handle: unknown) {
     const known = [
       ...datasetStore.datasets(),
       datasetStore.rootDataset(),
       datasetStore.personalDataset(),
       datasetStore.testDataset(),
     ].filter((d): d is NonNullable<typeof d> => Boolean(d));
-    const byHandle = known.find((d) => d.handle === handle);
-    if (byHandle) return byHandle;
-    // A backend may hand a model a handle object of its own for the same dataset. `uuid` first: one
-    // backend's handle also carries an unrelated `id`.
-    const id = (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
-    return id ? known.find((d) => d.id === id) : undefined;
+    return datasetOfHandle(known, handle);
   }
 
   /*
@@ -498,7 +495,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
 
   /** The space a dataset is, with its rules — `null` for anything that is not a space. */
   async function governedSpace(handle: unknown): Promise<GovernedSpace | null> {
-    const ds = datasetOfHandle(handle);
+    const ds = datasetOfWrite(handle);
     if (!ds || isSystemDataset(ds.name) || datasetStore.systemDatasetUuids().includes(ds.id)) return null;
     if (ds.id === datasetStore.currentDataset()?.id && policyLoaded() && rolesLoaded() && currentSpace()) {
       return { ...currentStanding(), policy: currentPolicy() };

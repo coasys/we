@@ -51,17 +51,25 @@ export async function deriveRecordId(invocationId: string, path: readonly string
  * The id of a record whose identity is the values of some of its fields — a task state by its slug —
  * the same on every run and every node, whoever creates it.
  *
- * The input is framed exactly as an invocation's is, from the list `['', entity, field₁, value₁, …]`,
- * the fields in the order the identity names them. The empty first segment is the domain: an
- * invocation id is never empty, so no identity's bytes can equal any invocation's, and the two kinds
- * of id cannot collide short of SHA-256 doing so. A value is its text: a string as it is, a number as
- * its shortest round-tripping decimal (`1`, `1.5`), a boolean as `true` or `false`.
+ * The input is framed exactly as an invocation's is, from the list `['', d=<shared id>?, entity,
+ * field₁, value₁, …]`, the fields in the order the identity names them. The empty first segment is
+ * the domain: an invocation id is never empty, so no identity's bytes can equal any invocation's, and
+ * the two kinds of id cannot collide short of SHA-256 doing so. A value is its text: a string as it
+ * is, a number as its shortest round-tripping decimal (`1`, `1.5`), a boolean as `true` or `false`.
+ *
+ * `sharedId` is the dataset's shared id, when it has one: what every peer of a shared dataset names
+ * it by. With it, two spaces' `done` are two records, as they are two things, and every peer of one
+ * space still derives the same id. Its segment is `d=` and the id. A list with it has an odd number
+ * of segments where one without has an even number, and the framing is length-prefixed, so a dataset
+ * with a shared id and one without never frame alike. A dataset with none (a personal one) keeps the
+ * shorter framing.
  */
 export async function deriveIdentityId(
   entity: string,
   identity: readonly (readonly [field: string, value: string])[],
+  sharedId?: string | null,
 ): Promise<string> {
-  return idOf(['', entity, ...identity.flat()]);
+  return idOf(['', ...(sharedId ? [datasetSegment(sharedId)] : []), entity, ...identity.flat()]);
 }
 
 /** An identity value's text, or undefined for a value that cannot be one (absent, '', a list, an object). */
@@ -74,5 +82,7 @@ export function identityText(value: unknown): string | undefined {
 
 /** The path segment a forEach item contributes. */
 export const keySegment = (key: string) => `k=${key}`;
+/** The segment a dataset's shared id contributes to an identity. */
+export const datasetSegment = (sharedId: string) => `d=${sharedId}`;
 /** The path segment a call contributes. */
 export const callSegment = (qualifiedName: string) => `c=${qualifiedName}`;

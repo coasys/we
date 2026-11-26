@@ -7,7 +7,7 @@
  * a setting written to a space is published onto the held record (`updateSpaceInCache`).
  */
 import type { DatasetHandle, DatasetRef, EntityStatic, RecordInstance } from '@we/backend-shared';
-import { parseServerUrl, trace } from '@we/backend-shared';
+import { isRecordExists, parseServerUrl, trace } from '@we/backend-shared';
 import { refreshComposition } from '@we/block-shared';
 import {
   collectionInterpretationDefaults,
@@ -16,6 +16,7 @@ import {
   dataURIToFileData,
   type FileData,
   getEntityForDataset,
+  identityIdOf,
   LocationBlock,
   Space,
 } from '@we/entities';
@@ -517,12 +518,23 @@ export function createSpaceList(deps: SpaceListDeps) {
         // Any entity a starter names; the registry answers untyped, but every class has this surface.
         const Model = getEntityForDataset(entity, dataset) as EntityStatic<RecordInstance> | undefined;
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
-        const made = await Model.create(
-          dataset,
-          fields,
-          parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {},
-        );
-        return made.id;
+        /*
+          Vocabulary (a task state, a reaction, a kind of involvement) takes the id its operation's
+          create would give it, from what it is: a member later making "done" names this record,
+          not a second one.
+        */
+        const id = await identityIdOf(entity, fields, dataset);
+        try {
+          const made = await Model.create(dataset, fields, {
+            ...(id ? { id } : {}),
+            ...(parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}),
+          });
+          return made.id;
+        } catch (error) {
+          // A starter naming one identity twice: the record asked for is there.
+          if (id && isRecordExists(error)) return id;
+          throw error;
+        }
       },
       landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),

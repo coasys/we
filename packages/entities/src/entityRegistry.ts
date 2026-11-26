@@ -314,6 +314,31 @@ export async function checkEntityWrite(write: EntityWrite): Promise<void> {
   await globalWriteCheck[WRITE_CHECK_KEY]?.(write);
 }
 
+// ─── A dataset's shared id ────────────────────────────────────────────────────
+
+/** What names a dataset across its peers, given the handle a write carries; nothing for one with none. */
+export type DatasetSharedIdOf = (dataset: unknown) => string | null | undefined;
+
+// On the global, as the write check is, so a second copy of this module sees what the host registered.
+const SHARED_ID_KEY = Symbol.for('we.models.datasetSharedId');
+const globalSharedId = globalThis as unknown as { [SHARED_ID_KEY]?: DatasetSharedIdOf | null };
+
+/**
+ * The host registers how a dataset's shared id is found from its handle: the id every peer of a
+ * shared dataset names it by, which an identity-keyed record's id is derived within (see
+ * `deriveIdentityId`). Registered once, by whoever holds the list of open datasets, so no caller of
+ * an operation has to remember to pass it: one that forgot would make a shared space's records with
+ * the ids a personal dataset gives, and another peer's with the shared ones. `null` removes it.
+ */
+export function registerDatasetSharedId(of: DatasetSharedIdOf | null): void {
+  globalSharedId[SHARED_ID_KEY] = of;
+}
+
+/** The dataset's shared id, or null when it has none or nothing registered can say. */
+export function datasetSharedId(dataset: unknown): string | null {
+  return globalSharedId[SHARED_ID_KEY]?.(dataset) || null;
+}
+
 // ─── File storage ─────────────────────────────────────────────────────────────
 
 /** The payload a file-format property stores — structurally FileData, declared here to stay import-cycle-free. */

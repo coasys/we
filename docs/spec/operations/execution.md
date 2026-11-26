@@ -310,10 +310,11 @@ A `create` with `identity` ([Format](format.md#create)) names its record by what
 made it: the id is the same from every invocation, so the same identity made twice, anywhere, is one
 record.
 
-1. Take the list `['', entity, field₁, value₁, field₂, value₂, …]`: the empty string, the create's
-   entity name, then each identity field in the order `identity` lists them, followed by its value
-   as text: a string as it is, a number as its shortest round-tripping decimal (as a `forEach` key
-   is), `true` or `false`.
+1. Take the list `['', d=S, entity, field₁, value₁, field₂, value₂, …]`: the empty string; when the
+   dataset has a shared id `S` (below), `d=` followed by it, and nothing when it has none; the
+   create's entity name; then each identity field in the order `identity` lists them, followed by
+   its value as text: a string as it is, a number as its shortest round-tripping decimal (as a
+   `forEach` key is), `true` or `false`.
 2. Continue from step 2 of the derivation above: frame each element, hash, and format the UUID.
 
 **Why an empty first element.** It is the domain. An invocation id is a non-empty string, so the
@@ -321,19 +322,39 @@ framing of an identity begins `0:` and no invocation's framing ever does: the tw
 derived from inputs that can never be equal, and so never collide short of SHA-256 colliding. A
 runner MUST refuse an empty `invocationId` (static `malformed`).
 
-An identity names a record within its dataset. The same identity in two datasets gives the same id
-in each, which the data model allows: ids are unique within a dataset.
+**The dataset's shared id.** A dataset that several agents hold as one (a shared space) has a
+**shared id**: the text every one of them names it by, which the backend gives when the dataset is
+shared or joined. A dataset only one agent holds (a personal one) has none. The runner takes it
+from the invocation's dataset; it is not an argument and no expression reads it. With it, an
+identity names a record within that dataset and nowhere else: two shared spaces' `done` are two
+records, as they are two things, while every agent holding one space derives the same id for its
+`done`. A dataset without a shared id keeps the shorter framing, and the same identity in two such
+datasets gives the same id in each, which the data model allows (ids are unique within a dataset).
+
+> **Why the two never collide.** Without a shared id the list has an even number of elements (the
+> domain, the entity, then a field and a value per field); with one it has an odd number. The framing
+> is length-prefixed, so two lists hash alike only when they are equal, and lists of different
+> lengths never are. `d=` marks the element for whoever reads the bytes; nothing depends on it.
+
+A record made before its dataset had a shared id keeps the id it was made with. A host that makes a
+dataset's vocabulary before sharing it (a space's starter records) makes it under the shorter framing,
+and an identity created again after sharing names a second record; the operations that create
+vocabulary find by the identity's fields first and refuse a value already held, which covers every
+peer that has synced.
 
 **Examples.** Normative test vectors.
 
-| entity      | identity                                              | bytes hashed (as text)                                    | id                                              |
-| ----------- | ----------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------- |
-| `TaskState` | `slug` = `blocked`                                    | `0:9:TaskState4:slug7:blocked`                            | `urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49` |
-| `Role`      | `slug` = `admin`                                      | `0:4:Role4:slug5:admin`                                   | `urn:uuid:86c6ab81-f4a4-8f85-997b-e64cde1d859e` |
-| `Vote`      | `poll` = `urn:example:p`, `voter` = `did:example:ann` | `0:4:Vote4:poll13:urn:example:p5:voter15:did:example:ann` | `urn:uuid:6ce7df0a-6f09-8bff-a03e-b41f62804a81` |
-| `Seat`      | `row` = `café`, `n` = `1.5`                           | `0:4:Seat3:row5:café1:n3:1.5` (`é` is two bytes)          | `urn:uuid:88084a04-6308-804b-8623-9ce69f883852` |
+| entity      | identity                                              | shared id  | bytes hashed (as text)                                    | id                                              |
+| ----------- | ----------------------------------------------------- | ---------- | --------------------------------------------------------- | ----------------------------------------------- |
+| `TaskState` | `slug` = `blocked`                                    | none       | `0:9:TaskState4:slug7:blocked`                            | `urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49` |
+| `TaskState` | `slug` = `blocked`                                    | `QmSpaceA` | `0:10:d=QmSpaceA9:TaskState4:slug7:blocked`               | `urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d` |
+| `TaskState` | `slug` = `blocked`                                    | `QmSpaceB` | `0:10:d=QmSpaceB9:TaskState4:slug7:blocked`               | `urn:uuid:ae7c15a7-c97c-8bac-adfb-5569983e5eda` |
+| `Role`      | `slug` = `admin`                                      | none       | `0:4:Role4:slug5:admin`                                   | `urn:uuid:86c6ab81-f4a4-8f85-997b-e64cde1d859e` |
+| `Vote`      | `poll` = `urn:example:p`, `voter` = `did:example:ann` | none       | `0:4:Vote4:poll13:urn:example:p5:voter15:did:example:ann` | `urn:uuid:6ce7df0a-6f09-8bff-a03e-b41f62804a81` |
+| `Seat`      | `row` = `café`, `n` = `1.5`                           | none       | `0:4:Seat3:row5:café1:n3:1.5` (`é` is two bytes)          | `urn:uuid:88084a04-6308-804b-8623-9ce69f883852` |
 
-The first is the state in the `identity-id` vector ([Conformance](conformance.md)).
+The first is the state in the `identity-id` vector and the second the one in `identity-id-shared`
+([Conformance](conformance.md)); every row is a case of the [id vectors](conformance.md#the-id-vectors).
 
 ## Atomicity
 
