@@ -100,7 +100,17 @@ export function world() {
       await registerModels(executor.admin, { llm, transcriber });
       const app = (started.app = await serveDist(DIST));
       const browser = (started.browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav }));
-      return { executor, app, browser, llm, transcriber, stub: STUB ? server : null };
+      return {
+        executor,
+        app,
+        browser,
+        llm,
+        transcriber,
+        stub: STUB ? server : null,
+        // The stub that writes the real tier's transcript, when no speech server is named. V4 pins
+        // its question on it. Null in the stub tier, and when a speech server does the writing.
+        speech: transcriber?.stubbed ? server : null,
+      };
     } catch (error) {
       await stopStarted();
       throw error;

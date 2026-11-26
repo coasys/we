@@ -18,6 +18,7 @@ import {
   openSpacePath,
   recordOf,
 } from './steps.mjs';
+import { V4_CALL } from './stub-llm.mjs';
 
 const SPACE = 'Decide together';
 const FLOW = DNA.workflows.find((f) => f.name === 'Decide') ?? DNA.workflows[0];
@@ -63,7 +64,10 @@ vertical('V4 decide flow: two approvals', (v) => {
     `a call finds a ${CLASS}, and Alice accepts it`,
     async () => {
       await openSpacePath(alice.page, shared);
-      const { found } = await callThatFinds(alice, perspective, [CLASS]);
+      // One question, not the film: a decision, a risk or a task in the same call is what left the
+      // real tier with no TeamQuestion (nightly 2026-11-26, #93214). V4_CALL is the object the
+      // unit test reads, so this call site cannot drift back to the film on its own.
+      const { found } = await callThatFinds(alice, perspective, [CLASS], V4_CALL);
       question = recordOf(found, CLASS);
       assert.ok(question, `a ${CLASS} was found`);
       await alice.ports.interpretation.accept(perspective, question.id);
