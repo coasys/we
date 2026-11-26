@@ -101,8 +101,19 @@ export interface ExpanderContext {
    * Optional because it is a *capability*, not a requirement: a host with no change notification
    * (a fixture, a static export) simply omits it and the graph stays as loaded. Nothing calls this
    * directly — the engine derives what to watch from the reads its seeds performed.
+   *
+   * ## The new answer, when the host has it
+   *
+   * A host whose notification carries the read's new rows passes them to `onChange`, and the engine
+   * answers that same read from them on the refresh the change sets off rather than asking again. A
+   * live query has usually just re-run the read to find out that it changed, so asking again ran the
+   * whole canvas twice for every write — on a large one, seconds of reads each time.
+   *
+   * Pass rows only when they are exactly what `query` would return for this request: the whole
+   * answer, in the shape `query` gives it. A host that cannot say so — a partial page, an answer
+   * `query` assembles some other way — calls `onChange()` with none, and the read is asked again.
    */
-  watch?(request: WatchQuery, onChange: () => void): () => void;
+  watch?(request: WatchQuery, onChange: (rows?: readonly Record<string, unknown>[]) => void): () => void;
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
   /**

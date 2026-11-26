@@ -21,6 +21,8 @@ import { discussionSection } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { liveRows } from './liveRows';
+
 vi.hoisted(() => {
   if (!('adoptedStyleSheets' in ShadowRoot.prototype)) {
     Object.defineProperty(ShadowRoot.prototype, 'adoptedStyleSheets', {
@@ -123,16 +125,12 @@ describe('a thread in a panel', () => {
         if (anchor !== undefined) asked.push({ anchors, levels });
         // A walked query answers with the bounded subtree; without levels, a single step.
         const rows = levels ? descendantsOf(anchors) : replies.filter((r) => anchors.includes(r.parent));
-        return {
-          // Flat either way, so each row says whose reply it is — which is what the renderer puts
-          // the tree back together from.
-          subscribe: () =>
-            Promise.resolve(rows.map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } }))),
-          dispose: vi.fn(),
-        };
+        // Flat either way, so each row says whose reply it is — which is what the renderer puts
+        // the tree back together from.
+        return liveRows(rows.map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } })));
       }),
     };
-    const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
+    const empty = { query: vi.fn(() => liveRows([])) };
 
     const stores = {
       $getEntity: (name: string) => (name === 'CollectionBlock' ? collections : empty),
@@ -217,10 +215,10 @@ describe('a thread in a panel', () => {
     const collections = {
       query: vi.fn((_dataset: unknown, options: { scope?: { levels?: number[] } }) => {
         if (options.scope) asked.push({ levels: options.scope.levels });
-        return { subscribe: () => Promise.resolve([]), dispose: vi.fn() };
+        return liveRows([]);
       }),
     };
-    const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
+    const empty = { query: vi.fn(() => liveRows([])) };
 
     const stores = {
       $getEntity: (name: string) => (name === 'CollectionBlock' ? collections : empty),
@@ -262,19 +260,17 @@ describe('a thread in a panel', () => {
       { id: 'r1', parent: 'task-1', editorState: null, author: 'did:them', createdAt: '2026-09-01', responses: [] },
     ];
     const collections = {
-      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) => ({
-        // `respondsTo` is how the thread finds a row's place: one flat answer, each row naming its
-        // parent. A fixture without it renders nothing, whatever rows it returns.
-        subscribe: () =>
-          Promise.resolve(
-            replies
-              .filter((reply) => reply.parent === options.scope?.anchorId)
-              .map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } })),
-          ),
-        dispose: vi.fn(),
-      })),
+      // `respondsTo` is how the thread finds a row's place: one flat answer, each row naming its
+      // parent. A fixture without it renders nothing, whatever rows it returns.
+      query: vi.fn((_dataset: unknown, options: { scope?: { anchorId?: string } }) =>
+        liveRows(
+          replies
+            .filter((reply) => reply.parent === options.scope?.anchorId)
+            .map((reply) => ({ ...reply, kind: 'reply', respondsTo: { id: reply.parent } })),
+        ),
+      ),
     };
-    const empty = { query: vi.fn(() => ({ subscribe: () => Promise.resolve([]), dispose: vi.fn() })) };
+    const empty = { query: vi.fn(() => liveRows([])) };
     const stores = {
       $getEntity: (name: string) => (name === 'CollectionBlock' ? collections : empty),
       $currentDataset: () => ({ uuid: 'space' }),
