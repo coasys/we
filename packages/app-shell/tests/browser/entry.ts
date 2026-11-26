@@ -123,6 +123,9 @@ let disposeMount: (() => void) | undefined;
  */
 let mountedBackend: ReturnType<typeof createInMemoryBackend> | undefined;
 
+/** What the mounted scenario lets a profiled interaction do to it — see `Scenario.actions`. */
+let mountedActions: Scenario['actions'];
+
 function mount(name: string, width: number, scale?: number): void {
   disposeMount?.();
   const make = scenarios[name];
@@ -130,6 +133,7 @@ function mount(name: string, width: number, scale?: number): void {
   // A scenario that takes a scale seeds that many rows; one that does not ignores it, so every
   // existing layout case is untouched by the axis being there.
   const scenario: Scenario = make(scale);
+  mountedActions = scenario.actions;
 
   const backend = createInMemoryBackend({
     id: 'space-1',
@@ -474,6 +478,13 @@ function addRow(table: string, row: Record<string, unknown>): void {
   mountedBackend.mutate((tables) => {
     (tables[table] ??= []).push(row as never);
   });
+}
+
+/** Run one of the mounted scenario's own actions — a store answering again, say. */
+function act(name: string, ...args: unknown[]): void {
+  const run = mountedActions?.[name];
+  if (!run) throw new Error(`the mounted scenario has no action "${name}"`);
+  run(...args);
 }
 
 /** Make a peer's profile land, the way a fetch resolving does mid-call. */
@@ -1568,6 +1579,7 @@ function toastProbe(message: string, actionLabel = '', look?: ToastLook): string
   resizeMount,
   addRow,
   addProfile,
+  act,
   idleFrames,
   measure,
   measureAll,

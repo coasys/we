@@ -573,7 +573,8 @@ export function messageLine(opts: {
                     },
                   },
                   {
-                    // Marks — a mention, a link, emphasis — drawn the way a post draws them; plain text as text.
+                    // Every line with words is drawn the way a post draws them — breaks kept, marks and bare
+                    // URLs linked (see `lineContent`). Text alone is left for a line that has none to draw.
                     type: '$if',
                     props: {
                       condition: { $: `${as}.content` },

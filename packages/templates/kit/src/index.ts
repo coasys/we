@@ -74,6 +74,8 @@ export { profileEditor, profilePage } from './we/profile.ts';
 export { FLOWS_LOCALS, workflowsPage, workflowsSection } from './we/workflows.ts';
 export {
   canvasEditing,
+  CANVAS_CARDS_PER_KIND,
+  CANVAS_MAX_CARDS,
   canvasSeedOptions,
   INTERPRETABLE,
   FOCUS_DIM,

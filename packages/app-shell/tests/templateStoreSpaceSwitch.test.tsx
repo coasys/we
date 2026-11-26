@@ -8,6 +8,7 @@ import { createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { provideSeed } from '../src/shared/seedRegistry';
+import { liveRows } from './liveRows';
 
 const h = vi.hoisted(() => ({
   setCurrent: (() => {}) as (ds: unknown) => void,
@@ -83,7 +84,7 @@ describe('the template store across a switch of space', () => {
     registerEntity('Template', {
       findAll: async (handle: { dataset: string }) => templateReads.get(handle.dataset)?.promise ?? [],
       // The watch the store keeps on a space's templates: nothing changes here.
-      query: () => ({ subscribe: () => Promise.resolve([]), dispose: () => {} }),
+      query: () => liveRows([]),
     } as never);
     registerEntity('SpaceTemplatePreference', { findAll: async () => [] } as never);
     registerEntity('SpacePreference', {
