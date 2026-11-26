@@ -32,8 +32,8 @@ built for Android with uniffi bindings:
 - **The keys.** An Ed25519 device key (signing) and an X25519 key (for what is sent to the phone
   sealed), each a 32-byte seed. The seeds are made in software, in Rust, from the OS's random
   source, and are never kept in secure hardware: what the Keystore holds is the key that seals
-  them, a non-exportable AES-256-GCM key (`KeystoreKey.kt`; no user authentication, so a login asks
-  nothing). StrongBox is preferred: the app asks for the key there first. Where the phone has no
+  them, a non-exportable AES-256-GCM key (`KeystoreKey.kt`; no user authentication on the Keystore key itself, so unsealing
+  needs no unlock; each signing is still confirmed by the person in a prompt of its own, below). StrongBox is preferred: the app asks for the key there first. Where the phone has no
   StrongBox it takes whatever level `AndroidKeyStore` gives instead: the TEE on a phone with a
   hardware Keystore, software on an emulator or a phone without one. Every level is accepted, and
   the one the key actually has is reported: `protection` in `status()` and `create()` (`strongbox`,
@@ -43,7 +43,8 @@ built for Android with uniffi bindings:
   in `no_backup/device-keys/device-keys.json`, which no backup or transfer includes. Only public
   keys and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
   `signSession`. `signSession` signs a login or renewal statement, and each call raises a prompt
-  that names the address it signs for ("Sign in to https://host.example"), which the person
+  that shows the whole canonical address it signs for ("Sign in to https://host.example"; never
+  cut, and a destination that cannot be shown in full is refused), which the person
   answers with a fingerprint, a face or the screen lock. The statement's shape and domain
   separation are the native side's. A script in the app's origin can ask for a signature, but it
   cannot get one the person does not see and allow. See "Who may call the plugin" below.
@@ -168,8 +169,22 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   is never overwritten.
 
 - **Who may call the plugin.** WE runs installed modules and cartridges in the same origin as its
-  own pages, so "a call from this app" says nothing about who made it. The plugin (`CallerPage.kt`)
-  reads the WebView's own address natively, and what a script cannot fake is the rule:
+  own pages, so "a call from this app" says nothing about who made it. The plugin binds the
+  principal to the **document**, not to an address: `CallerDocument.kt` records which document is
+  loaded, from real page loads only (`bridge.addWebViewListener` → `onPageStarted`, which Android
+  raises for a navigation that creates a document and not for `history.pushState`, `replaceState`
+  or a fragment change), and each real load bumps a generation counter. The WebView's current
+  address (`WebView.url`) is never read for the gate, because a script on any page of the origin
+  can rewrite it with `pushState` without loading the identity page. `CallerPage.kt` only parses
+  the loaded document's address. From `onPageStarted` until the matching `onPageLoaded` the new
+  document is _loading_ and admits no identity-page call, because a page that sets `location`
+  keeps running and posting until it unloads; the call is admitted on the bridge's thread before
+  any wait. Only main-frame calls reach a plugin: Capacitor's `MessageHandler` registers
+  `androidBridge` with `WebViewCompat.addWebMessageListener` and drops a message whose `isMainFrame`
+  is false, so an iframe loading `identity.html` cannot call (the plugin refuses outright under
+  `useLegacyBridge`, whose `addJavascriptInterface` reaches every frame). A call that waits (a prompt, the camera, the network) holds a
+  ticket with the generation it was admitted under and is refused with `NotAllowed` if any load
+  happened before it mutates or signs, so what a script cannot fake is the rule:
   - Everything that links a device, sends the master key, renames, revokes, answers a request,
     joins, takes or asks for the master key, or opens the camera is accepted **only from the
     identity page** (`/mobile/identity.html`, `IDENTITY_PAGE` in `phoneCustody.ts`); any other page
@@ -177,7 +192,7 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   - Reads of public state (`status`, `identityStatus`, `devices`, `requests`, `masterWaiting`) and
     `signSession` are open to the app's other pages, because Settings and the key login at boot
     run there. `signSession` is the one signing call that is, and it is confirmed by the person each
-    time (title: the address). Because the prompt is shown for every signing, a session renewal asks
+    time (title and description: the full address). Because the prompt is shown for every signing, a session renewal asks
     too.
   - `scanDevice()` takes no code: the camera reads it inside the plugin, and the page learns only
     that a link is running. A pasted code cannot add a device.
@@ -187,7 +202,10 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
   - Sending the master key (`keepMaster`) asks for a strong biometric of its own, separate from the
     unlock that opened the master key, and names the device ("Send your master key to Work
     laptop"). `rename` asks too ("Rename Phone to Office").
-  - The address is read when the call arrives. WebView debugging stays off unless a build asks for
+  - The document is checked when the call arrives and again after every prompt, scan or link step
+    that precedes a change. Not yet confirmed on a device: that `onPageStarted` stays silent for
+    `pushState` on a real WebView (below the Capacitor source, it is Android's documented
+    `WebViewClient` behaviour). WebView debugging stays off unless a build asks for
     it (below), since a call from DevTools would come from the page it is on.
 - **What it cannot.** Anything that needs the 12 words: replacing the master key, restoring, and a
   revoke that rotates. The phone takes no words (`takesWords: false`), and those requests are left

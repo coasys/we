@@ -20,7 +20,15 @@ object PromptText {
     return if (line.length <= max) line else line.take(max - 1) + "…"
   }
 
-  /** The origin a session is signed for, as `https://host` or `https://host:port`; null if it is no http(s) address. */
+  /** The longest host DNS allows; a longer one is no destination to sign for. */
+  private const val MAX_HOST = 253
+
+  /**
+   * The origin a session is signed for, canonical and whole: `scheme://host` or `scheme://host:port`,
+   * the scheme and host lower-case, an internationalised host in its ASCII (punycode) form so a
+   * look-alike shows as what it is. Null — the call is refused, never shortened — if it is no http(s)
+   * address, names a user, or its host is empty, unconvertible or longer than [MAX_HOST].
+   */
   fun originOf(url: String): String? {
     val uri = try {
       URI(url.trim())
@@ -28,16 +36,39 @@ object PromptText {
       return null
     }
     val scheme = uri.scheme?.lowercase()
-    val host = uri.host
-    if ((scheme != "https" && scheme != "http") || host.isNullOrEmpty()) return null
-    return if (uri.port == -1) "$scheme://$host" else "$scheme://$host:${uri.port}"
+    // java.net.URI reads a non-ASCII host as a registry authority and gives no host: split it by hand.
+    var port = uri.port
+    var raw = uri.host
+    if (raw == null) {
+      val authority = uri.authority ?: return null
+      val m = Regex("^([^@:/\\[\\]]+)(?::(\\d{1,5}))?$").matchEntire(authority) ?: return null
+      raw = m.groupValues[1]
+      port = m.groupValues[2].takeIf { it.isNotEmpty() }?.toInt() ?: -1
+    }
+    if ((scheme != "https" && scheme != "http") || raw.isNullOrEmpty() || uri.rawUserInfo != null) return null
+    val host = if (raw.startsWith("[")) {
+      raw.lowercase()
+    } else {
+      try {
+        java.net.IDN.toASCII(raw, java.net.IDN.USE_STD3_ASCII_RULES).lowercase()
+      } catch (_: IllegalArgumentException) {
+        return null
+      }
+    }
+    if (host.isEmpty() || host.length > MAX_HOST || host.any { it.isISOControl() || it.isWhitespace() }) return null
+    return if (port == -1) "$scheme://$host" else "$scheme://$host:$port"
   }
 
+  /**
+   * The sign-in prompt. The origin is shown in full, never cut by [plain]: it is the destination the
+   * person authorises, and a cut would show only a trusted-looking prefix of a longer host. It is in
+   * the title and again in the description, which wraps.
+   */
   fun signIn(renew: Boolean, origin: String): Words =
     if (renew) {
-      Words("Stay signed in to ${plain(origin, 60)}", "This phone will renew its sign-in there with its device key.")
+      Words("Stay signed in to $origin", "This phone will renew its sign-in at $origin with its device key.")
     } else {
-      Words("Sign in to ${plain(origin, 60)}", "This phone will sign in there with its device key.")
+      Words("Sign in to $origin", "This phone will sign in at $origin with its device key.")
     }
 
   fun sendMaster(device: String): Words =
