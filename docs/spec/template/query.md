@@ -118,6 +118,11 @@ then [refused](#refusal), never ordered by the first alone. A key may also be a 
 key MUST be the only key of `order`, and the query MUST have a `limit`; without one a host MAY ignore
 the order.
 
+Values compare as the range bounds do: numbers as numbers, text by UTF-16 code units (so `'B'` comes
+before `'a'`, and ISO dates in time order). A record with no value for a key comes after every record
+with one, ascending and descending alike. Records the keys do not tell apart come in no specified
+order.
+
 `limit` keeps the first rows of the order; `offset` skips rows before them. An `offset` without a
 `limit` is refused.
 
