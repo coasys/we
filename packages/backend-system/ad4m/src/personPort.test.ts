@@ -34,6 +34,18 @@ describe('createAd4mPersonPort', () => {
     expect(await persons.personOf(LONER)).toBe(LONER);
   });
 
+  it('answers a revoked device key with its person: revocation is not judged here, and personOf takes no moment', async () => {
+    // The executor still lists a revoked key in the log, and resolve answers the person's document.
+    const resolve = vi.fn(async () => ({
+      didDocument: { id: PERSON },
+      didResolutionMetadata: { 'coasys:keyValid': false },
+    }));
+    const persons = createAd4mPersonPort({ identity: { resolve } });
+
+    expect(persons.personOf.length).toBe(1);
+    expect(await persons.personOf(LAPTOP)).toBe(PERSON);
+  });
+
   it('answers a person, and anything that is not a device key, as itself without asking', async () => {
     const resolve = resolverFor({});
     const persons = createAd4mPersonPort({ identity: { resolve } });

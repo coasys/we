@@ -7,14 +7,14 @@
  * is the person. Resolving a device `did:key` answers the person's DID document, whose `id` is that
  * `did:scid`; a key no log lists is its own person, as it was before key logs.
  *
- * ## Why `at` is not judged here
+ * ## Revocation is not judged here
  *
- * The contract asks for the person a key spoke for at a moment. The executor has already judged
- * that, per link, before anything reaches WE: a link names the seq of the log it was signed at, and
- * a model query counts only links whose key was valid there (ad4m #1597). So a record WE reads was
- * written while its key spoke for its person, and a key that was revoked later keeps having written
- * it. WE could not judge `at` itself anyway: a key log orders its events by seq and carries no time.
- * So the answer is the person the log lists the key under, whatever `at` says.
+ * The port answers which person a key belongs to, and takes no moment. The executor judges
+ * revocation per link, before anything reaches WE: a link names the seq of the log it was signed at,
+ * and a model query counts only links whose key was valid there (ad4m #1597). References it cannot
+ * confirm carry an `AuthorVerdict` instead. WE could not judge a moment itself: a key log orders its
+ * events by seq and carries no time. So the answer is the person the log lists the key under, and a
+ * revoked key still answers that person.
  *
  * ## Caching
  *
