@@ -236,9 +236,10 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
    *
    * - Deleting the type removes nothing. Every reaction ever given stays in the dataset, now
    *   naming an id nothing resolves, counted by no projection and rendered by nothing.
-   * - Re-creating a type with the same slug does not bring them back either. The backend mints a
-   *   fresh record id, so the old rows still name the dead one. "Delete it and add it back" loses the
-   *   history permanently, which is exactly the thing a person would expect to be safe.
+   * - Re-creating a type with the same slug brings the id back — a type's id derives from its slug —
+   *   but not what it was: its mode, range and reading are whatever the new one is given, so the old
+   *   rows are read by a type that may no longer mean what they were given as. "Delete it and add it
+   *   back" is not the safe round trip a person would expect.
    * - Cascading the delete instead — sweeping up every `Signal` with that id — is worse than it
    *   looks. It is thousands of sequential removals in an established space; it destroys *other
    *   members'* reactions on one person's click, in a shared space every member can write to; it

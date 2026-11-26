@@ -294,6 +294,30 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
                     issue(`${bp}.fields`, `${entity} requires "${prop}", which this create does not give`);
               }
             });
+            /*
+              An identity is a fact about one entity's records, so it is declared on a create of a
+              named entity, over fields that entity holds one value of — its properties and to-one
+              relations — each given by the create, since a field it leaves absent could not key it.
+            */
+            const identity = body.identity as string[] | undefined;
+            if (identity) {
+              if (isExpressionToken(body.entity))
+                issue(
+                  `${bp}.identity`,
+                  'an identity keys one entity’s records; this create’s entity is chosen when it runs',
+                );
+              if (new Set(identity).size !== identity.length)
+                issue(`${bp}.identity`, 'an identity names each field once');
+              const target = typeof body.entity === 'string' ? view(body.entity) : undefined;
+              identity.forEach((field, i) => {
+                if (!target) return;
+                const single = field in target.properties || target.relations[field]?.cardinality === 'one';
+                if (!single)
+                  issue(`${bp}.identity.${i}`, `${String(body.entity)} has no property or to-one relation "${field}"`);
+                else if (isPlainObject(fields) && !isExpressionToken(fields) && !(field in fields))
+                  issue(`${bp}.identity.${i}`, `"${field}" is the record’s identity, and this create does not give it`);
+              });
+            }
             const parent = body.parent as { id: unknown; relation: string; entity?: string } | undefined;
             if (parent) {
               checkValue(parent.id, scope, `${bp}.parent.id`);

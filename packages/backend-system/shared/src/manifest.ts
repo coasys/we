@@ -545,6 +545,12 @@ export interface CreateStep {
   /** The fields, or one expression giving them all — for a record whose entity is chosen at run time. */
   fields: Record<string, OperationValue> | OperationExpression;
   parent?: { id: OperationValue; relation: string; entity?: string };
+  /**
+   * The fields whose values are the record's identity: its id derives from the entity and these
+   * values rather than from the invocation, so every create of the same identity, anywhere, names
+   * the same record, and a second is refused as `recordExists`.
+   */
+  identity?: string[];
 }
 
 export interface UpdateStep {
@@ -769,6 +775,7 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
         oneOf,
         fields: z.union([expressionToken, valueMap]),
         parent: z.strictObject({ id: present, relation: z.string(), entity: z.string().optional() }).optional(),
+        identity: z.array(z.string()).min(1).optional(),
       }),
     }),
     z.strictObject({

@@ -150,21 +150,25 @@ mostly made of:
 
 **The rules the cases above leave open**, over more of the suite's own operations:
 
-| Case                    | What it shows                                                                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `expect-holds`          | An `expect` find that reads the same at the end lets the operation land.                                                               |
-| `expect-changed`        | A record another writer commits after the `expect` find read fails the operation as `expectChanged`; nothing lands.                    |
-| `find-scope-levels`     | A `scope` walk with `levels: [10, 10]` reaches children and grandchildren and stops; the anchor is not in it.                          |
-| `find-scope-transitive` | A `transitive` walk reaches everything under the anchor.                                                                               |
-| `not-absent`            | `NOT` over a comparison matches a record with no value for the field.                                                                  |
-| `refused-write`         | A write the policy refuses fails as `refused`, and the record made before it does not land.                                            |
-| `author-deletes-own`    | A record the operation made is the invoker's, so an author-only delete of it is allowed.                                               |
-| `call-derived-id`       | A record made inside a `call` takes its id from the call's path (`0`, `c=conformance.note`, `0`); its author is the invoker.           |
-| `when-false-create`     | A create whose `when` is false writes nothing, and its `as` reads as no value afterwards.                                              |
-| `forEach-replay`        | `create-and-link` replayed onto a dataset holding its done column: the same id for that key, refused as `recordExists`, nothing added. |
-| `create-onto-held-id`   | A derived id a record of another entity already holds is refused as `recordExists`.                                                    |
-| `protected-entity`      | A write to an access-control entity chosen at run time fails as static `protectedEntity`; nothing lands.                               |
-| `relation-order`        | An ordered relation keeps the order written, an unordered one compares as a set, and records list in code-point order.                 |
+| Case                           | What it shows                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `expect-holds`                 | An `expect` find that reads the same at the end lets the operation land.                                                               |
+| `expect-changed`               | A record another writer commits after the `expect` find read fails the operation as `expectChanged`; nothing lands.                    |
+| `find-scope-levels`            | A `scope` walk with `levels: [10, 10]` reaches children and grandchildren and stops; the anchor is not in it.                          |
+| `find-scope-transitive`        | A `transitive` walk reaches everything under the anchor.                                                                               |
+| `not-absent`                   | `NOT` over a comparison matches a record with no value for the field.                                                                  |
+| `refused-write`                | A write the policy refuses fails as `refused`, and the record made before it does not land.                                            |
+| `author-deletes-own`           | A record the operation made is the invoker's, so an author-only delete of it is allowed.                                               |
+| `call-derived-id`              | A record made inside a `call` takes its id from the call's path (`0`, `c=conformance.note`, `0`); its author is the invoker.           |
+| `when-false-create`            | A create whose `when` is false writes nothing, and its `as` reads as no value afterwards.                                              |
+| `forEach-replay`               | `create-and-link` replayed onto a dataset holding its done column: the same id for that key, refused as `recordExists`, nothing added. |
+| `create-onto-held-id`          | A derived id a record of another entity already holds is refused as `recordExists`.                                                    |
+| `protected-entity`             | A write to an access-control entity chosen at run time fails as static `protectedEntity`; nothing lands.                               |
+| `relation-order`               | An ordered relation keeps the order written, an unordered one compares as a set, and records list in code-point order.                 |
+| `identity-id`                  | A create keyed by `identity` takes its id from the entity and the slug, not the invocation.                                            |
+| `identity-id-other-invocation` | Another invocation naming the same identity gets the same id as `identity-id`.                                                         |
+| `identity-twice`               | A second create of the same identity is refused as `recordExists`; nothing lands.                                                      |
+| `identity-not-invocation`      | A record keyed by identity and one keyed by the invocation get different ids.                                                          |
 
 ## What a vector does not carry
 

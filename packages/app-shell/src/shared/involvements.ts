@@ -82,13 +82,11 @@ const rank = (semantic: string) => {
  * The kinds this space uses, as screens read them.
  *
  * Ordered by semantic — who is doing it, who is checking it, who is coming, who might, who will not —
- * which is the only order that means anything across communities. Records sharing a slug collapse to
- * the earliest, since to every involvement holding that slug they are one kind.
+ * which is the only order that means anything across communities. A slug names one record, since a
+ * kind's id derives from its slug; a record without a slug names nothing an involvement could hold.
  */
 export function resolveInvolvementTypes(own: readonly InvolvementTypeView[]): InvolvementTypeView[] {
-  const bySlug = new Map<string, InvolvementTypeView>();
-  for (const kind of own) if (kind.slug && !bySlug.has(kind.slug)) bySlug.set(kind.slug, kind);
-  return [...bySlug.values()].sort((a, b) => rank(a.semantic) - rank(b.semantic));
+  return own.filter((kind) => kind.slug).sort((a, b) => rank(a.semantic) - rank(b.semantic));
 }
 
 /** A to-one relation's id: the id itself, or the record when the read included it. */

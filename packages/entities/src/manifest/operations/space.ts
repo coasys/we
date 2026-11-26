@@ -19,9 +19,12 @@ import { TaskState } from '../TaskState';
   what the error tells them. A name with no letters or digits in it has no slug, and is refused with
   `noSlug`.
 
-  The check reads committed state, so two members naming the same thing at the same instant on two
-  nodes can still make two records with one slug. Every reader takes the earliest of them for the
-  slug and the later one is inert; an edit by slug edits them all, so they never disagree.
+  The slug is also the record's identity (`identity: ['slug']` on the create), so its id derives from
+  the entity and the slug, the same on every node. The check reads committed state and names the
+  refusal in a person's words; the identity is what holds when it cannot see: two members naming the
+  same thing at the same instant on two nodes write one record, not two, and a second create the
+  check did not catch is refused as `recordExists`. So a slug names one record, and an edit by slug
+  edits that one.
 */
 
 /** The slug a create writes: the one given, else the name's. */
@@ -56,22 +59,18 @@ const listOf = (values: readonly string[]) => `[${values.map((v) => `'${v}'`).jo
 const TASK_SEMANTICS = listOf(TaskState.unions!.semantic.values);
 const INVOLVEMENT_SEMANTICS = listOf(InvolvementType.unions!.semantic.values);
 
-/*
-  Every record with one slug, oldest first. An edit by slug reaches each of them: they are one thing
-  to every reader, and a later duplicate left unedited would disagree with the one shown the moment
-  the earlier is gone.
-*/
+/** The record a slug names, and the named error when the space has none. */
 const bySlug = (entity: string, error: string): OperationStep[] => [
-  { find: { as: 'named', entity, where: { slug: { $: 'slug' } }, order: { createdAt: 'asc' } } },
+  { find: { as: 'named', entity, where: { slug: { $: 'slug' } }, limit: 1 } },
   { check: { condition: { $: 'count(named) > 0' }, error } },
 ];
 
-const eachNamed = (steps: (id: string) => OperationStep[]): OperationStep => ({
-  forEach: { in: { $: 'named' }, as: 'record', steps: steps('record') },
-});
+/** The steps of an edit of the record `bySlug` found, given the expression naming it. */
+const onNamed = (steps: (id: string) => OperationStep[]): OperationStep[] => steps('first(named)');
 
-const editBySlug = (entity: string, fields: Record<string, { $: string }>): OperationStep =>
-  eachNamed((id) => [{ update: { entity, id: { $: id }, fields } }]);
+const editBySlug = (entity: string, fields: Record<string, { $: string }>): OperationStep => ({
+  update: { entity, id: { $: 'first(named)' }, fields },
+});
 
 const retireParams = (what: string): Record<string, OperationParam> => ({
   slug: { type: 'string', required: true, description: `The ${what}’s slug.` },
@@ -174,6 +173,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
         create: {
           as: 'made',
           entity: 'TaskState',
+          identity: ['slug'],
           fields: {
             name: { $: 'trim(name)' },
             slug: { $: NAME_SLUG },
@@ -231,7 +231,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
     errors: { unknownState: 'This space has no state by that slug.' },
     steps: [
       ...bySlug('TaskState', 'unknownState'),
-      eachNamed((id) => [
+      ...onNamed((id) => [
         {
           update: {
             entity: 'TaskState',
@@ -251,7 +251,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
     errors: { unknownState: 'This space has no state by that slug.' },
     steps: [
       ...bySlug('TaskState', 'unknownState'),
-      eachNamed((id) => {
+      ...onNamed((id) => {
         const kept = `concat(slice(${id}.evidence, 0, index), slice(${id}.evidence, index + 1))`;
         // None left is no requirement at all, stored as nothing rather than as an empty list.
         return [
@@ -279,8 +279,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
       slugs: { type: 'list', required: true, description: 'The states’ slugs, in the order wanted.' },
     },
     steps: [
-      // Oldest first, so a slug held twice orders the record every reader shows for it.
-      { find: { as: 'states', entity: 'TaskState', order: { createdAt: 'asc' } } },
+      { find: { as: 'states', entity: 'TaskState' } },
       {
         setRelation: {
           entity: 'Space',
@@ -319,6 +318,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
         create: {
           as: 'made',
           entity: 'SignalType',
+          identity: ['slug'],
           fields: {
             name: { $: 'trim(name)' },
             slug: { $: SLUG },
@@ -363,6 +363,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
         create: {
           as: 'made',
           entity: 'RelationshipType',
+          identity: ['slug'],
           fields: {
             name: { $: 'trim(name)' },
             slug: { $: SLUG },
@@ -400,6 +401,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
         create: {
           as: 'made',
           entity: 'InvolvementType',
+          identity: ['slug'],
           fields: {
             name: { $: 'trim(name)' },
             slug: { $: NAME_SLUG },

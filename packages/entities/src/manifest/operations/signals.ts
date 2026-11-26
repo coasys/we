@@ -103,8 +103,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
       notYours: 'Only the person it is about can give that answer.',
     },
     steps: [
-      // Two records with one slug are one kind to everything holding it; the earliest speaks for it.
-      { find: { as: 'kinds', entity: 'InvolvementType', where: { slug: { $: 'kind' } }, order: { createdAt: 'asc' } } },
+      { find: { as: 'kinds', entity: 'InvolvementType', where: { slug: { $: 'kind' } }, limit: 1 } },
       { check: { condition: { $: 'count(kinds) > 0' }, error: 'unknownKind' } },
       { check: { condition: { $: '!first(kinds).reflexive || agent == invoker' }, error: 'notYours' } },
       {

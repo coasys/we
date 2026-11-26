@@ -357,6 +357,49 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } },
     ],
   },
+  /*
+    Records keyed by identity: their ids derive from the entity and the slug, never the invocation.
+  */
+  nameState: {
+    description: 'A task state, keyed by its slug.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'made',
+          entity: 'TaskState',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+    ],
+    returns: { $: 'made.id' },
+  },
+  nameStateTwice: {
+    description: 'The same task state named twice in one operation, and a note before it.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'TaskState', identity: ['slug'], fields: { name: 'One', slug: { $: 'slug' } } } },
+      { create: { entity: 'TaskState', identity: ['slug'], fields: { name: 'Two', slug: { $: 'slug' } } } },
+    ],
+  },
+  nameStateBesideNote: {
+    description: 'A task state keyed by its slug and a note keyed by the invocation, answering both ids.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'state',
+          entity: 'TaskState',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+      { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'slug' } } } },
+    ],
+    returns: { $: '[state.id, note.id]' },
+  },
   linkTwo: {
     description: 'Links two records under a holder, in the order given, through an ordered and an unordered relation.',
     params: {
@@ -911,6 +954,54 @@ const CASES: OperationCase[] = [
     invocationId: '00000000-0000-4000-8000-000000000040',
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children', 'mentions'] }],
+  },
+  /*
+    Identity: the id a keyed create derives is the entity's and the slug's, the same from any
+    invocation; a second create of it is refused; and it is never an id an invocation derives.
+  */
+  {
+    id: 'identity-id',
+    note: 'a create keyed by identity derives its id from the entity and the slug, not the invocation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-id-other-invocation',
+    note: 'another invocation naming the same identity derives the same id as identity-id',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000042',
+    invokedAt: AT,
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-twice',
+    note: 'a second create of the same identity is refused as recordExists, and nothing the operation made lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateTwice',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000043',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-not-invocation',
+    note: 'a record keyed by identity and one keyed by the invocation get different ids, the first the one identity-id derives',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateBesideNote',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000044',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['slug'], relations: [] }],
   },
 ];
 

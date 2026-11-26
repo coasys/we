@@ -120,7 +120,11 @@ the read widened. So the runner rewrites the evaluated where first:
 2. `fields` is evaluated; it MUST give an object, otherwise static `malformed`. A field whose value
    is absent is left out (absent is how a field starts). A field holding `''` or `null` is passed to
    the backend, which stores no value for it.
-3. The record's id is derived from the step's path ([Ids](#ids)).
+3. The record's id is derived: from its identity when the create declares one ([Identity
+   ids](#identity-ids)), else from the step's path ([Ids](#ids)). An identity field with no value,
+   or with a value that is not a string, number or boolean, fails with static `malformed`. If this
+   operation already created a record under that id, the operation fails with precondition
+   `recordExists`.
 4. With a `parent`, `parent.id` is evaluated. No value means the record is created with no parent;
    otherwise it is created under that record, joining its `parent.relation`.
 5. The record is created, in the operation's transaction. If a record with the derived id already
@@ -296,6 +300,37 @@ The first two are the board and its first column in the `create-and-link` vector
 A host that needs to know a record's id before the operation runs (to show it optimistically, or to
 pass it to a later write) MAY derive it the same way from the invocation id it will use.
 
+### Identity ids
+
+A `create` with `identity` ([Format](format.md#create)) names its record by what it is, not by who
+made it: the id is the same from every invocation, so the same identity made twice, anywhere, is one
+record.
+
+1. Take the list `['', entity, field₁, value₁, field₂, value₂, …]`: the empty string, the create's
+   entity name, then each identity field in the order `identity` lists them, followed by its value
+   as text: a string as it is, a number as its shortest round-tripping decimal (as a `forEach` key
+   is), `true` or `false`.
+2. Continue from step 2 of the derivation above: frame each element, hash, and format the UUID.
+
+**Why an empty first element.** It is the domain. An invocation id is a non-empty string, so the
+framing of an identity begins `0:` and no invocation's framing ever does: the two kinds of id are
+derived from inputs that can never be equal, and so never collide short of SHA-256 colliding. A
+runner MUST refuse an empty `invocationId` (static `malformed`).
+
+An identity names a record within its dataset. The same identity in two datasets gives the same id
+in each, which the data model allows: ids are unique within a dataset.
+
+**Examples.** Normative test vectors.
+
+| entity      | identity                                              | bytes hashed (as text)                                    | id                                              |
+| ----------- | ----------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| `TaskState` | `slug` = `blocked`                                    | `0:9:TaskState4:slug7:blocked`                            | `urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49` |
+| `Role`      | `slug` = `admin`                                      | `0:4:Role4:slug5:admin`                                   | `urn:uuid:86c6ab81-f4a4-8f85-997b-e64cde1d859e` |
+| `Vote`      | `poll` = `urn:example:p`, `voter` = `did:example:ann` | `0:4:Vote4:poll13:urn:example:p5:voter15:did:example:ann` | `urn:uuid:6ce7df0a-6f09-8bff-a03e-b41f62804a81` |
+| `Seat`      | `row` = `café`, `n` = `1.5`                           | `0:4:Seat3:row5:café1:n3:1.5` (`é` is two bytes)          | `urn:uuid:88084a04-6308-804b-8623-9ce69f883852` |
+
+The first is the state in the `identity-id` vector ([Conformance](conformance.md)).
+
 ## Atomicity
 
 **Definition.** An operation is atomic when:
@@ -386,7 +421,7 @@ way; the fault is in the definition or the call.
 | `ambiguous`       | A `find` with `one` matched more than one record.                                                      |
 | `alreadyLinked`   | A strict `link`'s target is already a member.                                                          |
 | `notLinked`       | A strict `unlink`'s target is not a member.                                                            |
-| `recordExists`    | A `create`'s derived id is already held: most often, a replay.                                         |
+| `recordExists`    | A `create`'s derived id is already held: most often a replay, or the same identity made again.         |
 | `expectChanged`   | An `expect` find's answer changed before commit.                                                       |
 | `refused`         | The write check refused a write.                                                                       |
 | _a declared name_ | A `check` failed with one of the operation's (or a callee's) `errors`.                                 |

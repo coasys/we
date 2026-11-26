@@ -37,9 +37,39 @@ function uuidV8(bytes: Uint8Array): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-export async function deriveRecordId(invocationId: string, path: readonly string[]): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', framed([invocationId, ...path]) as BufferSource);
+async function idOf(parts: readonly string[]): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', framed(parts) as BufferSource);
   return `urn:uuid:${uuidV8(new Uint8Array(digest))}`;
+}
+
+export async function deriveRecordId(invocationId: string, path: readonly string[]): Promise<string> {
+  if (!invocationId) throw new Error('An invocation id is a non-empty string');
+  return idOf([invocationId, ...path]);
+}
+
+/**
+ * The id of a record whose identity is the values of some of its fields — a task state by its slug —
+ * the same on every run and every node, whoever creates it.
+ *
+ * The input is framed exactly as an invocation's is, from the list `['', entity, field₁, value₁, …]`,
+ * the fields in the order the identity names them. The empty first segment is the domain: an
+ * invocation id is never empty, so no identity's bytes can equal any invocation's, and the two kinds
+ * of id cannot collide short of SHA-256 doing so. A value is its text: a string as it is, a number as
+ * its shortest round-tripping decimal (`1`, `1.5`), a boolean as `true` or `false`.
+ */
+export async function deriveIdentityId(
+  entity: string,
+  identity: readonly (readonly [field: string, value: string])[],
+): Promise<string> {
+  return idOf(['', entity, ...identity.flat()]);
+}
+
+/** An identity value's text, or undefined for a value that cannot be one (absent, '', a list, an object). */
+export function identityText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value === '' ? undefined : value;
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value === 'boolean') return String(value);
+  return undefined;
 }
 
 /** The path segment a forEach item contributes. */

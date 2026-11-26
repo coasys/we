@@ -2125,9 +2125,7 @@
                       "$": "kind"
                     }
                   },
-                  "order": {
-                    "createdAt": "asc"
-                  }
+                  "limit": 1
                 }
               },
               {
@@ -3277,6 +3275,7 @@
                 "create": {
                   "as": "made",
                   "entity": "TaskState",
+                  "identity": ["slug"],
                   "fields": {
                     "name": {
                       "$": "trim(name)"
@@ -4869,6 +4868,311 @@
             "kind": "board",
             "children": ["urn:example:alpha", "urn:example:Zed"],
             "mentions": ["urn:example:Zed", "urn:example:alpha"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "identity-id",
+      "note": "a create keyed by identity derives its id from the entity and the slug, not the invocation",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameState": {
+            "description": "A task state, keyed by its slug.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": {
+                      "$": "slug"
+                    },
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameState",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000041",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
+      },
+      "records": {
+        "TaskState": [
+          {
+            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "name": "blocked",
+            "slug": "blocked"
+          }
+        ]
+      }
+    },
+    {
+      "id": "identity-id-other-invocation",
+      "note": "another invocation naming the same identity derives the same id as identity-id",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameState": {
+            "description": "A task state, keyed by its slug.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": {
+                      "$": "slug"
+                    },
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameState",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000042",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
+      },
+      "records": {
+        "TaskState": [
+          {
+            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "name": "blocked",
+            "slug": "blocked"
+          }
+        ]
+      }
+    },
+    {
+      "id": "identity-twice",
+      "note": "a second create of the same identity is refused as recordExists, and nothing the operation made lands",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameStateTwice": {
+            "description": "The same task state named twice in one operation, and a note before it.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": "before"
+                  }
+                }
+              },
+              {
+                "create": {
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": "One",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              },
+              {
+                "create": {
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": "Two",
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameStateTwice",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000043",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        },
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "recordExists"
+        }
+      },
+      "records": {
+        "CollectionBlock": [],
+        "TaskState": []
+      }
+    },
+    {
+      "id": "identity-not-invocation",
+      "note": "a record keyed by identity and one keyed by the invocation get different ids, the first the one identity-id derives",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameStateBesideNote": {
+            "description": "A task state keyed by its slug and a note keyed by the invocation, answering both ids.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "state",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": {
+                      "$": "slug"
+                    },
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              },
+              {
+                "create": {
+                  "as": "note",
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "[state.id, note.id]"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameStateBesideNote",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000044",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        },
+        {
+          "entity": "TaskState",
+          "fields": ["slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": ["urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49", "urn:uuid:91a23257-f20e-8662-944b-a36c0f505eb0"]
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:uuid:91a23257-f20e-8662-944b-a36c0f505eb0",
+            "kind": "note",
+            "title": "blocked"
+          }
+        ],
+        "TaskState": [
+          {
+            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "slug": "blocked"
           }
         ]
       }

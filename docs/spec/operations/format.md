@@ -191,16 +191,29 @@ not part of this version.
 
 Creates one record.
 
-| Key      | Required                    | Value                                                                                                                                                                                                                                                |
-| -------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `as`     | no                          | The name the created record is bound to.                                                                                                                                                                                                             |
-| `entity` | yes                         | An entity.                                                                                                                                                                                                                                           |
-| `oneOf`  | with an expression `entity` | See [Chosen entities](#chosen-entities).                                                                                                                                                                                                             |
-| `fields` | yes                         | An object of field name to value, or one expression giving the whole object.                                                                                                                                                                         |
-| `parent` | no                          | `{ "id": value, "relation": name, "entity"?: name }`: a record this one is created under, through the parent's to-many relation `relation`. `entity` names the parent's entity where the relation's name alone does not decide it. `id` is required. |
+| Key        | Required                    | Value                                                                                                                                                                                                                                                |
+| ---------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `as`       | no                          | The name the created record is bound to.                                                                                                                                                                                                             |
+| `entity`   | yes                         | An entity.                                                                                                                                                                                                                                           |
+| `oneOf`    | with an expression `entity` | See [Chosen entities](#chosen-entities).                                                                                                                                                                                                             |
+| `fields`   | yes                         | An object of field name to value, or one expression giving the whole object.                                                                                                                                                                         |
+| `parent`   | no                          | `{ "id": value, "relation": name, "entity"?: name }`: a record this one is created under, through the parent's to-many relation `relation`. `entity` names the parent's entity where the relation's name alone does not decide it. `id` is required. |
+| `identity` | no                          | A literal non-empty list of field names: the record's **identity**. Its id derives from the entity and these fields' values rather than from the invocation ([Identity ids](execution.md#identity-ids)).                                             |
 
 `fields` MUST NOT name `id`: a created record's id is derived ([Ids](execution.md#ids)). The same
 holds for `update`.
+
+**Identity.** A record type whose records are one per value of some fields (a task state per slug,
+a role per slug) says so on its creates: `"identity": ["slug"]`. The create's `entity` MUST be a
+literal name; each field MUST be a property or a to-one relation of that entity, named once, and
+given in a literal `fields`. Every create of the same identity, by any invocation on any node, names
+the same record: a second one is refused as `recordExists`, and on a backend that merges what
+several nodes wrote, the writes land on one record rather than making two.
+
+> **Why on the create.** The id has to be known when the record is made, by whoever makes it, with
+> no read: a read sees only what this node has, and two nodes naming the same thing at once would
+> each see nothing and make one each. The name is the model's (the `identity` profile of the shared
+> model spec), for the same meaning: these fields say which record this is.
 
 ### `update`
 
@@ -343,6 +356,8 @@ SHOULD report each problem with a path to it (`operations.vote.steps.2.forEach.s
     requires. The call graph is acyclic.
 13. `forEach` nests at most three deep. A `forEach` without `key` whose `in` is a literal list has
     an `id` or a `key` on every item.
+14. A `create` with `identity` names a literal entity, and each identity field once, each a property
+    or a to-one relation of the entity and, where `fields` is a literal map, given in it.
 
 Checks 5 and 8 to 10 do not apply to the members of `{ "category": "any" }`, which nothing in view
 stands for, nor to a `relation` given as an expression: those are judged by the backend when the

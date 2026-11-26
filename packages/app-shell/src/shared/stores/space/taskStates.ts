@@ -19,7 +19,6 @@ import type { BoardWorkflow } from '../../boards';
 import { distinctSignal } from '../../distinctSignal';
 import { evidenceSubjectOf } from '../../evidenceSubjects';
 import { followLive } from '../../followLive';
-import { isoOf } from '../../interpretation/callExport';
 import {
   approvalsOf,
   compileTaskWorkflow,
@@ -57,25 +56,6 @@ export interface SpaceTaskStatesDeps extends SpaceContext {
    * after this part and reached only when somebody names one.
    */
   addStateToSpaceBoard: (slug: string, name: string) => Promise<void>;
-}
-
-/**
- * One record per slug, the earliest written winning.
- *
- * Two members naming the same state at the same moment on two nodes produce two records with one
- * slug, and a task names its state by slug — so to every task they are one state, and the list
- * should say so too. The earliest is kept because it is the one most peers already hold; the later one is
- * inert, never offered and never listed, and costs nothing.
- */
-function dedupeBySlug(records: TaskState[]): TaskState[] {
-  const stamp = (r: TaskState) =>
-    isoOf((r as unknown as { timestamp?: unknown }).timestamp ?? (r as unknown as { createdAt?: unknown }).createdAt);
-  const bySlug = new Map<string, TaskState>();
-  for (const record of [...records].sort((a, b) => stamp(a).localeCompare(stamp(b)))) {
-    const slug = record.slug || deriveSlug(record.name || '');
-    if (!bySlug.has(slug)) bySlug.set(slug, record);
-  }
-  return [...bySlug.values()];
 }
 
 function taskStateIds(rows: unknown): string[] {
@@ -159,9 +139,8 @@ export function createSpaceTaskStates(deps: SpaceTaskStatesDeps) {
 
   /** The space's state records, as the store holds them — from a read, or from what a watch pushed. */
   function applyTaskStates(rows: TaskState[]): void {
-    const records = dedupeBySlug(rows);
     setOwnTaskStates(
-      records.map((r: TaskState) => ({
+      rows.map((r: TaskState) => ({
         id: r.id,
         name: r.name || r.slug,
         slug: r.slug || deriveSlug(r.name || ''),

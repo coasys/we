@@ -53,12 +53,6 @@ describe('the vocabulary', () => {
     expect(kinds.find((k) => k.slug === 'going')?.reflexive).toBe(true);
   });
 
-  it('collapses two records with one slug to the first, since to everybody holding it they are one kind', () => {
-    const first = kind({ slug: 'assignee', name: 'Owner' });
-    const kinds = resolveInvolvementTypes([first, kind({ slug: 'assignee', name: 'Doer' })]);
-    expect(kinds.filter((k) => k.slug === 'assignee')).toEqual([first]);
-  });
-
   it('orders by what each kind means, in the order written among kinds meaning the same', () => {
     const shepherd = kind({ slug: 'shepherd', semantic: 'reviewing' });
     const kinds = resolveInvolvementTypes([...SEEDED_INVOLVEMENT_TYPES, shepherd]);

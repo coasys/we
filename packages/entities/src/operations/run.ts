@@ -42,7 +42,7 @@ import {
 
 import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
 import { isOperationError, OperationError, preconditionError, staticError } from './errors';
-import { callSegment, deriveRecordId, keySegment } from './ids';
+import { callSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
 import {
@@ -150,6 +150,7 @@ export async function runOperation(
       'versionMismatch',
       `${name} was called for version ${options.version} of "${namespace}", and version ${registeredVersion} is registered`,
     );
+  if (options.invocationId === '') throw staticError('malformed', 'An invocation id is a non-empty string');
   const run: Run = {
     dataset: options.dataset,
     invocationId: options.invocationId ?? crypto.randomUUID(),
@@ -292,7 +293,9 @@ async function runStep(
       const entity = chosenEntity(run, body, scope, step);
       const Model = statics(entity, run.dataset, step);
       const fields = fieldsOf(value('fields'), step);
-      const id = await deriveRecordId(run.invocationId, segments);
+      const id = body.identity
+        ? await identityId(entity, body.identity as string[], fields, step)
+        : await deriveRecordId(run.invocationId, segments);
       const parentSpec = body.parent as { id: unknown; relation: string; entity?: string } | undefined;
       // A parent whose id is absent is no parent, as an absent field is not written: one create
       // serves a record that is sometimes under something and sometimes not.
@@ -305,6 +308,10 @@ async function runStep(
               ...(parentSpec.entity ? { entity: parentSpec.entity } : {}),
             }
           : undefined;
+      // A backend judges a held id against what is committed; one this operation made already is
+      // the runner's to know, and an identity is the one way the same id comes up twice in a run.
+      if (run.created.has(id))
+        throw preconditionError('recordExists', `${entity} ${id} was made earlier in this operation`, step);
       run.created.set(id, step);
       const instance = await Model.create(run.dataset, fields, {
         id,
@@ -584,6 +591,26 @@ function chosenEntity(run: Run, body: Record<string, unknown>, scope: Map<string
 function inCategoryNow(category: OperationCategory, entity: string, dataset: unknown): boolean {
   if (category === 'any') return !isAbstract(entity) && getEntityForDataset(entity, dataset) !== undefined;
   return categoryMembers(category).has(entity);
+}
+
+/**
+ * The id of a record a create keys by identity: derived from the entity and the identity fields'
+ * values, so it is the same whichever invocation makes it. A field with no value cannot be part of
+ * an identity — two records without one would share an id for nothing they have in common.
+ */
+async function identityId(
+  entity: string,
+  identity: readonly string[],
+  fields: Record<string, unknown>,
+  step: string,
+): Promise<string> {
+  const pairs = identity.map((field): [string, string] => {
+    const text = identityText(fields[field]);
+    if (text === undefined)
+      throw staticError('malformed', `${step}.identity: "${field}" has no value to be the record's identity`, step);
+    return [field, text];
+  });
+  return deriveIdentityId(entity, pairs);
 }
 
 /** A step's relation: the name written, or what its expression gives. */
