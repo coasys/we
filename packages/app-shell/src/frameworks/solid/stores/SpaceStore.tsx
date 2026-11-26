@@ -3915,9 +3915,9 @@ export function createSpaceStore(
     ),
   );
 
-  /** Every version, with its author as a person. */
+  /** Every version, with its author as a person. Rejects when they cannot be read: no versions is the open policy. */
   async function readPolicyVersions(dataset: DatasetProxy): Promise<PolicyVersion[]> {
-    return policyVersionsOf((await Policy.findAll(dataset).catch(() => [])) as Policy[]);
+    return policyVersionsOf(await Policy.findAll(dataset));
   }
 
   /** The policy records as versions — from a read, or from what a watch pushed. */
@@ -3940,11 +3940,14 @@ export function createSpaceStore(
       setPolicyLoaded(true);
       return;
     }
+    // Loaded only with the versions in: while they cannot be read, the write check reads them itself.
     try {
       const versions = await readPolicyVersions(dataset);
-      if (datasetStore.currentDataset()?.id === uuid) setPolicyRows(versions);
-    } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setPolicyLoaded(true);
+      if (datasetStore.currentDataset()?.id !== uuid) return;
+      setPolicyRows(versions);
+      setPolicyLoaded(true);
+    } catch (error) {
+      console.warn('SpaceStore: could not read the space’s policy', error);
     }
   }
 
@@ -3976,18 +3979,19 @@ export function createSpaceStore(
           resolving, and loaded is not told before the newest push's versions are in.
         */
         map: policyVersionsOf,
-        apply: (versions) => setPolicyRows(versions),
+        // Loaded with the rows: a push after an opening that gave none is how the policy recovers.
+        apply: (versions) => {
+          setPolicyRows(versions);
+          setPolicyLoaded(true);
+        },
         /*
           No page of versions reached `policyRows`: the watch failed to open, or the newest page could
           not be turned into versions. An empty list is the open policy, which would judge every write,
           so the stored versions are read instead, and the policy is loaded only once that read is in.
-          `readPolicyVersions` turns a failed `findAll` into `[]`, as on `dev`, so a failed read still
-          counts as in: the open policy applies.
+          While they cannot be read, the policy stays not loaded: the write check then reads it for
+          each write, and refuses the write when that read fails too.
         */
         stored: { read: () => readPolicyVersions(dataset) },
-        settled: (loaded) => {
-          if (loaded) setPolicyLoaded(true);
-        },
       },
     );
   });
@@ -4052,9 +4056,11 @@ export function createSpaceStore(
     // Nothing is remembered about a dataset that is not a space yet: the first record a new space
     // is given is its own `Space`, and every write after it is the space's.
     governedElsewhere.set(ds.id, { at: Date.now(), space });
+    // A space whose rules could not be read is read again on the next write, not held as unreadable.
+    const forget = () => governedElsewhere.delete(ds.id);
     void space.then((found) => {
-      if (!found) governedElsewhere.delete(ds.id);
-    });
+      if (!found) forget();
+    }, forget);
     return space;
   }
 

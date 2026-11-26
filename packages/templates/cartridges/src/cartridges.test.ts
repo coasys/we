@@ -1640,3 +1640,29 @@ describe('the Coasys space’s lists of calls', () => {
     expect(treeSection.$queries?.calls).toMatchObject({ when: { $: 'spaceStore.firstScreenOpen' } });
   });
 });
+
+describe('the tree’s Start a call', () => {
+  /*
+    It used to be `goToCall`, which with nothing running continues the call the address names. On a
+    Coasys space the address keeps naming a call after it ends — joining writes `?call=`, nothing
+    removes it, and the router gives a page back its last query string — so pressing Start a call on
+    the Calls list rejoined the first call the space ever had.
+  */
+  const button = () =>
+    findNode(
+      treeSection,
+      (node) =>
+        node.type === 'we-button' &&
+        JSON.stringify((node as { children?: unknown }).children ?? []).includes('"Start a call"'),
+    ) as { props: { onClick: unknown } } | undefined;
+
+  it('starts a new call, never continuing the one the address names', () => {
+    expect(button()?.props.onClick).toEqual({ $invoke: 'modules.call.startCall' });
+  });
+
+  it('is offered only while no call is running here, so starting one never splits a meeting', () => {
+    const lineage = pathTo(treeSection, (node) => node === button()) ?? [];
+    const gate = lineage.find((node) => node.type === '$if') as { props: { condition: { $: string } } };
+    expect(gate.props.condition.$).toContain('!count(modules.call.liveCalls)');
+  });
+});

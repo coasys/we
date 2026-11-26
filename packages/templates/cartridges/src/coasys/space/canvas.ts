@@ -2,6 +2,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import {
   askWhatGoesHere,
   BACK_TO_CHOOSER,
+  CANVAS_MAX_CARDS,
   canvasEditing,
   canvasSeedOptions,
   CARD_LOCALS,
@@ -344,6 +345,8 @@ export const canvasPane: SchemaNode = {
               at this canvas's card size. See `treeLayout` in the kit.
             */
             layout: treeLayout({ card: { width: 200, height: 140 } }),
+            // The canvas's card budget, which the graph's default of 2,000 sat under. See the kit.
+            expansion: { maxNodes: CANVAS_MAX_CARDS },
             // Back into view when the tree's cards change size — see `TREE_REFRAME`.
             reframeOn: TREE_REFRAME,
             // A dot grid, as d12's canvas has: it moves with the canvas, so a pan reads as a pan.
