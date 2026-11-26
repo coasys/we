@@ -229,7 +229,7 @@ _Level: traversal._
 | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `via`            | REQUIRED. The relation walked.                                                                                      |
 | `anchorId`       | REQUIRED. An anchor's id, or a list of them: one question asked of every anchor at once.                            |
-| `anchor`         | The anchors' entity.                                                                                                |
+| `anchor`         | The anchors' entity, whose relation `via` is. SHOULD be given (below).                                              |
 | `direction`      | `"out"` (the default): the records the anchors' `via` holds. `"in"`: the records whose `via` holds an anchor.       |
 | `transitive`     | `true`: every record reached at any depth, not one step.                                                            |
 | `levels`         | A list of whole numbers (or expressions): walk depth by depth, keeping at most that many per record at each depth.  |
@@ -239,8 +239,13 @@ The anchors are not in the result. A walked result is **flat**: a row says it wa
 from where; a template that draws the tree includes the inverse relation and rebuilds it. `where`,
 `order` and `limit` apply to what was reached.
 
-Which records a bounded walk keeps when it must drop some is not specified in this version, beyond
-`order` deciding among siblings where one is given.
+Where `levels` or `limitPerAnchor` must drop records, the query's `order` decides which are kept: the
+first of each record's (or anchor's) in that order. Without an order, which are kept is not
+specified.
+
+A scope SHOULD name `anchor`: `via` is a relation of the anchors' entity, and a backend that finds it
+there MAY refuse a scope that names none. One that answers reads the relation called `via` that
+holds the query's entity.
 
 ---
 
