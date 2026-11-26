@@ -47,6 +47,7 @@
 import {
   FlowInstance,
   type FlowProposeResult as Ad4mFlowProposeResult,
+  type FlowRefusal,
   FlowTransitionProposal,
   Link,
   LinkQuery,
@@ -75,6 +76,7 @@ import { approvalsFor, evidenceFor, trace, tracing, validateWorkflowDefinition }
 import { type EngineProposal, ENTRY_STATE, itemOf, openMoves, type Run, runFor, stateOf, stepsOf } from './flowRuns';
 import { recordMissingMethod } from './missingMethods';
 import { coreEntities, predicateOfRelation, relationOfPredicate } from './relationPredicates';
+import { rpcStatus } from './rpcStatus';
 
 /** The entities a workflow's records may be: those it names, or any WE declares. */
 const recordEntities = (entities: readonly string[]) => (entities.length ? entities : coreEntities());
@@ -514,10 +516,17 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
 /** The SDK throws strings in places; the contract rejects with errors. */
 const asError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
-/** Where a refusal says the run stands, when it was refused as unreachable. */
-const refusedFrom = (error: unknown) => /not reachable from `([^`]+)`/.exec(messageOf(error))?.[1];
-const refusedUnmet = (error: unknown) => /guard for `[^`]+` is not satisfied/.test(messageOf(error));
-const refusedContested = (error: unknown) => /is contested in `/.test(messageOf(error));
+/**
+ * The refusal the executor sent, or `undefined` when the error is not one. A refusal is a rejection
+ * with status 409 whose `data` is a `FlowRefusal`; a real failure has status 500 and no `data`. Read
+ * from the error's shape, never with `instanceof RpcError` (see {@link rpcStatus}).
+ */
+const refusalOf = (error: unknown): FlowRefusal | undefined => {
+  if (rpcStatus(error) !== 409) return undefined;
+  const data = (error as { data?: unknown }).data;
+  return typeof (data as { kind?: unknown } | null | undefined)?.kind === 'string' ? (data as FlowRefusal) : undefined;
+};
+
 /** The call outlived the caller's patience; the executor may well still be doing it. */
 const timedOut = (error: unknown) => /timed out|timeout/i.test(messageOf(error));
 
@@ -525,17 +534,24 @@ const timedOut = (error: unknown) => /timed out|timeout/i.test(messageOf(error))
 const shown = (state: string | undefined): string | null => (state && state !== ENTRY_STATE ? state : null);
 
 /**
- * What a refused or timed-out move amounts to, read from the engine's message — or `undefined` for an
- * error that is not a refusal at all, which the caller rethrows. `state` is where the record was last
+ * What a refused or timed-out move amounts to, read from the engine's typed refusal — or `undefined`
+ * for an error that is not one of these, which the caller rethrows. Only the refusals that plainly
+ * match a {@link MoveResult} are read; any other kind is rethrown. `state` is where the record was last
  * known to stand, for a refusal that does not say.
  */
 export function moveRefusal(error: unknown, to: string, state: string | null): MoveResult | undefined {
-  const at = refusedFrom(error);
-  // Refused because the record is already there: what the caller saw was behind.
-  if (at === to) return { outcome: 'moved', state: to, moves: [] };
-  if (at !== undefined) return { outcome: 'refused', reason: 'not-allowed', state: shown(at) };
-  if (refusedUnmet(error)) return { outcome: 'refused', reason: 'unmet', state };
-  if (refusedContested(error)) return { outcome: 'stalled', state };
+  const refusal = refusalOf(error);
+  switch (refusal?.kind) {
+    // Refused because the record is already there: what the caller saw was behind.
+    case 'not-reachable':
+      return refusal.from === to
+        ? { outcome: 'moved', state: to, moves: [] }
+        : { outcome: 'refused', reason: 'not-allowed', state: shown(refusal.from) };
+    case 'guard-unmet':
+      return { outcome: 'refused', reason: 'unmet', state };
+    case 'contested':
+      return { outcome: 'stalled', state };
+  }
   if (timedOut(error)) return { outcome: 'pending' };
   return undefined;
 }
@@ -646,9 +662,9 @@ export function createAd4mWorkflowPort(selfId: () => string | undefined = () => 
       const result = await timed('place', { run: run.id, into }, () => perspective.proposeFlowTransition(run.id, into));
       return shown(result.derivedState);
     } catch (error) {
-      const at = refusedFrom(error);
-      if (at === undefined) throw error;
-      return shown(at);
+      const refusal = refusalOf(error);
+      if (refusal?.kind !== 'not-reachable') throw error;
+      return shown(refusal.from);
     }
   }
 
