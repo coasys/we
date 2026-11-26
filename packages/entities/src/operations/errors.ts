@@ -10,6 +10,8 @@
  * `step` names where it happened, as a path into the operation (`steps.2.forEach[a].steps.0`), so a
  * failure deep in a loop says which item it was on.
  */
+import type { Refusal } from '@we/backend-shared';
+
 export type OperationErrorClass = 'static' | 'precondition';
 
 /** The codes the runner itself raises. A `check` raises one of its operation's own `errors` names. */
@@ -34,12 +36,15 @@ export interface OperationErrorInit {
   code: string;
   message: string;
   step?: string;
+  /** Why the space's policy refused a write, for a `refused` error: a caller may treat a policy it could not read apart from one that said no. */
+  refusal?: Refusal;
 }
 
 export class OperationError extends Error {
   readonly class: OperationErrorClass;
   readonly code: string;
   readonly step?: string;
+  readonly refusal?: Refusal;
 
   constructor(init: OperationErrorInit) {
     super(init.message);
@@ -47,6 +52,7 @@ export class OperationError extends Error {
     this.class = init.class;
     this.code = init.code;
     if (init.step !== undefined) this.step = init.step;
+    if (init.refusal !== undefined) this.refusal = init.refusal;
   }
 }
 

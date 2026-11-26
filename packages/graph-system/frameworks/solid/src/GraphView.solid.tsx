@@ -25,7 +25,7 @@
 import { Column, Row } from '@we/components/solid';
 import { colorValueCss } from '@we/design-utils';
 import { type DragItem, dragSession } from '@we/drag';
-import type { EdgeWaypoint } from '@we/graph-core';
+import type { Bounds, EdgeWaypoint } from '@we/graph-core';
 import {
   bendPoints,
   connectionTarget,
@@ -84,6 +84,15 @@ import {
 import { createStore, reconcile, type SetStoreFunction } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
+import {
+  boxMeets,
+  CONTENT_CULL_MARGIN,
+  CONTENT_FRAME_BUDGET_MS,
+  CONTENT_GRANT_CHUNK,
+  NODE_CULL_MARGIN,
+  routeBox,
+  sameSet,
+} from './cull';
 import { createFocusFollow } from './focusFollow';
 import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
 import { isSettled, patched } from './pending';
@@ -297,6 +306,9 @@ const SELECTION_FRAME_ID = 'we-graph://selection';
  * has to be taught. Well inside the rim, so aiming at a side is never accidentally a clear.
  */
 const CLEAR_ANCHOR_WITHIN = 0.45;
+
+/** What the fold control says on a graph that offers no fold: nothing, and nothing computed to say it. */
+const NO_FOLD_SAYS = { show: false, enabled: false, hides: 0, held: 0 } as const;
 
 /** Radius of an edge's endpoint grip, in screen pixels. Divided by the camera where it is drawn. */
 const ANCHOR_HANDLE_R = 5;
@@ -597,6 +609,9 @@ export function GraphView(props: GraphViewProps) {
       // and leave it waiting for notifications nothing will ever send.
       ...(untrack(() => props.host?.watch) && {
         watch: (request, onChange) => props.host!.watch!(request, onChange),
+      }),
+      ...(untrack(() => props.host?.watch && props.host?.watchRead) && {
+        watchRead: (request, onChange) => props.host!.watchRead!(request, onChange),
       }),
       defaultDataset: () => props.host?.defaultDataset() ?? null,
       models: (dataset) => props.host?.models(dataset) ?? [],
@@ -1440,6 +1455,49 @@ export function GraphView(props: GraphViewProps) {
     return [...engine.getLayoutRegions()];
   });
 
+  /**
+   * The world the camera shows, grown by `margin` of its own size on every side — or `null` before
+   * the surface has been measured.
+   *
+   * The whole viewport rather than `visibleWorldRect`, which leaves out what an overlay covers: a card
+   * under a panel is still on screen, and culling it would leave a hole the moment the panel moved.
+   *
+   * `null` is the answer that keeps everything drawn. Before the first measurement there is no view to
+   * cull against, and a graph drawn into a surface that never measures — a test's DOM, a hidden tab —
+   * draws exactly what it always did.
+   */
+  function viewBounds(margin: number): Bounds | null {
+    const { x, y, zoom: scale, width, height } = engine.viewport.get();
+    if (!(width > 0 && height > 0 && scale > 0)) return null;
+    const w = width / scale;
+    const h = height / scale;
+    const minX = -x / scale;
+    const minY = -y / scale;
+    return {
+      minX: minX - w * margin,
+      minY: minY - h * margin,
+      maxX: minX + w * (1 + margin),
+      maxY: minY + h * (1 + margin),
+    };
+  }
+
+  /**
+   * The cards near enough the view to be drawn: what the camera shows plus half a screen each way, so
+   * a pan reveals cards that are already there rather than ones mounting under the pointer.
+   *
+   * Asked of the engine's spatial index, which is what picking uses, so a card is drawn wherever it
+   * can be pressed. Kept as the same set while it has not changed — most frames of a pan move no card
+   * across the margin, and an unchanged set is what lets everything below skip the frame.
+   */
+  const nodeView = createMemo<ReadonlySet<string> | null>((previous) => {
+    viewportVersion();
+    version();
+    const bounds = viewBounds(NODE_CULL_MARGIN);
+    if (!bounds) return null;
+    const next = new Set(engine.index.within(bounds));
+    return previous && sameSet(previous, next) ? previous : next;
+  });
+
   const nodes = createMemo(() => {
     version();
     const placed = engine.getPositions();
@@ -1512,6 +1570,17 @@ export function GraphView(props: GraphViewProps) {
   const nodeRows = createMemo(() => {
     const fresh = nodes();
     const seen = new Set<string>();
+    /*
+      Only the rows that can be seen, or that something else reads, are brought up to date.
+
+      Reconciling is a deep walk of the entry, and on a canvas of thousands it was most of the cost of
+      every drag frame — paid for cards with no DOM. A row off screen keeps what it last said and is
+      reconciled when it comes back into view. The ones that cannot wait are those read away from the
+      cards' own layer: the selection (its chrome and its drag items), the card in the hand, the
+      hovered one, a card wearing a fold count, and one in mid-fold.
+    */
+    const view = nodeView();
+    const hover = hovered();
     const rows = fresh.map((entry) => {
       const id = entry.node.id;
       seen.add(id);
@@ -1520,7 +1589,17 @@ export function GraphView(props: GraphViewProps) {
         const [store, set] = createStore(entry);
         row = { entry: store, set };
         rowsById.set(id, row);
-      } else {
+      } else if (
+        !view ||
+        view.has(id) ||
+        entry.selected ||
+        entry.held ||
+        id === hover ||
+        entry.foldedCount > 0 ||
+        entry.foldScale !== 1 ||
+        row.entry.selected ||
+        row.entry.foldedCount > 0
+      ) {
         row.set(reconcile(entry));
       }
       return row;
@@ -1853,7 +1932,19 @@ export function GraphView(props: GraphViewProps) {
       // The gap is the arrowhead's own length, in world units — the marker scales with stroke width,
       // so the stroke has to give up the same amount it takes.
       const gap = visual.arrow === 'none' ? 0 : ARROW_LENGTH * visual.width;
-      return [{ edge, route, path: pathFrom(route, gap), visual }];
+      // Built when drawn rather than here: on a canvas of thousands most lines are culled, and the
+      // path — trimming a cubic to its arrowhead — was the dearest part of every drag frame.
+      let path: string | undefined;
+      return [
+        {
+          edge,
+          route,
+          get path() {
+            return (path ??= pathFrom(route, gap));
+          },
+          visual,
+        },
+      ];
     });
   });
 
@@ -2184,6 +2275,117 @@ export function GraphView(props: GraphViewProps) {
     return props.host?.nodeContent?.[visual.content];
   };
 
+  // ─── Culling ─────────────────────────────────────────────────────────────────
+
+  /**
+   * The rows actually drawn.
+   *
+   * A card off screen has no DOM. Mounting all of them was what made a canvas of thousands slow to
+   * pan once it was readable: every card's content was a document, and the page held every one.
+   *
+   * Some cards are drawn wherever they are, because something is happening to them that the reader
+   * would see stop: the selection (its chrome is anchored to it), the card in the hand, the hovered
+   * one, and a card in mid-fold — which the index leaves out on purpose, since a moving card is not
+   * one to pick, and which has to finish its travel rather than vanish halfway.
+   */
+  const drawnRows = createMemo(() => {
+    const view = nodeView();
+    const rows = nodeRows();
+    if (!view) return rows;
+    const hover = hovered();
+    return rows.filter(
+      ({ entry }) =>
+        view.has(entry.node.id) || entry.selected || entry.held || entry.foldScale !== 1 || entry.node.id === hover,
+    );
+  });
+
+  /**
+   * The lines drawn: those whose route comes near the view, by the box around its points.
+   *
+   * The box is the route's control points, which a curve never leaves, so a line crossing the screen
+   * between two cards that are both off it is still drawn.
+   */
+  const edgeBoxes = createMemo(() => new Map(edges().map((entry) => [entry, routeBox(entry.route)] as const)));
+  const drawnEdges = createMemo(() => {
+    const all = edges();
+    const view = nodeView();
+    const bounds = view && viewBounds(NODE_CULL_MARGIN);
+    if (!bounds) return all;
+    // Boxes worked out once per layout rather than per pan.
+    const boxes = edgeBoxes();
+    return all.filter((entry) => boxMeets(boxes.get(entry)!, bounds));
+  });
+
+  /**
+   * The cards whose content is wanted now: on screen, and at a zoom where their style shows content.
+   *
+   * Tighter than {@link nodeView}. A card in the margin is drawn so a pan finds it there, but its
+   * label stands in until it is actually in view — content is the expensive part, and a card body
+   * nobody can see yet is the cost culling exists to avoid. `null` before the view is measured, which
+   * means "all of it, at once", as before.
+   */
+  const contentWanted = createMemo<ReadonlySet<string> | null>((previous) => {
+    // Read before the bounds, which can answer `null` on the first run: a memo that returned before
+    // reading a signal would never run again.
+    viewportVersion();
+    version();
+    const bounds = viewBounds(CONTENT_CULL_MARGIN);
+    if (!bounds) return null;
+    const inView = new Set(engine.index.within(bounds));
+    const next = new Set<string>();
+    for (const { entry } of drawnRows()) {
+      if (inView.has(entry.node.id) && cardContent(entry.visual)) next.add(entry.node.id);
+    }
+    return previous && sameSet(previous, next) ? previous : next;
+  });
+
+  /*
+    Content mounts a few frames at a time rather than all in one.
+
+    Zooming past a card style's `contentMinZoom` asks for every card on screen at once, and each is a
+    component tree — about a millisecond apiece for a record card. Granted in one go, that is a frame
+    of a second or more on a full screen, with the zoom frozen under the wheel. So the wanted cards
+    are granted in turn, within a budget per frame, and each shows its label until its turn comes.
+    Leaving the view takes a card's grant away again, so panning back mounts it afresh rather than
+    the page keeping every body it ever drew.
+  */
+  const [contentGranted, setContentGranted] = createStore<Record<string, boolean | undefined>>({});
+  const granted = new Set<string>();
+  let grantQueue: string[] = [];
+  let grantFrame = 0;
+  const grantSome = () => {
+    grantFrame = 0;
+    const began = performance.now();
+    while (grantQueue.length && performance.now() - began < CONTENT_FRAME_BUDGET_MS) {
+      const chunk = grantQueue.splice(0, CONTENT_GRANT_CHUNK);
+      batch(() => {
+        for (const id of chunk) {
+          granted.add(id);
+          setContentGranted(id, true);
+        }
+      });
+    }
+    if (grantQueue.length) grantFrame = requestAnimationFrame(grantSome);
+  };
+  createEffect(() => {
+    const wanted = contentWanted();
+    if (!wanted) return;
+    batch(() => {
+      for (const id of granted) {
+        if (wanted.has(id)) continue;
+        granted.delete(id);
+        setContentGranted(id, undefined);
+      }
+    });
+    grantQueue = [...wanted].filter((id) => !granted.has(id));
+    if (grantQueue.length && !grantFrame) grantFrame = requestAnimationFrame(grantSome);
+  });
+  onCleanup(() => cancelAnimationFrame(grantFrame));
+
+  /** Whether a card may draw its content yet. The selected card never waits its turn. */
+  const contentMayMount = (entry: { node: GraphNode; selected: boolean }) =>
+    contentWanted() === null || entry.selected || contentGranted[entry.node.id] === true;
+
   /**
    * Which of the offered controls this node gets.
    *
@@ -2208,16 +2410,30 @@ export function GraphView(props: GraphViewProps) {
    * cannot fold" rather than as "there is nothing here a fold may take".
    *
    * So the control appears whenever there is anything under the card at all, and says which case it
-   * is in. Asked of the engine for the selected card only, like `canFold`.
+   * is in.
+   *
+   * It is asked of EVERY card, not only the selected one: the caret in a card's corner asks
+   * `caretSays`, which asks this. Each answer walks the whole graph, so on every version bump the
+   * cost was cards × graph — 5 s to dim a 5,000-card canvas, and most of a 12 s mount — on canvases
+   * that never offered a fold at all. So a graph with no `onNodeFold` asks nothing, and `hides`, which
+   * only a tooltip reads, is worked out when it is read.
    */
   const foldSays = (entry: NodeEntry) => {
     version();
-    const hides = engine.foldImpact(entry.node.id);
-    const held = engine.foldHeldElsewhere(entry.node.id);
-    const enabled = engine.canFold(entry.node.id);
-    // The counts are true whether or not anybody is listening — a folded card still has to be able
-    // to say what it is holding. Only the *control* depends on the handler.
-    return { show: !!props.onNodeFold && (enabled || held > 0), enabled, hides, held };
+    // A folded card still answers without the handler: it has to be able to say what it is holding.
+    if (!props.onNodeFold && !entry.folded) return NO_FOLD_SAYS;
+    const id = entry.node.id;
+    const held = engine.foldHeldElsewhere(id);
+    const enabled = engine.canFold(id);
+    // Only the *control* depends on the handler; the counts are true either way.
+    return {
+      show: !!props.onNodeFold && (enabled || held > 0),
+      enabled,
+      get hides() {
+        return engine.foldImpact(id);
+      },
+      held,
+    };
   };
 
   /** "1 card" / "3 cards" — the graph says what it is about in its own tooltips. */
@@ -2338,11 +2554,18 @@ export function GraphView(props: GraphViewProps) {
   onCleanup(() => overflowWatch?.disconnect());
   function watchOverflow(scale: HTMLElement): void {
     if (!overflowWatch) return;
-    overflowWatch.observe(scale);
+    const watch = overflowWatch;
+    watch.observe(scale);
     // Its content is drawn after this ref runs.
     queueMicrotask(() => {
-      for (const child of Array.from(scale.children)) overflowWatch.observe(child);
+      for (const child of Array.from(scale.children)) watch.observe(child);
       markOverflow(scale);
+    });
+    // A card leaves the DOM whenever it scrolls out of view, so the observer lets go of it then rather
+    // than holding every card the canvas ever drew.
+    onCleanup(() => {
+      watch.unobserve(scale);
+      for (const child of Array.from(scale.children)) watch.unobserve(child);
     });
   }
 
@@ -3605,7 +3828,7 @@ export function GraphView(props: GraphViewProps) {
         </For>
 
         <svg class="we-graph__edges" aria-hidden="true">
-          <For each={edges()}>
+          <For each={drawnEdges()}>
             {(entry) => (
               <g>
                 {/*
@@ -3908,7 +4131,7 @@ export function GraphView(props: GraphViewProps) {
 
           Only labelled edges produce an element, so an unlabelled graph pays nothing.
         */}
-        <For each={edges().filter((entry) => entry.visual.label)}>
+        <For each={drawnEdges().filter((entry) => entry.visual.label)}>
           {(entry) => (
             <span
               class="we-graph__edge-label"
@@ -4003,7 +4226,7 @@ export function GraphView(props: GraphViewProps) {
           it among the other cards and can never lift it over the selection chrome drawn after this.
         */}
         <div class="we-graph__nodes">
-          <For each={nodeRows()}>
+          <For each={drawnRows()}>
             {({ entry }) => (
               <div
                 class="we-graph__node"
@@ -4175,7 +4398,7 @@ export function GraphView(props: GraphViewProps) {
                             <div class="we-graph__card-flow we-graph__card-flow--right" />
                           </Show>
                           <Show
-                            when={cardContent(entry.visual)}
+                            when={contentMayMount(entry) && cardContent(entry.visual)}
                             fallback={<span class="we-graph__card-text">{entry.visual.label}</span>}
                           >
                             {(Content) => <Dynamic component={Content()} node={entry.node} />}

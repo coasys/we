@@ -60,17 +60,18 @@ These follow a person's path through the built web app: real Chrome, a real exec
 people on it. They are the only tests that use the app as it ships, with its CSP, its connect flow and
 its bundle.
 
-| Suite    | Where                            | Runner · suffix             | CI                                                                           |
-| -------- | -------------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
-| `calls`  | `apps/we-web/e2e/calls.e2e.mjs`  | `node --test` · `*.e2e.mjs` | `ad4m-live.yaml`, `calls` job                                                |
-| `spaces` | `apps/we-web/e2e/coasys-spaces/` | `node --test` · `*.e2e.mjs` | stub tier: `ad4m-live.yaml`, `spaces` job. Real tier: ad4m's nightly (below) |
+| Suite        | Where                            | Runner · suffix             | CI                                                                           |
+| ------------ | -------------------------------- | --------------------------- | ---------------------------------------------------------------------------- |
+| `calls`      | `apps/we-web/e2e/calls.e2e.mjs`  | `node --test` · `*.e2e.mjs` | `ad4m-live.yaml`, `calls` job                                                |
+| `spaces`     | `apps/we-web/e2e/coasys-spaces/` | `node --test` · `*.e2e.mjs` | stub tier: `ad4m-live.yaml`, `spaces` job. Real tier: ad4m's nightly (below) |
+| `feed-scale` | `apps/we-web/e2e/feed-scale/`    | `node --test` · `*.e2e.mjs` | ad4m's nightly, `scripts/feed-scale.sh` there (below)                        |
 
 Steps more than one journey takes, such as making a space or reading the call bar, live in
 `apps/we-web/e2e/steps/`. A step belongs there once a second journey needs it. The package scripts
-run the suites without building anything first: `pnpm --filter @we/app-web test:live` (calls) and
-`test:spaces`. `pnpm e2e calls` builds the default app first. `pnpm e2e spaces` builds the Coasys app
-(`WE_SEED=seeds/coasys.seed.json`) first. Both serve `apps/we-web/dist`, so after running one, run the
-other without `--no-build`.
+run the suites without building anything first: `pnpm --filter @we/app-web test:live` (calls),
+`test:spaces` and `test:feed-scale`. `pnpm e2e calls` builds the default app first; the spaces and
+feed-scale suites build the Coasys app (`WE_SEED=seeds/coasys.seed.json`). All three serve
+`apps/we-web/dist`, so after running one, run another without `--no-build`.
 
 The spaces suite has two tiers. The **stub** tier uses a scripted model and typed call lines, so its
 results are exact. It is the gate for product breaks. The **real** tier uses a model endpoint and a
@@ -86,6 +87,13 @@ client from the commit under test and builds the executor from that same commit.
 llama.cpp server, `COASYS_SPACES_LLM_ENDPOINT_KIND`, `COASYS_SPACES_LLM_NATIVE_TOOLS`,
 `COASYS_SPACES_LLM_REQUEST_TIMEOUT_SECS` and `COASYS_SPACES_LLM_MAX_NUM_CTX`. That script,
 its name and those variables are a contract with that repository: keep them working.
+
+**The feed-scale suite runs in ad4m's nightly the same way** (`scripts/feed-scale.sh` there): a
+Coasys build, `pnpm --filter @we/app-web test:feed-scale` with `AD4M_EXECUTOR`, `FEED_SCALE_*` for
+the run's size and timeouts, `FEED_SCALE_ARTIFACTS` for its results and `PERF_RESULTS_DIR` for the
+metrics file ad4m's `scripts/perf/record` reads. That script, its name and those variables are the
+same kind of contract. The suite's own README (`apps/we-web/e2e/feed-scale/README.md`) covers what
+it measures and how it reads the numbers.
 
 ## `@we/e2e`: what the live tests share
 
