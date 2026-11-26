@@ -317,11 +317,26 @@ export async function checkEntityWrite(write: EntityWrite): Promise<void> {
 // ─── A dataset's identity domain ──────────────────────────────────────────────
 
 /**
- * What an identity-keyed record's id is derived within, given the handle a write carries: the id of
- * the record naming the dataset itself (a space's own `Space` record), or nothing for a dataset that
- * names nothing (a personal one, a system one).
+ * A dataset that names itself by a record this agent does not hold yet: a space joined before its
+ * own `Space` record has synced. Its identity ids cannot be derived until the record arrives.
  */
-export type IdentityDomainOf = (dataset: unknown) => Promise<string | null | undefined> | string | null | undefined;
+export interface DomainArriving {
+  readonly arriving: true;
+}
+
+/** A dataset's identity domain: the naming record's id, `null` for a dataset that names nothing, or arriving. */
+export type IdentityDomain = string | null | DomainArriving;
+
+/**
+ * What an identity-keyed record's id is derived within, given the handle a write carries: the id of
+ * the record naming the dataset itself (a space's own `Space` record), nothing for a dataset that
+ * names nothing (a personal one, a system one), or `{ arriving: true }` for one that names itself by
+ * a record not held yet.
+ */
+export type IdentityDomainOf = (dataset: unknown) => Promise<IdentityDomain | undefined> | IdentityDomain | undefined;
+
+export const isDomainArriving = (domain: unknown): domain is DomainArriving =>
+  typeof domain === 'object' && domain !== null && (domain as { arriving?: unknown }).arriving === true;
 
 // On the global, as the write check is, so a second copy of this module sees what the host registered.
 const DOMAIN_KEY = Symbol.for('we.models.identityDomain');
@@ -337,9 +352,13 @@ export function registerIdentityDomain(of: IdentityDomainOf | null): void {
   globalDomain[DOMAIN_KEY] = of;
 }
 
-/** The dataset's identity domain, or null when it has none or nothing registered can say. */
-export async function identityDomainOf(dataset: unknown): Promise<string | null> {
-  return (await globalDomain[DOMAIN_KEY]?.(dataset)) || null;
+/**
+ * The dataset's identity domain, as the host registered it says: `null` when it has none or nothing
+ * registered can say.
+ */
+export async function identityDomainOf(dataset: unknown): Promise<IdentityDomain> {
+  const domain = await globalDomain[DOMAIN_KEY]?.(dataset);
+  return isDomainArriving(domain) ? domain : domain || null;
 }
 
 // ─── File storage ─────────────────────────────────────────────────────────────

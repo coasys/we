@@ -21,7 +21,7 @@ export {
 } from './catalog';
 export { type EffectOptions, effectSummary, type OperationEffects, type OperationEffectVerb } from './effects';
 export { callSegment, deriveIdentityId, deriveRecordId, domainSegment, identityText, keySegment } from './ids';
-export { identityIdOf } from './identity';
+export { identityIdOf, settledIdentityDomain } from './identity';
 export {
   categoryMembers,
   getOperation,

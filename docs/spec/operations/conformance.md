@@ -45,7 +45,7 @@ Each case:
 | `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                    |
 | `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                       |
 | `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                     |
-| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)). Absent: the dataset has none.                                                                                                  |
+| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)), or `{ "arriving": true }` for one whose domain has not arrived. Absent: the dataset has none.                                  |
 | `version`      | Optional. The invocation's `version`. Absent: none is passed.                                                                                                                                                       |
 | `deniedChosen` | Optional. Entities the host refuses this caller when a step chooses them at call time ([Chosen entities](execution.md#chosen-entities)). Absent: every entity the `oneOf` admits is written.                        |
 | `observe`      | What to read back afterwards: a list of `{ "entity", "fields", "relations" }`. `fields` may name `author`.                                                                                                          |
@@ -183,6 +183,7 @@ mostly made of:
 | `identity-id`                  | A create keyed by `identity` takes its id from the entity and the slug, not the invocation.                                            |
 | `identity-id-other-invocation` | Another invocation naming the same identity gets the same id as `identity-id`.                                                         |
 | `identity-id-in-space`         | In a dataset with an identity domain (a space), the same identity gets another id, derived within it.                                  |
+| `identity-space-not-ready`     | In a dataset whose identity domain has not arrived, an identity create fails as `spaceNotReady`; nothing lands.                        |
 | `identity-twice`               | A second create of the same identity is refused as `recordExists`; nothing lands.                                                      |
 | `identity-not-invocation`      | A record keyed by identity and one keyed by the invocation get different ids.                                                          |
 

@@ -30,7 +30,15 @@ export type StaticErrorCode =
   | 'callDepth';
 
 export type PreconditionErrorCode =
-  'notFound' | 'ambiguous' | 'alreadyLinked' | 'notLinked' | 'notOwn' | 'recordExists' | 'expectChanged' | 'refused';
+  | 'notFound'
+  | 'ambiguous'
+  | 'alreadyLinked'
+  | 'notLinked'
+  | 'notOwn'
+  | 'recordExists'
+  | 'expectChanged'
+  | 'refused'
+  | 'spaceNotReady';
 
 export interface OperationErrorInit {
   class: OperationErrorClass;
@@ -78,3 +86,15 @@ export const preconditionError = (code: string, message: string, step?: string) 
 /** A `check` that failed: one of the operation's own errors, in its own words. */
 export const declaredError = (code: string, message: string, step?: string) =>
   new OperationError({ class: 'precondition', code, message, step, declared: true });
+
+/**
+ * An identity-keyed create in a dataset whose identity domain has not arrived: a space joined before
+ * its own record synced. Deriving without the domain would name another record than every member
+ * who holds it names, so nothing is derived; running it again once the record is here succeeds.
+ */
+export const spaceNotReadyError = (step?: string) =>
+  preconditionError(
+    'spaceNotReady',
+    'The dataset names itself by a record not held yet, so an identity id cannot be derived',
+    step,
+  );

@@ -42,6 +42,7 @@ const PRECONDITION_CODES: Record<PreconditionErrorCode, true> = {
   recordExists: true,
   expectChanged: true,
   refused: true,
+  spaceNotReady: true,
 };
 const VERBS = ['find', 'create', 'update', 'delete', 'link', 'unlink', 'setRelation', 'forEach', 'check', 'call'];
 

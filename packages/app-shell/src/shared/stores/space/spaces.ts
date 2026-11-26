@@ -16,6 +16,7 @@ import {
   dataURIToFileData,
   type FileData,
   getEntityForDataset,
+  type IdentityDomain,
   identityIdOf,
   LocationBlock,
   registerIdentityDomain,
@@ -83,6 +84,9 @@ export type SpaceRowDetails = Pick<
   SpaceListEntry,
   'canAdminister' | 'modules' | 'views' | 'usesSections' | 'templateOverride' | 'themeOverride'
 >;
+
+/** The pauses an identity create waits through for a space's own record that has not arrived: 3 s in all. */
+const DOMAIN_ARRIVAL_WAITS_MS = [200, 400, 800, 1600];
 
 export interface SpaceListDeps extends SpaceContext {
   routeStore: Pick<RouteStore, 'segments' | 'navigate'>;
@@ -462,7 +466,33 @@ export function createSpaceList(deps: SpaceListDeps) {
   */
   const domains = new Map<string, string>();
 
-  async function identityDomain(handle: unknown): Promise<string | null> {
+  async function spaceRecordId(ds: AppDataset): Promise<string | null> {
+    const space =
+      untrack(mySpaces).find((s) => isSpaceSelf(s, ds)) ??
+      (await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null));
+    // Not kept when there is none: a member who joined may not have the space's record yet.
+    if (!space) return null;
+    domains.set(ds.id, space.id);
+    return space.id;
+  }
+
+  /*
+    Whether a dataset with no space record is a space all the same, whose record has not arrived:
+    it holds WE's schema, or none at all yet (just joined, nothing synced, and WE makes it a space
+    once it has). Another app's community holds its own schema and names nothing. A check that
+    fails says yes, so a doubt is a refusal rather than an id that names the wrong record.
+  */
+  async function isSpaceAwaitingRecord(ds: AppDataset): Promise<boolean> {
+    const schemas = session.backendPorts()?.schemas;
+    if (!schemas) return false;
+    try {
+      return (await schemas.hasCoreSchema(ds.handle)) || !(await schemas.hasAnySchema(ds.handle));
+    } catch {
+      return true;
+    }
+  }
+
+  async function identityDomain(handle: unknown): Promise<IdentityDomain> {
     const known = [
       ...untrack(datasetStore.datasets),
       untrack(datasetStore.rootDataset),
@@ -475,13 +505,20 @@ export function createSpaceList(deps: SpaceListDeps) {
     if (noted) return noted;
     // Only a space names itself: a system dataset is none, and one this agent does not hold is unknown.
     if (!ds || isSystemDataset(ds.name) || untrack(datasetStore.systemDatasetUuids).includes(ds.id)) return null;
-    const space =
-      untrack(mySpaces).find((s) => isSpaceSelf(s, ds)) ??
-      (await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null));
-    // Not kept when there is none: a member who joined may not have the space's record yet.
-    if (!space) return null;
-    domains.set(ds.id, space.id);
-    return space.id;
+    const found = await spaceRecordId(ds);
+    if (found) return found;
+    if (!(await isSpaceAwaitingRecord(ds))) return null;
+    /*
+      A member who joined before the space's record synced. Its record usually lands within moments,
+      so the create waits for it, briefly; past that it is refused as arriving rather than derived
+      without the domain, which would name another record than every other member's "done".
+    */
+    for (const ms of DOMAIN_ARRIVAL_WAITS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      const arrived = await spaceRecordId(ds);
+      if (arrived) return arrived;
+    }
+    return { arriving: true };
   }
   registerIdentityDomain(identityDomain);
   onCleanup(() => registerIdentityDomain(null));

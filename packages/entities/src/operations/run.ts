@@ -40,8 +40,21 @@ import {
   referencedRoots,
 } from '@we/expressions';
 
-import { getEntityForDataset, identityDomainOf, runEntityTransaction } from '../entityRegistry';
-import { declaredError, isOperationError, OperationError, preconditionError, staticError } from './errors';
+import {
+  getEntityForDataset,
+  type IdentityDomain,
+  identityDomainOf,
+  isDomainArriving,
+  runEntityTransaction,
+} from '../entityRegistry';
+import {
+  declaredError,
+  isOperationError,
+  OperationError,
+  preconditionError,
+  spaceNotReadyError,
+  staticError,
+} from './errors';
 import { callSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
@@ -76,10 +89,12 @@ export interface RunOperationOptions {
   admitChosen?: (entity: string) => boolean;
   /**
    * The dataset's identity domain, which an identity-keyed create's id is derived within; `null` for
-   * a dataset with none. Absent, the one the host registered says (`registerIdentityDomain`), so a
-   * caller passes it only where no host is (a vector, a test).
+   * a dataset with none, `{ arriving: true }` for one naming itself by a record not held yet (an
+   * identity create there fails with precondition `spaceNotReady`). Absent, the one the host
+   * registered says (`registerIdentityDomain`), so a caller passes it only where no host is (a
+   * vector, a test).
    */
-  domain?: string | null;
+  domain?: IdentityDomain;
   /**
    * What the steps read and write through, in place of the connected backend: the statics an entity
    * is reached by, and the write group the steps run in. A host's speculative run passes a view that
@@ -140,10 +155,10 @@ interface Run {
   invokedAt: string;
   admitChosen?: (entity: string) => boolean;
   /**
-   * The dataset's identity domain, or null when it has none: what identity ids derive within. Asked
+   * The dataset's identity domain, null when it has none, or arriving: what identity ids derive within. Asked
    * of the host on the first identity-keyed create, since most operations make none.
    */
-  domain: () => Promise<string | null>;
+  domain: () => Promise<IdentityDomain>;
   /** Instances a step made or found, by id, so a later write reaches a record the backend has only staged. */
   instances: Map<string, Instance>;
   /** Relation membership as this operation has left it, by `id`, then relation — for strict links. */
@@ -679,7 +694,11 @@ async function identityId(
       throw staticError('malformed', `${step}.identity: "${field}" has no value to be the record's identity`, step);
     return [field, text];
   });
-  return deriveIdentityId(entity, pairs, await run.domain());
+  // Never derived without the domain a space has: that id would name another record than every
+  // member who holds the space's own record names.
+  const domain = await run.domain();
+  if (isDomainArriving(domain)) throw spaceNotReadyError(step);
+  return deriveIdentityId(entity, pairs, domain);
 }
 
 /** A step's relation: the name written, or what its expression gives. */

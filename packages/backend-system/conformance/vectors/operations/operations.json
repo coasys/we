@@ -5209,6 +5209,72 @@
       }
     },
     {
+      "id": "identity-space-not-ready",
+      "note": "in a dataset naming itself by a record not held yet, an identity create is refused as spaceNotReady, never derived without the domain",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameState": {
+            "description": "A task state, keyed by its slug.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": {
+                      "$": "slug"
+                    },
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameState",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000091",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "domain": {
+        "arriving": true
+      },
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "spaceNotReady"
+        }
+      },
+      "records": {
+        "TaskState": []
+      }
+    },
+    {
       "id": "identity-twice",
       "note": "a second create of the same identity is refused as recordExists, and nothing the operation made lands",
       "manifest": {

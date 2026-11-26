@@ -2596,6 +2596,57 @@ describe('what the stores actually wrote', () => {
     }
   }, 10000);
 
+  it('refuses an identity create in a space whose own record has not arrived, rather than derive without it', async () => {
+    /*
+      A member who joined before the space's record synced has no domain to derive a task state's id
+      within. The create waits for the record, briefly, and lands within it when the record comes;
+      past the wait it is refused as spaceNotReady, and nothing is written under a domain-less id.
+    */
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      // A dataset holding WE's schema and no Space record: a space joined before its record synced.
+      const joined = await lifecycle.create('Joined');
+      await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(joined.id));
+      const name = (slug: string) =>
+        runOperation('identitytest.nameState', { slug }, { dataset: joined.handle, invoker: 'did:test:me' });
+
+      expect(await identityDomainOf(joined.handle)).toEqual({ arriving: true });
+      await expect(name('done')).rejects.toMatchObject({
+        name: 'OperationError',
+        class: 'precondition',
+        code: 'spaceNotReady',
+      });
+      expect(await getEntityForDataset('TaskState', joined.handle)!.findAll(joined.handle)).toEqual([]);
+
+      // The record lands while a create waits for it: the create derives within it.
+      const pending = name('doing');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const space = await Space.create(joined.handle as never, { name: 'Joined', uuid: joined.id } as never);
+      const made = (await pending) as { id: string };
+      expect(made.id).toBe(await deriveIdentityId('TaskState', [['slug', 'doing']], space.id));
+    } finally {
+      unregisterOperations('identitytest');
+    }
+  }, 15000);
+
   it('seeds a new space’s vocabulary within its own record, so the same slug made after sharing is the same record', async () => {
     /*
       A task state's id derives from what it is (its slug) within the space's own record, which is

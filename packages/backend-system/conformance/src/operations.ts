@@ -115,9 +115,10 @@ export interface OperationCase {
   concurrent?: SeedRecord[];
   /**
    * The dataset's identity domain, for a case about a dataset that names itself by a record (a
-   * space). Absent: none.
+   * space); `{ arriving: true }` for one naming itself by a record the agent does not hold yet.
+   * Absent: none.
    */
-  domain?: string;
+  domain?: string | { arriving: true };
   /** The manifest version the caller wrote against, for a case about calling the wrong one. Absent: none given. */
   version?: string;
   /** Entities the host refuses this caller when a step chooses them at call time. Absent: none. */
@@ -171,7 +172,7 @@ export interface OperationVector {
   invocationId: string;
   invokedAt: string;
   concurrent?: SeedRecord[];
-  domain?: string;
+  domain?: string | { arriving: true };
   version?: string;
   deniedChosen?: string[];
   observe: Observation[];
@@ -1188,6 +1189,18 @@ const CASES: OperationCase[] = [
     invocationId: '00000000-0000-4000-8000-000000000041',
     invokedAt: AT,
     domain: 'urn:example:space-a',
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-space-not-ready',
+    note: 'in a dataset naming itself by a record not held yet, an identity create is refused as spaceNotReady, never derived without the domain',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000091',
+    invokedAt: AT,
+    domain: { arriving: true },
     observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
   },
   {

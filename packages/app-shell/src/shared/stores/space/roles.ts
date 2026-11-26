@@ -14,11 +14,11 @@ import { isPolicyRefusal, isRecordExists, SELF_PERSONS, validatePolicy } from '@
 import {
   type DatasetProxy,
   deriveIdentityId,
-  identityDomainOf,
   Policy,
   registerEntityWriteCheck,
   Role,
   RoleGrant,
+  settledIdentityDomain,
   Space,
 } from '@we/entities';
 import type { SpaceStarter } from '@we/schema-shared';
@@ -278,7 +278,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     create's does, within the space's own record, so two nodes naming one role at once write one record.
   */
   async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
-    const id = await deriveIdentityId('Role', [['slug', fields.slug]], await identityDomainOf(dataset));
+    const id = await deriveIdentityId('Role', [['slug', fields.slug]], await settledIdentityDomain(dataset));
     try {
       await Role.create(dataset, fields, { id });
     } catch (error) {

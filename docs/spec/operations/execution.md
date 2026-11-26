@@ -333,6 +333,15 @@ as they are two things, while every agent holding one space derives the same id 
 dataset without a domain keeps the shorter framing, and the same identity in two such datasets gives
 the same id in each, which the data model allows (ids are unique within a dataset).
 
+**A domain that has not arrived.** An agent can hold a dataset that names itself before it holds
+the record that names it: a member who has joined a space whose own record has not synced to them
+yet. Its domain is then **arriving**. A runner MUST NOT derive an identity id in such a dataset
+without the domain: that id would name another record than every agent holding the record names. An
+identity-keyed `create` there fails with precondition `spaceNotReady`, and nothing the operation
+wrote lands; run again once the record is held, it succeeds. A host that knows the record is coming
+MAY wait for it, briefly, before saying the domain is arriving. Which datasets name themselves is the
+host's to say, as their domain is: a dataset that names nothing is never arriving.
+
 > **Why the record, not the address the dataset is shared at.** A space's vocabulary (its task
 > states, its roles) is written when the space is made, before it is shared, and an address exists
 > only once it is. Ids derived within the address would differ from the ones the vocabulary was
@@ -511,17 +520,18 @@ way; the fault is in the definition or the call.
 
 **`precondition`**: the data was not as the operation requires. Running it again later may succeed.
 
-| Code              | When                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `notFound`        | A `find` with `one` matched nothing; an `update`, `link` or `unlink` named a record that is not there. |
-| `ambiguous`       | A `find` with `one` matched more than one record.                                                      |
-| `alreadyLinked`   | A strict `link`'s target is already a member.                                                          |
-| `notLinked`       | A strict `unlink`'s target is not a member.                                                            |
-| `notOwn`          | A `delete` with `own` named a record somebody other than the invoker made.                             |
-| `recordExists`    | A `create`'s derived id is already held: most often a replay, or the same identity made again.         |
-| `expectChanged`   | An `expect` find's answer changed before commit.                                                       |
-| `refused`         | The write check refused a write.                                                                       |
-| _a declared name_ | A `check` failed with one of the operation's (or a callee's) `errors`.                                 |
+| Code              | When                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `notFound`        | A `find` with `one` matched nothing; an `update`, `link` or `unlink` named a record that is not there.             |
+| `ambiguous`       | A `find` with `one` matched more than one record.                                                                  |
+| `alreadyLinked`   | A strict `link`'s target is already a member.                                                                      |
+| `notLinked`       | A strict `unlink`'s target is not a member.                                                                        |
+| `notOwn`          | A `delete` with `own` named a record somebody other than the invoker made.                                         |
+| `recordExists`    | A `create`'s derived id is already held: most often a replay, or the same identity made again.                     |
+| `expectChanged`   | An `expect` find's answer changed before commit.                                                                   |
+| `refused`         | The write check refused a write.                                                                                   |
+| `spaceNotReady`   | An identity-keyed `create` ran in a dataset whose identity domain has not arrived ([Identity ids](#identity-ids)). |
+| _a declared name_ | A `check` failed with one of the operation's (or a callee's) `errors`.                                             |
 
 A failure that is neither (the backend unreachable, storage failing) is not an operation error and
 MAY be reported however the implementation reports such faults; the atomicity rules still apply.
