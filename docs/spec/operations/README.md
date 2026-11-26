@@ -29,6 +29,7 @@ the same ids everywhere.
 | [Expressions](expressions.md) | The expression subset: grammar, evaluation, the where-object, and the core function library.                                                             |
 | [Versioning](versioning.md)   | Compatible and incompatible changes to an operation, and how manifests and bundles signal format.                                                        |
 | [Conformance](conformance.md) | The vectors: their shape, how to run them, how results are compared, and which cases exist.                                                              |
+| [RDF reading](rdf.md)         | The JSON-LD [context](context.jsonld), the triples an operation and its effect summary denote, and the way back.                                         |
 
 ## The data model
 
@@ -145,6 +146,16 @@ rewrite each other's. The rule, which every host writing ranks MUST follow:
 > that belong to something else, per view, where rewriting a shared list on every move would make
 > concurrent moves lose each other.
 
+### Stored keys
+
+A key a host derives from records and stores on one, so that another writer can recognise the same
+thing by it, is part of the data in the same way: every host writing it MUST derive it the same way.
+A connection between two records stores `connection`, its dedup key: the two ends' titles, each
+trimmed, joined by `→`, followed by `: ` and the trimmed label when it has one
+(`Launch the beta → Write the onboarding guide: depends on`). A writer that spelled it otherwise would
+make every connection it draws a second copy of the one another writer, or an interpretation pass,
+already stored.
+
 ### The absent-value rule
 
 A field a record has never had written, and a field that was cleared, has **no value**. Three
@@ -175,13 +186,17 @@ schema, `OPERATION_CATEGORIES`, `inCategory`), the reference implementations of 
 `rowFor`, `isRank`: ranks) and
 [`boardArrangement.ts`](../../../packages/app-shell/src/shared/kernels/boardArrangement.ts)
 (`arrangeBoard`: a board read through its ordered `children` and `arranges`),
+[`connectionKey.ts`](../../../packages/app-shell/src/shared/kernels/connectionKey.ts) (`connectionKey`: a
+connection's stored key),
 [`recordContract.ts`](../../../packages/backend-system/shared/src/recordContract.ts) (`WriteValue`,
 `json` properties), [`whereMatch.ts`](../../../packages/backend-system/shared/src/whereMatch.ts)
 (`isAbsent`), [`registry.ts`](../../../packages/entities/src/operations/registry.ts)
 (`categoryMembers`).
 Pinned by: [`treeRanks.json`](../../../packages/app-shell/src/shared/kernels/vectors/treeRanks.json)
-and [`boardArrangement.json`](../../../packages/app-shell/src/shared/kernels/vectors/boardArrangement.json)
-(the order rules, run by `app-shell/tests/treeRanks.test.ts` and `boardArrangement.test.ts`), the
+[`boardArrangement.json`](../../../packages/app-shell/src/shared/kernels/vectors/boardArrangement.json)
+and [`connectionKey.json`](../../../packages/app-shell/src/shared/kernels/vectors/connectionKey.json)
+(the order rules and the stored key, run by `app-shell/tests/treeRanks.test.ts`,
+`boardArrangement.test.ts` and `connectionKey.test.ts`), the
 `relations.ordered-read` and `relations.to-one-*` cases in
 [`conformance/src/index.ts`](../../../packages/backend-system/conformance/src/index.ts), the
 `relation-order` operations vector, [`emptyValues.ts`](../../../packages/backend-system/conformance/src/emptyValues.ts),
