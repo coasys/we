@@ -7,7 +7,7 @@
 # it. It does not depend on `we-custody`, which keeps master keys on a computer. The phone
 # keeps a master key too, behind a second, biometric-gated Keystore key, and runs
 # `ad4m-identity-client`'s flows against the identity store directly through `ViaStore` (the phone
-# has no executor of its own): see `README.md` and `apps/we-mobile/docs/phase-2b.md`.
+# has no executor of its own): see `README.md` and `apps/we-mobile/README.md`.
 [package]
 name = "we-phone-custody"
 version = "0.1.0"
