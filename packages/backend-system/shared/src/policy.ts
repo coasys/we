@@ -150,7 +150,9 @@ export type Refusal =
   /** The policy is frozen, and this is an edit to it. */
   | { reason: 'frozen'; action: string }
   /** The policy was written in a newer format than this code reads, so nothing here may write. */
-  | { reason: 'newer-format'; action: string; format: number };
+  | { reason: 'newer-format'; action: string; format: number }
+  /** The space's rules could not be read, so nothing may write until they can. */
+  | { reason: 'unreadable'; action: string };
 
 /** A refusal as an error, so a write that is not allowed rejects with one. */
 export class PolicyRefusal extends Error {
@@ -174,6 +176,8 @@ export function describeRefusal(refusal: Refusal): string {
       return "This space's rules are frozen: nobody can change them.";
     case 'newer-format':
       return "This space's rules were written by a newer version of the app. Update it to make changes here.";
+    case 'unreadable':
+      return "This space's rules could not be loaded, so changes are paused. Try again in a moment.";
   }
 }
 

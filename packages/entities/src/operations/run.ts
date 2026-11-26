@@ -41,7 +41,7 @@ import {
 } from '@we/expressions';
 
 import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
-import { isOperationError, preconditionError, staticError } from './errors';
+import { isOperationError, OperationError, preconditionError, staticError } from './errors';
 import { callSegment, deriveRecordId, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
@@ -168,7 +168,14 @@ export async function runOperation(
 function asOperationError(error: unknown, run: Run): unknown {
   if (isOperationError(error)) return error;
   if (isRecordExists(error)) return preconditionError('recordExists', error.message, run.created.get(error.id));
-  if (isPolicyRefusal(error)) return preconditionError('refused', error.message);
+  if (isPolicyRefusal(error)) {
+    return new OperationError({
+      class: 'precondition',
+      code: 'refused',
+      message: error.message,
+      refusal: error.refusal,
+    });
+  }
   return error;
 }
 

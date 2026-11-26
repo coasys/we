@@ -211,6 +211,21 @@ describe('the write check', () => {
     await expect(check(write({ entity: 'TaskBlock', kind: 'edit', data: { title: 'x' }, record }))).rejects.toThrow();
   });
 
+  it('refuses every write while the space’s rules cannot be read', async () => {
+    const check = createPolicyCheck({
+      me: async () => 'did:ann',
+      personOf: async (did) => did,
+      space: async () => {
+        throw new Error('executor unreachable');
+      },
+    });
+    const refused = check(write({}));
+    await expect(refused).rejects.toBeInstanceOf(PolicyRefusal);
+    await expect(refused).rejects.toMatchObject({
+      refusal: { reason: 'unreadable', action: 'CollectionBlock.create' },
+    });
+  });
+
   it('does not judge a write to anything that is not a space', async () => {
     await expect(setup('did:muted', null)(write({}))).resolves.toBeUndefined();
   });
