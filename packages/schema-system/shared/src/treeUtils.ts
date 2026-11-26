@@ -72,8 +72,8 @@ export function nodePropsOf(type: unknown): readonly string[] {
  *
  * - `children` — each entry of `children` that is a node. A string is text and an object whose
  *   keys are all `$`-prefixed is an expression token; neither is a node (`isSchemaChild`).
- *   `$each` and `$animate` render only the first, and `$if` renders none of them, but every entry
- *   is part of the tree, so every walk reaches them all.
+ *   `$if` renders none of them (it draws `then` or `else`), but every entry is part of the tree,
+ *   so every walk reaches them all.
  * - `routes` — each entry of `routes`. A route is always a node, whatever else it carries.
  * - `slots` — the node under each name in `slots`.
  * - `props` — the value of each node prop its type declares (`NODE_PROPS`): `$if`'s `then` and
