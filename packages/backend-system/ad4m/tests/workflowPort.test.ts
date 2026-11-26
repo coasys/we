@@ -370,3 +370,57 @@ describe('readProposals', () => {
     expect(Object.fromEntries(proposals.map((p) => [p.id, p.settled]))).toEqual({ 'p-fired': true, 'p-open': false });
   });
 });
+
+describe('watch', () => {
+  it('does not read again for a live query that failed to open', async () => {
+    const get = vi.fn(async () => []);
+    // The SDK's live query when opening fails: `first` rejects and listeners hear an error snapshot.
+    const failing = () => {
+      const first = Promise.reject(new Error('executor unreachable'));
+      return {
+        first,
+        subscribe(fn: (snapshot: { status: string; initial: boolean }) => void) {
+          void first.catch(() => fn({ status: 'error', initial: false }));
+          return () => {};
+        },
+        dispose() {},
+      };
+    };
+    const perspective = { get, liveSparql: failing, onFlowStateChanged: () => () => {} };
+    const onChange = vi.fn();
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(createAd4mWorkflowPort().watch!(perspective as never, 'Tasks', onChange)).rejects.toThrow(
+      'executor unreachable',
+    );
+    await new Promise((r) => setTimeout(r, 150));
+
+    // A read that ran would have been warned about, whether or not it got as far as `get`.
+    expect(warned.mock.calls.filter((call) => String(call[0]).includes('could not read'))).toEqual([]);
+    expect(get).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    warned.mockRestore();
+  });
+
+  it('disposes the live queries that opened, and the flow listener, when another fails to open', async () => {
+    let opened = 0;
+    const disposed = vi.fn();
+    const liveSparql = () => {
+      opened += 1;
+      // The first opens; every other fails.
+      const first = opened === 1 ? Promise.resolve(undefined) : Promise.reject(new Error('executor unreachable'));
+      first.catch(() => undefined);
+      return { first, subscribe: () => () => {}, dispose: disposed };
+    };
+    const stopListening = vi.fn();
+    const perspective = { liveSparql, onFlowStateChanged: () => stopListening };
+    const port = createAd4mWorkflowPort();
+
+    await expect(port.watch!(perspective as never, 'Tasks', vi.fn())).rejects.toThrow('executor unreachable');
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Every handle that was made is disposed, the failed ones too, and the listener is removed.
+    expect(disposed).toHaveBeenCalledTimes(opened);
+    expect(stopListening).toHaveBeenCalledTimes(1);
+  });
+});

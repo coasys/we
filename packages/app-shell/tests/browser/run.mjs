@@ -459,6 +459,7 @@ async function main() {
                 resize: () => h.resizeMount(...rest),
                 addRow: () => h.addRow(...rest),
                 addProfile: () => h.addProfile(...rest),
+                act: () => h.act(...rest),
                 // Nothing at all, for the same number of frames — the baseline every other figure
                 // is read against. See `idleFrames` for why it has to match the shape of what it is
                 // compared with rather than being a single frame.
