@@ -368,6 +368,37 @@ fn the_audience_is_the_dialed_origin_normalised_as_the_executor_does() {
 }
 
 #[test]
+fn the_origin_vectors_shared_with_the_android_prompt_hold() {
+    // The same file `CallerGuardJvmTest` reads: what the prompt shows is what is signed.
+    let file: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/origin_vectors.json")).unwrap();
+    let vectors = file["vectors"].as_array().unwrap();
+    assert!(vectors.len() > 30);
+    for v in vectors {
+        let url = v["url"].as_str().unwrap();
+        match v["origin"].as_str() {
+            Some(origin) => assert_eq!(session::origin_of(url).unwrap(), origin, "{url}"),
+            None => assert!(session::origin_of(url).is_err(), "{url}"),
+        }
+    }
+}
+
+#[test]
+fn a_direct_call_cannot_sign_a_non_ascii_host() {
+    let dir = tempfile::tempdir().unwrap();
+    let sealer = TestSealer::new();
+    let (keys, _) = joined(&dir, &sealer);
+    let request = SessionRequest {
+        url: "https://faß.de/".into(),
+        ..login(&challenge())
+    };
+    assert!(matches!(
+        keys.sign_session(request),
+        Err(PhoneKeyError::Invalid { .. })
+    ));
+}
+
+#[test]
 fn a_claim_carries_both_keys_and_a_co_signature_the_store_accepts() {
     let dir = tempfile::tempdir().unwrap();
     let sealer = TestSealer::new();

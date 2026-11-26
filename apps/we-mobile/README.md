@@ -256,20 +256,42 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
 - **Who may call the plugin.** WE runs installed modules and cartridges in the same origin as its
   own pages, so "a call from this app" says nothing about who made it. The plugin binds the
   principal to the **document**, not to an address: `CallerDocument.kt` records which document is
-  loaded, from real page loads only (`bridge.addWebViewListener` → `onPageStarted`, which Android
-  raises for a navigation that creates a document and not for `history.pushState`, `replaceState`
-  or a fragment change), and each real load bumps a generation counter. The WebView's current
-  address (`WebView.url`) is never read for the gate, because a script on any page of the origin
-  can rewrite it with `pushState` without loading the identity page. `CallerPage.kt` only parses
-  the loaded document's address. From `onPageStarted` until the matching `onPageLoaded` the new
-  document is _loading_ and admits no identity-page call, because a page that sets `location`
-  keeps running and posting until it unloads; the call is admitted on the bridge's thread before
-  any wait. Only main-frame calls reach a plugin: Capacitor's `MessageHandler` registers
-  `androidBridge` with `WebViewCompat.addWebMessageListener` and drops a message whose `isMainFrame`
-  is false, so an iframe loading `identity.html` cannot call (the plugin refuses outright under
-  `useLegacyBridge`, whose `addJavascriptInterface` reaches every frame). A call that waits (a prompt, the camera, the network) holds a
-  ticket with the generation it was admitted under and is refused with `NotAllowed` if any load
-  happened before it mutates or signs, so what a script cannot fake is the rule:
+  loaded, fed only by the `url` argument of `CallerWebViewClient`'s callbacks (a `BridgeWebViewClient`
+  subclass that `MainActivity` installs with `bridge.setWebViewClient` after the bridge is built, and
+  that calls `super` first). Android raises those for a navigation that creates a document and not
+  for `history.pushState`, `replaceState` or a fragment change. The WebView's address
+  (`WebView.url`) is never read for the gate: a script on any page of the origin can rewrite it with
+  `pushState`, and Capacitor's own `WebViewListener` hands over only the view, not the callback's
+  `url`. A load is `onPageStarted(url)`, then `onPageCommitVisible(url)` (the new document's content
+  is drawn; a navigation stopped with `window.stop()` before it commits never raises it), then
+  `onPageFinished(url)` (raised for a stopped navigation too, so it proves nothing alone). The
+  document is _loading_, and admits no identity-page call, until the commit and the finish have both
+  come for the address the start named, in either order; a page that sets `location` keeps running
+  and posting until it unloads. Each start bumps a generation counter. `CallerPage.kt` only parses
+  the loaded document's address. The call is admitted on the bridge's thread before the hop to the
+  worker.
+  Only main-frame calls reach a plugin, **and only on Capacitor's web-message transport**.
+  `MessageHandler` registers `androidBridge` with `WebViewCompat.addWebMessageListener` and drops a
+  message whose `isMainFrame` is false, so an iframe loading `identity.html` cannot call. In 8.6.3 it
+  falls back to `addJavascriptInterface` (which every frame can post to) without saying so when the
+  config sets `useLegacyBridge`, when the WebView does not support `WEB_MESSAGE_LISTENER`, or when
+  `addWebMessageListener` throws. The plugin refuses **every** call (reads and sign-in too, since on
+  the fallback no call can be told from a frame's) unless it knows none of the three happened:
+  `androidx.webkit` is an explicit app dependency, at Capacitor's version, for the
+  `WebViewFeature` check; and the app's `capacitor_bridge_layout_main.xml` (Capacitor's layout with
+  its WebView replaced by the subclass `TransportWebView`) records any `addJavascriptInterface`
+  of `androidBridge`, which is how the throw is seen without reflection on Capacitor's private
+  state. Anything not known (a different WebView class, no bridge) is a refusal.
+  A call that waits (a prompt, the camera, the network) holds a ticket with the generation it was
+  admitted under. The ticket is checked when the worker starts, again after each wait the plugin
+  controls (the sign-in, rename and send-master prompts, the weak-protection dialog, the match-code
+  dialog, the camera, before a link thread starts, and before each `linkNext` poll) and when the
+  call ends. It is **not** threaded into the Rust crate: a native operation already running
+  (the biometric unlock inside `takeMaster`, `answer` or `revoke`, a `linkNext` poll waiting for the
+  other device) is not cancelled by a navigation, and finishes; only its result is refused with
+  `NotAllowed`. That is acceptable because the call was made by the real identity page and the
+  person confirmed or unlocked it; nothing a different page asked for is ever started.
+  What a script cannot fake is the rule:
   - Everything that links a device, sends the master key, renames, revokes, answers a request,
     joins, takes or asks for the master key, makes or restores an identity, replaces the master key
     (or touches the 12 words in any way), finishes a pending publish, or opens the camera is accepted **only from the
@@ -279,7 +301,11 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
     `signSession` are open to the app's other pages, because Settings and the key login at boot
     run there. `signSession` is the one signing call that is, and it is confirmed by the person each
     time (title and description: the full address). Because the prompt is shown for every signing, a session renewal asks
-    too.
+    too. The address shown is byte-for-byte the origin Rust signs (`session::origin_of`): scheme and
+    host lower-case, `ws(s)` as `http(s)`, the default port dropped; a non-ASCII host, a user, or a
+    host that is not a plain name or address is refused on both sides (give an internationalised
+    name in its `xn--` form), and `crates/phone-custody/tests/origin_vectors.json` is read by both a
+    Rust and a JVM test.
   - `scanDevice()` takes no code: the camera reads it inside the plugin, and the page learns only
     that a link is running. A pasted code cannot add a device.
   - The match code is compared natively. The person types the code the other device shows into a
