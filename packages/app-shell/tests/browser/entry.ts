@@ -75,6 +75,7 @@ import { createStore } from 'solid-js/store';
 import { insert, render } from 'solid-js/web';
 
 import { installLayoutCounter, profile } from './instrument';
+import { operationsHold, operationsInvoke, operationsLand, operationsProbe } from './operationsProbe';
 import { type Scenario, scenarios } from './scenarios';
 
 installLayoutCounter();
@@ -1551,6 +1552,11 @@ function toastProbe(message: string, actionLabel = '', look?: ToastLook): string
 
 (window as unknown as Record<string, unknown>).__harness = {
   toastProbe,
+  // Declared operations invoked as the host invokes them, with the real run held — see `operationsProbe`.
+  operationsProbe,
+  operationsInvoke,
+  operationsLand,
+  operationsHold,
   dockProbe,
   laneRoomProbe,
   dockProbeAct,
