@@ -42,7 +42,7 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(async () => {
-  await client?.perspective.remove(perspective.uuid).catch(() => undefined);
+  if (perspective) await client.perspective.remove(perspective.uuid).catch(() => undefined);
   client?.close();
 });
 
