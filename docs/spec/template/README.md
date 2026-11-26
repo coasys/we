@@ -39,6 +39,7 @@ named and versioned on their own.
 | [Safety](safety.md)                                         | Capability grants, gesture-only actions, protected pieces, host-drawn confirmation, element and URL allowlists, and the refusals that pin each.        |
 | [Catalogs](catalogs.md)                                     | The core catalog and extension catalogs, `meta.requires`.                                                                                              |
 | [Conformance](conformance.md)                               | The vector families: their files, how another renderer runs them, how outputs are compared, which are core.                                            |
+| [RDF reading](rdf.md)                                       | The `we:` vocabulary, the JSON-LD context, which triples a template denotes, and the way back.                                                         |
 
 ## The document
 

@@ -23,6 +23,7 @@ never renamed or reused), and `note`, one line saying what it pins.
 | `validate.json`       | validate       | a document → whether it is valid, and the path of each error                                       | format            |
 | `safety.json`         | safety         | a template, its grants and a script of events → the drawn tree, actions fired and confirmations    | format            |
 | `panels.json`         | panels         | panel declarations and an address → the panels present; a panel's three rungs → its placement      | format            |
+| `rdf.json`            | rdf            | a template → the triples it denotes through the [JSON-LD context](rdf.md), as canonical N-Quads    | format            |
 | `style.json`          | style          | design-system props and a theme → the style emitted and each token's value                         | core catalog      |
 | `tokens/<theme>.json` | tokens         | a theme → every token's computed value                                                             | core catalog      |
 | `host-functions.json` | host-functions | a host function and its options → value                                                            | WE's host catalog |
@@ -106,6 +107,11 @@ also lists `confirmations`, the destructive actions the host asked about during 
 `{ "call", "args" }`. The members the cases name are WE's catalog's; a host maps them onto its own
 members of the same group and kind.
 
+**rdf.** `{ id, note, template, nquads }`. Read `template` as RDF with [`context.jsonld`](context.jsonld)
+and canonicalize the result; `nquads` is each statement, one a line, sorted. Compare the statements,
+then read them back as JSON ([Lossless both ways](rdf.md#lossless-both-ways)) and compare with
+`template` as JSON values.
+
 **panels.** `{ id, note, op, … }`. `op: "active"`: given the interface's declarations `shell`, the
 section's `view`, the app's `app` and the address as `segments`, `present` lists the panels on the
 screen, by id (and title, where the case gives one), in order. `op: "placement"`: given a panel's
@@ -175,13 +181,13 @@ A **static renderer** compares only the first entry of each case's `expect`.
 
 ## Which families a class runs
 
-| Class                                            | Runs                                                                                               |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| [Validator](README.md#conformance-classes)       | `validate`, and `expressions.json`'s syntax-error cases.                                           |
-| [Static renderer](README.md#conformance-classes) | `expressions`, `functions`, `paths`, `query-compile`, and the mount entry of every `render` case.  |
-| [Renderer](README.md#conformance-classes)        | The format families: `expressions`, `functions`, `paths`, `navigation`, `query-compile`, `render`. |
-| [Host](README.md#conformance-classes)            | As a renderer, and `safety` and `panels`: the refusals and the panel resolution a host makes.      |
-| A host providing the core catalog                | Also `style` and `tokens`.                                                                         |
+| Class                                            | Runs                                                                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| [Validator](README.md#conformance-classes)       | `validate`, and `expressions.json`'s syntax-error cases. A validator reading templates as RDF also runs `rdf`. |
+| [Static renderer](README.md#conformance-classes) | `expressions`, `functions`, `paths`, `query-compile`, and the mount entry of every `render` case.              |
+| [Renderer](README.md#conformance-classes)        | The format families: `expressions`, `functions`, `paths`, `navigation`, `query-compile`, `render`.             |
+| [Host](README.md#conformance-classes)            | As a renderer, and `safety` and `panels`: the refusals and the panel resolution a host makes.                  |
+| A host providing the core catalog                | Also `style` and `tokens`.                                                                                     |
 
 The render family has a case for every block type (`$each`, `$if`, `$single`, `$animate`, `$routes`,
 `$surface`, `$slot`, `$part`, `$panels`, `$agent`, `$ref`) and every handler (`$invoke`,

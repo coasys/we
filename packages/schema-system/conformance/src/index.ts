@@ -6,7 +6,8 @@
  * is what `tests/vectors.test.ts` compares against: a committed vector that drifted from the code
  * fails there with the case id.
  *
- * `navigation.json`, `render.json` and `safety.json` are the exceptions: their cases mount real Solid on jsdom (a
+ * `navigation.json`, `render.json` and `safety.json` are the exceptions (and `rdf.json`, whose JSON-LD
+ * processor is asynchronous, compared in `tests/rdf.test.ts`): their cases mount real Solid on jsdom (a
  * RouteStore over jsdom's history; the renderer itself), so in-memory recording only exists inside
  * the `solid` vitest project — `tests/navigation.test.tsx` and `tests/render.test.tsx` compare, and
  * the `tests/record-*.test.tsx` pair write.
@@ -37,6 +38,7 @@ export const VECTOR_FILES = [
   'navigation.json',
   'render.json',
   'safety.json',
+  'rdf.json',
 ] as const;
 
 export const TOKEN_THEMES = ['light', 'dark', 'black', 'retro', 'cyberpunk', 'glow'] as const;
@@ -56,6 +58,7 @@ export interface Vectors {
   navigation: unknown;
   render: unknown;
   safety: unknown;
+  rdf: unknown;
 }
 
 /** Read one committed vector file (or a token table) relative to the vectors directory. */
@@ -67,8 +70,8 @@ export function loadTokenTable(vectorsDir: string, theme: TokenTheme): { theme: 
   return loadVectorFile(vectorsDir, join('tokens', `${theme}.json`)) as { theme: string; vars: Record<string, string> };
 }
 
-/** Everything except navigation, render and safety — see the module note for why. */
-export function recordAll(): Omit<Vectors, 'navigation' | 'render' | 'safety'> {
+/** Everything except navigation, render, safety and rdf — see the module note for why. */
+export function recordAll(): Omit<Vectors, 'navigation' | 'render' | 'safety' | 'rdf'> {
   return {
     expressions: recordExpressions(),
     functions: recordFunctions(),
@@ -94,5 +97,7 @@ export { QUERY_CASES } from './cases/queryCompile';
 export { STYLE_CASES, THEME_NAMES } from './cases/style';
 export { decodeValue, encodeValue, type EncodedValue } from './encode';
 export { envFor } from './evalEnv';
+export { fromNQuads, recordRdf, TEMPLATE_CONTEXT_PATH, toNQuads } from './rdf';
+export { RDF_CASES } from './cases/rdf';
 export { resolveStyleCase, substituteVars, type TokenTable } from './styleResolve';
 export { recordStyle } from './record';

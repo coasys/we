@@ -44,6 +44,7 @@ import { STYLE_CASES } from './cases/style';
 import { VALIDATE_CASES } from './cases/validate';
 import { decodeValue, encodeValue } from './encode';
 import { envFor } from './evalEnv';
+import { recordRdf } from './rdf';
 import { resolveStyleCase, type TokenTable } from './styleResolve';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -290,4 +291,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   write('style.json', recordStyle());
   write('validate.json', recordValidate());
   write('panels.json', recordPanels());
+  write('rdf.json', await recordRdf());
 }

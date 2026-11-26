@@ -1,0 +1,28 @@
+{
+  "@context": {
+    "@version": 1.1,
+    "we": "https://we.example/ns/template#",
+    "@vocab": "https://we.example/ns/template#",
+    "type": "@type",
+    "id": "we:id",
+    "key": "we:key",
+    "slot": "we:slot",
+    "path": "we:path",
+    "redirect": "we:redirect",
+    "keepAlive": "we:keepAlive",
+    "schemaVersion": "we:schemaVersion",
+    "forkedFrom": "we:forkedFrom",
+    "forkedPart": "we:forkedPart",
+    "children": { "@id": "we:children", "@container": "@list" },
+    "routes": { "@id": "we:routes", "@container": "@list" },
+    "slots": { "@id": "we:slots", "@container": "@index", "@index": "slotName" },
+    "$defs": { "@id": "we:defs", "@container": "@index", "@index": "defName" },
+    "$": "we:expression",
+    "props": { "@id": "we:props", "@type": "@json" },
+    "$localState": { "@id": "we:localState", "@type": "@json" },
+    "$queries": { "@id": "we:queries", "@type": "@json" },
+    "styles": { "@id": "we:styles", "@type": "@json" },
+    "theme": { "@id": "we:theme", "@type": "@json" },
+    "meta": { "@id": "we:meta", "@type": "@json" }
+  }
+}
