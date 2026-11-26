@@ -53,6 +53,96 @@ class CallerGuardJvmTest {
     assertTrue(CallerPage.isApp("https://localhost/mobile/identity.html"))
   }
 
+  private val identity = "https://localhost/mobile/identity.html"
+  private val main = "https://localhost/"
+
+  /** A real load of [url], from its start to its finish. */
+  private fun CallerDocument.load(url: String?) {
+    started(url)
+    finished(url)
+  }
+
+  @Test
+  fun aRealLoadOfTheIdentityPageAdmitsAndNothingBeforeALoadDoes() {
+    val doc = CallerDocument()
+    assertNull(doc.admit(identityOnly = true))
+    assertNull(doc.admit(identityOnly = false))
+    doc.load(identity)
+    assertTrue(doc.admit(identityOnly = true) != null)
+    assertTrue(doc.admit(identityOnly = false) != null)
+  }
+
+  @Test
+  fun pushStateToTheIdentityPathLeavesTheMainPageMain() {
+    // The plugin only ever calls started() from a real document load. pushState/replaceState raise no
+    // load, so the loaded document stays the main page whatever the history address says.
+    val doc = CallerDocument()
+    doc.load(main)
+    assertNull(doc.admit(identityOnly = true))
+    assertTrue(doc.admit(identityOnly = false) != null)
+  }
+
+  @Test
+  fun aCallReceivedWhileTheIdentityPageIsLoadingIsRefused() {
+    // The main page set `location`: it keeps running and posting until it unloads.
+    val doc = CallerDocument()
+    doc.load(main)
+    doc.started(identity)
+    assertNull(doc.admit(identityOnly = true))
+    // The app's other pages are open to it anyway (WE signs in while booting).
+    assertTrue(doc.admit(identityOnly = false) != null)
+    doc.finished(identity)
+    assertTrue(doc.admit(identityOnly = true) != null)
+  }
+
+  @Test
+  fun aFinishThatIsNotTheLoadingDocumentAdmitsNothing() {
+    val doc = CallerDocument()
+    doc.started(identity)
+    doc.finished(main) // an earlier page's finish, or a redirect
+    assertNull(doc.admit(identityOnly = true))
+    doc.finished(null)
+    assertNull(doc.admit(identityOnly = true))
+    doc.finished(identity)
+    assertTrue(doc.admit(identityOnly = true) != null)
+  }
+
+  @Test
+  fun aCallStampedBeforeTheFlipIsRefusedAfterIt() {
+    val doc = CallerDocument()
+    doc.load(main)
+    val old = doc.admit(identityOnly = false)!!
+    doc.started(identity)
+    assertFalse(doc.holds(old))
+    doc.finished(identity)
+    assertFalse(doc.holds(old))
+    assertTrue(doc.holds(doc.admit(identityOnly = true)!!))
+  }
+
+  @Test
+  fun aNewLoadVoidsAPendingCall() {
+    val doc = CallerDocument()
+    doc.load(identity)
+    val ticket = doc.admit(identityOnly = true)!!
+    assertTrue(doc.holds(ticket))
+    doc.load(identity) // a reload of the same page is a new document
+    assertFalse(doc.holds(ticket))
+    doc.load(main)
+    assertFalse(doc.holds(ticket))
+  }
+
+  @Test
+  fun reloadingTheMainPageAfterTheIdentityPageRefuses() {
+    val doc = CallerDocument()
+    doc.load(identity)
+    val ticket = doc.admit(identityOnly = true)!!
+    doc.load(main)
+    assertNull(doc.admit(identityOnly = true))
+    assertFalse(doc.holds(ticket))
+    doc.load(null)
+    assertNull(doc.admit(identityOnly = false))
+  }
+
   @Test
   fun aMatchCodeMatchesWhateverTheSpacingAndCase() {
     assertTrue(MatchCode.matches("Q2M R7K", "q2m r7k"))
@@ -79,6 +169,29 @@ class CallerGuardJvmTest {
     assertNull(PromptText.originOf("host.example"))
     assertEquals("Sign in to https://host.example", PromptText.signIn(false, "https://host.example").title)
     assertEquals("Stay signed in to https://host.example", PromptText.signIn(true, "https://host.example").title)
+  }
+
+  @Test
+  fun aLongDestinationIsShownWholeNeverCut() {
+    val a = "https://trusted.example." + "a".repeat(60) + ".attacker.example"
+    val b = "https://trusted.example." + "a".repeat(60) + ".other.example"
+    assertEquals(a.take(59), b.take(59))
+    val oa = PromptText.originOf(a)!!
+    val ob = PromptText.originOf(b)!!
+    assertEquals(a, oa)
+    assertTrue(PromptText.signIn(false, oa).title.endsWith(".attacker.example"))
+    assertTrue(PromptText.signIn(true, ob).description.contains(".other.example"))
+    assertTrue(PromptText.signIn(false, oa).title != PromptText.signIn(false, ob).title)
+  }
+
+  @Test
+  fun anOriginIsCanonicalOrRefused() {
+    assertEquals("https://host.example:8443", PromptText.originOf("HTTPS://Host.Example:8443/x"))
+    assertEquals("https://xn--bcher-kva.example", PromptText.originOf("https://bücher.example/"))
+    assertNull(PromptText.originOf("https://user@host.example/"))
+    val longLabel = "a".repeat(63)
+    val tooLong = "https://" + listOf(longLabel, longLabel, longLabel, longLabel, "example").joinToString(".") + "/"
+    assertNull(PromptText.originOf(tooLong))
   }
 
   @Test
