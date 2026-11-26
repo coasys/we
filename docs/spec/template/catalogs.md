@@ -101,3 +101,12 @@ Beside them are the host values every host provides by name (`me`, the person vi
 records (`record.*`), specified with the format itself. A member a host offers outside every profile
 is [host-only](../profiles/README.md#we-host-only): a template naming one depends on that host, and a
 validator says so.
+
+---
+
+Implemented by: [`profiles.ts`](../../../packages/schema-system/shared/src/profiles/profiles.ts),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
+(`withHostOnlyReport`).
+Pinned by: the profile vectors (`navigation.*`, `view-state.*` and the rest, in
+[`profiles.json`](../../../packages/schema-system/conformance/vectors/profiles.json)),
+[`profilesCoverage.test.ts`](../../../packages/schema-system/conformance/tests/profilesCoverage.test.ts).

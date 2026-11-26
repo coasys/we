@@ -105,6 +105,12 @@ An implementation claims one or more of these, for a spec version:
 Each class is tested by the vector families [Conformance](conformance.md#which-families-a-class-runs)
 names for it.
 
+---
+
+Pinned by: the vector families, run per class as [Conformance](conformance.md#which-families-a-class-runs)
+says; [`coverage.test.ts`](../../../packages/schema-system/conformance/tests/coverage.test.ts) (what each
+family must cover).
+
 ## Terms
 
 The terms of [the specs' conventions](../README.md#conventions) apply. Also:
