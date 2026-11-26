@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-client"
 version = "0.13.1-staging.20"
-source = "git+https://github.com/coasys/ad4m?rev=c9bbfa98b27b87804a7840524f25b8e8e0500bd2#c9bbfa98b27b87804a7840524f25b8e8e0500bd2"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
 dependencies = [
  "anyhow",
  "chrono",
@@ -29,7 +29,7 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c9bbfa98b27b87804a7840524f25b8e8e0500bd2#c9bbfa98b27b87804a7840524f25b8e8e0500bd2"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c9bbfa98b27b87804a7840524f25b8e8e0500bd2#c9bbfa98b27b87804a7840524f25b8e8e0500bd2"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
 dependencies = [
  "ad4m-client",
  "ad4m-hash-chain",
@@ -62,7 +62,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=c9bbfa98b27b87804a7840524f25b8e8e0500bd2#c9bbfa98b27b87804a7840524f25b8e8e0500bd2"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
 dependencies = [
  "ad4m-hash-chain",
  "bip39",
@@ -83,8 +83,9 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=c9bbfa98b27b87804a7840524f25b8e8e0500bd2#c9bbfa98b27b87804a7840524f25b8e8e0500bd2"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
 dependencies = [
+ "ad4m-model-derive",
  "futures",
  "js-sys",
  "serde",
@@ -92,6 +93,16 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "ad4m-model-derive"
+version = "0.13.0-test-1"
+source = "git+https://github.com/coasys/ad4m?rev=ba50036efb80c1b79811c9b78d4677282fd73462#ba50036efb80c1b79811c9b78d4677282fd73462"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

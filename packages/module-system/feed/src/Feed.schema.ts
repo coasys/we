@@ -404,9 +404,14 @@ const showButton = (value: string, label: string): SchemaNode => ({
 */
 const transcriptsSwitch: SchemaNode = {
   type: 'Row',
-  props: { gap: '100', ay: 'center', ml: 'auto' },
+  // Whole or on a line of its own: the controls wrap, so this never gives its words up to a squeeze.
+  props: { gap: '100', ay: 'center', ml: 'auto', flexShrink: 0 },
   children: [
-    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Show call transcripts'] },
+    {
+      type: 'we-text',
+      props: { variant: 'footnote', color: 'text-muted', whiteSpace: 'nowrap' },
+      children: ['Show call transcripts'],
+    },
     {
       type: 'we-switch',
       props: {
@@ -425,7 +430,8 @@ const transcriptsSwitch: SchemaNode = {
 /** What the Feed shows — everything, messages, or bots' messages — and which way round: the reader's own. */
 const feedControls = (scope: FeedScope): SchemaNode => ({
   type: 'Row',
-  props: { gap: '100', ay: 'center' },
+  // Wraps onto a second line at a narrow width rather than squeezing a control.
+  props: { gap: '100', ay: 'center', wrap: true },
   children: [
     showButton('all', 'Everything'),
     showButton('messages', 'Messages'),

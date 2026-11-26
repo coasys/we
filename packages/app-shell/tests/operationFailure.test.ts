@@ -13,6 +13,17 @@ describe('saying why an operation did nothing', () => {
     expect(operationFailureMessage(refused)).toBeNull();
   });
 
+  it('leaves rules that could not be read to the write check, which says them in the policy’s sentence', () => {
+    // The sentence itself is pinned where it is said, in the roles part's tests.
+    const unreadable = new OperationError({
+      class: 'precondition',
+      code: 'refused',
+      message: "This space's rules could not be loaded, so changes are paused. Try again in a moment.",
+      refusal: { reason: 'unreadable', action: 'CollectionBlock.create' },
+    });
+    expect(operationFailureMessage(unreadable, 'Could not add that')).toBeNull();
+  });
+
   it('says a precondition the operation names in its own words', () => {
     const taken = new OperationError({
       class: 'precondition',

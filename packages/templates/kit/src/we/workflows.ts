@@ -62,10 +62,11 @@ const iconButton = (
   ],
 });
 
-const chip = (content: string | { $: string }, tone = 'surface-sunken'): SchemaNode => ({
+/** A count or a status word stays on one line; a sentence (`wrap`) wraps inside its chip. */
+const chip = (content: string | { $: string }, tone = 'surface-sunken', wrap = false): SchemaNode => ({
   type: 'Row',
   props: { px: '200', py: '100', r: 'full', bg: tone, ay: 'center', gap: '100' },
-  children: [text(content, { variant: 'footnote' })],
+  children: [text(content, { variant: 'footnote', ...(wrap ? {} : { whiteSpace: 'nowrap' }) })],
 });
 
 // ─── Lanes ─────────────────────────────────────────────────────────────────────
@@ -624,7 +625,7 @@ const recordRow: SchemaNode = {
             condition: { $: 'rec.startedAt' },
             then: {
               type: 'Row',
-              props: { gap: '100', ay: 'center' },
+              props: { gap: '100', ay: 'center', flexShrink: 0 },
               children: [
                 text('started', { variant: 'footnote', color: 'text-faint' }),
                 {
@@ -639,7 +640,7 @@ const recordRow: SchemaNode = {
           type: '$if',
           props: {
             condition: { $: 'rec.stalled' },
-            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft'),
+            then: chip('Stuck between two moves — one has to be withdrawn', 'warning-soft', true),
           },
         },
         { type: 'Row', props: { flex: '1' } },
@@ -934,7 +935,7 @@ const openWorkflow: SchemaNode = {
     { type: 'we-divider' },
     {
       type: 'Row',
-      props: { gap: '200', ay: 'center' },
+      props: { gap: '200', ay: 'center', wrap: true },
       children: [
         text('Going through it', { variant: 'label' }),
         chip({ $: `count(${OPEN}.records)` }),
@@ -1334,7 +1335,7 @@ const workflowButton: SchemaNode = {
 
 const workflowList: SchemaNode = {
   type: 'Column',
-  props: { gap: '200', width: '240px', flexShrink: '0' },
+  props: { gap: '200', width: '240px', maxWidth: '100%', flexShrink: '0' },
   children: [
     {
       type: 'Row',
@@ -1432,12 +1433,14 @@ export function workflowsPage(band: Record<string, string>): SchemaNode {
           condition: { $: 'workflowStore.available' },
           then: {
             type: 'Row',
-            props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', ...band },
+            // Wraps: when the detail pane would be squeezed under its floor, the list sits above it.
+            props: { width: '100%', maxWidth: 'var(--we-layout-lg)', gap: '600', ay: 'start', wrap: true, ...band },
             children: [
               workflowList,
               {
                 type: 'Column',
-                props: { flex: '1', minWidth: '0', gap: '400' },
+                // Never wider than the lane: a docked pane narrower than 16rem still fits.
+                props: { flex: '1', minWidth: 'min(16rem, 100%)', gap: '400' },
                 children: [
                   {
                     type: '$if',

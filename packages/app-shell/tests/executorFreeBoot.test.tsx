@@ -3214,6 +3214,131 @@ describe('following a space from the rows its live queries push', () => {
     failing.mockRestore();
   }, 15000);
 
+  it('refuses writes while the space’s policy cannot be read at all', async () => {
+    const { stores, handle } = await openSpace('Policy Unreadable');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Policy Unreadable Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Unreadable Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Unreadable Elsewhere'));
+
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingWatch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    // Not the open policy standing in for rules nobody could read.
+    expect(stores.spaces.policy().loaded).toBe(false);
+    // Past the few seconds a successful read of a space's rules is kept for.
+    const later = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => later);
+    await expect(CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never)).rejects.toMatchObject({
+      refusal: { reason: 'unreadable' },
+    });
+
+    // Once the rules can be read, writes are judged by them again.
+    failingRead.mockRestore();
+    await expect(CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never)).resolves.toBeTruthy();
+    clock.mockRestore();
+    failingWatch.mockRestore();
+  }, 15000);
+
+  it('refuses an operation’s writes while the space’s policy cannot be read', async () => {
+    const { stores, handle } = await openSpace('Operation Unreadable');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Operation Unreadable Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Operation Unreadable Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Operation Unreadable Elsewhere'));
+
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    expect(stores.spaces.policy().loaded).toBe(false);
+    const later = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => later);
+    const boards = () => CollectionBlock.findAll(handle, { where: { kind: 'board' } } as never);
+    const before = (await boards()).length;
+
+    // An operation's writes pass the same check as any other write, so the rules nobody could read
+    // refuse it as they refuse a single write, and nothing of it lands.
+    const run = () =>
+      runOperation(
+        'core.createBoard',
+        { title: 'Board', states: ['todo', 'done'] },
+        {
+          dataset: handle,
+          invoker: 'did:test:james',
+        },
+      );
+    await expect(run()).rejects.toMatchObject({
+      name: 'OperationError',
+      code: 'refused',
+      refusal: { reason: 'unreadable' },
+    });
+    expect((await boards()).length).toBe(before);
+
+    failingRead.mockRestore();
+    await expect(run()).resolves.toBeTruthy();
+    expect((await boards()).length).toBe(before + 1);
+    clock.mockRestore();
+    failingWatch.mockRestore();
+  }, 15000);
+
+  it('marks the policy loaded when a push brings its versions after the opening read gave none', async () => {
+    const { stores } = await openSpace('Policy Comes Back');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Policy Comes Back Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Policy Comes Back Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Policy Comes Back Elsewhere'));
+
+    // The watch opens on nothing it can apply, and the stored read fails: not loaded.
+    let push: ((s: unknown) => void) | undefined;
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const watch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.resolve({ results: [] }),
+      getSnapshot: () => ({ status: 'loading', initial: false }),
+      subscribe: (fn: (s: unknown) => void) => {
+        push = fn;
+        return () => undefined;
+      },
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    expect(stores.spaces.policy().loaded).toBe(false);
+
+    // The connection is back: the watch pushes the versions.
+    push!({ status: 'ready', data: { results: [] }, initial: false });
+    await vi.waitFor(() => expect(stores.spaces.policy()).toMatchObject({ loaded: true, preset: 'open' }));
+    failingRead.mockRestore();
+    watch.mockRestore();
+  }, 15000);
+
   /** Leaves the open space and comes back, with `entity`'s watch (when `only` accepts the query) failing to open. */
   async function reenterWithFailingWatch(
     stores: Awaited<ReturnType<typeof openSpace>>['stores'],
