@@ -357,6 +357,7 @@ class DeviceKeyPlugin : Plugin() {
     }
   }
 
+  @PluginMethod
   fun linkNext(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) { ticket ->
     withLink(call) { id, held ->
       try {
@@ -733,7 +734,10 @@ class DeviceKeyPlugin : Plugin() {
     )
   }
 
-  /** Refuses when a new document has loaded since the call was admitted: nothing is mutated or signed for it. */
+  /**
+   * Refuses when a new document has loaded since the call was admitted, so the step after it is not
+   * taken. A native operation already running is not stopped; only what follows it is refused.
+   */
   private fun stillHolds(ticket: CallerDocument.Ticket) {
     if (!document.holds(ticket)) throw Refusal("NotAllowed", "The page changed. Start again.")
   }

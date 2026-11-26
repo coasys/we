@@ -16,6 +16,13 @@ import layout from '../android/app/src/main/res/layout/capacitor_bridge_layout_m
 import config from '../capacitor.config';
 import capacitorLayout from '../node_modules/@capacitor/android/capacitor/src/main/res/layout/capacitor_bridge_layout_main.xml?raw';
 
+/** The TypeScript that calls the plugin: the phone's identity page and WE's platform layer. */
+const callers = import.meta.glob<string>(['../src/**/*.ts', '../../we-web/src/platform/*.ts', '!**/*.test.ts'], {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
 /** The load adapter's code, its comments left out. */
 const client = clientSource.replace(/\/\*[\s\S]*?\*\//g, '');
 
@@ -90,6 +97,21 @@ describe('who may call the identity plugin', () => {
     expect(plugin).not.toMatch(/\brun\(call\)/);
   });
 
+  it('marks every method the TypeScript calls as a plugin method, which Capacitor only then reaches', () => {
+    const called = new Set<string>();
+    for (const source of Object.values(callers)) {
+      for (const [, name] of source.matchAll(/\bplugin\.(\w+)\(/g)) called.add(name);
+    }
+    expect(called.has('linkNext')).toBe(true);
+    for (const name of called) {
+      expect(plugin, name).toMatch(new RegExp(`@PluginMethod\\s+fun ${name}\\(call: PluginCall\\)`));
+    }
+    // Every method that takes a call is reachable: none is left without the annotation.
+    for (const [, name] of plugin.matchAll(/^ {2}fun (\w+)\(call: PluginCall\)/gm)) {
+      expect(plugin, name).toMatch(new RegExp(`@PluginMethod\\s+fun ${name}\\(call: PluginCall\\)`));
+    }
+  });
+
   it('leaves what links, sends the master key, renames or answers to the identity page alone', () => {
     for (const name of [
       'create',
@@ -119,9 +141,13 @@ describe('who may call the identity plugin', () => {
     expect(plugin).not.toContain('WebViewListener');
     expect(client).not.toMatch(/\.url\b/);
     expect(client).not.toContain('WebViewListener');
-    expect(client).toContain('BridgeWebViewClient(bridge)');
+    expect(client).toContain('BridgeWebViewClient(calls)');
+    // A barrier on the plugin's call queue at each commit: calls the old document queued run first.
+    expect(client).toMatch(
+      /document\.committed\(url\) \?: return\s+calls\.execute \{ document\.drained\(generation\) \}/,
+    );
     expect(client).toMatch(/super\.onPageStarted\(view, url, favicon\)\s+document\.started\(url\)/);
-    expect(client).toMatch(/super\.onPageCommitVisible\(view, url\)\s+document\.committed\(url\)/);
+    expect(client).toMatch(/super\.onPageCommitVisible\(view, url\)[\s\S]*?document\.committed\(url\)/);
     expect(client).toMatch(/super\.onPageFinished\(view, url\)\s+document\.finished\(url\)/);
     expect(plugin).toContain('bridge.webViewClient = CallerWebViewClient(bridge, document)');
     expect(mainActivity).toContain('installPageGate()');
