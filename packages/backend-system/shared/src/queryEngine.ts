@@ -140,9 +140,8 @@ function applySort(rows: Row[], sort: SortKey[], entity: string, data: InMemoryD
 function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMemoryDataset): number {
   const resolved = relatedRows(row, entity, agg.over, data);
   if (!resolved) return 0;
-  const set = agg.filter
-    ? resolved.rows.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data))
-    : resolved.rows;
+  const members = agg.transitive ? reachable(resolved.rows, resolved.rel.target, agg.over, data) : resolved.rows;
+  const set = agg.filter ? members.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data)) : members;
   if (agg.fn === 'count') return set.length;
   const values = set.map((r) => Number(r[agg.field!])).filter((n) => !Number.isNaN(n));
   if (values.length === 0) return 0;
@@ -158,6 +157,28 @@ function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMe
     default:
       return 0;
   }
+}
+
+/**
+ * Everything reached from `first` along `relation` at any depth, `first` included: what a transitive
+ * count counts. A record reached two ways counts once, and the visited set is what stops a cycle.
+ * Answering with the first step alone would be a plausible wrong number.
+ */
+function reachable(first: Row[], entity: string, relation: string, data: InMemoryDataset): Row[] {
+  const seen = new Set<string | number>();
+  const out: Row[] = [];
+  let frontier = first;
+  while (frontier.length) {
+    const next: Row[] = [];
+    for (const r of frontier) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(r);
+      next.push(...(relatedRows(r, entity, relation, data)?.rows ?? []));
+    }
+    frontier = next;
+  }
+  return out;
 }
 
 /**
