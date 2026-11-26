@@ -323,9 +323,8 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
           entity: 'CollectionBlock',
           id: { $: 'board' },
           relation: 'children',
-          targets: {
-            $: 'concat(ids.filter(i, i in first(found).children), first(found).children.filter(i, !(i in ids)))',
-          },
+          targets: { $: 'ids.filter(i, i in first(found).children)' },
+          keep: true,
         },
         when: { $: 'count(found) > 0 && ids.exists(i, i in first(found).children)' },
       },
@@ -346,6 +345,11 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
         description: 'The column (or a board, for what it holds in no column).',
       },
       ids: { type: 'list', required: true, description: 'Card ids, in the order wanted.' },
+      order: {
+        type: 'list',
+        description:
+          'The column’s whole order as the board draws it, for a column showing only some of its cards: the ids given go back into the places of the ones it shows, and the hidden ones keep theirs. Omit when the ids are the whole column.',
+      },
     },
     serial: { $: "'arrange ' + column" },
     steps: [
@@ -355,9 +359,17 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
           entity: 'CollectionBlock',
           id: { $: 'column' },
           relation: 'arranges',
-          targets: { $: 'concat(ids, (first(found).arranges ?? []).filter(i, !(i in ids)))' },
+          /*
+            With an order, the k-th place a shown card held in it takes the k-th shown card as now
+            dragged; anything the drag brought in follows. Whatever the column still holds that
+            neither names is kept, after them.
+          */
+          targets: {
+            $: 'order ? concat(order.map(i, i in ids ? ids.filter(j, j in order)[indexOf(order.filter(j, j in ids), i)] : i), ids.filter(i, !(i in order))) : ids',
+          },
+          keep: true,
         },
-        when: { $: 'count(found) > 0' },
+        when: { $: 'count(found) > 0 && count(ids) > 0' },
       },
     ],
     returns: { found: { $: 'count(found) > 0' } },
@@ -389,7 +401,8 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
           entity: 'CollectionBlock',
           id: { $: 'to' },
           relation: 'arranges',
-          targets: { $: 'concat(ids, (target.arranges ?? []).filter(i, !(i in ids)))' },
+          targets: { $: 'ids' },
+          keep: true,
         },
         when: { $: 'card in (ids ?? [])' },
       },

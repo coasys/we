@@ -385,6 +385,9 @@ async function runStep(
       const id = idOf(value('id'), `${step}.id`);
       // Deleting what is not there is the state asked for, as the contract's own delete has it.
       const instance = await instanceOf(run, entity, id, step, { optional: true });
+      // A record made earlier in this operation is the invoker's; one read is theirs when it says so.
+      if (instance && body.own && !run.created.has(id) && instance.author !== run.invoker)
+        throw preconditionError('notOwn', `${entity} ${id} was made by somebody else`, step);
       if (instance) await instance.delete(run.batchId);
       run.instances.delete(id);
       return undefined;
@@ -425,8 +428,15 @@ async function runStep(
       const Model = statics(run, entity, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
-      const targets = idsOf(value('targets') ?? []);
-      if (!targets) throw staticError('notAList', `${step}.targets is not a list of records or ids`, step);
+      const given = idsOf(value('targets') ?? []);
+      if (!given) throw staticError('notAList', `${step}.targets is not a list of records or ids`, step);
+      // Kept: whatever the relation holds that the list leaves out follows it, in the order it was.
+      const targets = body.keep
+        ? [
+            ...given,
+            ...(await membershipOf(run, Model, id, relation, step)).filter((member) => !given.includes(member)),
+          ]
+        : given;
       await Model.setRelation(run.dataset, id, relation, targets, run.batchId);
       setMembership(run, id, relation, targets);
       return undefined;

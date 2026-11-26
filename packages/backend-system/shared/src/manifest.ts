@@ -568,6 +568,12 @@ export interface DeleteStep {
   entity: string | OperationExpression;
   oneOf?: OneOfEntry[];
   id: OperationValue;
+  /**
+   * Only a record the invoker made: the run refuses (`notOwn`) to delete one somebody else made. So
+   * the step takes back the invoker's own contribution and nobody else's, and the effect summary does
+   * not count it as destructive.
+   */
+  own?: boolean;
 }
 
 export interface LinkStep {
@@ -598,6 +604,11 @@ export interface SetRelationStep {
   relation: string | OperationExpression;
   /** The whole ordered list. */
   targets: OperationValue;
+  /**
+   * Members the list leaves out stay, after it, in the order they held — so the step orders and adds,
+   * and never removes. The effect summary records it as an addition only.
+   */
+  keep?: boolean;
 }
 
 export interface ForEachStep {
@@ -798,7 +809,12 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
     }),
     z.strictObject({
       ...guard,
-      delete: z.strictObject({ entity: z.union([z.string(), expressionToken]), oneOf, id: present }),
+      delete: z.strictObject({
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        id: present,
+        own: z.boolean().optional(),
+      }),
     }),
     z.strictObject({ ...guard, link: linkBody }),
     z.strictObject({ ...guard, unlink: linkBody }),
@@ -810,6 +826,7 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
         id: present,
         relation: z.union([z.string(), expressionToken]),
         targets: present,
+        keep: z.boolean().optional(),
       }),
     }),
     z.strictObject({

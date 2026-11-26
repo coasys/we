@@ -30,7 +30,7 @@ export type StaticErrorCode =
   | 'callDepth';
 
 export type PreconditionErrorCode =
-  'notFound' | 'ambiguous' | 'alreadyLinked' | 'notLinked' | 'recordExists' | 'expectChanged' | 'refused';
+  'notFound' | 'ambiguous' | 'alreadyLinked' | 'notLinked' | 'notOwn' | 'recordExists' | 'expectChanged' | 'refused';
 
 export interface OperationErrorInit {
   class: OperationErrorClass;

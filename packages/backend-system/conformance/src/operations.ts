@@ -319,6 +319,21 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { entity: 'TagBlock', fields: { name: 'garden' } } },
     ],
   },
+  orderKept: {
+    description: 'Puts the children named first, keeping the rest after them in the order they held.',
+    params: { parent: { type: 'string', required: true }, ids: { type: 'list', required: true } },
+    steps: [
+      {
+        setRelation: {
+          entity: 'CollectionBlock',
+          id: { $: 'parent' },
+          relation: 'children',
+          targets: { $: 'ids' },
+          keep: true,
+        },
+      },
+    ],
+  },
   makeAndDrop: {
     description: 'Makes a note and deletes it, which only its author may.',
     steps: [
@@ -531,6 +546,27 @@ const CASES: OperationCase[] = [
     operation: 'adopt',
     args: { parent: 'urn:example:parent', child: 'urn:example:child' },
     invocationId: '00000000-0000-4000-8000-000000000006',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'set-relation-keep',
+    note: 'a setRelation that keeps puts the named members first and every other member after them, in the order they held',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2', 'urn:example:k3'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3'] },
+    invocationId: '00000000-0000-4000-8000-000000000090',
     invokedAt: AT,
     observe: [COLLECTIONS],
   },

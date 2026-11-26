@@ -69,7 +69,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         forEach: {
           in: { $: 'slice(mine, 1)' },
           as: 'extra',
-          steps: [{ delete: { entity: 'Signal', id: { $: 'extra' } } }],
+          steps: [{ delete: { entity: 'Signal', id: { $: 'extra' }, own: true } }],
         },
       },
     ],
@@ -83,7 +83,13 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
     serial: signalQueue,
     steps: [
       findMine,
-      { forEach: { in: { $: 'mine' }, as: 'signal', steps: [{ delete: { entity: 'Signal', id: { $: 'signal' } } }] } },
+      {
+        forEach: {
+          in: { $: 'mine' },
+          as: 'signal',
+          steps: [{ delete: { entity: 'Signal', id: { $: 'signal' }, own: true } }],
+        },
+      },
     ],
   },
 
@@ -176,7 +182,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         forEach: {
           in: { $: 'held.filter(r, r.kind != kind)' },
           as: 'stale',
-          steps: [{ delete: { entity: 'Involvement', id: { $: 'stale' } } }],
+          steps: [{ delete: { entity: 'Involvement', id: { $: 'stale' }, own: true } }],
         },
       },
       {

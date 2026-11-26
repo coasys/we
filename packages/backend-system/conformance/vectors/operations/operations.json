@@ -1745,6 +1745,124 @@
       }
     },
     {
+      "id": "set-relation-keep",
+      "note": "a setRelation that keeps puts the named members first and every other member after them, in the order they held",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "orderKept": {
+            "description": "Puts the children named first, keeping the rest after them in the order they held.",
+            "params": {
+              "parent": {
+                "type": "string",
+                "required": true
+              },
+              "ids": {
+                "type": "list",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "setRelation": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "parent"
+                  },
+                  "relation": "children",
+                  "targets": {
+                    "$": "ids"
+                  },
+                  "keep": true
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:k1",
+          "fields": {
+            "kind": "card",
+            "title": "k1"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:k2",
+          "fields": {
+            "kind": "card",
+            "title": "k2"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:k3",
+          "fields": {
+            "kind": "card",
+            "title": "k3"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:holder",
+          "fields": {
+            "kind": "board",
+            "title": "holder"
+          },
+          "relations": {
+            "children": ["urn:example:k1", "urn:example:k2", "urn:example:k3"]
+          }
+        }
+      ],
+      "operation": "orderKept",
+      "args": {
+        "parent": "urn:example:holder",
+        "ids": ["urn:example:k3"]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000090",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:holder",
+            "kind": "board",
+            "title": "holder",
+            "children": ["urn:example:k3", "urn:example:k1", "urn:example:k2"]
+          },
+          {
+            "id": "urn:example:k1",
+            "kind": "card",
+            "title": "k1"
+          },
+          {
+            "id": "urn:example:k2",
+            "kind": "card",
+            "title": "k2"
+          },
+          {
+            "id": "urn:example:k3",
+            "kind": "card",
+            "title": "k3"
+          }
+        ]
+      }
+    },
+    {
       "id": "core-upsert-signal",
       "note": "core.upsertSignal with no reaction yet makes one under the record, and answers with its id",
       "manifest": {
@@ -1848,7 +1966,8 @@
                         "entity": "Signal",
                         "id": {
                           "$": "extra"
-                        }
+                        },
+                        "own": true
                       }
                     }
                   ]
@@ -1984,7 +2103,8 @@
                         "entity": "Involvement",
                         "id": {
                           "$": "stale"
-                        }
+                        },
+                        "own": true
                       }
                     }
                   ]
@@ -2300,7 +2420,8 @@
                       "entity": "Involvement",
                       "id": {
                         "$": "stale"
-                      }
+                      },
+                      "own": true
                     }
                   }
                 ]
@@ -2712,8 +2833,9 @@
                   },
                   "relation": "arranges",
                   "targets": {
-                    "$": "concat(ids, (target.arranges ?? []).filter(i, !(i in ids)))"
-                  }
+                    "$": "ids"
+                  },
+                  "keep": true
                 },
                 "when": {
                   "$": "card in (ids ?? [])"
