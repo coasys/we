@@ -507,6 +507,122 @@ describe('botStore', () => {
     expect(opened).toEqual([]);
   });
 
+  describe('a selection that moves while a write is pending', () => {
+    const A = 'did:key:z6MkA';
+    const B = 'did:key:z6MkB';
+    const bot = (did: string, keyId: string): BotView => ({
+      ...view(),
+      did,
+      name: did,
+      key: { keyId, verdict: 'valid', can: ['read', 'write'], expires: 1_790_000_000 },
+    });
+
+    /** Two bots; the grant write waits until `release` is called. */
+    function twoBots() {
+      const bots = new Map([
+        [A, bot(A, 'kA')],
+        [B, bot(B, 'kB')],
+      ]);
+      const written: string[] = [];
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const port: BotPort = {
+        list: async () => [...bots.values()],
+        grant: async (did) => bots.get(did)!,
+        create: async () => {
+          throw new Error('unused');
+        },
+        async setGrant(did, grant) {
+          written.push(did);
+          await gate;
+          const next = { ...bots.get(did)!, grant: { ...grant, version: grant.version + 1, updatedAt: 2 } };
+          bots.set(did, next);
+          return next;
+        },
+        log: async () => [],
+      };
+      const revokeKey = (keyId: string) => {
+        for (const [did, b] of bots) {
+          if (b.key?.keyId === keyId) bots.set(did, { ...b, key: { ...b.key, verdict: 'revoked' } });
+        }
+      };
+      return { port, written, release, bots, revokeKey };
+    }
+
+    it("revokes the removed bot's key, not the one opened while the grant was ending", async () => {
+      const fake = twoBots();
+      setPorts({ identity: { bots: fake.port } });
+      onChange = (c) => {
+        if (c.kind === 'revoke') fake.revokeKey(c.keyId);
+      };
+      const store = mount();
+      await settle();
+      await store.select(A);
+      const removing = store.revoke();
+      await settle();
+      await store.select(B);
+      fake.release();
+      expect(await removing).toBe(true);
+      expect(fake.written).toEqual([A]);
+      expect(opened).toEqual([{ kind: 'revoke', keyId: 'kA' }]);
+      expect(fake.bots.get(B)!.key?.verdict).toBe('valid');
+      expect(fake.bots.get(B)!.grant.state).toBe('active');
+    });
+
+    it('still revokes the key when the detail view is closed while the grant was ending', async () => {
+      const fake = twoBots();
+      setPorts({ identity: { bots: fake.port } });
+      onChange = (c) => {
+        if (c.kind === 'revoke') fake.revokeKey(c.keyId);
+      };
+      const store = mount();
+      await settle();
+      await store.select(A);
+      const removing = store.revoke();
+      await settle();
+      store.close();
+      fake.release();
+      expect(await removing).toBe(true);
+      expect(opened).toEqual([{ kind: 'revoke', keyId: 'kA' }]);
+      expect(fake.bots.get(A)!.key?.verdict).toBe('revoked');
+    });
+
+    it('keeps a failed key revoke with the bot it concerns, not the one now open', async () => {
+      const fake = twoBots();
+      setPorts({ identity: { bots: fake.port } });
+      const store = mount();
+      await settle();
+      await store.select(A);
+      changeOutcome = 'cancelled';
+      const removing = store.revoke();
+      await settle();
+      await store.select(B);
+      fake.release();
+      expect(await removing).toBe(false);
+      expect(store.keyRevokeError()).toBe('');
+      expect(store.bots().find((r) => r.did === A)).toMatchObject({ keyStillValid: true });
+      await store.select(A);
+      expect(store.keyRevokeError()).toContain('still valid');
+    });
+
+    it('sends a grant save to the bot it was made for when another is opened meanwhile', async () => {
+      const fake = twoBots();
+      setPorts({ identity: { bots: fake.port } });
+      const store = mount();
+      await settle();
+      await store.select(A);
+      store.toggleAction('read');
+      const saving = store.saveGrant();
+      await settle();
+      await store.select(B);
+      fake.release();
+      expect(await saving).toBe(true);
+      expect(fake.written).toEqual([A]);
+      expect(fake.bots.get(B)!.grant.version).toBe(1);
+      expect(store.selected()?.did).toBe(B);
+    });
+  });
+
   it('reads the activity newest first and pages older entries by the last id', async () => {
     const entries = Array.from({ length: BOT_LOG_PAGE + 3 }, (_, i) => entry(BOT_LOG_PAGE + 3 - i, i % 2 === 0));
     const fake = fakePort(entries);

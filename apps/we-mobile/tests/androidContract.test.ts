@@ -74,7 +74,9 @@ describe('who may call the identity plugin', () => {
     for (const [, name, rest] of methods) {
       const asked =
         rest.includes('run(call, Caller.') ||
-        plugin.includes(`fun ${name}(call: PluginCall) {\n    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return`);
+        new RegExp(
+          `fun ${name}\\(call: PluginCall\\) \\{\\n    (val ticket = )?callerTicket\\(call, Caller\\.IDENTITY_PAGE\\) \\?: return`,
+        ).test(plugin);
       expect(asked, name).toBe(true);
     }
     expect(plugin).not.toMatch(/\brun\(call\)/);
@@ -98,7 +100,28 @@ describe('who may call the identity plugin', () => {
       );
     }
     expect(plugin).toMatch(
-      /fun scanDevice\(call: PluginCall\) \{\s+if \(!callerAllowed\(call, Caller\.IDENTITY_PAGE\)\) return/,
+      /fun scanDevice\(call: PluginCall\) \{\s+val ticket = callerTicket\(call, Caller\.IDENTITY_PAGE\) \?: return/,
+    );
+  });
+
+  it('binds the caller to the loaded document, never to the history address a script can rewrite', () => {
+    // WebView.url is the current history entry: pushState changes it with no document load.
+    const reads = [...plugin.matchAll(/\.url\b/g)];
+    // onPageStarted, onPageLoaded and the sign-in request's own `url`; never in a call's path.
+    expect(reads.length).toBe(3);
+    expect(plugin).toMatch(/override fun onPageStarted\(webView: WebView\) \{\s+document\.started\(webView\.url\)/);
+    expect(plugin).toMatch(/override fun onPageLoaded\(webView: WebView\) \{\s+document\.finished\(webView\.url\)/);
+    expect(plugin).toContain('isUsingLegacyBridge');
+    expect(plugin).toContain('bridge?.addWebViewListener(loads)');
+    expect(plugin).not.toContain('CallerPage.isIdentityPage');
+  });
+
+  it('checks again after a prompt, a scan or a wait, before it signs or mutates', () => {
+    expect(plugin).toMatch(/if \(!prompt\.confirm[\s\S]*?stillHolds\(ticket\)/);
+    expect(plugin).toMatch(/fun deviceScanned[\s\S]*?takeScanTicket[\s\S]*?document\.holds\(ticket\)/);
+    expect(plugin).toMatch(/fun scanned[\s\S]*?takeScanTicket/);
+    expect(plugin).toMatch(
+      /fun linkConfirm[\s\S]*?askForMatchCode[\s\S]*?stillHolds\(ticket\)[\s\S]*?held\.link\.confirm/,
     );
   });
 
@@ -110,7 +133,7 @@ describe('who may call the identity plugin', () => {
   });
 
   it('asks the person before it signs, renames, or sends the master key, and compares the match code itself', () => {
-    expect(/fun signSession[\s\S]*?approve\(words\)/.test(plugin)).toBe(true);
+    expect(/fun signSession[\s\S]*?approve\(words, ticket\)/.test(plugin)).toBe(true);
     expect(/fun rename[\s\S]*?approve\(PromptText\.rename/.test(plugin)).toBe(true);
     expect(plugin).toMatch(/strongBiometricOnly = true/);
     expect(plugin).toMatch(/MatchCode\.matches\(claim\.code, typed\)/);

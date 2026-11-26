@@ -2,6 +2,7 @@ package org.coasys.app.devicekey
 
 import android.content.Intent
 import android.view.WindowManager
+import android.webkit.WebView
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AlertDialog
 import com.getcapacitor.JSArray
@@ -9,6 +10,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.WebViewListener
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.File
@@ -90,8 +92,9 @@ import uniffi.we_phone_custody.StoreConfig
  * is not secure hardware (`WeakProtection` when declined). The master key is kept behind one
  * biometric prompt, at the step that keeps it, and it names what the key is about to do.
  *
- * Who may call: [CallerPage] reads the WebView's own address, and everything that links, sends the
- * master key, renames, revokes or answers is the identity page's alone; reads of public state and the
+ * Who may call: [CallerDocument] tracks which document real page loads brought in (never the
+ * history address, which a script can rewrite), and everything that links, sends the
+ * master key, renames, revokes or answers is the identity page's alone, and is checked again after every wait; reads of public state and the
  * sign-in are open to the app's other pages, and the sign-in is confirmed by the person each time.
  * The page cannot supply a scanned code or say the match codes agree. Making, restoring and
  * replacing, everything that touches the 12 words, and publishing what was made are the identity
@@ -112,6 +115,27 @@ class DeviceKeyPlugin : Plugin() {
   private val links = ConcurrentHashMap<String, Held>()
   /** The identity flows the page is in, by the id [startFlow] gave it. */
   private val flows = ConcurrentHashMap<String, IdentitySteps>()
+  /** Which document is loaded, from real loads only. */
+  private val document = CallerDocument()
+  /** The ticket a camera call was admitted under, by its callback id, until the scan returns. */
+  private val scanTickets = ConcurrentHashMap<String, CallerDocument.Ticket>()
+  private val loads = object : WebViewListener() {
+    // Raised on the main thread for a navigation that creates a document; not for pushState,
+    // replaceState or a fragment change. The address is the entry being navigated to, read once
+    // here, never when a call arrives.
+    override fun onPageStarted(webView: WebView) {
+      document.started(webView.url)
+    }
+
+    // Only the load `started` named finishes it; the address is compared, not trusted.
+    override fun onPageLoaded(webView: WebView) {
+      document.finished(webView.url)
+    }
+  }
+
+  override fun load() {
+    bridge?.addWebViewListener(loads)
+  }
   /** Link ids a call is inside a method on: [sweepLinks] must not close one under the call. */
   private val inUse = ConcurrentHashMap.newKeySet<String>()
   private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
@@ -196,7 +220,7 @@ class DeviceKeyPlugin : Plugin() {
    * allows each signing: a script on the page cannot sign for an address behind their back.
    */
   @PluginMethod
-  fun signSession(call: PluginCall) = run(call, Caller.APP) {
+  fun signSession(call: PluginCall) = run(call, Caller.APP) { ticket ->
     val purpose = when (call.getString("purpose")) {
       "login" -> SessionPurpose.LOGIN
       "renew" -> SessionPurpose.RENEW
@@ -211,7 +235,7 @@ class DeviceKeyPlugin : Plugin() {
     )
     val origin = PromptText.originOf(request.url) ?: throw Refusal("Invalid", "url is not a web address")
     val words = PromptText.signIn(purpose == SessionPurpose.RENEW, origin)
-    approve(words)
+    approve(words, ticket)
     JSObject(keys().signSession(request))
   }
 
@@ -227,7 +251,7 @@ class DeviceKeyPlugin : Plugin() {
    * leaves the key in the inbox, untaken.
    */
   @PluginMethod
-  fun takeMaster(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+  fun takeMaster(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) { ticket ->
     if (!master.canAuthenticate()) {
       throw Refusal("NoBiometrics", "Set up fingerprint or face unlock to keep the master key on this phone.")
     }
@@ -235,7 +259,7 @@ class DeviceKeyPlugin : Plugin() {
     val taken = try {
       identity.takeMaster(false)
     } catch (e: PhoneKeyException.WeakProtection) {
-      if (!agreeToWeakProtection()) {
+      if (!agreeToWeakProtection() || !document.holds(ticket)) {
         throw Refusal("WeakProtection", e.message ?: "The master key wasn't kept on this phone.")
       }
       identity.takeMaster(true)
@@ -270,12 +294,12 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
-  fun rename(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+  fun rename(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) { ticket ->
     val keyId = call.getString("keyId") ?: throw Refusal("Invalid", "rename needs the device's keyId")
     val name = call.getString("name")?.trim()?.takeIf { it.isNotEmpty() }
       ?: throw Refusal("Invalid", "Enter a name for the device.")
     val current = identity().devices().firstOrNull { it.keyId == keyId }?.name?.takeIf { it.isNotBlank() } ?: keyId
-    approve(PromptText.rename(current, name))
+    approve(PromptText.rename(current, name), ticket)
     identity().rename(keyId, name)
     JSObject()
   }
@@ -293,7 +317,8 @@ class DeviceKeyPlugin : Plugin() {
    */
   @PluginMethod
   fun scanDevice(call: PluginCall) {
-    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
+    val ticket = callerTicket(call, Caller.IDENTITY_PAGE) ?: return
+    scanTickets[call.callbackId] = ticket
     val intent = Intent(context, ScanActivity::class.java)
       .putExtra(ScanActivity.EXTRA_PREFIX, DEVICE_CODE_PREFIX)
       .putExtra(ScanActivity.EXTRA_TITLE, "Scan the code on the new device")
@@ -303,6 +328,7 @@ class DeviceKeyPlugin : Plugin() {
   @ActivityCallback
   private fun deviceScanned(call: PluginCall?, result: ActivityResult) {
     call ?: return
+    val ticket = takeScanTicket(call) ?: return
     val text = result.data?.getStringExtra(ScanActivity.EXTRA_TEXT)
     if (text == null) {
       rejectScan(call, result)
@@ -313,7 +339,13 @@ class DeviceKeyPlugin : Plugin() {
       sweepLinks()
       try {
         val id = UUID.randomUUID().toString()
-        links[id] = Held(identity().scanDevice(text))
+        val link = identity().scanDevice(text)
+        if (!document.holds(ticket)) {
+          link.cancel()
+          link.close()
+          throw Refusal("NotAllowed", "The page changed. Start again.")
+        }
+        links[id] = Held(link)
         call.resolve(JSObject().put("link", id))
       } catch (e: Exception) {
         rejectCall(call, e)
@@ -343,7 +375,7 @@ class DeviceKeyPlugin : Plugin() {
    * device. Anything but both yes ends the link and adds nothing.
    */
   @PluginMethod
-  fun linkConfirm(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+  fun linkConfirm(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) { ticket ->
     withLink(call) { id, held ->
       try {
         val claim = held.claim ?: throw Refusal("NotClaimed", "The other device hasn't answered yet.")
@@ -354,9 +386,11 @@ class DeviceKeyPlugin : Plugin() {
         if (!MatchCode.matches(claim.code, typed)) {
           throw Refusal("Mismatch", "The codes didn't match, so nothing was added. Start again.")
         }
+        stillHolds(ticket)
         if (keepMaster) {
-          approve(PromptText.sendMaster(name ?: claim.hint ?: "the new device"), strongBiometricOnly = true)
+          approve(PromptText.sendMaster(name ?: claim.hint ?: "the new device"), ticket, strongBiometricOnly = true)
         }
+        stillHolds(ticket)
         held.link.confirm(name, keepMaster)
         JSObject()
       } catch (e: Exception) {
@@ -439,7 +473,7 @@ class DeviceKeyPlugin : Plugin() {
    */
   @PluginMethod
   fun setSecure(call: PluginCall) {
-    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
+    callerTicket(call, Caller.IDENTITY_PAGE) ?: return
     val on = call.getBoolean("on")
     if (on == null) {
       call.reject("setSecure needs on: true or false", "Invalid")
@@ -463,7 +497,7 @@ class DeviceKeyPlugin : Plugin() {
   /** Opens the camera on a QR code whose text starts with `prefix`; the text, uninterpreted. */
   @PluginMethod
   fun scanCode(call: PluginCall) {
-    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
+    val ticket = callerTicket(call, Caller.IDENTITY_PAGE) ?: return
     val prefix = call.getString("prefix")
     if (prefix.isNullOrEmpty() || !prefix.startsWith("coasys:")) {
       call.reject("scanCode needs the prefix of the code it reads", "Invalid")
@@ -472,12 +506,14 @@ class DeviceKeyPlugin : Plugin() {
     val intent = Intent(context, ScanActivity::class.java)
       .putExtra(ScanActivity.EXTRA_PREFIX, prefix)
       .putExtra(ScanActivity.EXTRA_TITLE, call.getString("title"))
+    scanTickets[call.callbackId] = ticket
     startActivityForResult(call, intent, "scanned")
   }
 
   @ActivityCallback
   private fun scanned(call: PluginCall?, result: ActivityResult) {
     call ?: return
+    takeScanTicket(call) ?: return
     val text = result.data?.getStringExtra(ScanActivity.EXTRA_TEXT)
     if (text != null) call.resolve(JSObject().put("text", text)) else rejectScan(call, result)
   }
@@ -491,6 +527,7 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   override fun handleOnDestroy() {
+    bridge?.removeWebViewListener(loads)
     links.keys.toList().forEach { id -> links.remove(id)?.let { it.link.cancel(); it.link.close() } }
     flows.keys.toList().forEach { id -> flows[id]?.let { endFlow(id, it) } }
     super.handleOnDestroy()
@@ -609,15 +646,24 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   /**
-   * Runs [body] off the main thread and answers [call] with what it returned, or why not. The page
-   * the call comes from is checked first, against what [access] allows.
+   * Runs [body] off the main thread and answers [call] with what it returned, or why not. The
+   * document the call comes from is checked first, here on the bridge's thread before the hop to the
+   * pool (the nearest point to the call's arrival a plugin can reach), against what [access] allows,
+   * and the ticket it is admitted under is handed to [body] for the checks after each wait.
    */
-  private fun run(call: PluginCall, access: Caller, body: () -> JSObject) {
+  private fun run(call: PluginCall, access: Caller, body: (CallerDocument.Ticket) -> JSObject) {
+    val ticket = try {
+      requireCaller(access)
+    } catch (e: Exception) {
+      rejectCall(call, e)
+      return
+    }
     pool.execute {
       try {
-        requireCaller(access)
         sweepLinks()
-        call.resolve(body())
+        val out = body(ticket)
+        stillHolds(ticket)
+        call.resolve(out)
       } catch (e: Exception) {
         rejectCall(call, e)
       }
@@ -644,54 +690,54 @@ class DeviceKeyPlugin : Plugin() {
     APP,
   }
 
-  /** The address of the page showing in the WebView, read on the main thread; null if it cannot be. */
-  private fun callerUrl(): String? {
-    val web = bridge?.webView ?: return null
-    val host = activity ?: return null
-    val read = CountDownLatch(1)
-    val url = java.util.concurrent.atomic.AtomicReference<String?>(null)
-    host.runOnUiThread {
-      url.set(web.url)
-      read.countDown()
-    }
-    if (!read.await(5, java.util.concurrent.TimeUnit.SECONDS)) return null
-    return url.get()
+  /**
+   * Admits the call against the document real loads brought in, never the history address; refuses
+   * with `NotAllowed` otherwise. The ticket is what a wait checks again with [stillHolds]. Capacitor
+   * only passes a call to a plugin from the main frame of the page (`MessageHandler`'s
+   * `isMainFrame` check), so a frame cannot call as the identity page; the legacy bridge has no such
+   * check and is refused here.
+   */
+  private fun requireCaller(access: Caller): CallerDocument.Ticket {
+    if (bridge?.config?.isUsingLegacyBridge != false) throw Refusal("NotAllowed", "This page can't use the device key.")
+    return document.admit(identityOnly = access == Caller.IDENTITY_PAGE)
+      ?: throw Refusal("NotAllowed", "This page can't use the device key.")
   }
 
-  private fun requireCaller(access: Caller) {
-    val url = callerUrl()
-    val allowed = when (access) {
-      Caller.IDENTITY_PAGE -> CallerPage.isIdentityPage(url)
-      Caller.APP -> CallerPage.isApp(url)
-    }
-    if (!allowed) throw Refusal("NotAllowed", "This page can't use the device key.")
+  /** Refuses when a new document has loaded since the call was admitted: nothing is mutated or signed for it. */
+  private fun stillHolds(ticket: CallerDocument.Ticket) {
+    if (!document.holds(ticket)) throw Refusal("NotAllowed", "The page changed. Start again.")
   }
 
-  /** For a method that answers later (the camera): false, with the call rejected, when the page is not allowed. */
-  private fun callerAllowed(call: PluginCall, access: Caller): Boolean {
-    // `callerUrl` waits for the main thread, so it is asked from a worker.
-    val allowed = java.util.concurrent.atomic.AtomicBoolean(false)
-    val answered = CountDownLatch(1)
-    pool.execute {
-      try {
-        requireCaller(access)
-        allowed.set(true)
-      } catch (_: Refusal) {
-        // Left false.
-      } finally {
-        answered.countDown()
-      }
+  /** For a method that answers later (the camera): the ticket, or null with the call rejected when the page is not allowed. */
+  private fun callerTicket(call: PluginCall, access: Caller): CallerDocument.Ticket? {
+    val ticket = try {
+      requireCaller(access)
+    } catch (e: Refusal) {
+      call.reject(e.message, e.code)
+      return null
     }
-    answered.await()
-    if (!allowed.get()) call.reject("This page can't use the device key.", "NotAllowed")
-    return allowed.get()
+    return ticket
   }
 
-  /** The person's yes to [words], in a prompt that shows them; a no ends the call as `Cancelled`. */
-  private fun approve(words: PromptText.Words, strongBiometricOnly: Boolean = false) {
+  /** The ticket a camera call left; null, with the call rejected, if there is none or the document changed while the camera was open. */
+  private fun takeScanTicket(call: PluginCall): CallerDocument.Ticket? {
+    val ticket = scanTickets.remove(call.callbackId)
+    if (ticket == null || !document.holds(ticket)) {
+      call.reject("The page changed. Start again.", "NotAllowed")
+      return null
+    }
+    return ticket
+  }
+
+  /**
+   * The person's yes to [words], in a prompt that shows them; a no ends the call as `Cancelled`. The
+   * document is checked again after the wait, so a page that loaded meanwhile gets nothing signed.
+   */
+  private fun approve(words: PromptText.Words, ticket: CallerDocument.Ticket, strongBiometricOnly: Boolean = false) {
     if (!prompt.confirm(words.title, words.description, strongBiometricOnly)) {
       throw Refusal("Cancelled", "Cancelled.")
     }
+    stillHolds(ticket)
   }
 
   /**
