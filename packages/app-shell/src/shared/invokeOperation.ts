@@ -17,6 +17,12 @@
  * Speculations run one after another per dataset, so each reads the predictions of the ones before
  * it: a second press, made before the first has landed, is predicted from the first one's answer.
  *
+ * ## Queued where it says
+ *
+ * An operation that reads before it writes declares a `serial` key, and invocations with the same
+ * key in the same dataset run one after another (see `serialKey`). Two presses of one reaction both
+ * reading before either wrote is how one person came to be listed twice under one type.
+ *
  * ## Said when it fails
  *
  * With `notify`, a failure reaches the person once, as `operationFailureMessage` says it: an error
@@ -29,6 +35,7 @@ import {
   predict,
   predictionLanded,
   runOperation,
+  serialKey,
   speculateOperation,
   withdrawPrediction,
 } from '@we/entities';
@@ -53,6 +60,8 @@ export interface InvokeOptions {
   invocationId?: string;
 }
 
+/** The tail of each queue, by dataset and key. */
+const queues = new Map<string, Promise<unknown>>();
 /** The tail of each dataset's speculations. */
 const speculations = new Map<unknown, Promise<unknown>>();
 
@@ -96,8 +105,11 @@ export async function invokeOperation(
   });
 
   const real = () => runOperation(name, args, invocation);
+  const key = serialKey(name, args);
   try {
-    const result = await real();
+    const result = await (key === undefined
+      ? real()
+      : after(queues, `${String(datasetKey(dataset))}\u0000${key}`, real));
     settled = true;
     predictionLanded(invocation.invocationId);
     return result;

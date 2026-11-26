@@ -314,6 +314,8 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
       board: { type: 'string', required: true, description: 'The board.' },
       ids: { type: 'list', required: true, description: 'Column ids, in the order wanted.' },
     },
+    // Each order reads the board as the last one left it, so two drags in a second keep the second.
+    serial: { $: "'columns ' + board" },
     steps: [
       { find: { as: 'found', entity: 'CollectionBlock', where: { id: { $: 'board' } } } },
       {
@@ -345,6 +347,7 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
       },
       ids: { type: 'list', required: true, description: 'Card ids, in the order wanted.' },
     },
+    serial: { $: "'arrange ' + column" },
     steps: [
       { find: { as: 'found', entity: 'CollectionBlock', where: { id: { $: 'column' } } } },
       {
@@ -372,6 +375,8 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
         description: 'The joined column’s order with the card where it was dropped. Omit to append.',
       },
     },
+    // A card dragged on before its last move has landed moves from where that one put it.
+    serial: { $: "'card ' + card" },
     steps: [
       { find: { as: 'target', entity: 'CollectionBlock', where: { id: { $: 'to' } }, one: true } },
       // A lane writes no state: dropping a card under "Thursday" says nothing about whether it is done.

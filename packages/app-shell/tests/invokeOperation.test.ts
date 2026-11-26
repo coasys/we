@@ -78,6 +78,16 @@ describe('invokeOperation', () => {
     live.dispose();
   });
 });
+it('queues invocations with the same serial key, so a double press makes one reaction', async () => {
+  const args = { node: post.id, signalType: 'like', value: 1 };
+  await Promise.all([
+    invokeOperation('core.upsertSignal', args, { dataset, invoker: ME }),
+    invokeOperation('core.upsertSignal', { ...args, value: 2 }, { dataset, invoker: ME }),
+  ]);
+  const rows = await signalsOn();
+  expect(rows.map((r) => r.value)).toEqual([2]);
+});
+
 it('withdraws the prediction when the real run fails, and says a declared error once in its own words', async () => {
   const said: string[] = [];
   await expect(

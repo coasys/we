@@ -18,6 +18,7 @@ import {
   listOperations,
   operationCatalog,
   registerOperations,
+  serialKey,
   unregisterOperations,
   validateOperations,
 } from '../src/operations';
@@ -320,6 +321,36 @@ describe('static checks', () => {
       'operations.a: calls itself: demo.a → demo.b → demo.a',
       'operations.b: calls itself: demo.b → demo.a → demo.b',
     ]);
+  });
+});
+
+describe('a serial key', () => {
+  const params = { board: { type: 'string', required: true } };
+  const steps = [{ find: { entity: 'Board', as: 'found' } }];
+
+  it('reads the params and nothing else, as one expression', () => {
+    expect(issues(op(steps, { params, serial: { $: "'b ' + board" } }))).toEqual([]);
+    expect(issues(op(steps, { params, serial: { $: 'found' } }))).toEqual([
+      expect.stringContaining('operations.t.serial: "found" is not bound here'),
+    ]);
+    expect(issues(op(steps, { params, serial: { $: 'invoker' } }))).toEqual([
+      expect.stringContaining('operations.t.serial: "invoker" is not bound here'),
+    ]);
+  });
+
+  it('names the queue an invocation joins, and none when it comes out absent', () => {
+    const manifest = MANIFEST({
+      q: op(steps, { params: { ...params, note: { type: 'string' } }, serial: { $: 'note' } }),
+    });
+    registerOperations('demo', manifest.operations, { entities: manifest.entities });
+    try {
+      expect(serialKey('demo.q', { board: 'b1', note: 'n1' })).toBe('n1');
+      expect(serialKey('demo.q', { board: 'b1' })).toBeUndefined();
+      // Args the run would refuse join no queue; the run says why.
+      expect(serialKey('demo.q', { nope: 1 })).toBeUndefined();
+    } finally {
+      unregisterOperations('demo');
+    }
   });
 });
 

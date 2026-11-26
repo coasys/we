@@ -196,6 +196,26 @@ export async function runOperation(
   }
 }
 
+/**
+ * The queue an invocation joins — its operation's `serial` evaluated over these args — or undefined
+ * when it joins none: the operation declares no key, the key comes out absent, or the args are ones
+ * the run will refuse anyway. Prefixed with nothing, so two operations writing the same thing can
+ * share a queue by giving the same key.
+ */
+export function serialKey(name: string, args: Record<string, unknown> | undefined): string | undefined {
+  const op = getOperation(name);
+  if (!op?.serial) return undefined;
+  try {
+    const scope = new Map<string, unknown>(Object.entries(checkArgs(name, op, args ?? {}, `${name}/serial`)));
+    const key = evaluate(op.serial.$, scope, `${name}/serial`);
+    if (typeof key === 'string') return key || undefined;
+    if (typeof key === 'number' && Number.isFinite(key)) return String(key);
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** A refusal or a clash the backend raised, in the operation's terms; anything else unchanged. */
 function asOperationError(error: unknown, run: Run): unknown {
   if (isOperationError(error)) return error;

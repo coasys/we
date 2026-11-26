@@ -671,6 +671,14 @@ export interface OperationDefinition {
   steps: OperationStep[];
   /** Evaluated after the last step and handed to the caller. */
   returns?: OperationValue;
+  /**
+   * The queue an invocation joins, as an expression over the params: invocations whose key comes out
+   * the same run one after another in the dataset, each starting once the one before it has finished.
+   * For an operation that reads before it writes, where two calls racing would both read the state
+   * before either wrote — two presses of one reaction making two reactions. An absent key queues
+   * nothing. Operations that share a key text share the queue.
+   */
+  serial?: { $: string };
 }
 
 // ─── Zod schema (structural validation) ────────────────────────────────────────
@@ -840,6 +848,7 @@ export const operationDefinitionSchema = z.strictObject({
   errors: z.record(name, z.string()).optional(),
   steps: z.array(operationStepSchema),
   returns: value.optional(),
+  serial: expressionToken.optional(),
 });
 
 export const operationsSchema = z.record(name, operationDefinitionSchema);

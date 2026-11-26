@@ -1769,6 +1769,9 @@
                 "description": "What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal."
               }
             },
+            "serial": {
+              "$": "'signal ' + node + ' ' + signalType"
+            },
             "steps": [
               {
                 "find": {
@@ -1927,6 +1930,9 @@
                 "type": "string",
                 "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
               }
+            },
+            "serial": {
+              "$": "'answer ' + node"
             },
             "errors": {
               "notAnAnswer": "That is not an answer anybody can give to this."
@@ -2111,6 +2117,9 @@
                 "description": "The state wanted, so pressing twice cannot undo itself."
               }
             },
+            "serial": {
+              "$": "'involve ' + node + ' ' + agent + ' ' + kind"
+            },
             "errors": {
               "unknownKind": "That is not a kind of involvement this space has.",
               "notYours": "Only the person it is about can give that answer."
@@ -2237,6 +2246,9 @@
               "type": "string",
               "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
             }
+          },
+          "serial": {
+            "$": "'answer ' + node"
           },
           "errors": {
             "notAnAnswer": "That is not an answer anybody can give to this."
@@ -2661,6 +2673,9 @@
                 "type": "list",
                 "description": "The joined column’s order with the card where it was dropped. Omit to append."
               }
+            },
+            "serial": {
+              "$": "'card ' + card"
             },
             "steps": [
               {

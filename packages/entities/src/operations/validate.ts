@@ -426,6 +426,11 @@ export function validateOperations(manifest: EntityManifest, opts: ValidateOpera
 
     const top = walk(op.steps, new Set([...params, ...INVOCATION_NAMES]), `${base}.steps`, 0);
     if (op.returns !== undefined) checkValue(op.returns, top, `${base}.returns`);
+    // A queue is chosen before anything runs, so its key reads the params and nothing else.
+    if (op.serial !== undefined) {
+      if (!isExpressionToken(op.serial)) issue(`${base}.serial`, 'is an expression over the params, { "$": "…" }');
+      else checkValue(op.serial, new Set(params), `${base}.serial`);
+    }
   }
 
   // The call graph, through other namespaces too, must reach no operation twice on one path.
