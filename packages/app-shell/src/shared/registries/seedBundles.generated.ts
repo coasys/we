@@ -1158,7 +1158,7 @@ export const seedBundles: Bundle[] = [
                 children: [
                   {
                     type: 'Row',
-                    props: { gap: '300', ay: 'center', px: '300', pt: '400', pb: '300' },
+                    props: { gap: '300', ay: 'center', wrap: true, px: '300', pt: '400', pb: '300' },
                     children: [
                       {
                         type: 'we-avatar',
@@ -1172,7 +1172,7 @@ export const seedBundles: Bundle[] = [
                       },
                       {
                         type: 'Column',
-                        props: { flex: '1', minWidth: '0' },
+                        props: { flex: '1', minWidth: '5rem' },
                         children: [
                           {
                             type: 'we-text',
@@ -3186,7 +3186,7 @@ export const seedBundles: Bundle[] = [
                         children: [
                           {
                             type: 'we-button',
-                            props: { variant: 'solid', onClick: { $invoke: 'modules.call.goToCall' } },
+                            props: { variant: 'solid', onClick: { $invoke: 'modules.call.startCall' } },
                             children: [{ type: 'we-icon', props: { name: 'phone' } }, 'Start a call'],
                           },
                         ],
@@ -5477,7 +5477,10 @@ export const seedBundles: Bundle[] = [
                                                                     children: [
                                                                       {
                                                                         type: 'we-text',
-                                                                        props: { variant: 'footnote' },
+                                                                        props: {
+                                                                          variant: 'footnote',
+                                                                          whiteSpace: 'nowrap',
+                                                                        },
                                                                         children: [
                                                                           { $: '`${inWorkflow.waiting} waiting`' },
                                                                         ],
@@ -5503,7 +5506,10 @@ export const seedBundles: Bundle[] = [
                                                                     children: [
                                                                       {
                                                                         type: 'we-text',
-                                                                        props: { variant: 'footnote' },
+                                                                        props: {
+                                                                          variant: 'footnote',
+                                                                          whiteSpace: 'nowrap',
+                                                                        },
                                                                         children: ['Stuck'],
                                                                       },
                                                                     ],
@@ -21158,6 +21164,7 @@ export const seedBundles: Bundle[] = [
                   props: {
                     gap: '300',
                     ay: 'center',
+                    wrap: true,
                     px: '500',
                     py: '300',
                     borderBottom: '1px solid border',
@@ -21190,11 +21197,11 @@ export const seedBundles: Bundle[] = [
                     { type: 'we-icon', props: { name: 'phone', color: 'text-muted' } },
                     {
                       type: 'Row',
-                      props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                      props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                       children: [
                         {
                           type: 'Row',
-                          props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                          props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                           children: [
                             {
                               type: 'we-button',
@@ -21344,7 +21351,7 @@ export const seedBundles: Bundle[] = [
                     },
                     {
                       type: 'Row',
-                      props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                      props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                       children: [
                         {
                           type: 'we-button',
@@ -21495,6 +21502,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           gap: '300',
                           ay: 'center',
+                          wrap: true,
                           px: '500',
                           py: '300',
                           borderBottom: '1px solid border',
@@ -21535,7 +21543,7 @@ export const seedBundles: Bundle[] = [
                           },
                           {
                             type: 'Row',
-                            props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                            props: { flex: '1', minWidth: '18.5rem', gap: '100', ay: 'center' },
                             children: [
                               {
                                 type: '$if',
@@ -21557,7 +21565,7 @@ export const seedBundles: Bundle[] = [
                                         props: {
                                           gap: '100',
                                           ay: 'center',
-                                          minWidth: '0',
+                                          minWidth: '3rem',
                                           maxWidth: '40%',
                                           flexShrink: 1,
                                         },
@@ -21635,7 +21643,7 @@ export const seedBundles: Bundle[] = [
                                         props: {
                                           gap: '100',
                                           ay: 'center',
-                                          minWidth: '0',
+                                          minWidth: '3rem',
                                           maxWidth: '40%',
                                           flexShrink: 1,
                                         },
@@ -21724,7 +21732,7 @@ export const seedBundles: Bundle[] = [
                                         props: {
                                           gap: '100',
                                           ay: 'center',
-                                          minWidth: '0',
+                                          minWidth: '3rem',
                                           maxWidth: '40%',
                                           flexShrink: 1,
                                         },
@@ -21784,7 +21792,7 @@ export const seedBundles: Bundle[] = [
                                         props: {
                                           gap: '100',
                                           ay: 'center',
-                                          minWidth: '0',
+                                          minWidth: '3rem',
                                           maxWidth: '40%',
                                           flexShrink: 1,
                                         },
@@ -21868,7 +21876,7 @@ export const seedBundles: Bundle[] = [
                                         props: {
                                           gap: '100',
                                           ay: 'center',
-                                          minWidth: '0',
+                                          minWidth: '3rem',
                                           maxWidth: '40%',
                                           flexShrink: 1,
                                         },
@@ -21967,7 +21975,14 @@ export const seedBundles: Bundle[] = [
                           },
                           {
                             type: 'Row',
-                            props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                            props: {
+                              gap: '100',
+                              p: '100',
+                              r: 'control',
+                              bg: 'surface-sunken',
+                              flexShrink: 0,
+                              ml: 'auto',
+                            },
                             children: [
                               {
                                 type: 'we-button',
@@ -22027,6 +22042,7 @@ export const seedBundles: Bundle[] = [
                                   pending: { $: 'modules.transcribe.unconfirmedIds' },
                                   changed: { $: 'modules.transcribe.changedIds' },
                                   counts: ['signals', 'responses'],
+                                  limit: 1000,
                                   weigh: {
                                     $: "(local.treeMode || local.order == 'signal') && (local.signalType ? local.signalType : first(local.treeSignalTypes).id) ? { signalTypeId: (local.signalType ? local.signalType : first(local.treeSignalTypes).id), aggregate: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).aggregate, mode: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).mode, rangeMin: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMin, rangeMax: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMax, step: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).step, excludeAuthors: spaceStore.mutedDids, me: me.did } : null",
                                   },
@@ -22042,6 +22058,7 @@ export const seedBundles: Bundle[] = [
                               layout: {
                                 $: "local.treeMode ? { type: 'forest', options: { spine: treeSpine({ value: local.spine }).selector, sortBy: (local.order == 'manual' ? 'canvasRank' : ((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) ? 'weight' : 'createdAt')), sortDirection: (((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) || local.order == 'newest') ? 'desc' : 'asc'), card: (local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 })), unattachedLabel: 'Unconnected' } } : { type: 'manual', options: { size: { width: 200, height: 140 }, kindSizes: { property: { width: 170, height: 44 } }, widthField: 'canvasWidth', heightField: 'canvasHeight' } }",
                               },
+                              expansion: { maxNodes: 3000 },
                               reframeOn: { $: "local.treeMode ? local.cardSize : ''" },
                               backdrop: { pattern: 'dots', gap: 24 },
                               nodeStyle: [
@@ -25177,6 +25194,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -25217,7 +25235,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -25227,7 +25245,7 @@ export const seedBundles: Bundle[] = [
                           },
                           then: {
                             type: 'Row',
-                            props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                            props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                             children: [
                               {
                                 type: 'we-button',
@@ -25274,7 +25292,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -25608,6 +25626,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -25640,7 +25659,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'flow-arrow', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -25653,7 +25672,7 @@ export const seedBundles: Bundle[] = [
                           },
                           else: {
                             type: 'Row',
-                            props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                            props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                             children: [
                               {
                                 type: 'we-button',
@@ -25705,7 +25724,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -25762,13 +25781,14 @@ export const seedBundles: Bundle[] = [
                               maxWidth: 'var(--we-layout-lg)',
                               gap: '600',
                               ay: 'start',
+                              wrap: true,
                               pt: '500',
                               pb: '600',
                             },
                             children: [
                               {
                                 type: 'Column',
-                                props: { gap: '200', width: '240px', flexShrink: '0' },
+                                props: { gap: '200', width: '240px', maxWidth: '100%', flexShrink: '0' },
                                 children: [
                                   {
                                     type: 'Row',
@@ -25971,7 +25991,7 @@ export const seedBundles: Bundle[] = [
                               },
                               {
                                 type: 'Column',
-                                props: { flex: '1', minWidth: '0', gap: '400' },
+                                props: { flex: '1', minWidth: 'min(16rem, 100%)', gap: '400' },
                                 children: [
                                   {
                                     type: '$if',
@@ -26784,7 +26804,7 @@ export const seedBundles: Bundle[] = [
                                                             children: [
                                                               {
                                                                 type: 'we-text',
-                                                                props: { variant: 'footnote' },
+                                                                props: { variant: 'footnote', whiteSpace: 'nowrap' },
                                                                 children: ['Archived'],
                                                               },
                                                             ],
@@ -27316,7 +27336,7 @@ export const seedBundles: Bundle[] = [
                                               { type: 'we-divider' },
                                               {
                                                 type: 'Row',
-                                                props: { gap: '200', ay: 'center' },
+                                                props: { gap: '200', ay: 'center', wrap: true },
                                                 children: [
                                                   {
                                                     type: 'we-text',
@@ -27336,7 +27356,7 @@ export const seedBundles: Bundle[] = [
                                                     children: [
                                                       {
                                                         type: 'we-text',
-                                                        props: { variant: 'footnote' },
+                                                        props: { variant: 'footnote', whiteSpace: 'nowrap' },
                                                         children: [{ $: 'count(workflowStore.open.records)' }],
                                                       },
                                                     ],
@@ -27433,7 +27453,11 @@ export const seedBundles: Bundle[] = [
                                                                       condition: { $: 'rec.startedAt' },
                                                                       then: {
                                                                         type: 'Row',
-                                                                        props: { gap: '100', ay: 'center' },
+                                                                        props: {
+                                                                          gap: '100',
+                                                                          ay: 'center',
+                                                                          flexShrink: 0,
+                                                                        },
                                                                         children: [
                                                                           {
                                                                             type: 'we-text',
@@ -28447,6 +28471,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -28479,7 +28504,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'chats-circle', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: 'we-text',
@@ -28490,7 +28515,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -28669,6 +28694,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -28701,7 +28727,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'phone', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: 'we-text',
@@ -28712,7 +28738,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -28907,6 +28933,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -28939,7 +28966,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'users', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '3.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: 'we-text',
@@ -28950,7 +28977,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -29121,6 +29148,7 @@ export const seedBundles: Bundle[] = [
                 props: {
                   gap: '300',
                   ay: 'center',
+                  wrap: true,
                   px: '500',
                   py: '300',
                   borderBottom: '1px solid border',
@@ -29153,7 +29181,7 @@ export const seedBundles: Bundle[] = [
                   { type: 'we-icon', props: { name: 'dna', color: 'text-muted' } },
                   {
                     type: 'Row',
-                    props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                    props: { flex: '1', minWidth: '9.5rem', gap: '100', ay: 'center' },
                     children: [
                       {
                         type: '$if',
@@ -29172,7 +29200,7 @@ export const seedBundles: Bundle[] = [
                               },
                               else: {
                                 type: 'Row',
-                                props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                                props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                                 children: [
                                   {
                                     type: 'we-button',
@@ -29236,7 +29264,7 @@ export const seedBundles: Bundle[] = [
                               },
                               else: {
                                 type: 'Row',
-                                props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                                props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                                 children: [
                                   {
                                     type: 'we-button',
@@ -29329,7 +29357,7 @@ export const seedBundles: Bundle[] = [
                   },
                   {
                     type: 'Row',
-                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                    props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                     children: [
                       {
                         type: 'we-button',
@@ -30408,6 +30436,7 @@ export const seedBundles: Bundle[] = [
                     props: {
                       gap: '300',
                       ay: 'center',
+                      wrap: true,
                       px: '500',
                       py: '300',
                       borderBottom: '1px solid border',
@@ -30440,11 +30469,11 @@ export const seedBundles: Bundle[] = [
                       { type: 'we-icon', props: { name: 'user', color: 'text-muted' } },
                       {
                         type: 'Row',
-                        props: { flex: '1', minWidth: '0', gap: '100', ay: 'center' },
+                        props: { flex: '1', minWidth: '6.5rem', gap: '100', ay: 'center' },
                         children: [
                           {
                             type: 'Row',
-                            props: { gap: '100', ay: 'center', minWidth: '0', maxWidth: '40%', flexShrink: 1 },
+                            props: { gap: '100', ay: 'center', minWidth: '3rem', maxWidth: '40%', flexShrink: 1 },
                             children: [
                               {
                                 type: 'we-button',
@@ -30500,7 +30529,7 @@ export const seedBundles: Bundle[] = [
                       },
                       {
                         type: 'Row',
-                        props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0 },
+                        props: { gap: '100', p: '100', r: 'control', bg: 'surface-sunken', flexShrink: 0, ml: 'auto' },
                         children: [
                           {
                             type: 'we-button',

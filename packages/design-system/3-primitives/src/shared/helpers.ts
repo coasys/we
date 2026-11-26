@@ -579,6 +579,20 @@ function applyInlineStyles(el: HTMLElement, styles?: Record<string, string | num
 }
 
 /**
+ * The shrink factor a `flex` shorthand sets: 0 for `none`, its second number, else 1. Reads the
+ * grow-first literals the templates write (`'none'`, `'0 0 auto'`, `'1 1 0'`, `'auto'`, `'1'`); a
+ * basis-first form (`'100px 1 0'`) or a `var(...)` reads as 1. A template written as JSON can give
+ * `flex` as a number (`"flex": 1`), which the style itself has always accepted, so it reads as text.
+ */
+export function flexShrinkOf(flex: string | number | undefined): string | undefined {
+  if (flex === undefined || flex === null || flex === '') return undefined;
+  const [first, second] = String(flex).trim().split(/\s+/);
+  if (first === 'none') return '0';
+  const factor = (token: string | undefined) => token !== undefined && /^\d*\.?\d+$/.test(token);
+  return factor(first) && factor(second) ? second : '1';
+}
+
+/**
  * Set or clear a single `--we-*` custom property.
  *
  * The early return on the clear path is the point. `updateCustomVars` walks a fixed list of ~59
@@ -713,7 +727,14 @@ function updateCustomVars(
     the offsets above record, one concept along: two hand-written implementations of one job, and a
     prop added to the key list reaches CSS only if somebody remembers both.
   */
-  setProperty(el, `${prefix}flex-shrink`, props.flexShrink === undefined ? undefined : String(props.flexShrink));
+  /*
+    With no `flexShrink`, the shrink half of `flex`. The host rule declares `flex-shrink` after the
+    `flex` shorthand, so an unset `flex-shrink` variable resets the shrink to its initial 1 and undoes
+    every `flex: 'none'` or `'0 0 auto'`: an avatar whose default is `0 0 auto` was squeezed to a
+    sliver in a tight row.
+  */
+  const shrink = props.flexShrink ?? flexShrinkOf(props.flex);
+  setProperty(el, `${prefix}flex-shrink`, shrink === undefined ? undefined : String(shrink));
   setProperty(el, `${prefix}align-self`, props.alignSelf);
 
   // Visual

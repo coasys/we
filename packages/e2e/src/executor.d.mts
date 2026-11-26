@@ -36,6 +36,8 @@ export interface Executor {
   mcpUrl?: string;
   multiUser: boolean;
   dataPath: string;
+  /** The executor process's pid, for a suite that reads its CPU or memory off `/proc`. */
+  pid: number;
   /** Everything the executor has written to stdout and stderr, in chunks, as it arrives. */
   output: string[];
   /** `output`, joined. */

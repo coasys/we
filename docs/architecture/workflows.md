@@ -20,7 +20,9 @@ backend enforces it:
 - **`move(workflow, record, to, { from, note })`** answers `moved`, `waiting`, `refused`
   (`not-allowed` / `unmet`), `stalled` or `pending`. Asking and agreeing are the same call. `from` says
   where a record the workflow has not seen already stands, so a record that predates the workflow keeps its
-  place.
+  place. The AD4M adapter reads a refusal from the typed `FlowRefusal` that the executor sends as the
+  `data` of an `RpcError` with status 409 — never from the text of the message. It maps `not-reachable`,
+  `guard-unmet` and `contested`; any other refusal kind, and any error with status 500, is thrown.
 - **`withdraw`** takes back only the caller's own asks on moves still waiting — never a move that
   happened.
 - **`watch`** reports each record's state (`null` when the backend cannot say yet), its waiting moves
