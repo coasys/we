@@ -36,7 +36,7 @@ Each case:
 | `dataset`      | The records the dataset starts with: a list of `{ "entity", "id", "fields", "relations"? }`.                                                                                                                        |
 | `operation`    | The bare name of the operation to run; it runs as `conformance.<operation>`.                                                                                                                                        |
 | `args`         | The invocation's `args`.                                                                                                                                                                                            |
-| `invoker`      | The invocation's `invoker`. Every case uses `did:example:invoker`.                                                                                                                                                  |
+| `invoker`      | The invocation's `invoker`: `did:example:invoker`, or another name for a case about a record somebody else made ([below](#running-a-vector)).                                                                       |
 | `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                    |
 | `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                       |
 | `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                     |
@@ -54,6 +54,11 @@ and wherever that id comes back (in the outcome and the records observed), it re
 invoker's name. The agent writes the seed records, so they are the invoker's, and the operation is
 invoked as that agent, so what it creates is the invoker's too ([Invocation](execution.md#invocation):
 the invoker is the agent making the call).
+
+A case whose `invoker` is another name (`did:example:visitor`) is about what may be done to a record
+somebody else made: the seeds are still written by the runner's agent, as `did:example:invoker`'s,
+and the operation is invoked with `invoker` set to that other name as it is written. Such a case
+fails before it writes anything, so the runner's agent remains the only writer.
 
 1. **Seed.** As that agent, and with no write check, create every record in `dataset`, with the `id`
    given and its `fields`. Then, once all exist, set each record's `relations`: each key a to-many

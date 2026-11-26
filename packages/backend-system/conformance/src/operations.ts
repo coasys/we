@@ -100,6 +100,12 @@ export interface OperationCase {
   /** The bare name; it runs as `conformance.<name>`. */
   operation: string;
   args: Record<string, unknown>;
+  /**
+   * Somebody other than the invoker the dataset was seeded by, for a case about what may be done to
+   * another person's records. Such a case ends before anything is written: the runner's agent is the
+   * only writer there is.
+   */
+  invoker?: string;
   invocationId: string;
   invokedAt: string;
   /**
@@ -333,6 +339,11 @@ const OPERATIONS: Record<string, OperationDefinition> = {
         },
       },
     ],
+  },
+  takeBack: {
+    description: 'Deletes a record, only if the invoker made it.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ delete: { entity: 'CollectionBlock', id: { $: 'id' }, own: true } }],
   },
   makeAndDrop: {
     description: 'Makes a note and deletes it, which only its author may.',
@@ -1039,6 +1050,50 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [COLLECTIONS, { entity: 'TaskState', fields: ['slug'], relations: [] }],
   },
+  {
+    id: 'delete-own-mine',
+    note: 'a delete of the invoker’s own record deletes it',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:mine', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:mine' },
+    invocationId: '00000000-0000-4000-8000-000000000045',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'delete-own-not-mine',
+    note: 'a delete of one’s own record, invoked by somebody who did not make it, fails as notOwn and deletes nothing',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:theirs', fields: { kind: 'note', title: 'theirs' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:theirs' },
+    invoker: 'did:example:visitor',
+    invocationId: '00000000-0000-4000-8000-000000000046',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'set-relation-keep-adds',
+    note: 'a setRelation that keeps adds a member it names that the relation did not hold, and removes none',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3', 'urn:example:k1'] },
+    invocationId: '00000000-0000-4000-8000-000000000047',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
 ];
 
 /** The suite's own operations a definition calls, by bare name, and their callees in turn. */
@@ -1300,7 +1355,9 @@ export async function runVector(
   opts: { registerCalls?: boolean } = {},
 ): Promise<Pick<OperationVector, 'outcome' | 'records'>> {
   const agent = subject.agent;
-  const inbound = <T>(value: T) => swap(value, vector.invoker, agent);
+  // The file's invoker wrote the seeds and is the runner's agent; a case may be invoked by another.
+  const inbound = <T>(value: T) => swap(value, VECTOR_INVOKER, agent);
+  const invoker = vector.invoker === VECTOR_INVOKER ? agent : vector.invoker;
   await seed(subject.dataset, inbound(vector.dataset));
 
   if (opts.registerCalls) {
@@ -1321,11 +1378,11 @@ export async function runVector(
   try {
     const result = await runOperation(`${VECTOR_NAMESPACE}.${vector.operation}`, inbound(vector.args), {
       dataset: subject.dataset,
-      invoker: agent,
+      invoker,
       invocationId: vector.invocationId,
       invokedAt: vector.invokedAt,
     });
-    outcome = { result: result === undefined ? null : swap(result, agent, vector.invoker) };
+    outcome = { result: result === undefined ? null : swap(result, agent, VECTOR_INVOKER) };
   } catch (error) {
     if (!isOperationError(error)) throw error;
     outcome = { error: { class: error.class, code: error.code } };
@@ -1335,7 +1392,7 @@ export async function runVector(
     unregisterOperations(VECTOR_NAMESPACE);
   }
   const records = await observe(subject.dataset, vector.observe, context.entities);
-  return { outcome, records: swap(records, agent, vector.invoker) };
+  return { outcome, records: swap(records, agent, VECTOR_INVOKER) };
 }
 
 /** A case as its vector states it, before it is run. */
@@ -1348,7 +1405,7 @@ export function vectorInput(c: OperationCase): VectorInput {
     dataset: c.dataset,
     operation: c.operation,
     args: c.args,
-    invoker: VECTOR_INVOKER,
+    invoker: c.invoker ?? VECTOR_INVOKER,
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
     ...(c.concurrent ? { concurrent: c.concurrent } : {}),
