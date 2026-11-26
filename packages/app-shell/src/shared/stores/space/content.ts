@@ -17,6 +17,7 @@ import {
 import { CollectionBlock, compressImageToFileData, type DatasetProxy, dataURIToFileData } from '@we/entities';
 
 import { createBoardActions } from '../../boards';
+import { fileAsDataURI } from '../../fileDataURI';
 import { uploadOf } from '../../uploadOf';
 import type { RecordStore } from '../RecordStore';
 import type { SpaceStore } from '../SpaceStore';
@@ -33,16 +34,6 @@ export interface SpaceContentDeps extends SpaceContext {
   >;
   taskStates: Pick<SpaceTaskStates, 'offeredTaskStates' | 'boardWorkflow'>;
 }
-
-/** A file's contents as a data URI. */
-const readAsDataURI = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    // `readAsDataURL` always yields a string.
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
 
 export function createSpaceContent(deps: SpaceContentDeps) {
   const { reactivity, toasts, sessionStore: session, datasetStore, recordStore, navigation, taskStates } = deps;
@@ -188,7 +179,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
         ? await compressImageToFileData(file, name ?? file.name)
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
-          dataURIToFileData(await readAsDataURI(file), name ?? file.name);
+          dataURIToFileData(await fileAsDataURI(file), name ?? file.name);
       return await profiles.uploadFile(uploadOf(fileData));
     } catch (error) {
       console.error('SpaceStore: upload failed', error);

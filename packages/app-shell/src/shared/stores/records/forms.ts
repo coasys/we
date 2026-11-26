@@ -18,6 +18,7 @@ import { compressImageToFileData, dataURIToFileData, inlineRecordId } from '@we/
 import type { Accessor } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import { fileAsDataURI } from '../../fileDataURI';
 import { invokeOperation } from '../../invokeOperation';
 import { imagePropertyOf } from '../../shapes/creatableKinds';
 import {
@@ -239,14 +240,7 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
 
   async function readFile(file: File): Promise<RecordFieldValue> {
     if (file.type.startsWith('image/')) return compressImageToFileData(file, file.name);
-    const uri = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      // `readAsDataURL` always yields a string.
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-      reader.readAsDataURL(file);
-    });
-    return dataURIToFileData(uri, file.name);
+    return dataURIToFileData(await fileAsDataURI(file), file.name);
   }
 
   function setRelationLocation(field: string, detail: unknown): void {

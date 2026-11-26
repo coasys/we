@@ -50,6 +50,7 @@ const STORE_TESTS = [
   'tests/shellPrompts.test.ts',
   'tests/shellTemplatePanels.test.ts',
   'tests/shellViews.test.ts',
+  'tests/spaceContent.test.ts',
   'tests/spaceDetails.test.ts',
   'tests/spaceExtraction.test.ts',
   'tests/spaceInvolvements.test.ts',
@@ -82,8 +83,7 @@ const SOLID_TESTS = [
     Store tests that still need a DOM. Each store is on the platform port; what these reach is not:
     runtime, presence, bundle and template stores import modules outside shared/stores (safe mode,
     the boot snapshot, the device's app) that read storage themselves; the theme store's CSS goes
-    through the sanitiser, which parses it with the browser's own CSS parser; a space's content
-    stores files through Blob and FileReader. The overlay router's test is about the window's history
+    through the sanitiser, which parses it with the browser's own CSS parser. The overlay router's test is about the window's history
     being left alone, so the window is its subject.
   */
   'tests/runtimeStore.test.ts',
@@ -91,7 +91,6 @@ const SOLID_TESTS = [
   'tests/bundleStore.test.ts',
   'tests/themeStore.test.ts',
   'tests/templateStore.test.ts',
-  'tests/spaceContent.test.ts',
   'tests/shellRouteStore.test.ts',
   'tests/shellRouterRoot.test.tsx',
   // Hands the settings opener a real click, which only a DOM can make.
