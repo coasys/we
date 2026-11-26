@@ -6321,7 +6321,8 @@
             "created",
             "paused",
             "revoked",
-            "keyValid"
+            "keyValid",
+            "keyStillValid"
           ]
         },
         "loaded": {
@@ -6354,7 +6355,8 @@
             "created",
             "paused",
             "revoked",
-            "keyValid"
+            "keyValid",
+            "keyStillValid"
           ]
         },
         "editor": {
@@ -6378,6 +6380,12 @@
           "type": "boolean"
         },
         "loadingOlder": {
+          "type": "boolean"
+        },
+        "keyRevokeError": {
+          "type": "string"
+        },
+        "revoking": {
           "type": "boolean"
         }
       },

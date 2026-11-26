@@ -3047,10 +3047,10 @@ BotStore:
 - State:
   - available: boolean — the backend runs bots. Gate the Bots page on it
   - canAdd: boolean — "Add a bot" can be offered: this computer keeps the master key, which signs the bot’s key into the key log
-  - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now
+  - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid, keyStillValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now; `keyStillValid` is true for a removed bot whose key the key log still holds valid (offer to revoke it again)
   - loaded: boolean — the list has been read once
   - error: string — why the last read or change failed, or empty
-  - created: { name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on
+  - created: { name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Forgotten on this side after dismissCreated, or once the person leaves the page it was shown on (this does not revoke the credential on the backend)
   - createError: string — why making the bot failed, or empty
   - creating: boolean — making the bot is under way
   - selected: the row of the bot open in the editor (as in `bots`), or null for the list
@@ -3061,11 +3061,13 @@ BotStore:
   - activityLoaded: boolean — the activity has been read once
   - hasOlder: boolean — the last read filled a page: offer "Load older"
   - loadingOlder: boolean — loadOlder is under way
+  - keyRevokeError: string — the selected bot's grant is ended but its key could not be revoked, so the key is still valid on the person's other computers: why, and that revoke tries again. Empty otherwise
+  - revoking: boolean — revoke is under way
 - Actions:
   - refresh(): reads the bots again
   - addBot(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome
-  - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made
-  - dismissCreated(): lets the bot just made go
+  - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made and shown; false if the person navigated away while it was pending (the bot is still listed, but its credential is not shown or kept)
+  - dismissCreated(): forgets the bot just made on this side (does not revoke its credential)
   - select(did: string): opens that bot in the grant editor and reads its activity
   - close(): back to the list
   - toggleSpace(id: string): adds that space to the draft grant, or takes it out
@@ -3075,7 +3077,7 @@ BotStore:
   - saveGrant(): saves the draft grant with the version it replaces. Resolves false on a conflict, with the grant read again
   - pause(): pauses the selected bot: it may do nothing until resumed
   - resume(): resumes the selected bot
-  - revoke(): revokes the selected bot for good — confirm first: a revoked grant never changes again
+  - revoke(): removes the selected bot for good — confirm first: ends its grant (a revoked grant never changes again) and revokes its key in the key log, signed where the master key is kept. Resolves false with keyRevokeError set when the key is still valid; calling it again retries only the key
   - loadOlder(): reads the next page of older activity
 
 BundleStore:
@@ -6623,7 +6625,7 @@ const space = await Space.create(perspective, { uuid: crypto.randomUUID(), name:
 
 ### Watching the graph from `@we/backend-ad4m`
 
-To hear that something changed in a perspective, subscribe on the executor with `subscribeQuery`
+To hear that something changed in a perspective, open a live query on the executor with `perspective.liveSparql`
 rather than `perspective.on('link-added' | 'link-removed')`. A link listener receives every link of a
 peer-sync burst in JS and filters there. The executor re-runs a subscription only for a diff that
 touches one of its predicates, and pushes only when the result changes.
@@ -6635,10 +6637,21 @@ name, or a Prolog query makes it re-run the subscription on every diff. `onPropo
 
 What the SDK and executor do around a subscription, so a watch can rely on it:
 
-- A callback registered after `subscribeQuery` resolves does not receive the initial result — only
-  the changes after it.
-- After a websocket reconnect, the SDK re-subscribes and hands the current result to every
-  callback, so a watch hears a refresh rather than nothing.
+- A live query has one handle: `first` is the first result, `subscribe(fn)` calls `fn` at once with
+  the current snapshot once the query is no longer loading (while it loads, the first call comes when
+  it opens, so never rely on data being there synchronously) and then on each change, and
+  `dispose()` stops it. A snapshot says `initial` for the value the handle opened on, so a watch
+  that only wants changes acts only on `status === 'ready' && !initial`: a handle that fails to open
+  sends one `error` snapshot, which is not a change.
+  Read the first result from the handle rather than reading and watching separately.
+- After a websocket reconnect, the SDK re-opens the query and a changed result reaches every
+  subscriber, so a watch hears a refresh. The SDK notifies only when the result, the status or
+  `reopening` changed, so a reconnect that succeeds at once with the same rows is silent. A re-open
+  that fails and retries does notify: once when `reopening` turns true and once when a retry
+  succeeds, both `ready`, possibly with the same rows. Same rows keep the last snapshot's
+  `initial`, so these two are not `initial` once the handle has delivered a change. A watch that
+  must act only on changed rows compares `data` with the result it last handled. Never rely on a callback
+  after every reconnect.
 - A subscription belongs to the subscriber that opened it and to its socket: identical queries are
   independent, and each ends when it is disposed or its socket closes. Independent is not free — the
   executor evaluates every one of them on each change that matches — so still hold one subscription
