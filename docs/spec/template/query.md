@@ -84,6 +84,9 @@ text match. This holds in a query and in `filter()` and `find()` alike. So
 `{ assignee: { not: 'Ann' } }` does not find a task nobody is assigned to; a template that wants it
 says so with `OR` and `exists: false`.
 
+`NOT` is a combinator, not a condition: `{ "NOT": w }` holds when `w` does not, so
+`{ "NOT": { "age": 34 } }` matches a record with no `age`, where `{ "age": { "not": 34 } }` does not.
+
 That `''` and `null` are the absent value is WE's proposal for the clearing rule (see above). So is
 how a list held in one field is read: a property holds one value, and a list written to a `json`
 property is one value, which equality with one of its entries does not match. Whether a property may
