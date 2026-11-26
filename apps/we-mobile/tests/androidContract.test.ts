@@ -123,6 +123,8 @@ describe('who may call the identity plugin', () => {
     expect(plugin).toMatch(
       /fun linkConfirm[\s\S]*?askForMatchCode[\s\S]*?stillHolds\(ticket\)[\s\S]*?held\.link\.confirm/,
     );
+    expect(plugin).toMatch(/fun startFlow[\s\S]*?agreeToWeakProtection[\s\S]*?stillHolds\(ticket\)\s+start\(true\)/);
+    expect(plugin).toMatch(/fun setSecure[\s\S]*?runOnUiThread \{[\s\S]*?document\.holds\(ticket\)[\s\S]*?FLAG_SECURE/);
   });
 
   it('takes the code of a device to add from the camera, never from the call', () => {

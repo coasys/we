@@ -411,17 +411,17 @@ class DeviceKeyPlugin : Plugin() {
 
   @PluginMethod
   fun startMake(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
-    startFlow(IdentityFlow.MAKE)
+    startFlow(IdentityFlow.MAKE, it)
   }
 
   @PluginMethod
   fun startRestore(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
-    startFlow(IdentityFlow.RESTORE)
+    startFlow(IdentityFlow.RESTORE, it)
   }
 
   @PluginMethod
   fun startRotate(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
-    startFlow(IdentityFlow.ROTATE)
+    startFlow(IdentityFlow.ROTATE, it)
   }
 
   @PluginMethod
@@ -473,7 +473,7 @@ class DeviceKeyPlugin : Plugin() {
    */
   @PluginMethod
   fun setSecure(call: PluginCall) {
-    callerTicket(call, Caller.IDENTITY_PAGE) ?: return
+    val ticket = callerTicket(call, Caller.IDENTITY_PAGE) ?: return
     val on = call.getBoolean("on")
     if (on == null) {
       call.reject("setSecure needs on: true or false", "Invalid")
@@ -485,6 +485,11 @@ class DeviceKeyPlugin : Plugin() {
       return
     }
     host.runOnUiThread {
+      // A document that loaded while this waited for the main thread did not ask for this change.
+      if (!document.holds(ticket)) {
+        call.reject("The page changed. Start again.", "NotAllowed")
+        return@runOnUiThread
+      }
       if (on) {
         host.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
       } else {
@@ -540,7 +545,7 @@ class DeviceKeyPlugin : Plugin() {
    * asked here, before any word is made or typed: a phone with no strong biometric is refused, and
    * one whose Keystore is software only goes on once the person has agreed.
    */
-  private fun startFlow(kind: IdentityFlow): JSObject {
+  private fun startFlow(kind: IdentityFlow, ticket: CallerDocument.Ticket): JSObject {
     if (!master.canAuthenticate()) {
       throw Refusal("NoBiometrics", "Set up fingerprint or face unlock to keep the master key on this phone.")
     }
@@ -558,6 +563,7 @@ class DeviceKeyPlugin : Plugin() {
       if (!agreeToWeakProtection()) {
         throw Refusal("WeakProtection", e.message ?: "The master key wasn't kept on this phone.")
       }
+      stillHolds(ticket)
       start(true)
     }
     val id = UUID.randomUUID().toString()
