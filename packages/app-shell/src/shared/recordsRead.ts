@@ -11,15 +11,13 @@
  * lookup the renderer's `$getEntityForDataset` and `RecordStore.entityClass` make — so a module's
  * read sees exactly the classes a template rendering the same space could.
  */
+import type { LivePage as Page, LiveQuery } from '@we/backend-shared';
 import { getEntity, getEntityForDataset } from '@we/entities';
 
 /** The part of a registered entity class a records read uses — the registry answers untyped. */
 interface ReadModel {
   findAll(dataset: unknown, query: unknown): Promise<Record<string, unknown>[]>;
-  query(
-    dataset: unknown,
-    query: unknown,
-  ): { subscribe(cb: (rows: Record<string, unknown>[]) => void): Promise<unknown>; dispose(): void };
+  query(dataset: unknown, query: unknown): LiveQuery<Page<Record<string, unknown>>>;
 }
 
 /**
@@ -77,12 +75,13 @@ export function subscribeEntityRows(
     );
     return () => {};
   }
-  const subscription = Model.query(dataset, query);
-  void subscription.subscribe(cb).then(
-    (rows) => cb(rows as Record<string, unknown>[]),
-    (error: unknown) => {
-      console.warn(`module host: subscription to ${entity} failed`, error);
-    },
-  );
-  return () => subscription.dispose();
+  const live = Model.query(dataset, query);
+  // Called with the rows it opened on, then with each change.
+  live.subscribe((snapshot) => {
+    if (snapshot.status === 'ready' && snapshot.data) cb(snapshot.data.results);
+  });
+  live.first.catch((error: unknown) => {
+    console.warn(`module host: subscription to ${entity} failed`, error);
+  });
+  return () => live.dispose();
 }
