@@ -44,6 +44,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       const segments = () => path().split('/').filter(Boolean);
       store = createSpaceStore({
         reactivity,
+        platform: h.platform,
         toasts: ctx.toasts,
         firstScreen: ctx.firstScreen,
         sessionStore: ctx.sessionStore,

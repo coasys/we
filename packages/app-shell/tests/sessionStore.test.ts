@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen } from '../src/shared/firstScreen';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
 
 const reactivityPorts: [string, () => ReactivityPort][] = [
@@ -73,7 +74,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         store = createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: { initialize: () => Promise.resolve({ client: {}, ports }) } as never,
           credential,
           firstScreen,
@@ -215,7 +216,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         store = createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: { initialize: () => Promise.reject(new Error('No backend here')) } as never,
           credential,
           firstScreen: createFirstScreen({ signal: reactivity.signal }),
@@ -237,7 +238,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       reactivity.root(() => {
         createSessionStore({
           reactivity,
-          platform: { isDesktop: false, isDevelopment: true } as never,
+          platform: { ...createTestPlatform(), isDesktop: false, isDevelopment: true } as never,
           backend: {
             initialize: () => {
               connects++;

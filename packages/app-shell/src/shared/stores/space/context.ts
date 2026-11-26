@@ -12,6 +12,7 @@ import type { ReactivityPort } from '@we/reactivity';
 import type { FirstScreen } from '../../firstScreen';
 import { invokeOperation } from '../../invokeOperation';
 import { operationFailureMessage } from '../../operationFailure';
+import type { PlatformPort } from '../../platform/port';
 import type { Toasts } from '../../toasts';
 import type { AppDataset, DatasetStore } from '../DatasetStore';
 import type { SessionStore } from '../SessionStore';
@@ -46,6 +47,8 @@ export type SpaceDatasets = Pick<
 
 export interface SpaceContext {
   reactivity: ReactivityPort;
+  /** The address links are built from, and the document embedded apps are told through. */
+  platform: Pick<PlatformPort, 'location' | 'document'>;
   toasts: Toasts;
   /** Whether work the first screen does not need may start yet. */
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
@@ -81,6 +84,7 @@ export interface SpaceContext {
 
 export function createSpaceContext(deps: {
   reactivity: ReactivityPort;
+  platform: SpaceContext['platform'];
   toasts: Toasts;
   firstScreen: SpaceContext['firstScreen'];
   sessionStore: SpaceSession;

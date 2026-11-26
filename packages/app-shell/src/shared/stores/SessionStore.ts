@@ -590,7 +590,7 @@ export function createSessionStore(deps: SessionStoreDeps): SessionStore {
         // there — it is refused, and reloading walks straight back in, because nothing about the
         // session actually ended.
         await disconnectBackend();
-        window.location.reload();
+        platform.reload();
         return;
       } else if (platform.executor) {
         await platform.executor.restart();
@@ -650,7 +650,7 @@ export function createSessionStore(deps: SessionStoreDeps): SessionStore {
     clearPasswordError,
     finishSetup,
     holdForAiSetup,
-    retryBoot: () => window.location.reload(),
+    retryBoot: () => platform.reload(),
     logout,
 
     refreshMe,

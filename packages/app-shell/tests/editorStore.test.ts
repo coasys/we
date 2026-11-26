@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { type LiveTemplates, plainLiveTemplates } from '../src/shared/liveTemplate';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createEditorStore, type EditorStore } from '../src/shared/stores/EditorStore';
 import { createEditTarget, type EditTargetPort } from '../src/shared/stores/editTarget';
 import type { EditingTheme } from '../src/shared/stores/ThemeStore';
@@ -61,10 +62,12 @@ const theme = (name: string) => ({ id: 'theme', name }) as unknown as EditingThe
 describe.each(hosts)('the editor store under %s', (_name, host) => {
   let reactivity: ReactivityPort;
   let liveTemplates: LiveTemplates;
+  let platform: TestPlatform;
   const disposers: (() => void)[] = [];
 
   beforeEach(() => {
     ({ reactivity, liveTemplates } = host());
+    platform = createTestPlatform();
     chatLoads.length = 0;
   });
   afterEach(() => {
@@ -120,6 +123,7 @@ describe.each(hosts)('the editor store under %s', (_name, host) => {
         edit = createEditTarget({ reactivity, templateStore });
         store = createEditorStore({
           reactivity,
+          platform,
           toasts: {
             info: (m) => told.push(m),
             success: (m) => told.push(m),

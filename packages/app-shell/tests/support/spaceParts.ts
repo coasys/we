@@ -10,6 +10,7 @@ import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 
+import { createTestPlatform, type TestPlatform } from '../../src/shared/platform/testPlatform';
 import { provideSeed } from '../../src/shared/seedRegistry';
 import type { AppDataset } from '../../src/shared/stores/DatasetStore';
 import type { BootState } from '../../src/shared/stores/SessionStore';
@@ -33,6 +34,8 @@ export const flush = async () => {
 
 export interface SpaceHarness {
   reactivity: ReactivityPort;
+  /** The window the parts run in. */
+  platform: TestPlatform;
   ctx: SpaceContext;
   ports: ReturnType<typeof createInMemoryBackendPorts>;
   /** Every toast said, in order, as `tone: message`, with the button when one was offered. */
@@ -128,8 +131,10 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
     return toasts.said.length;
   };
 
+  const platform = createTestPlatform();
   const ctx = createSpaceContext({
     reactivity,
+    platform,
     toasts: { info: say('info'), success: say('success'), warning: say('warning'), error: say('error') },
     firstScreen: { open: () => true, whenOpen: () => Promise.resolve() },
     sessionStore: {
@@ -144,6 +149,7 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
 
   return {
     reactivity,
+    platform,
     ctx,
     ports,
     toasts,

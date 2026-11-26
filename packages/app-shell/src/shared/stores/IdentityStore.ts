@@ -31,6 +31,7 @@ import { latest } from '@we/module-shared';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { type KeyLogRow, keyLogRows } from '../identityRows';
+import type { PlatformPort, PlatformStorage } from '../platform/port';
 
 /** What the identity store reads of the session: its ports, how far boot has got, and what they can do. */
 export interface IdentitySession {
@@ -101,10 +102,10 @@ export interface IdentityStore {
  */
 export const startNowKey = (deviceKey: string) => `we.identity.startNow:${deviceKey}`;
 
-function readStartNow(deviceKey: string): boolean {
+function readStartNow(storage: PlatformStorage, deviceKey: string): boolean {
   if (!deviceKey) return false;
   try {
-    return localStorage.getItem(startNowKey(deviceKey)) === '1';
+    return storage.getItem(startNowKey(deviceKey)) === '1';
   } catch {
     return false;
   }
@@ -114,9 +115,12 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function createIdentityStore({
   reactivity,
+  platform,
   sessionStore: session,
 }: {
   reactivity: ReactivityPort;
+  /** Where "start without an identity" is remembered for this device. */
+  platform: Pick<PlatformPort, 'storage'>;
   sessionStore: IdentitySession;
 }): IdentityStore {
   const { signal, memo, effect, untrack, batch, onCleanup } = reactivity;
@@ -136,7 +140,7 @@ export function createIdentityStore({
   const [startNowChosen, setStartNowChosen] = signal(false);
 
   const deviceKey = memo(() => status()?.deviceKey ?? '');
-  const startNow = memo(() => startNowChosen() || readStartNow(deviceKey()));
+  const startNow = memo(() => startNowChosen() || readStartNow(platform.storage, deviceKey()));
   // What the backend said it can do (`sessionStore.identityCapabilities`), not merely what methods exist.
   const available = memo(() => session.identityCapabilities().keyLog && !!port()?.status);
   const did = memo(() => status()?.did ?? '');
@@ -299,7 +303,7 @@ export function createIdentityStore({
     startWithoutIdentity: () => {
       const key = deviceKey();
       try {
-        if (key) localStorage.setItem(startNowKey(key), '1');
+        if (key) platform.storage.setItem(startNowKey(key), '1');
       } catch {
         // Not remembered past this run; the question comes back next time, which is harmless.
       }

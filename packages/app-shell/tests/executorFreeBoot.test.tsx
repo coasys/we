@@ -39,6 +39,7 @@ import { createEffect, createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { shellHost, spaceHost } from '../src/frameworks/solid/stores/hostState';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -322,13 +323,14 @@ function mountShell(): Stores {
     their effects and cleanups belong to the tree `cleanup()` takes down.
   */
   function Shell() {
-    const platform = usePlatform();
+    // The mocked host adapter, in the window the suite runs in.
+    const platform = { ...createBrowserPlatform(), ...usePlatform() };
     const backend = useBackend();
-    const routeStore = createRouteStore({ reactivity: solidReactivity });
+    const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
     const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
     // BootController builds it.
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
+    const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
@@ -383,12 +385,14 @@ function mountShell(): Stores {
     });
     const themeStore = createThemeStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       sessionStore,
       datasetStore,
     });
     const templateStore = createTemplateStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       liveTemplates: solidLiveTemplates,
       sessionStore,
@@ -400,6 +404,7 @@ function mountShell(): Stores {
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       firstScreen,
       host: spaceHost,
@@ -414,7 +419,7 @@ function mountShell(): Stores {
       themeStore,
       shellStore,
     });
-    startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+    startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     Object.assign(out, {
       profiles: profileStore,
       runtime: runtimeStore,

@@ -31,6 +31,7 @@ import {
   resolveLocalInitial,
   type RouteParamsBinding,
 } from '../../../schema-system/shared/src/index.ts';
+import { createBrowserPlatform } from '../../src/shared/platform/browser';
 import { createRouteStore, type RouteStore } from '../../src/shared/stores/RouteStore';
 
 /** One step of a navigation script. `args` are decoded JSON — see the ops below. */
@@ -128,7 +129,7 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
   // Render mounts once and is left to the test environment's cleanup — same convention as the
   // app-shell suite (each script's store is a fresh mount whose signals stay private).
   render(() => {
-    store = createRouteStore({ reactivity: solidReactivity });
+    store = createRouteStore({ reactivity: solidReactivity, platform: createBrowserPlatform() });
     return null;
   });
   store.setNavigateFunction(((to: string | number, options?: Record<string, unknown>) => {

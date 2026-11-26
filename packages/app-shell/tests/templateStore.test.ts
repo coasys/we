@@ -15,6 +15,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { appearanceOf } from './support/spaceAppearance';
@@ -77,6 +78,7 @@ describe.each(hosts)('the template store under %s', (_name, host) => {
       reactivity.root(() => {
         store = createTemplateStore({
           reactivity,
+          platform: createTestPlatform(),
           liveTemplates,
           toasts: {
             info: (m) => told.push(m),

@@ -29,7 +29,7 @@ import type { AppDataset } from './DatasetStore';
 import type { ShellStore } from './ShellStore';
 import { createCallExports } from './space/callExports';
 import { createSpaceContent, type SpaceContentDeps } from './space/content';
-import { createSpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
+import { createSpaceContext, type SpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
 import { createSpaceDetails, type SpaceDetailsDeps } from './space/details';
 import { createSpaceExtraction, type SpaceExtractionDeps } from './space/extraction';
 import { createSpaceInvolvements } from './space/involvements';
@@ -626,6 +626,7 @@ export interface SpaceHostState {
 /** What the space store is built from: the port, and what it reads and lends of the stores before it. */
 export interface SpaceStoreDeps {
   reactivity: ReactivityPort;
+  platform: SpaceContext['platform'];
   toasts: Toasts;
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
   sessionStore: SpaceSession;
@@ -657,6 +658,7 @@ export interface SpaceStoreDeps {
 export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   const {
     reactivity,
+    platform,
     toasts,
     firstScreen,
     sessionStore: session,
@@ -671,7 +673,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     themeStore,
     host,
   } = deps;
-  const ctx = createSpaceContext({ reactivity, toasts, firstScreen, sessionStore: session, datasetStore });
+  const ctx = createSpaceContext({ reactivity, platform, toasts, firstScreen, sessionStore: session, datasetStore });
 
   /*
     The spaces this agent holds. Built first: every other part reads the records it holds. What a new

@@ -17,6 +17,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NARROW_VIEWPORT_PX } from '../src/shared/dockGeometry';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
 
 const ports: [string, () => ReactivityPort][] = [
@@ -27,26 +28,26 @@ const ports: [string, () => ReactivityPort][] = [
 const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 
 let port: ReactivityPort = solidReactivity;
+let platform: TestPlatform = createTestPlatform();
 const disposers: (() => void)[] = [];
 
 /** The chat store over a stand-in shell store, inside a root of its own as the host builds it. */
 function withStore(): ChatStore {
   let store!: ChatStore;
-  disposers.push(port.root(() => (store = createChatStore({ reactivity: port, shellStore: { openPanel } }))));
+  disposers.push(port.root(() => (store = createChatStore({ reactivity: port, platform, shellStore: { openPanel } }))));
   return store;
 }
 
-const wide = window.innerWidth;
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
   openPanel.mockClear();
   vi.restoreAllMocks();
-  Object.defineProperty(window, 'innerWidth', { value: wide, configurable: true });
 });
 
 describe.each(ports)('the chat store, under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
+    platform = createTestPlatform();
   });
 
   describe('opening a chat', () => {
@@ -154,13 +155,11 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
       const narrow: boolean[] = [];
       disposers.push(port.root(() => port.effect(() => void narrow.push(store.isNarrow()))));
 
-      Object.defineProperty(window, 'innerWidth', { value: NARROW_VIEWPORT_PX - 1, configurable: true });
-      window.dispatchEvent(new Event('resize'));
+      platform.resize({ width: NARROW_VIEWPORT_PX - 1, height: 900 });
       expect(store.isNarrow()).toBe(true);
       const seen = narrow.length;
       // A resize that crosses nothing wakes nothing.
-      Object.defineProperty(window, 'innerWidth', { value: NARROW_VIEWPORT_PX - 2, configurable: true });
-      window.dispatchEvent(new Event('resize'));
+      platform.resize({ width: NARROW_VIEWPORT_PX - 2, height: 900 });
       expect(narrow.length).toBe(seen);
 
       store.openChat({ datasetId: 'uuid-9', spaceName: 'Garden', prefill: 'about' });
@@ -173,8 +172,7 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
     it('stops following the width once its owner is disposed', () => {
       const store = withStore();
       disposers.splice(0).forEach((dispose) => dispose());
-      Object.defineProperty(window, 'innerWidth', { value: NARROW_VIEWPORT_PX - 1, configurable: true });
-      window.dispatchEvent(new Event('resize'));
+      platform.resize({ width: NARROW_VIEWPORT_PX - 1, height: 900 });
       expect(store.isNarrow()).toBe(false);
     });
   });

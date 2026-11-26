@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
 import { StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { type ChatInputs, type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
 import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
@@ -65,7 +66,11 @@ const stores = {
 
 /** The chat store itself, over the stubs above — composed as the host composes it. */
 function ChatStores(props: ParentProps) {
-  const chatStore = createChatStore({ reactivity: solidReactivity, shellStore: stores.shellStore! });
+  const chatStore = createChatStore({
+    reactivity: solidReactivity,
+    platform: createBrowserPlatform(),
+    shellStore: stores.shellStore!,
+  });
   return (
     <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
   );

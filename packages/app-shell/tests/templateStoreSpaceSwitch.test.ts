@@ -13,6 +13,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';
@@ -102,6 +103,7 @@ describe.each(hosts)('the template store across a switch of space, under %s', (_
     dispose = reactivity.root(() => {
       store = createTemplateStore({
         reactivity,
+        platform: createTestPlatform(),
         toasts,
         liveTemplates,
         sessionStore: sessionStub as never,

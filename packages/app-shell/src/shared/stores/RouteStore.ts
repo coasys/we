@@ -1,11 +1,14 @@
 /**
  * RouteStore — the address on screen, and the way to change it.
  *
- * Written against the reactivity port and nothing else, so it runs under any host: the router is
- * the host's, lent through `setNavigateFunction`, and reports back through `setCurrentPath`.
+ * Written against the reactivity and platform ports and nothing else, so it runs under any host: the
+ * router is the host's, lent through `setNavigateFunction`, and reports back through
+ * `setCurrentPath`. The address and its history are the platform's.
  */
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import { resolvePath, SPACE_ROUTE_DEPTH } from '@we/schema-shared';
+
+import type { PlatformPort } from '../platform/port';
 
 /**
  * The host router's own navigation: a path (or, for a router that keeps history, a delta) and the
@@ -154,11 +157,6 @@ export function queryString(values: URLSearchParams | Record<string, unknown>): 
   return search.toString().replace(/%3A/gi, ':').replace(/%2F/gi, '/');
 }
 
-function readParams(search?: string): Record<string, string> {
-  if (search === undefined && typeof window === 'undefined') return {};
-  return Object.fromEntries(new URLSearchParams(search ?? window.location.search));
-}
-
 /** Two query records with the same parameters, each holding the same value. */
 function sameParams(a: Record<string, string>, b: Record<string, string>): boolean {
   const keys = Object.keys(a);
@@ -168,11 +166,19 @@ function sameParams(a: Record<string, string>, b: Record<string, string>): boole
 /**
  * The app's route store, built where the host composes its stores.
  *
- * Its listener on the browser's history is registered with the owner it is built under, and goes
+ * Its listener on the window's history is registered with the owner it is built under, and goes
  * when that owner is disposed.
  */
-export function createRouteStore({ reactivity }: { reactivity: ReactivityPort }): RouteStore {
+export function createRouteStore({
+  reactivity,
+  platform,
+}: {
+  reactivity: ReactivityPort;
+  platform: Pick<PlatformPort, 'location' | 'history' | 'listen'>;
+}): RouteStore {
   const { signal, memo, untrack, onCleanup } = reactivity;
+  const readParams = (search?: string): Record<string, string> =>
+    Object.fromEntries(new URLSearchParams(search ?? platform.location().search));
   const [currentPath, setCurrentPathSignal] = signal('');
   const [navigateFunction, setNavigateFunction] = signal<NavigateFunction | null>(null);
 
@@ -214,8 +220,7 @@ export function createRouteStore({ reactivity }: { reactivity: ReactivityPort })
    */
   const rememberedSearch = new Map<string, string>();
   function rememberCurrentSearch(at?: { pathname: string; search: string }) {
-    if (typeof window === 'undefined') return;
-    const { pathname, search } = at ?? window.location;
+    const { pathname, search } = at ?? platform.location();
     if (search) rememberedSearch.set(pathname, search);
     else rememberedSearch.delete(pathname);
   }
@@ -243,16 +248,12 @@ export function createRouteStore({ reactivity }: { reactivity: ReactivityPort })
     else rememberCurrentSearch();
   }
 
-  if (typeof window !== 'undefined') {
-    const onPopState = () => setParamsSignal(readParams());
-    window.addEventListener('popstate', onPopState);
-    onCleanup(() => window.removeEventListener('popstate', onPopState));
-  }
+  onCleanup(platform.listen('popstate', () => setParamsSignal(readParams())));
 
   function navigate(to: string, options?: NavigateOptions) {
     const { query, base, fresh, ...routerOptions } = options ?? {};
     // The router's address, not the bar's, for `setParam`'s reason below.
-    const here = untrack(currentPath) || window.location.pathname;
+    const here = untrack(currentPath) || platform.location().pathname;
     const resolved = resolveNavigation(to, here, templateRootDepth(here), base);
     const written = query && typeof query === 'object' ? queryString(query) : '';
     const path = written ? `${resolved}${resolved.includes('?') ? '&' : '?'}${written}` : resolved;
@@ -276,12 +277,11 @@ export function createRouteStore({ reactivity }: { reactivity: ReactivityPort })
   }
 
   function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
-    const here = currentPath() || (typeof window === 'undefined' ? '/' : window.location.pathname);
+    const here = currentPath() || platform.location().pathname || '/';
     return resolveNavigation(to, here, templateRootDepth(here), options?.base);
   }
 
   function setParam(name: string, value: string | null, options?: { push?: boolean }) {
-    if (typeof window === 'undefined') return;
     /*
       Built from what the app is showing, not from the address bar.
 
@@ -300,12 +300,13 @@ export function createRouteStore({ reactivity }: { reactivity: ReactivityPort })
     if (value === null || value === undefined || value === '') search.delete(name);
     else search.set(name, value);
     const query = queryString(search);
-    const url = `${untrack(currentPath) || window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
+    const { pathname, hash } = platform.location();
+    const url = `${untrack(currentPath) || pathname}${query ? `?${query}` : ''}${hash}`;
     // Written through history directly rather than the router: the path is
     // unchanged, so the route tree must not re-resolve — only the params signal
     // moves, and only its readers re-run.
-    if (options?.push) window.history.pushState(null, '', url);
-    else window.history.replaceState(null, '', url);
+    if (options?.push) platform.history.push(url);
+    else platform.history.replace(url);
     setParamsSignal(readParams());
     rememberCurrentSearch();
   }
@@ -326,7 +327,7 @@ export function createRouteStore({ reactivity }: { reactivity: ReactivityPort })
     navigate,
     resolve,
     setParam,
-    back: () => window.history.back(),
+    back: () => platform.history.back(),
   };
 
   return store;

@@ -1,8 +1,9 @@
 /**
  * BootController — where the host's stores are composed, and the post-unlock boot sequence.
  *
- * **Composition.** Every app-lifetime store is built here, once, with the stores it reads passed in
- * as arguments, in an order that is the dependency graph: nothing is built before what it reads. The
+ * **Composition.** Every app-lifetime store is built here, once, with the ports it runs on (the
+ * reactivity port, and the platform the app supplied) and the stores it reads passed in as
+ * arguments, in an order that is the dependency graph: nothing is built before what it reads. The
  * finished set is the registry components reach through `useStore(key)`, so a store never looks
  * another up through a context, and a host on another framework composes the same factories the
  * same way and writes its own hook over the result. An upward dependency — a store that needs one
@@ -43,6 +44,7 @@ import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
+import type { PlatformPort } from '../../../shared/platform/port';
 import type { StoreRegistry } from '../../../shared/stores/storeRegistry';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
@@ -58,12 +60,12 @@ export function BootController(props: ParentProps) {
   const backend = useBackend();
 
   // Depends on nothing: the app's address, read by templates, the space store and presence.
-  const routeStore = createRouteStore({ reactivity: solidReactivity });
+  const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
   const clockStore = createClockStore({ reactivity: solidReactivity });
   const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
-  const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
+  const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The
   // boot screen needs them while the session is still locked.
   const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
@@ -103,7 +105,7 @@ export function BootController(props: ParentProps) {
   });
   // Beside Runtime and for the same reason: they read only the port bundle and the host's custody.
   // Identity before devices, whose changes it opens.
-  const identityStore = createIdentityStore({ reactivity: solidReactivity, sessionStore });
+  const identityStore = createIdentityStore({ reactivity: solidReactivity, platform, sessionStore });
   const deviceStore = createDeviceStore({ reactivity: solidReactivity, sessionStore, identityStore });
   const datasetStore = createDatasetStore({
     reactivity: solidReactivity,
@@ -138,12 +140,14 @@ export function BootController(props: ParentProps) {
   });
   const themeStore = createThemeStore({
     reactivity: solidReactivity,
+    platform,
     toasts: toastService,
     sessionStore,
     datasetStore,
   });
   const templateStore = createTemplateStore({
     reactivity: solidReactivity,
+    platform,
     toasts: toastService,
     liveTemplates: solidLiveTemplates,
     sessionStore,
@@ -155,6 +159,7 @@ export function BootController(props: ParentProps) {
   const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
   const editorStore = createEditorStore({
     reactivity: solidReactivity,
+    platform,
     toasts: toastService,
     firstScreen,
     sessionStore,
@@ -167,6 +172,7 @@ export function BootController(props: ParentProps) {
   const appStore = createAppStore({ reactivity: solidReactivity });
   const spaceStore = createSpaceStore({
     reactivity: solidReactivity,
+    platform,
     toasts: toastService,
     firstScreen,
     host: spaceHost,
@@ -184,7 +190,7 @@ export function BootController(props: ParentProps) {
 
   // Registered before the stores below are built, as it always has been: they follow the dataset
   // the sequence opens, so they are composed after it is set up.
-  startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+  startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
 
   // Presence follows the current dataset and the route. App-lifetime, not view-lifetime: it must
   // outlive navigation rather than being torn down with a view.
@@ -268,12 +274,15 @@ export function BootController(props: ParentProps) {
 
 /** The post-unlock load, registered with the session store. Called once, where the stores are composed. */
 export function startBoot({
+  platform,
   sessionStore: session,
   datasetStore,
   profileStore,
   spaceStore,
   routeStore,
-}: Pick<StoreRegistry, 'sessionStore' | 'datasetStore' | 'profileStore' | 'spaceStore' | 'routeStore'>): void {
+}: Pick<StoreRegistry, 'sessionStore' | 'datasetStore' | 'profileStore' | 'spaceStore' | 'routeStore'> & {
+  platform: Pick<PlatformPort, 'location'>;
+}): void {
   /*
     The URL the user landed on, captured before any boot-time navigation and spent once.
 
@@ -286,7 +295,8 @@ export function startBoot({
     The search string travels with it: a deep link is routinely `?type=posts&sort=new`, and
     restoring only the pathname put somebody back on the page they linked to with every filter reset.
   */
-  let pendingDeepLink: string | null = window.location.pathname + window.location.search;
+  const here = () => platform.location().pathname + platform.location().search;
+  let pendingDeepLink: string | null = here();
 
   // Read the guest target before any async work — the entry point sets it synchronously, and
   // reading it removes it, so a remount cannot join a second time.
@@ -379,7 +389,7 @@ export function startBoot({
     }
 
     // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
-    const target = pendingDeepLink ?? window.location.pathname + window.location.search;
+    const target = pendingDeepLink ?? here();
     pendingDeepLink = null;
     routeStore.navigate(target || '/');
   });

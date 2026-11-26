@@ -12,6 +12,7 @@ import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createThemeStore, type ThemeStore } from '../src/shared/stores/ThemeStore';
 import { appearanceOf } from './support/spaceAppearance';
@@ -36,6 +37,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
   let told: string[];
   let settingsWrites: Record<string, unknown>[];
   let installedRefs: string[];
+  let platform: TestPlatform;
   const disposers: (() => void)[] = [];
 
   async function mount(
@@ -68,6 +70,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
       reactivity.root(() => {
         store = createThemeStore({
           reactivity,
+          platform,
           toasts: {
             info: (m) => told.push(m),
             success: (m) => told.push(m),
@@ -109,7 +112,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     told = [];
     settingsWrites = [];
     installedRefs = [];
-    localStorage.clear();
+    platform = createTestPlatform();
     const ports = createInMemoryBackendPorts(
       { selfId: () => ME },
       {
@@ -194,7 +197,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     expect(store.currentThemeId()).toBe('retro');
     expect(store.defaultThemeId()).toBe('retro');
     expect(settingsWrites).toContainEqual({ defaultThemeId: 'retro' });
-    expect(localStorage.getItem('we.theme')).toBe('retro');
+    expect(platform.storage.getItem('we.theme')).toBe('retro');
   });
 
   it('wakes the editor for every request to show a role, the same one twice included', async () => {
@@ -246,9 +249,8 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     store.requestNamedThemes({ type: 'Column', theme: { themeName: named.id }, children: [] });
     store.requestNamedThemes({ type: 'Column', theme: { themeName: 'not safe!' }, children: [] });
     await flush();
-    const sheet = document.getElementById(`we-named-theme-css-${named.id}`);
-    expect(sheet?.textContent).toContain(`[data-we-theme='${named.id}']`);
-    expect(document.getElementById('we-named-theme-css-not safe!')).toBeNull();
+    expect(platform.drawn.styleSheets.get(`we-named-theme-css-${named.id}`)).toContain(`[data-we-theme='${named.id}']`);
+    expect(platform.drawn.styleSheets.has('we-named-theme-css-not safe!')).toBe(false);
   });
 
   it('installs a marketplace theme into the library, and updates it when installed again', async () => {

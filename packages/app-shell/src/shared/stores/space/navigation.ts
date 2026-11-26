@@ -52,8 +52,18 @@ export interface SpaceNavigationDeps extends SpaceContext {
 }
 
 export function createSpaceNavigation(deps: SpaceNavigationDeps) {
-  const { reactivity, datasetStore, routeStore, templateStore, shellStore, spaces, writes, sections, ensureBoardFor } =
-    deps;
+  const {
+    reactivity,
+    platform,
+    datasetStore,
+    routeStore,
+    templateStore,
+    shellStore,
+    spaces,
+    writes,
+    sections,
+    ensureBoardFor,
+  } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
   const { pendingDefaults } = writes;
 
@@ -380,14 +390,12 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
   }
 
   function broadcastSpaceNavigation(communityId: string): void {
-    const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
-      'we-iframe',
-    );
-    iframes.forEach((el) => {
-      if (typeof el.postMessage === 'function') {
-        el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
+    for (const el of platform.document.queryAll('we-iframe')) {
+      const frame = el as Element & { postMessage?: (data: unknown, origin: string) => void };
+      if (typeof frame.postMessage === 'function') {
+        frame.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
       }
-    });
+    }
   }
 
   /**

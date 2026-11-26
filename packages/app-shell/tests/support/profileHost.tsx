@@ -31,6 +31,7 @@ import { startBoot } from '../../src/frameworks/solid/providers/BootController';
 import { shellHost, spaceHost } from '../../src/frameworks/solid/stores/hostState';
 import { solidLiveTemplates } from '../../src/frameworks/solid/stores/liveTemplate';
 import { clockRegistry } from '../../src/shared/clocks';
+import { createBrowserPlatform } from '../../src/shared/platform/browser';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
@@ -453,9 +454,9 @@ async function backendFor(world: ProfileWorld) {
 function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores: Stores; dispose: () => void } {
   let stores!: Stores;
   const dispose = createRoot((dispose) => {
-    const platform = { isDesktop: false, isDevelopment: true } as never;
+    const platform = { ...createBrowserPlatform(), isDesktop: false, isDevelopment: true } as never;
     const backend = { initialize: () => Promise.resolve({ client: {}, ports }) } as never;
-    const routeStore = createRouteStore({ reactivity: solidReactivity });
+    const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
     const report = () => routeStore.setCurrentPath(window.location.pathname, window.location.search);
     routeStore.setNavigateFunction((to, options) => {
       if (typeof to === 'number') return window.history.go(to);
@@ -467,7 +468,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     report();
     const clockStore = createClockStore({ reactivity: solidReactivity });
     const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
+    const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
     const sessionStore = createSessionStore({
       reactivity: solidReactivity,
@@ -516,12 +517,14 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     const themeStore = createThemeStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       sessionStore,
       datasetStore,
     });
     const templateStore = createTemplateStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       liveTemplates: solidLiveTemplates,
       sessionStore,
@@ -532,6 +535,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       firstScreen,
       host: spaceHost,
@@ -554,7 +558,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       routeStore,
       sessionStore,
     });
-    startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+    startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     stores = {
       routeStore,
       clockStore,

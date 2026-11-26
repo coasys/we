@@ -28,6 +28,7 @@ import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
 
 import { distinctSignal } from '../distinctSignal';
+import type { PlatformDocument, PlatformPort, PlatformStorage } from '../platform/port';
 import { safeMode } from '../safeMode';
 import { overrideOptions, type SpaceAppearance, type SpaceOverride, themeResolutionInputOf } from '../spaceAppearance';
 import { resolveSpaceTheme, type SpaceThemeHiddenBy, spaceThemeHiddenBy as hiddenBy } from '../themeResolution';
@@ -63,11 +64,10 @@ function displayFrom(stored: unknown): DisplayPreferences {
   return stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
 }
 
-/** The display preferences this device cached, which is text, since that is what localStorage holds. */
-function cachedDisplay(): DisplayPreferences {
-  if (typeof window === 'undefined') return {};
+/** The display preferences this device cached, which is text, since that is what storage holds. */
+function cachedDisplay(storage: PlatformStorage): DisplayPreferences {
   try {
-    return displayFrom(JSON.parse(localStorage.getItem(DISPLAY_KEY) ?? 'null'));
+    return displayFrom(JSON.parse(storage.getItem(DISPLAY_KEY) ?? 'null'));
   } catch {
     return {};
   }
@@ -375,8 +375,8 @@ function collectThemeNames(value: unknown, into = new Set<string>()): Set<string
  */
 const SAFE_THEME_ID = /^[A-Za-z0-9_-]+$/;
 
-function getInitialThemeId(): string {
-  const saved = typeof window !== 'undefined' ? localStorage.getItem(THEME_KEY) : null;
+function getInitialThemeId(storage: PlatformStorage): string {
+  const saved = storage.getItem(THEME_KEY);
   if (saved && !UNCHOSEN_THEME_IDS.has(saved)) return saved;
   // Nobody has chosen on this device: the app it last ran, else the app the deployment opens in.
   return readDeviceApp()?.themes?.[0]?.id ?? seedAppThemeId() ?? 'dark';
@@ -412,12 +412,13 @@ function seedAppThemeId(): string | undefined {
 export const SYSTEM_THEME_ID = 'system';
 
 /** Tracks `prefers-color-scheme` for as long as the app is open, not just at boot. */
-function createSystemScheme(reactivity: ReactivityPort): Accessor<'light' | 'dark'> {
-  if (typeof window === 'undefined' || !window.matchMedia) return () => 'light';
-  const query = window.matchMedia('(prefers-color-scheme: dark)');
-  const [scheme, setScheme] = distinctSignal<'light' | 'dark'>(reactivity, query.matches ? 'dark' : 'light');
-  const onChange = (e: MediaQueryListEvent) => setScheme(e.matches ? 'dark' : 'light');
-  query.addEventListener('change', onChange);
+function createSystemScheme(
+  reactivity: ReactivityPort,
+  platform: Pick<PlatformPort, 'matchMedia'>,
+): Accessor<'light' | 'dark'> {
+  const query = platform.matchMedia('(prefers-color-scheme: dark)');
+  const [scheme, setScheme] = distinctSignal<'light' | 'dark'>(reactivity, query.matches() ? 'dark' : 'light');
+  query.onChange((matches) => setScheme(matches ? 'dark' : 'light'));
   // Never removed: the store lives for the life of the document, and dropping it on an HMR pass
   // would leave the app pinned to whatever the scheme was when the module reloaded.
   return scheme;
@@ -458,18 +459,12 @@ function cssNamespace(theme: ThemeData): string {
  * same rule rather than exempting them, and it is why the retro theme now carries VT323 instead of
  * importing it.
  */
-function injectCssString(id: string, css: string, options: SanitiseCssOptions = {}) {
-  let styleEl = document.getElementById(id) as HTMLStyleElement | null;
-  if (!styleEl) {
-    styleEl = document.createElement('style');
-    styleEl.id = id;
-    document.head.appendChild(styleEl);
-  }
+function injectCssString(page: PlatformDocument, id: string, css: string, options: SanitiseCssOptions = {}) {
   const { css: safe, removed } = css ? sanitiseCss(css, options) : { css: '', removed: [] };
   if (removed.length && import.meta.env?.DEV) {
     console.warn(`[theme] removed from ${id}:`, removed.join('; '));
   }
-  styleEl.textContent = safe;
+  page.setStyleSheet(id, safe);
 }
 
 /**
@@ -481,7 +476,7 @@ function injectCssString(id: string, css: string, options: SanitiseCssOptions = 
  */
 let lastAppliedThemeId: string | null = null;
 
-function applyThemeToDOM(theme: ThemeData) {
+function applyThemeToDOM(page: PlatformDocument, theme: ThemeData) {
   /*
     The whole theme, both sides included: `applyThemeVars` picks the side from the person's display
     preferences, and from the theme editor's preview of the side being edited. Folding it to one side
@@ -499,7 +494,7 @@ function applyThemeToDOM(theme: ThemeData) {
       : isValidThemeKey(theme.id)
         ? theme.id
         : 'light';
-  document.documentElement.setAttribute('data-we-theme', baseName);
+  page.setRootAttribute('data-we-theme', baseName);
 
   /*
     Writing the variables — and clearing exactly the previous theme's — now lives in
@@ -509,19 +504,21 @@ function applyThemeToDOM(theme: ThemeData) {
   */
   const isSwitch = theme.id !== lastAppliedThemeId;
   lastAppliedThemeId = theme.id;
-  applyThemeVars(document.documentElement, overrides, { crossFade: isSwitch });
+  const root = page.root();
+  if (root) applyThemeVars(root, overrides, { crossFade: isSwitch });
 
   // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
   // is the whole window, which is what the document theme is for. Namespaced all the same, so the
   // document theme and a scoped space theme cannot redefine each other's animations.
-  injectCssString('we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
+  injectCssString(page, 'we-custom-theme-css', theme.css ?? '', { namespace: cssNamespace(theme) });
 }
 
 /**
  * For any override keys missing from `overrides`, reads their actual computed CSS values so
  * sliders initialise at the position matching what the user sees, not hardcoded defaults.
  *
- * `from` is the element carrying the theme being read. It used to be documentElement, always, with
+ * `wearing` is the theme's own properties when the theme being read is not the document's: they are
+ * read off a hidden element wearing them, and otherwise off the document's root. It used to be the root, always, with
  * the caller responsible for applying the theme there first — which is exactly what went wrong: in
  * scoped mode the theme being edited is *not* the document's, so `startEditing` applied it to the
  * document to take this reading and relied on a later effect to put it back. That effect only fires
@@ -529,23 +526,26 @@ function applyThemeToDOM(theme: ThemeData) {
  * depends on `personalTheme`, which had not changed, so nothing re-ran and the app chrome simply
  * kept the theme being edited until the scope toggle was flipped and back.
  *
- * Reading from a caller-supplied element removes the need to disturb anything.
+ * Reading from an element of its own removes the need to disturb anything. Where nothing is drawn
+ * there is nothing to read, and the overrides stay as they are.
  */
 function populateMissingOverrides(
+  page: PlatformDocument,
   overrides: ThemeOverrides,
-  from: HTMLElement = document.documentElement,
+  wearing?: Record<string, string>,
 ): ThemeOverrides {
   const result = { ...overrides };
   // Normalize legacy fontFamily: 'base' sentinel saved before the font-family fix
   if (result.fontFamily === 'base') delete result.fontFamily;
   // Read through the settings registry, which says for each setting where it lives and how its value
   // comes back — the second, drifted copy of that map this used to keep is gone.
-  return readThemeSettings(result, getComputedStyle(from));
+  return page.readComputedStyle((style) => readThemeSettings(result, style), wearing) ?? result;
 }
 
 /** What the theme store reads off the stores composed before it. */
 export interface ThemeStoreDeps {
   reactivity: ReactivityPort;
+  platform: Pick<PlatformPort, 'storage' | 'sessionStorage' | 'matchMedia' | 'document'>;
   toasts: Toasts;
   sessionStore: Pick<SessionStore, 'devTools' | 'me'>;
   datasetStore: Pick<
@@ -555,7 +555,8 @@ export interface ThemeStoreDeps {
 }
 
 export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
-  const { reactivity, toasts } = deps;
+  const { reactivity, toasts, platform } = deps;
+  const { storage, document: page } = platform;
   const { memo, effect, untrack, onCleanup } = reactivity;
   const session = deps.sessionStore;
   const datasetStore = deps.datasetStore;
@@ -573,7 +574,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const own = datasetStore.agentSettings()?.defaultThemeId;
     return own && !UNCHOSEN_THEME_IDS.has(own) ? own : undefined;
   };
-  const agentDefaultThemeId = (): string => chosenDefaultThemeId() ?? appThemeLookup()() ?? getInitialThemeId();
+  const agentDefaultThemeId = (): string => chosenDefaultThemeId() ?? appThemeLookup()() ?? getInitialThemeId(storage);
   /** The themes the device remembers from the app it last ran, for the moments before they load. */
   const rememberedThemes = readDeviceApp()?.themes ?? [];
 
@@ -650,7 +651,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     setVisibleThemeIds(new Set(remembered.map((theme) => theme.id)));
   });
   const [spaceThemes, setSpaceThemes] = signal<ThemeData[]>([]);
-  const systemScheme = createSystemScheme(reactivity);
+  const systemScheme = createSystemScheme(reactivity, platform);
 
   /*
     The side a two-sided theme is worn on. The agent's own setting once it has loaded; before that,
@@ -658,7 +659,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   */
   const displayPreferences = memo<DisplayPreferences>(() => {
     const settings = datasetStore.agentSettings();
-    return settings ? displayFrom(settings.displayPreferences) : cachedDisplay();
+    return settings ? displayFrom(settings.displayPreferences) : cachedDisplay(storage);
   });
   /*
     Handed to @we/themes, which lays them over every theme it applies and redoes every theme on
@@ -674,7 +675,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const next: DisplayPreferences = { ...displayPreferences() };
     if (value === null || value === undefined || value === 'system') delete next[key];
     else next[key] = value;
-    localStorage.setItem(DISPLAY_KEY, JSON.stringify(next));
+    storage.setItem(DISPLAY_KEY, JSON.stringify(next));
     // Nothing chosen is no value at all, so a later default for an axis reaches this person too.
     return datasetStore.updateAgentSettings({ displayPreferences: Object.keys(next).length ? next : null });
   }
@@ -710,8 +711,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const prefs = datasetStore.agentSettings();
     const dark = systemScheme() === 'dark';
     const stored = prefs?.[dark ? 'systemDarkThemeId' : 'systemLightThemeId'];
-    const cached =
-      typeof window !== 'undefined' ? localStorage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY) : null;
+    const cached = storage.getItem(dark ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY);
     const chosen = stored || cached || '';
     // Never `system` itself: a pair pointing at the thing being resolved would not terminate.
     return chosen && chosen !== SYSTEM_THEME_ID ? chosen : dark ? 'dark' : 'light';
@@ -730,17 +730,14 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const prefs = datasetStore.agentSettings();
     const side = (polarity: 'light' | 'dark') => {
       const stored = prefs?.[polarity === 'dark' ? 'systemDarkThemeId' : 'systemLightThemeId'];
-      const cached =
-        typeof window !== 'undefined'
-          ? localStorage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY)
-          : null;
+      const cached = storage.getItem(polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY);
       const chosen = stored || cached || '';
       return chosen === SYSTEM_THEME_ID ? '' : chosen;
     };
     return { light: side('light'), dark: side('dark'), resolved: systemScheme() };
   });
 
-  const [currentThemeId, setCurrentThemeId] = signal<string>(getInitialThemeId());
+  const [currentThemeId, setCurrentThemeId] = signal<string>(getInitialThemeId(storage));
   /**
    * Whether a space's theme covers the whole window, or only the space's own content.
    *
@@ -952,7 +949,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   // can apply it immediately on next launch without waiting for the backend.
   effect(() => {
     if (!datasetStore.agentSettings()) return;
-    localStorage.setItem(THEME_KEY, agentDefaultThemeId());
+    storage.setItem(THEME_KEY, agentDefaultThemeId());
   });
 
   // The same, for the two halves of "Follow system" — the boot screen has to resolve `system`
@@ -964,8 +961,8 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       [SYSTEM_LIGHT_KEY, prefs.systemLightThemeId],
       [SYSTEM_DARK_KEY, prefs.systemDarkThemeId],
     ] as const) {
-      if (value) localStorage.setItem(key, value);
-      else localStorage.removeItem(key);
+      if (value) storage.setItem(key, value);
+      else storage.removeItem(key);
     }
   });
 
@@ -1001,7 +998,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   effect(() => {
     const settings = datasetStore.agentSettings();
     if (!settings) return;
-    localStorage.setItem(DISPLAY_KEY, JSON.stringify(displayFrom(settings.displayPreferences)));
+    storage.setItem(DISPLAY_KEY, JSON.stringify(displayFrom(settings.displayPreferences)));
   });
 
   /** What the scoped wrapper renders. Null in global mode — the template inherits documentElement. */
@@ -1042,7 +1039,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   effect(() => {
     const theme = documentTheme();
     if (!themesLoaded() && !canResolveTheme(documentThemeId())) return;
-    applyThemeToDOM(theme);
+    applyThemeToDOM(page, theme);
   });
 
   /*
@@ -1058,7 +1055,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   */
   effect(() => {
     const theme = activeTemplateTheme();
-    injectCssString('we-scoped-theme-css', theme?.css ?? '', {
+    injectCssString(page, 'we-scoped-theme-css', theme?.css ?? '', {
       scope: THEME_SCOPE_SELECTOR,
       namespace: theme ? cssNamespace(theme) : undefined,
     });
@@ -1101,7 +1098,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       const theme = themes.find((candidate) => candidate.id === name || candidate.slug === name);
       // Scoped to the attribute the renderer stamps, so a named theme reaches its own section and
       // nothing else — including when the template naming it is a stranger's.
-      injectCssString(`we-named-theme-css-${name}`, theme?.css ?? '', {
+      injectCssString(page, `we-named-theme-css-${name}`, theme?.css ?? '', {
         scope: `[data-we-theme='${name}']`,
         namespace: `we-t-${name}`,
       });
@@ -1110,8 +1107,9 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
 
   // Apply initial theme immediately from localStorage — inject CSS string synchronously
   // so the correct theme renders before the backend answers, without relying on a stylesheet.
-  const initialId = getInitialThemeId();
+  const initialId = getInitialThemeId(storage);
   applyThemeToDOM(
+    page,
     isValidThemeKey(initialId)
       ? registryToThemeData(initialId)
       : (rememberedThemes.find((t) => t.id === initialId) ?? registryToThemeData('light')),
@@ -1228,7 +1226,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   }
 
   function setDefaultTheme(themeId: string): Promise<boolean> {
-    localStorage.setItem(THEME_KEY, themeId);
+    storage.setItem(THEME_KEY, themeId);
     setCurrentThemeId(themeId);
     return datasetStore.updateAgentSettings({ defaultThemeId: themeId });
   }
@@ -1246,8 +1244,8 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   function setSystemTheme(polarity: 'light' | 'dark', themeId: string): Promise<boolean> {
     if (themeId === SYSTEM_THEME_ID) return Promise.resolve(false);
     const key = polarity === 'dark' ? SYSTEM_DARK_KEY : SYSTEM_LIGHT_KEY;
-    if (themeId) localStorage.setItem(key, themeId);
-    else localStorage.removeItem(key);
+    if (themeId) storage.setItem(key, themeId);
+    else storage.removeItem(key);
     return datasetStore.updateAgentSettings(
       polarity === 'dark' ? { systemDarkThemeId: themeId } : { systemLightThemeId: themeId },
     );
@@ -1327,19 +1325,12 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
         `personalTheme`, which has not changed. Nothing re-ran, and the app chrome kept the theme
         being edited until the scope toggle was flipped twice.
       */
-      const probe = document.createElement('div');
-      probe.style.cssText = 'position:absolute;width:0;height:0;visibility:hidden;pointer-events:none';
-      for (const [prop, value] of Object.entries(themeParametersToStyle(storedOverrides))) {
-        probe.style.setProperty(prop, value);
-      }
-      document.body.appendChild(probe);
-      initialOverrides = populateMissingOverrides(storedOverrides, probe);
-      probe.remove();
+      initialOverrides = populateMissingOverrides(page, storedOverrides, themeParametersToStyle(storedOverrides));
     } else {
-      initialOverrides = populateMissingOverrides(storedOverrides);
+      initialOverrides = populateMissingOverrides(page, storedOverrides);
     }
     setEditingTheme({ ...base, overrides: JSON.stringify(initialOverrides), isDirty: false });
-    sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
+    platform.sessionStorage.setItem(EDITING_THEME_KEY, themeId ?? currentThemeId());
   }
 
   function changeBasePreset(preset: string | undefined) {
@@ -1377,10 +1368,10 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     const newCss = presetEntry ? (presetEntry.css ?? '') : (current.css ?? '');
 
     // Apply to DOM so getComputedStyle reflects the new preset for remaining vars.
-    applyThemeToDOM({ ...current, css: newCss, overrides: JSON.stringify(updated) });
+    applyThemeToDOM(page, { ...current, css: newCss, overrides: JSON.stringify(updated) });
 
     // Repopulate any still-missing vars (radius, spacing, etc.) from computed style.
-    const repopulated = populateMissingOverrides(updated);
+    const repopulated = populateMissingOverrides(page, updated);
     setEditingTheme({ ...current, css: newCss, overrides: JSON.stringify(repopulated), isDirty: true });
   }
 
@@ -1436,7 +1427,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       if (source) {
         const base: ThemeOverrides = parseOverrides(source.overrides);
         if (source.origin === 'built-in' && sourceId) base.themeName = sourceId;
-        initialOverrides = populateMissingOverrides(base);
+        initialOverrides = populateMissingOverrides(page, base);
       }
       const overridesJson = initialOverrides ? JSON.stringify(initialOverrides) : null;
 
@@ -1476,7 +1467,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       }
       setCurrentTheme(data.id);
       setEditingTheme({ ...data, isDirty: false });
-      sessionStorage.setItem(EDITING_THEME_KEY, data.id);
+      platform.sessionStorage.setItem(EDITING_THEME_KEY, data.id);
       return true;
     } catch (e) {
       console.error('ThemeStore: createAndStartEditing error', e);
@@ -1508,7 +1499,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     // theme, and their effects rewrite both surfaces. The optimistic flush above is what makes that
     // land on the right data while the async save is still in flight.
     setEditingTheme(null);
-    sessionStorage.removeItem(EDITING_THEME_KEY);
+    platform.sessionStorage.removeItem(EDITING_THEME_KEY);
   }
 
   async function saveEditingTheme(): Promise<ThemeData | null> {

@@ -106,6 +106,7 @@ export interface SpaceListDeps extends SpaceContext {
 export function createSpaceList(deps: SpaceListDeps) {
   const {
     reactivity,
+    platform,
     toasts,
     firstScreen,
     sessionStore: session,
@@ -207,8 +208,8 @@ export function createSpaceList(deps: SpaceListDeps) {
    */
   const shareLinkFor = (ds: AppDataset): string => {
     if (!ds.sharedId) return '';
-    const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
-    return onWeb ? `${window.location.origin}/space/${ds.sharedId}` : (ds.sharedUri ?? ds.sharedId);
+    const { protocol, origin } = platform.location();
+    return protocol.startsWith('http') ? `${origin}/space/${ds.sharedId}` : (ds.sharedUri ?? ds.sharedId);
   };
 
   /**
@@ -221,9 +222,9 @@ export function createSpaceList(deps: SpaceListDeps) {
    * desktop-shaped deployment publish `http://localhost:12000` as an invitation.
    */
   const guestLinkFor = (ds: AppDataset): string => {
-    const onWeb = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
-    if (!onWeb) return '';
-    return buildGuestLink({ origin: window.location.origin, serverUrl: session.serverUrl(), sharedId: ds.sharedId });
+    const { protocol, origin } = platform.location();
+    if (!protocol.startsWith('http')) return '';
+    return buildGuestLink({ origin, serverUrl: session.serverUrl(), sharedId: ds.sharedId });
   };
 
   /** The Space model behind a dataset id, for resolving what an override falls back to. */
@@ -782,7 +783,7 @@ export function createSpaceList(deps: SpaceListDeps) {
           .slice(2)
           .map((s) => `/${s}`)
           .join('');
-        routeStore.navigate(`/space/${sharedId}${rest}${window.location.search}`, { replace: true });
+        routeStore.navigate(`/space/${sharedId}${rest}${platform.location().search}`, { replace: true });
       }
       // Only now does the space show as shared: before this, a failure leaves it retryable.
       const shared = withFields(space, { url: sharedId });
