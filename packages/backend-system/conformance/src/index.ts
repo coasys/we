@@ -418,7 +418,8 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           // is refused, with nothing written, since the record would no longer be what it was declared.
           const Task = model('TaskBlock');
           const task = await Task.create(subject.dataset, { title: 'Keep me' });
-          const refused = 'Property "title" is required and cannot be cleared';
+          // In-memory: 'Property "title" is required and cannot be cleared'. AD4M: "title (missingRequired)".
+          const refused = /title\W+.*required/i;
 
           await expect(Task.update(subject.dataset, task.id, { title: '' })).rejects.toThrow(refused);
           await expect(Task.update(subject.dataset, task.id, { title: null })).rejects.toThrow(refused);

@@ -15,7 +15,7 @@ const written = vi.fn();
 
 class FakeModel {
   static getModelMetadata() {
-    return { className: 'Note' };
+    return { className: 'Note', relations: { owner: { maxCount: 1 }, children: {} } };
   }
   static async findOne(_perspective: unknown, query: { where: { id: string } }) {
     const found = new FakeModel(query.where.id);
@@ -29,6 +29,7 @@ class FakeModel {
   author?: string;
   text?: string;
   children?: string[];
+  owner?: string;
 
   constructor(public id?: string) {}
 
@@ -85,6 +86,48 @@ const loaded = () => {
   return note;
 };
 
+describe('adding to a single-valued relation, which replaces its member', () => {
+  const kinds = () => writes.map((w) => `${w.kind}:${w.relation}`);
+
+  it('also checks a remove when it displaces another member, and refuses when remove is denied', async () => {
+    const note = loaded();
+    note.owner = 'did:old';
+    note._snapshot = { ...note._snapshot, owner: 'did:old' };
+    await note.addRelationValue('owner', 'did:new');
+    expect(kinds()).toEqual(['add:owner', 'remove:owner']);
+    refuse = (w) => w.kind === 'remove';
+    written.mockReset();
+    await expect(note.addRelationValue('owner', 'did:new')).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('checks a remove even when the snapshot says empty: a relation write does not update the snapshot', async () => {
+    // Read empty, then two adds: the second replaces the first while the snapshot still says empty.
+    const note = loaded();
+    note._snapshot = { ...note._snapshot, owner: null };
+    refuse = (w) => w.kind === 'remove';
+    await expect(note.addRelationValue('owner', 'did:first')).rejects.toThrow('refused');
+    await expect(note.addRelationValue('owner', 'did:second')).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('checks only add on a collection', async () => {
+    await loaded().addRelationValue('children', 'b');
+    expect(kinds()).toEqual(['add:children']);
+  });
+});
+
+describe('setting a list, which the snapshot cannot diff', () => {
+  it('checks a remove on successive sets after an empty read: the first set does not update the snapshot', async () => {
+    const note = loaded();
+    note._snapshot = { ...note._snapshot, children: [] };
+    refuse = (w) => w.kind === 'remove';
+    await expect(note.setRelationValues('children', ['a'])).rejects.toThrow('refused');
+    await expect(note.setRelationValues('children', [])).rejects.toThrow('refused');
+    expect(written).not.toHaveBeenCalled();
+  });
+});
+
 describe('the write check on the production adapter', () => {
   it('checks a save of a new instance as a create, and its own relation writes not at all', async () => {
     const note = new FakeModel();
@@ -125,19 +168,17 @@ describe('the write check on the production adapter', () => {
     expect(await writes[0].record!()).toMatchObject({ id: 'n-2', text: 'stored', author: 'did:ann' });
   });
 
-  it('checks a relation write as an add or a remove, and setting a list as what it changes', async () => {
+  it('checks a relation write as an add or a remove, and setting a list as both unless it empties it', async () => {
     const note = loaded();
     await note.addRelationValue('children', 'b');
     await note.removeRelationValue('children', 'a');
-    await note.setRelationValues('children', ['a', 'c']); // adds c
-    await note.setRelationValues('children', []); // removes a
-    await new FakeModel('n-3').setRelationValues('children', ['x']); // nothing to diff against
+    await note.setRelationValues('children', ['a', 'c']);
+    await note.setRelationValues('children', []); // adds nothing
     expect(writes.map((w) => `${w.kind}:${w.relation}`)).toEqual([
       'add:children',
       'remove:children',
       'add:children',
       'remove:children',
-      'add:children',
       'remove:children',
     ]);
   });

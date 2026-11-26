@@ -44,7 +44,7 @@ interface ModelInternals {
   changedFields?: () => string[];
   [SAVING]?: boolean;
   constructor: {
-    getModelMetadata?: () => { className?: string };
+    getModelMetadata?: () => { className?: string; relations?: Record<string, { maxCount?: number }> };
     findOne?: (perspective: unknown, query: { where: { id: string } }) => Promise<ModelInternals | null>;
   };
 }
@@ -93,6 +93,10 @@ const idsOf = (value: unknown): string[] =>
     const id = (v as { id?: unknown })?.id;
     return typeof id === 'string' ? id : '';
   });
+
+/** As the SDK reads it: a relation with `maxCount === 1` holds one member, and adding replaces it. */
+const isSingleValued = (model: ModelInternals, relation: string): boolean =>
+  model.constructor.getModelMetadata?.().relations?.[relation]?.maxCount === 1;
 
 /**
  * Install the checks on `Ad4mModel.prototype`. Idempotent.
@@ -157,17 +161,22 @@ export function installWriteChecks(model: typeof Ad4mModel): void {
     }),
   );
 
-  wrap('addRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'add', String(key))));
+  // Adding to a single-valued relation replaces its member, so it is checked as a remove too. The
+  // snapshot cannot rule a replacement out: a relation write does not update it.
+  wrap('addRelationValue', async (self, [key]) => {
+    if (self[SAVING]) return;
+    const relation = String(key);
+    await relationCheck(self, 'add', relation);
+    if (isSingleValued(self, relation)) await relationCheck(self, 'remove', relation);
+  });
   wrap('removeRelationValue', (self, [key]) => (self[SAVING] ? undefined : relationCheck(self, 'remove', String(key))));
-  // Setting a list adds what is new and removes what is gone. Without a snapshot to diff against,
-  // it may do either, so it is checked as both.
+  // Setting a list adds what is new and removes what is gone. The snapshot cannot say which, for the
+  // same reason, so it is checked as both: as a remove only when it empties the relation.
   wrap('setRelationValues', async (self, [key, value]) => {
     if (self[SAVING]) return;
     const relation = String(key);
-    const next = idsOf(value);
-    const current = self._snapshot && relation in self._snapshot ? idsOf(self._snapshot[relation]) : null;
-    if (!current || next.some((id) => !current.includes(id))) await relationCheck(self, 'add', relation);
-    if (!current || current.some((id) => !next.includes(id))) await relationCheck(self, 'remove', relation);
+    if (idsOf(value).length) await relationCheck(self, 'add', relation);
+    await relationCheck(self, 'remove', relation);
   });
 
   prototype[PATCHED] = true;
