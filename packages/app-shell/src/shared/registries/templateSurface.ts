@@ -67,7 +67,7 @@ export const CAPABILITY_GROUPS = {
   clipboard: 'Put text on your clipboard when you ask it to',
   keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
   devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
-  bots: 'See the bots that act for you and what they did, and change, pause or revoke what each may do',
+  bots: 'See the bots that act for you and what they did, and change, pause or revoke what each may do, and revoke its key',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -1661,6 +1661,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     pause: action('bots'),
     resume: action('bots'),
     revoke: destructive('bots'),
+    keyRevokeError: state('bots'),
+    revoking: state('bots'),
     loadOlder: ambient('bots'),
   },
 

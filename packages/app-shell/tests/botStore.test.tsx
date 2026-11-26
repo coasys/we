@@ -28,6 +28,11 @@ const [ports, setPorts] = createSignal<{ identity?: { bots?: BotPort } } | null>
 const [holdsMaster, setHoldsMaster] = createSignal(true);
 const [shellPage, setShellPage] = createSignal<string | null>('/bots');
 const opened: IdentityChange[] = [];
+// What the identity change answers, and what the identity store then says went wrong.
+let changeOutcome: 'done' | 'cancelled' | 'failed' = 'done';
+let changeError = '';
+// What a finished key revoke does to the bot as the port reads it.
+let onChange: (change: IdentityChange) => void = () => undefined;
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({
@@ -43,9 +48,11 @@ vi.mock('../src/frameworks/solid/stores/IdentityStore', () => ({
     keyLogLoaded: () => true,
     canChange: () => true,
     custody: () => ({ holdsMaster: holdsMaster() }),
+    error: () => changeError,
     open: async (change: IdentityChange) => {
       opened.push(change);
-      return 'done';
+      if (changeOutcome === 'done') onChange(change);
+      return changeOutcome;
     },
   }),
 }));
@@ -121,7 +128,13 @@ function fakePort(entries: BotActivityView[] = []) {
   const elsewhere = (grant: Partial<BotView['grant']>) => {
     bot = { ...bot, grant: { ...bot.grant, ...grant, version: bot.grant.version + 1 } };
   };
-  return { port, sent, logAsked, elsewhere, current: () => bot };
+  const revokeKey = () => {
+    if (bot.key) bot = { ...bot, key: { ...bot.key, verdict: 'revoked' } };
+  };
+  const withoutKey = () => {
+    bot = { ...bot, key: null };
+  };
+  return { port, sent, logAsked, elsewhere, revokeKey, withoutKey, current: () => bot };
 }
 
 function mount(): BotStore {
@@ -154,6 +167,9 @@ beforeEach(() => {
   setHoldsMaster(true);
   setShellPage('/bots');
   opened.length = 0;
+  changeOutcome = 'done';
+  changeError = '';
+  onChange = () => undefined;
 });
 
 describe('botStore', () => {
@@ -216,6 +232,68 @@ describe('botStore', () => {
     expect(store.created()?.token).toBe('throwaway-token');
     setShellPage(null);
     expect(store.created()).toBeNull();
+  });
+
+  describe('a create that resolves after the person left the page', () => {
+    /** A port whose create waits until the test answers it. */
+    function slowCreate() {
+      const fake = fakePort();
+      let answer!: () => void;
+      let lists = 0;
+      const port: BotPort = {
+        ...fake.port,
+        list: async () => {
+          lists++;
+          return fake.port.list();
+        },
+        create: () =>
+          new Promise((resolve) => {
+            answer = () =>
+              resolve({
+                did: BOT,
+                owner: OWNER,
+                matchCode: 'R7K Q2M',
+                expires: 1_760_000_300,
+                token: 'late-token',
+              });
+          }),
+      };
+      return { port, answer: () => answer(), lists: () => lists };
+    }
+
+    const cases: Array<[string, () => void]> = [
+      ['goes to another page', () => setShellPage('/account')],
+      ['closes the overlay', () => setShellPage(null)],
+      [
+        'goes away and comes back',
+        () => {
+          setShellPage('/account');
+          setShellPage('/bots');
+        },
+      ],
+    ];
+
+    it.each(cases)('keeps the credential out of sight when the person %s', async (_name, leave) => {
+      const slow = slowCreate();
+      setPorts({ identity: { bots: slow.port } });
+      const store = mount();
+      await settle();
+      const listsBefore = slow.lists();
+
+      const pending = store.create('coasys:offer:1:x', 'Test bot');
+      leave();
+      slow.answer();
+      expect(await pending).toBe(false);
+      await settle();
+
+      expect(store.created()).toBeNull();
+      expect(store.creating()).toBe(false);
+      expect(store.createError()).toContain('credential could be shown');
+      // The bot exists on the backend, so the list is read again and shows it.
+      expect(slow.lists()).toBeGreaterThan(listsBefore);
+      expect(store.bots().map((b) => b.did)).toEqual([BOT]);
+      expect(JSON.stringify(store.bots())).not.toContain('late-token');
+    });
   });
 
   it('edits the grant as a draft over the person’s spaces and sends it whole, with its version', async () => {
@@ -362,6 +440,71 @@ describe('botStore', () => {
     expect(await store.resume()).toBe(false);
     expect(store.conflict()).toContain('removed');
     expect(fake.current().grant.state).toBe('revoked');
+  });
+
+  it("removing also revokes the bot's key in the key log, through the identity change", async () => {
+    const fake = fakePort();
+    setPorts({ identity: { bots: fake.port } });
+    onChange = (change) => {
+      if (change.kind === 'revoke') fake.revokeKey();
+    };
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    expect(await store.revoke()).toBe(true);
+    expect(opened).toEqual([{ kind: 'revoke', keyId: 'd3' }]);
+    expect(fake.current().grant.state).toBe('revoked');
+    expect(fake.current().key?.verdict).toBe('revoked');
+    expect(store.keyRevokeError()).toBe('');
+    expect(store.selected()).toMatchObject({ revoked: true, keyStillValid: false });
+  });
+
+  it('says the key is still valid when revoking it fails, and retries only the key', async () => {
+    const fake = fakePort();
+    setPorts({ identity: { bots: fake.port } });
+    onChange = (change) => {
+      if (change.kind === 'revoke') fake.revokeKey();
+    };
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    changeOutcome = 'failed';
+    changeError = 'The key service did not answer.';
+    expect(await store.revoke()).toBe(false);
+    expect(fake.current().grant.state).toBe('revoked');
+    expect(store.keyRevokeError()).toContain('still valid');
+    expect(store.keyRevokeError()).toContain('The key service did not answer.');
+    expect(store.selected()).toMatchObject({ revoked: true, keyStillValid: true });
+    const grantWrites = fake.sent.length;
+    changeOutcome = 'done';
+    expect(await store.revoke()).toBe(true);
+    // The grant was not sent a second time; the key was.
+    expect(fake.sent).toHaveLength(grantWrites);
+    expect(opened.filter((c) => c.kind === 'revoke')).toHaveLength(2);
+    expect(store.keyRevokeError()).toBe('');
+    expect(store.selected()?.keyStillValid).toBe(false);
+  });
+
+  it('says so when the person cancels the key revoke', async () => {
+    const fake = fakePort();
+    setPorts({ identity: { bots: fake.port } });
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    changeOutcome = 'cancelled';
+    expect(await store.revoke()).toBe(false);
+    expect(store.keyRevokeError()).toContain('still valid');
+  });
+
+  it('revokes no key for a bot whose key was never confirmed', async () => {
+    const fake = fakePort();
+    fake.withoutKey();
+    setPorts({ identity: { bots: fake.port } });
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    expect(await store.revoke()).toBe(true);
+    expect(opened).toEqual([]);
   });
 
   it('reads the activity newest first and pages older entries by the last id', async () => {

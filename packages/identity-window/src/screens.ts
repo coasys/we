@@ -40,6 +40,8 @@ export type Screen =
       accepted: boolean;
       /** The other device confirmed; it waits for the accept here. */
       confirmed: boolean;
+      /** A warning for the person, shown above the code: something about this device they should know. */
+      notice?: string;
     }
   | { screen: 'joined'; did: string; keyId: string }
   | { screen: 'master-taken'; did: string; note: string | null }

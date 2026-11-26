@@ -46,13 +46,15 @@ built for Android with uniffi bindings:
   hardware Keystore, software on an emulator or a phone without one. Every level is accepted, and
   the one the key actually has is reported: `protection` in `status()` and `create()` (`strongbox`,
   `tee`, `software` or `unknown`), and WE logs it at each key login, as a warning when it is not
-  `strongbox` or `tee`. The sealed seeds are in `no_backup/device-keys/device-keys.json`, which no
-  backup or transfer includes. Only public keys and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
-  `signSession`, and `signSession` signs a login or renewal statement for whatever executor and
-  URL the page names, with no prompt: the statement's shape and domain separation are the native
-  side's, but which executor to log in to is the page's choice. So every script that runs in the
-  app's origin, the error page included, is trusted with the phone's login; a page the app loads
-  from elsewhere is not in that origin.
+  `strongbox` or `tee`. The join screen also says so to the person when it is `software` or
+  `unknown` ("This phone keeps your sign-in key without hardware protection"). The sealed seeds are
+  in `no_backup/device-keys/device-keys.json`, which no backup or transfer includes. Only public
+  keys and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
+  `signSession`. `signSession` signs a login or renewal statement, and each call raises a prompt
+  that names the address it signs for ("Sign in to https://host.example"), which the person
+  answers with a fingerprint, a face or the screen lock. The statement's shape and domain
+  separation are the native side's. A script in the app's origin can ask for a signature, but it
+  cannot get one the person does not see and allow. See "Who may call the plugin" below.
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
   key opened (`https://coasys.id/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
@@ -71,8 +73,8 @@ built for Android with uniffi bindings:
 ### Known limits of the device key
 
 - **For the device key, protection is reported, not required.** A device key sealed at `software`
-  protection is used like any other. The only signs are the `protection` field and the warning WE
-  logs. The master key is held to more (below): it is not kept at `software` unless the
+  protection is used like any other (an emulator has no secure hardware). The person is told on
+  the join screen, and the `protection` field and the warning WE logs say so too. The master key is held to more (below): it is not kept at `software` unless the
   person agrees.
 - **What is wiped, and what is not.** Rust holds every seed it opens or makes in `Zeroizing`
   buffers, zeroed when the signature is made; the Kotlin sealer zeroes the plaintext `seal` was
@@ -98,9 +100,19 @@ run, against a throwaway store and executor.
 
 ## The identity on the phone
 
-Designed in [`docs/phase-2b.md`](docs/phase-2b.md). The phone runs its identity itself, through the
-identity store, with no computer in the loop: it joins, keeps the master key, adds devices and
-answers their requests.
+The phone runs its identity itself, through the identity store, with no computer in the loop: it
+joins, keeps the master key, adds devices and answers their requests.
+
+Why through the store and not through the executor the phone signs in to: that executor has its own
+device key, in the same identity or another. Its operator-only identity calls (`claimOffer`,
+`prepareDevice`, `inbox`, `takeMaster`, `unwrapRecordKey`, `rekey` and the like) act for _that_
+key: they read its inbox, open with its enc key and sign with its key. A phone's session is
+neither the operator nor local, and the calls would act for the wrong key anyway. So whatever the
+phone's own key must sign or open, the phone does against the store directly, with a request signed
+in `crates/phone-custody`. What is already signed (events, a signed offer, a master-signed
+request) could go either way, and goes direct, so one path works whichever host the phone is signed
+in to and a host in another identity is never asked to carry this identity's traffic. The sealed
+record key is unwrapped in Rust with the phone's own enc seed, and never sent to JS or to the host.
 
 - **Through the store.** `crates/phone-custody` runs `ad4m-identity-client`'s flows over a
   `ViaStore` built from the phone's own ports (`src/ports.rs`): the store's HTTP is the app's
@@ -147,8 +159,9 @@ answers their requests.
   - Join by an offer link, scanned or pasted.
   - Ask for the master key, and take it when it is sent (Settings shows "Master key sent to this
     phone" from the store inbox, `masterWaiting`).
-  - As the holder: add a device by the `coasys:device:1:` code it shows (scan or paste, a ticket in
-    its pre-join inbox, the match code, then the add).
+  - As the holder: add a device by the `coasys:device:1:` code it shows (the camera reads it, a
+    ticket goes to its pre-join inbox, the match code is checked, then the add). A phone never needs
+    to show its own device code to a computer; it shows one only to be added by another phone.
   - Send the master key to a device that asked, and answer a revoke request.
   - Rename and revoke devices.
 
@@ -164,6 +177,28 @@ answers their requests.
   (`PhoneIdentity::devices`), only over the version it read, so a change another device made since
   is never overwritten.
 
+- **Who may call the plugin.** WE runs installed modules and cartridges in the same origin as its
+  own pages, so "a call from this app" says nothing about who made it. The plugin (`CallerPage.kt`)
+  reads the WebView's own address natively, and what a script cannot fake is the rule:
+  - Everything that links a device, sends the master key, renames, revokes, answers a request,
+    joins, takes or asks for the master key, or opens the camera is accepted **only from the
+    identity page** (`/mobile/identity.html`, `IDENTITY_PAGE` in `phoneCustody.ts`); any other page
+    is refused with `NotAllowed`. That page runs no template, module or store code.
+  - Reads of public state (`status`, `identityStatus`, `devices`, `requests`, `masterWaiting`) and
+    `signSession` are open to the app's other pages, because Settings and the key login at boot
+    run there. `signSession` is the one signing call that is, and it is confirmed by the person each
+    time (title: the address). Because the prompt is shown for every signing, a session renewal asks
+    too.
+  - `scanDevice()` takes no code: the camera reads it inside the plugin, and the page learns only
+    that a link is running. A pasted code cannot add a device.
+  - The match code is compared natively. The person types the code the other device shows into a
+    dialog of the app's own, and `MatchCode.kt` compares it with the one the plugin derived from the
+    claim. A mismatch ends the link; the page cannot say that they matched.
+  - Sending the master key (`keepMaster`) asks for a strong biometric of its own, separate from the
+    unlock that opened the master key, and names the device ("Send your master key to Work
+    laptop"). `rename` asks too ("Rename Phone to Office").
+  - The address is read when the call arrives. WebView debugging stays off unless a build asks for
+    it (below), since a call from DevTools would come from the page it is on.
 - **What it cannot.** Anything that needs the 12 words: replacing the master key, restoring, and a
   revoke that rotates. The phone takes no words (`takesWords: false`), and those requests are left
   for a computer.
@@ -222,7 +257,27 @@ cd android && ./gradlew :app:testDebugUnitTest assembleDebug
 
 The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Every debug build, CI's included, is
 signed with the checked-in `android/app/debug.keystore`, so a new APK installs over an older one and
-keeps its data. Gradle needs JDK 21 and an Android
+keeps its data.
+
+**A debug APK must never reach a real person.** Its key is in the repository, so anyone can sign an
+update with it, and Android hands an update the app's data and user ID: that update could unseal the
+device key in `no_backup/device-keys`. Debug builds are for test phones and emulators only.
+
+A build for people is `./gradlew assembleRelease` (or `bundleRelease`), signed with a key kept
+outside the repo. The `release` signing config reads it from the environment or from Gradle
+properties (`~/.gradle/gradle.properties` or `-P`):
+
+| Setting                     | What                            |
+| --------------------------- | ------------------------------- |
+| `WE_RELEASE_STORE_FILE`     | Path to the keystore file       |
+| `WE_RELEASE_STORE_PASSWORD` | The keystore's password         |
+| `WE_RELEASE_KEY_ALIAS`      | The key's alias in the keystore |
+| `WE_RELEASE_KEY_PASSWORD`   | The key's password              |
+
+A release build with any of them missing fails before it builds, and never falls back to the debug
+key. Keep the release keystore and its passwords out of the repo and out of CI logs.
+
+Gradle needs JDK 21 and an Android
 SDK (`JAVA_HOME`, `ANDROID_HOME`). The Rust half needs rustup (the crate's `rust-toolchain.toml`
 picks the channel), `cargo install cargo-ndk`, and an NDK (`ANDROID_NDK_HOME`, 27 is what was used).
 `testDebugUnitTest` runs the plugin's Kotlin over a host build of the same crate; the Keystore half
@@ -327,28 +382,28 @@ WebView version, not an Android version. `minSdk` stays 30.
 
 ## Files
 
-| Path                                                                         | What it is                                                                                                    |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `capacitor.config.ts`                                                        | App id and name, `server.errorPath`, `android.minWebViewVersion`                                              |
-| `src/webViewFloor.ts`                                                        | The floor, the error page's path, and which of its two messages a phone sees                                  |
-| `src/error/`                                                                 | The error page: plain DOM, built for WebView 83                                                               |
-| `scripts/assemble-web.mjs`                                                   | Builds `www/` from `apps/coasys/dist`, the error page and the identity page                                   |
-| `scripts/check-floor.mjs`                                                    | The script half of the floor, checked                                                                         |
-| `scripts/cdp-eval.mjs`                                                       | Evaluates an expression in the app's WebView over DevTools                                                    |
-| `tests/webViewFloor.test.ts`                                                 | The floor, the messages, and that the Capacitor config uses both                                              |
-| `scripts/build-android-rust.sh`                                              | `crates/phone-custody` for arm64-v8a and x86_64, its Kotlin bindings, and the host library the JVM tests load |
-| `android/app/src/main/java/org/coasys/app/devicekey/`                        | The `DeviceKey` plugin: the Keystore key, the AES-GCM sealer, the store's HTTP                                |
-| `…/devicekey/MasterKeystoreKey.kt`, `BiometricMasterSealer.kt`               | The master key's Keystore key, and its sealer behind one biometric prompt per use                             |
-| `…/devicekey/StoreHttp.kt`                                                   | The identity store's HTTP, to the client's `HttpClient` contract                                              |
-| `…/devicekey/ScanActivity.kt`                                                | The camera: CameraX and ML Kit's bundled barcode scanner                                                      |
-| `src/identity/`                                                              | The phone's identity page: the shared identity window over the plugin                                         |
-| `tests/identityTransport.test.ts`                                            | The identity page's transport over a fake plugin                                                              |
-| `android/app/src/test/…/DeviceKeysJvmTest.kt`                                | The plugin's Kotlin over the real Rust library, on the JVM                                                    |
-| `android/app/src/test/…/PhoneIdentityJvmTest.kt`, `ScanCodeJvmTest.kt`       | The identity flows over a real store's ports, and the scanner's code parsing, on the JVM                      |
-| `android/app/src/androidTest/…/KeystoreSealerTest.kt`                        | The Keystore half, on a device or emulator                                                                    |
-| `../../crates/phone-custody/`                                                | The keys, the claim and the session statements, in Rust                                                       |
-| `../../crates/phone-custody/src/{ports,identity,vault,holder,checkpoint}.rs` | The store over the phone's ports, the identity flows, the master key's vault, adding a device, checkpoints    |
-| `../we-web/src/platform/deviceKey*.ts`, `keySession.ts`, `keyHost.ts`        | The plugin's TS surface, key login and renewal, the key host                                                  |
-| `../we-web/src/platform/phoneCustody.ts`                                     | Settings' custody host on the phone: the plugin's reads, changes sent to the identity page                    |
-| `docs/phase-2b.md`                                                           | The design of the identity on the phone                                                                       |
-| `SPIKE.md`                                                                   | The phone spike's record: the pinned Rust transport, since removed                                            |
+| Path                                                                            | What it is                                                                                                    |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `capacitor.config.ts`                                                           | App id and name, `server.errorPath`, `android.minWebViewVersion`                                              |
+| `src/webViewFloor.ts`                                                           | The floor, the error page's path, and which of its two messages a phone sees                                  |
+| `src/error/`                                                                    | The error page: plain DOM, built for WebView 83                                                               |
+| `scripts/assemble-web.mjs`                                                      | Builds `www/` from `apps/coasys/dist`, the error page and the identity page                                   |
+| `scripts/check-floor.mjs`                                                       | The script half of the floor, checked                                                                         |
+| `scripts/cdp-eval.mjs`                                                          | Evaluates an expression in the app's WebView over DevTools                                                    |
+| `tests/webViewFloor.test.ts`                                                    | The floor, the messages, and that the Capacitor config uses both                                              |
+| `scripts/build-android-rust.sh`                                                 | `crates/phone-custody` for arm64-v8a and x86_64, its Kotlin bindings, and the host library the JVM tests load |
+| `android/app/src/main/java/org/coasys/app/devicekey/`                           | The `DeviceKey` plugin: the Keystore key, the AES-GCM sealer, the store's HTTP                                |
+| `…/devicekey/MasterKeystoreKey.kt`, `BiometricMasterSealer.kt`                  | The master key's Keystore key, and its sealer behind one biometric prompt per use                             |
+| `…/devicekey/CallerPage.kt`, `MatchCode.kt`, `ActionPrompt.kt`, `PromptText.kt` | Which page may call, the native match-code compare, and the prompts that name each action                     |
+| `…/devicekey/StoreHttp.kt`                                                      | The identity store's HTTP, to the client's `HttpClient` contract                                              |
+| `…/devicekey/ScanActivity.kt`                                                   | The camera: CameraX and ML Kit's bundled barcode scanner                                                      |
+| `src/identity/`                                                                 | The phone's identity page: the shared identity window over the plugin                                         |
+| `tests/identityTransport.test.ts`                                               | The identity page's transport over a fake plugin                                                              |
+| `android/app/src/test/…/DeviceKeysJvmTest.kt`                                   | The plugin's Kotlin over the real Rust library, on the JVM                                                    |
+| `android/app/src/test/…/CallerGuardJvmTest.kt`                                  | The calling-page rule, the match-code compare and the prompt wording, on the JVM                              |
+| `android/app/src/test/…/PhoneIdentityJvmTest.kt`, `ScanCodeJvmTest.kt`          | The identity flows over a real store's ports, and the scanner's code parsing, on the JVM                      |
+| `android/app/src/androidTest/…/KeystoreSealerTest.kt`                           | The Keystore half, on a device or emulator                                                                    |
+| `../../crates/phone-custody/`                                                   | The keys, the claim and the session statements, in Rust                                                       |
+| `../../crates/phone-custody/src/{ports,identity,vault,holder,checkpoint}.rs`    | The store over the phone's ports, the identity flows, the master key's vault, adding a device, checkpoints    |
+| `../we-web/src/platform/deviceKey*.ts`, `keySession.ts`, `keyHost.ts`           | The plugin's TS surface, key login and renewal, the key host                                                  |
+| `../we-web/src/platform/phoneCustody.ts`                                        | Settings' custody host on the phone: the plugin's reads, changes sent to the identity page                    |
