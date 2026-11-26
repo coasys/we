@@ -38,10 +38,13 @@ import {
   themeSides,
   withThemeSide,
 } from '@we/themes/presets';
+import { createSignal } from 'solid-js';
 
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
+// By path: the app shell does not depend on `@we/messages`, and a scenario only needs its reader.
+import { lineContent } from '../../../module-system/messages/src/index.ts';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { botsSection } from '../../../templates/shell/src/BotSettingsPages.ts';
@@ -70,6 +73,11 @@ export interface Scenario {
    * gate enforcing — rather than the raw stores. For a scenario about the trust boundary.
    */
   bag?: 'space';
+  /**
+   * What a profiled interaction can do to this scenario beyond writing a row — for a surface whose
+   * data arrives through a store rather than a query (`profile('act', [name, ...args])`).
+   */
+  actions?: Record<string, (...args: unknown[]) => void>;
 }
 
 /**
@@ -2801,6 +2809,208 @@ const devicesEncMismatch = (): Scenario => {
   };
 };
 
+/** `[start, end)` of `needle` in `text`, in code points — the unit a stored mark counts in. */
+const cpRange = (text: string, needle: string): { start: number; end: number } => {
+  const at = text.indexOf(needle);
+  if (at < 0) throw new Error(`"${needle}" is not in the line`);
+  const start = Array.from(text.slice(0, at)).length;
+  return { start, end: start + Array.from(needle).length };
+};
+
+/**
+ * Bot lines as bots write them today, beside a person's: one with no marks at all, one with a
+ * mention, one with a mention and a link it marked itself, and one written in markdown.
+ *
+ * Every line goes through `lineContent`, the reader the Feed's own window uses, so what this draws is
+ * what the app draws for the same stored fields.
+ */
+const feedRichLines = (): Scenario => {
+  const line = (id: string, author: string, text: string, at: string, marks: object[] = []) => {
+    const row = {
+      kind: 'line',
+      id,
+      at,
+      createdAt: at,
+      updatedAt: at,
+      author,
+      text,
+      marks: marks.length ? JSON.stringify(marks) : '',
+      source: 'typed',
+      call: '',
+      callTitle: '',
+      replyTo: null,
+    };
+    return { ...row, content: lineContent(row) };
+  };
+  const review =
+    'Josh, Hex: the re-review of ad4m#1861 is up at e8970e090: https://github.com/coasys/ad4m/pull/1861#pullrequestreview-6006889289. The verdict is approve after two small fixes.\n\n' +
+    'Before merge:\n' +
+    '(B-1) the fallback sync holds share_links_mutex, but the direct commit holds commit_order. Fix: take commit_order in share_links_missing_remotely.\n' +
+    '(B-2) getOnlineAgents has no single-flight. Fix: one shared in-flight promise in p-diff-sync.\n\n' +
+    'These are comments only; I pushed nothing to your branch. — Data';
+  const jobs =
+    '@Hex I checked every failing job, and the disk is not the cause. Per job:\n' +
+    '1. integration-tests-sfu (both runs): real. 97 "missing field offerId" errors from tests/js/helpers/sfu/renegotiation.ts:73.\n' +
+    '2. integration-tests-agent-harness (both runs): runner problem, "docker: command not found" after 6 s.\n' +
+    '3. integration-tests-sfu-browsers (both runs): 11 of 12 pass.';
+  const sovereign =
+    '@Data @Josh The Sovereign side is up: https://github.com/HexaField/sovereign/pull/19. Type check clean, 5401 tests pass.';
+  const markdown =
+    '## Nightly on dev 7af01232e\n\n' +
+    '**Only llm-e2e passed.** The failing jobs:\n\n' +
+    '- `integration-tests-sfu`: real, fixed by #1944\n' +
+    '- `integration-tests-agent-harness`: `docker: command not found`\n\n' +
+    '```\n07:09:43 prompt start chars=13062 tokens_in=3266\n07:09:51 prompt done tokens_out=1\n```\n\n' +
+    '@Data the full log is at https://example.org/nightly-1121.log';
+  // Data's nightly report, as written: sections with `- ` runs under them, and a closing line.
+  const nightly =
+    "@Hex tonight's nightly (ad4m dev 380d98fe2, without #1884), per run:\n\n" +
+    'coasys-spaces\n' +
+    '- 3d24040a (job 85026): both runs predate we#544. V1 and V3 pass; V2, V4, V5 and V6 time out.\n' +
+    '- 5f78f076 (job 85044): V1, V2, V3, V4 and V6 pass. V5 fails at "Alice starts Build on the Task".\n\n' +
+    'integration-tests-sfu-browsers (11 passing, 1 failing in both runs)\n' +
+    "- 5f78f076 (job 85050): Firefox stops receiving WebKit's video.\n" +
+    '- 7565250c: passed.\n' +
+    'Marvin has the ICE failure queued behind the we#504 rename. Logs: .scratch/nightly-1122/all.log.';
+  // Data's list as Data writes it: plain lines, nothing marked but the mention.
+  const priorities =
+    '@Josh yes. All of these are Lal-approved and touch neither identity nor SFU. In priority order:\n' +
+    '1. ad4m#1868: Holochain gets whole-number floats as msgpack integers. Acorn needs it for Tuesday.\n' +
+    '2. ad4m#1887 then #1888: the Acorn split. They need a WE pin once merged.\n' +
+    '3. we#549: the extraction → interpretation rename rebuilt on dev.\n' +
+    'Also open but less urgent: #1864 (fromJSONSchema; its integration-tests-model job is red).';
+  return {
+    node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [feedView] },
+    tables: {},
+    stores: {
+      modules: {
+        feed: {
+          feedRows: [
+            line('r7', 'did:data', nightly, '2026-11-24T10:07:00Z', [
+              { ...cpRange(nightly, '@Hex'), type: 'mention', did: 'did:hex' },
+            ]),
+            line('r6', 'did:data', priorities, '2026-11-24T10:06:00Z', [
+              { ...cpRange(priorities, '@Josh'), type: 'mention', did: 'did:josh' },
+            ]),
+            line('r5', 'did:hex', markdown, '2026-11-24T10:05:00Z', [
+              { ...cpRange(markdown, '@Data'), type: 'mention', did: 'did:data' },
+            ]),
+            line('r4', 'did:hex', sovereign, '2026-11-24T10:04:00Z', [
+              { ...cpRange(sovereign, '@Data'), type: 'mention', did: 'did:data' },
+              { ...cpRange(sovereign, '@Josh'), type: 'mention', did: 'did:josh' },
+              {
+                ...cpRange(sovereign, 'https://github.com/HexaField/sovereign/pull/19'),
+                type: 'link',
+                href: 'https://github.com/HexaField/sovereign/pull/19',
+              },
+            ]),
+            line('r3', 'did:data', jobs, '2026-11-24T10:03:00Z', [
+              { ...cpRange(jobs, '@Hex'), type: 'mention', did: 'did:hex' },
+            ]),
+            line('r2', 'did:data', review, '2026-11-24T10:02:00Z'),
+            line(
+              'r1',
+              'did:them',
+              'Can somebody send me the review link?\nThe one from this morning.',
+              '2026-11-24T10:01:00Z',
+            ),
+          ],
+          feedLoaded: true,
+          feedHasMore: false,
+          feedFromStart: false,
+          timelineOrientation: 'newestBottom',
+          replyingTo: null,
+          botAuthors: ['did:data', 'did:hex'],
+        },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:josh', name: 'Josh', avatar: '' },
+          { did: 'did:data', name: 'Data', avatar: '', kind: 'bot' },
+          { did: 'did:hex', name: 'Hex', avatar: '', kind: 'bot' },
+        ],
+      },
+    },
+  };
+};
+
+/**
+ * A Feed window of `count` lines, and a message arriving into it the way the Feed's own does: the
+ * window is read again, so every line comes back as a fresh row object, and one more is on top.
+ *
+ * A third of the lines mention somebody, a third carry a URL nobody marked, a third are plain text
+ * with a line break — the mix a busy space with bots in it has.
+ */
+const feedLinesAt = (count: number): Scenario => {
+  const said = (i: number) => {
+    const text =
+      i % 3 === 0
+        ? `@Data line ${i}: the nightly on dev is red again.`
+        : i % 3 === 1
+          ? `Line ${i}: the review is up at https://github.com/coasys/ad4m/pull/${1800 + i}. Approve.`
+          : `Line ${i}: comments only.\nI pushed nothing to your branch.`;
+    const marks = i % 3 === 0 ? JSON.stringify([{ start: 0, end: 5, type: 'mention', did: 'did:data' }]) : '';
+    return { i, text, marks };
+  };
+  // What the Feed's reader hands the view each time it reads the window: new objects for every line.
+  const read = (n: number) =>
+    Array.from({ length: n }, (_, k) => {
+      const { i, text, marks } = said(n - k);
+      const at = new Date(Date.UTC(2026, 10, 24, 9, 0, i)).toISOString();
+      const row = {
+        kind: 'line',
+        id: `l${i}`,
+        at,
+        createdAt: at,
+        updatedAt: at,
+        author: i % 2 ? 'did:data' : 'did:them',
+        text,
+        marks,
+        source: 'typed',
+        call: '',
+        callTitle: '',
+        replyTo: null,
+      };
+      return { ...row, content: lineContent(row) };
+    });
+  const [rows, setRows] = createSignal(read(count));
+  let n = count;
+  return {
+    node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [feedView] },
+    tables: {},
+    stores: {
+      modules: {
+        feed: {
+          get feedRows() {
+            return rows();
+          },
+          feedLoaded: true,
+          feedHasMore: false,
+          feedFromStart: false,
+          timelineOrientation: 'newestBottom',
+          replyingTo: null,
+          botAuthors: ['did:data'],
+        },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:data', name: 'Data', avatar: '', kind: 'bot' },
+        ],
+      },
+    },
+    actions: {
+      arrive: () => {
+        n += 1;
+        setRows(read(n));
+      },
+      clear: () => setRows([]),
+      refill: () => setRows(read(n)),
+    },
+  };
+};
+
 /** A tree with each `$part` the map names swapped for the node that part draws. */
 const withParts = (node: unknown, parts: Record<string, SchemaNode>): unknown => {
   if (Array.isArray(node)) return node.map((child) => withParts(child, parts));
@@ -2840,6 +3050,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
   'feed:view-more': () => feedViewPage(true),
+  'feed:rich': feedRichLines,
+  'perf:feedLines': (scale) => feedLinesAt(scale ?? 50),
   'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,
   'coasys:call-bar': () => coasysCallBar(),

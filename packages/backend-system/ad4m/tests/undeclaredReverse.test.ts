@@ -5,7 +5,13 @@
  * read as coming from nowhere: the canvas dimmed every one of them with that call selected. The
  * link is there, owned by the call, and these pin that it is read from that side.
  */
-import type { EntityClass, QueryOptions } from '@we/backend-shared';
+import {
+  createLiveQuery,
+  type EntityClass,
+  type LivePage as Page,
+  type QueryOptions,
+  type Snapshot,
+} from '@we/backend-shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -232,20 +238,30 @@ describe('a model handle that answers undeclared reverse relations', () => {
       return links(...args);
     };
     let emit!: (rows: Row[]) => void;
+    const source = createLiveQuery<Page<unknown>>({
+      read: () => ({ results: [] }),
+      watch: () => () => undefined,
+    });
+    // Answers are pushed by hand, so each one reaches the wrapper at the moment the test chooses.
+    const subscribers = new Set<(snapshot: Snapshot<Page<unknown>>) => void>();
+    emit = (rows) => {
+      const snapshot: Snapshot<Page<unknown>> = { status: 'ready', data: { results: rows }, initial: false };
+      for (const fn of subscribers) fn(snapshot);
+    };
     const Model: EntityClass = {
       query: () => ({
-        subscribe: (cb) => {
-          emit = cb as (rows: Row[]) => void;
-          return Promise.resolve([]);
+        ...source,
+        subscribe: (fn) => {
+          subscribers.add(fn);
+          return () => void subscribers.delete(fn);
         },
-        dispose: () => {},
       }),
       findAll: vi.fn(),
     };
     const wrapped = withUndeclaredReverse(Model, deps);
     const seen: string[] = [];
-    await wrapped.query({}, { include: { extractedFrom: true } }).subscribe((rows) => {
-      seen.push((rows as Row[]).map((row) => row.id).join(','));
+    wrapped.query({}, { include: { extractedFrom: true } }).subscribe((snapshot) => {
+      seen.push((snapshot.data!.results as Row[]).map((row) => row.id).join(','));
     });
     emit([{ id: 'item-1' }]);
     emit([{ id: 'item-1' }, { id: 'task-1' }]);

@@ -1,6 +1,7 @@
 import type { StarterChoice } from '@shared/bundles/bundleStarter';
 import type { LocationData, SpaceSyncOptions } from '@shared/spaceSync';
 import type { ViewSetting } from '@shared/viewResolution';
+import type { LivePage as Page, LiveQuery } from '@we/backend-shared';
 import type { FileData, Space } from '@we/entities';
 
 /**
@@ -207,8 +208,8 @@ export type LauncherRow = {
 };
 
 /**
- * A model's live query, as this store follows one. `subscribe` resolves with the rows it opened on and
- * hands the callback every later result whole — the records themselves, so a change is applied from
- * what arrived rather than by asking the backend the same question again.
+ * A model's live query, as this store follows one. It opens on a page of rows and hands every change
+ * whole — the records themselves, so a change is applied from what arrived rather than by asking the
+ * backend the same question again. `snapshot.initial` tells the rows it opened on from a change.
  */
-export type LiveRows<T> = { subscribe(cb: (rows: T[]) => void): Promise<T[]>; dispose(): void };
+export type LiveRows<T> = LiveQuery<Page<T>>;
