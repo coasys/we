@@ -5,9 +5,10 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { Role, RoleGrant, Space } from '@we/entities';
+import { describeRefusal } from '@we/backend-shared';
+import { getEntity, Role, RoleGrant, Space } from '@we/entities';
 import type { Setter } from '@we/reactivity';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ADMIN_ROLE, ADMIN_ROLE_RECORD } from '../src/shared/spaceRoles';
 import { createSpaceRoles, type SpaceRoles } from '../src/shared/stores/space/roles';
@@ -131,6 +132,24 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await roles.members.setPolicyPreset('community');
     await flush();
     expect(roles.members.policy().preset).toBe('community');
+  });
+
+  it('refuses a write to a space whose rules cannot be read, says so, and reads them again next time', async () => {
+    const built = await build();
+    const { h } = built;
+    // On screen is the notebook, so the allotment's rules are read when a write reaches it.
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const model = getEntity('Policy') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> };
+    const failing = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('backend unreachable'));
+    await expect(Role.create(handle, { slug: 'steward', name: 'Steward' })).rejects.toMatchObject({
+      refusal: { reason: 'unreadable' },
+    });
+    // The write check says it once, in the policy's own sentence: an operation that hit it adds nothing.
+    expect(h.toasts.said).toEqual([`error: ${describeRefusal({ reason: 'unreadable', action: 'Role.create' })}`]);
+    failing.mockRestore();
+    // Well inside the few seconds a read is kept for: a failed read was not kept.
+    await expect(Role.create(handle, { slug: 'steward', name: 'Steward' })).resolves.toBeTruthy();
   });
 
   it('forgets the last space’s roles on leaving it', async () => {
