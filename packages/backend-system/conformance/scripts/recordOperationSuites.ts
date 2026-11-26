@@ -1,6 +1,6 @@
 /**
- * Record the operation suites that need no backend — the static checks, the effect summary and the
- * id derivation — into `vectors/operations/`, from the reference implementation.
+ * Record the operation suites that need no backend — the static checks, the effect summary, the id
+ * derivation and the RDF reading — into `vectors/operations/`, from the reference implementation.
  *
  * Run after changing a case or the reference: `pnpm --filter @we/backend-conformance record:suites`.
  * Each file's test re-records it and compares, so a change to a vector is a change to the contract
@@ -13,6 +13,7 @@ import { format, resolveConfig } from 'prettier';
 
 import { recordEffects } from '../src/suites/effects';
 import { recordIds } from '../src/suites/ids';
+import { recordRdf } from '../src/suites/rdf';
 import { recordStaticChecks } from '../src/suites/staticChecks';
 
 const write = async (name: string, data: unknown) => {
@@ -25,3 +26,4 @@ const write = async (name: string, data: unknown) => {
 await write('static-checks.json', recordStaticChecks());
 await write('effects.json', recordEffects());
 await write('ids.json', await recordIds());
+await write('rdf.json', await recordRdf());
