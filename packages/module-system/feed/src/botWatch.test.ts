@@ -14,7 +14,15 @@ import { BOT_BURST_MS, BOT_NOTICE_MS, botNotice, watchBotMessages } from './botW
 
 type Row = Record<string, unknown>;
 
-function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?: boolean } = {}) {
+function harness(
+  options: {
+    reading?: boolean;
+    enabled?: boolean;
+    spokenHidden?: boolean;
+    /** The records the kernel's `find` answers from, when it has one. */
+    stored?: Row[];
+  } = {},
+) {
   let push: (rows: Row[]) => void = () => {};
   const people = new Map<string, ModuleIdentity>([
     ['did:data', { name: 'Data', avatar: 'data.png', kind: 'bot' }],
@@ -27,6 +35,15 @@ function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?:
     options?: { action?: { label: string; run: () => void }; from?: unknown; icon?: string };
   }[] = [];
   const open = vi.fn();
+  /** What each on-screen check was asked about. */
+  const asked: { id: string; call: string }[][] = [];
+  const find = async (entity: string, query: { where: { id: string[]; kind: string[] } }) =>
+    (options.stored ?? []).filter(
+      (row) =>
+        entity === 'CollectionBlock' &&
+        query.where.id.includes(row.id as string) &&
+        query.where.kind.includes(row.kind as string),
+    );
   watchBotMessages({
     effect: (fn) => fn(),
     onDispose: () => {},
@@ -36,18 +53,22 @@ function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?:
         push = cb;
         return () => {};
       },
+      ...(options.stored ? { find } : {}),
     } as never,
     identities: { get: (id) => people.get(id), fetch: (id) => void fetched.push(id) },
     selfId: () => 'did:me',
     notify: (tone, message, opts) => void notices.push({ tone, message, options: opts }),
     enabled: () => options.enabled ?? true,
-    readingLive: () => options.reading ?? false,
+    readingLive: (lines) => {
+      asked.push(lines);
+      return options.reading ?? false;
+    },
     spokenHidden: () => options.spokenHidden ?? false,
     open,
   });
   let n = 0;
   const line = (author: string, text: string, source = ''): Row => ({ id: `line-${++n}`, author, text, source });
-  return { push, people, fetched, notices, open, line };
+  return { push, people, fetched, notices, open, line, asked };
 }
 
 beforeEach(() => vi.useFakeTimers());
@@ -121,6 +142,42 @@ describe('a bot answering in the space', () => {
     h.push([h.line('did:data', 'said in the call', 'spoken')]);
     vi.advanceTimersByTime(BOT_BURST_MS);
     expect(h.notices.map((n) => n.message)).toEqual(['said in the call']);
+  });
+
+  /*
+    A typed message is a composition: the watch hears its words' `TextBlock`, whose parent is the
+    message, while the Feed draws the message, by its id, in the collection it was said in. The check
+    for whether the reader is looking has to be asked about what the Feed draws.
+  */
+  it('asks whether the reader is looking at a message by the message, and at a bare line by itself', async () => {
+    const h = harness({
+      stored: [
+        { id: 'msg-1', kind: 'message', partOf: 'call-1' },
+        { id: 'reply-1', kind: 'reply' },
+        { id: 'call-2', kind: 'call' },
+      ],
+    });
+    h.push([]);
+    h.push([
+      { id: 'words-1', partOf: 'msg-1', author: 'did:data', text: 'the summary', source: 'typed' },
+      { id: 'heard-1', partOf: 'call-2', author: 'did:data', text: 'said aloud', source: 'spoken' },
+      { id: 'words-2', partOf: 'reply-1', author: 'did:data', text: 'and yes', source: 'typed' },
+      { id: 'loose-1', partOf: 'root-1', author: 'did:data', text: 'in the space', source: 'typed' },
+    ]);
+    await vi.advanceTimersByTimeAsync(BOT_BURST_MS);
+
+    expect(h.asked).toEqual([
+      [
+        // The message, in the call it was said in.
+        { id: 'msg-1', call: 'call-1' },
+        // A heard line is its own record, in its call.
+        { id: 'heard-1', call: 'call-2' },
+        // A reply is said in no collection: drawn under the line it answers, by its own id.
+        { id: 'reply-1', call: '' },
+        { id: 'loose-1', call: 'root-1' },
+      ],
+    ]);
+    expect(h.notices.map((n) => n.message)).toEqual(['Sent 4 messages']);
   });
 
   it('asks for a profile it does not have, and judges the line when the burst ends', () => {

@@ -1446,7 +1446,7 @@ Give every nested zone `noArm`, so picking something up speaks once about the co
 than once about every row inside it.
   Props: accepts: string = '', disabled: boolean = false, noArm: boolean = false, noSelf: boolean = false, hint: string = ''
 - we-file-upload (DesignSystemElement)
-  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = ''
+  Props: accept: string = '', multiple: boolean = false, disabled: boolean = false, name: string = '', files?: File[] | undefined, maxSize: number = 0, hideList: boolean = false, label: string = ''
 - we-form-field (DesignSystemElement)
   Props: label: string = '', description: string = '', error: string = '', required: boolean = false, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-html (DesignSystemElement) — Renders a raw HTML string safely via DOMPurify sanitization.
@@ -2620,6 +2620,7 @@ CollectionBlock extends WeNode:
   - slug: string [we://slug]
   - editorState: string = null [we://editor_state]
   - textContent: string [we://text_content]
+  - source: string [we://text_source]
   - version: number [we://version]
   - sourceRef: string [we://source_ref]
   - sourceName: string [we://source_name]
@@ -3760,6 +3761,7 @@ SpaceStore:
   - copyGuestLink(uuid: string): copies that space's guest invite link — a URL that creates an account on the space's host and joins, with no sign-up and no download. Empty, and the control hidden, unless BOTH this app's origin and the node's URL are addresses a recipient could reach: a loopback address on either half resolves to the reader's own machine. Read `spaceList[].guestLink` to decide whether to offer it; `shareLink` is the one for somebody who already has WE
   - exportCallTranscript(callId: string): writes the call's transcript to a .txt file (one line per utterance: name, timestamp, text) and downloads it. Read-only and client-side — it reads the shared record and writes to the caller's own device
   - exportInterpretationLog(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript
+  - saveFileBlock(fileId: string): saves a file a message carries (a FileBlock, by its id) to the reader's machine, reading its bytes from the space on screen when called. A message line holds only the file's name and size. Read-only and client-side
   - removeSpaceFromGlobal(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you
 
 TemplateStore:
@@ -4104,7 +4106,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 - Settings: `recordCalls` (boolean; deployment, agent, space, agent-in-space) — Record calls automatically; `timelineOrder` (enum; agent) — Newest messages
 - Presence activities: `transcribe` { id: string, recording: boolean, anchor: object, collection: string }
 - Functions:
-  - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
+  - threadLines(options) — A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, a line with marks carries `content` — the one block a BlockRenderer draws it from — and a message read with `partsInclude()` (its parts and their files, two levels down) carries `attachments`: { id, name, mimeType, size, sizeLabel } for each file sent with it. Options: rows (the page), newestFirst (boolean).  e.g. threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })
 
 ### Feed (`feed`)
 Everything said and written in a space, and what was found in it, in one stream.
@@ -4134,9 +4136,9 @@ Needs: kernels records, interpretation.
   - readCallFeedLive — Re-anchors the call’s Feed at its newest line.
   - readFeedFromStart — Re-anchors the Feed at the beginning of the space.
   - readFeedLive — Re-anchors the Feed at the newest message.
-  - reply — Answers one line with a typed line of its own, linked from it as a reply.
+  - reply — Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.
   - sendToCallFeed — Writes a typed message into the call on screen — with its marks, when the composer gave any. Nothing when no call is shown. Writing into a call does not put the writer on its roster.
-  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any.
+  - sendToFeed — Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.
   - showMoreCallFeed — Grows the call’s Feed by a page.
   - showMoreFeed — Grows the Feed’s window by a page.
   - startReply — Starts a reply to one line — pass { id, text, author, surface } — which the composer of that list ('feed', the default, or 'callFeed') then sends as a reply.

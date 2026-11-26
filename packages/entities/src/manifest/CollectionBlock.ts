@@ -128,6 +128,15 @@ export const CollectionBlock: CoreEntityDef = {
       // its content is its children.
       editorState: { type: 'string', predicate: 'we://editor_state', format: 'file', default: null },
       textContent: { type: 'string', predicate: 'we://text_content', default: '' },
+      /**
+       * How the words of a message got here — `'spoken'`, `'typed'` or `'corrected'` — as on
+       * `TextBlock.source`, with the same predicate. Written only on a message (`kind: 'message'`
+       * or `'reply'`): a collection whose first child holds the words and whose second, when there
+       * are files, is the group of files it carries. A reader that asks which lines are input
+       * (interpretation, an export) reads it here without opening the children. Empty on every
+       * other collection.
+       */
+      source: { type: 'string', predicate: 'we://text_source', options: ['spoken', 'typed', 'corrected'], default: '' },
       version: { type: 'number', predicate: 'we://version', default: 0 },
       // ── Provenance ────────────────────────────────────────────────────────────────────
       // A post brought in from another space.

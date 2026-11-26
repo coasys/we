@@ -12,8 +12,8 @@ import {
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
 import { displayName, type InterpretationPort } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { saveFile, type SaveOutcome } from '@we/design-utils';
-import { CollectionBlock, type DatasetProxy, getEntityForDataset } from '@we/entities';
+import { dataUriToBlob, safeHref, saveFile, type SaveOutcome } from '@we/design-utils';
+import { CollectionBlock, type DatasetProxy, FileBlock, getEntityForDataset } from '@we/entities';
 
 import type { ProfileStore } from '../ProfileStore';
 
@@ -211,5 +211,39 @@ export function createCallExports(deps: CallExportDeps) {
     }
   }
 
-  return { exportCallTranscript, exportInterpretationLog };
+  /**
+   * Save a file a message carries. The line holds the file's name and size and not its bytes, so the
+   * record is read now, for the dataset the file is in at the moment of the press, and written to the
+   * reader's machine. A file stored at an address rather than inline is opened there instead,
+   * if the address is a web one.
+   */
+  async function saveFileBlock(fileId: string): Promise<void> {
+    const dataset = deps.dataset();
+    if (!dataset || !fileId) return;
+    try {
+      const file = await FileBlock.findOne(dataset.handle, { where: { id: fileId } });
+      const url = typeof file?.url === 'string' ? file.url.trim() : '';
+      if (!file || !url) {
+        toastService.warning('That file is not available.');
+        return;
+      }
+      if (!/^data:/i.test(url)) {
+        // The address came from whoever wrote the record: only a web address is opened.
+        const href = safeHref(url);
+        if (!/^https?:/i.test(href)) {
+          toastService.warning('That file is not available.');
+          return;
+        }
+        window.open(href, '_blank', 'noopener');
+        return;
+      }
+      const type = file.mimeType || 'application/octet-stream';
+      await saveFile({ name: file.name || 'file', type, content: () => dataUriToBlob(url) });
+    } catch (error) {
+      console.error('SpaceStore: saveFileBlock failed', error);
+      toastService.error('Could not save the file.');
+    }
+  }
+
+  return { exportCallTranscript, exportInterpretationLog, saveFileBlock };
 }

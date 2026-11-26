@@ -35,7 +35,10 @@ function store(rows: StoredRow[]) {
   const find = async (entity: string, query: RecordQuery) => {
     asked.push({ entity, query });
     let out = rows.filter((r) => r.entity === entity && (!query.within || r.in === query.within));
-    if (query.where?.kind) out = out.filter((r) => r.kind === query.where?.kind);
+    if (query.where?.kind) {
+      const kinds: unknown[] = [query.where.kind].flat();
+      out = out.filter((r) => kinds.includes(r.kind));
+    }
     if (query.where?.id !== undefined) {
       const ids: unknown[] = [query.where.id].flat();
       out = out.filter((r) => ids.includes(r.id));
@@ -84,6 +87,167 @@ describe('the feed window', () => {
     expect(drawn[1]).toMatchObject({ call: '', source: 'typed' });
   });
 
+  /** A message composition: the collection, its words, and — given files — the group that holds them. */
+  const message = (
+    id: string,
+    minute: number,
+    within: string,
+    words: string,
+    options: { marks?: string; files?: StoredRow[]; kind?: string; extra?: Record<string, unknown> } = {},
+  ): StoredRow[] => {
+    const group = options.files?.length ? `${id}-files` : '';
+    return [
+      {
+        entity: 'CollectionBlock',
+        id,
+        in: within,
+        kind: options.kind ?? 'message',
+        mode: 'document',
+        textContent: words,
+        source: 'typed',
+        createdAt: t(minute),
+        author: 'did:ann',
+        children: [`${id}-words`, ...(group ? [group] : [])],
+        ...options.extra,
+      },
+      {
+        entity: 'TextBlock',
+        id: `${id}-words`,
+        in: id,
+        text: words,
+        marks: options.marks ?? '',
+        source: 'typed',
+        createdAt: t(minute),
+        author: 'did:ann',
+      },
+      ...(group
+        ? [
+            {
+              entity: 'CollectionBlock',
+              id: group,
+              in: id,
+              kind: 'attachments',
+              mode: 'document',
+              createdAt: t(minute),
+              children: options.files!.map((f) => f.id),
+            },
+            ...options.files!.map((f) => ({ ...f, in: group })),
+          ]
+        : []),
+    ];
+  };
+  const PLAN: StoredRow = {
+    entity: 'FileBlock',
+    id: 'f1',
+    name: 'plan.pdf',
+    mimeType: 'application/pdf',
+    size: 2048,
+    url: 'data:application/pdf;base64,JVBE',
+  };
+  const MAP: StoredRow = {
+    entity: 'FileBlock',
+    id: 'f2',
+    name: 'map.png',
+    mimeType: 'image/png',
+    size: 10,
+    url: 'data:image/png;base64,iVBO',
+  };
+  const BOLD = '[{"start":0,"end":4,"type":"strong"}]';
+
+  it('draws a message composition: its words, the marks of the text block it holds, and its files', async () => {
+    const withFiles = [...rows, ...message('sent', 10, ROOT, 'plan and map', { marks: BOLD, files: [PLAN, MAP] })];
+    const { find, asked } = store(withFiles);
+    const known = new Map();
+    const { rows: drawn } = await readFeedWindow(find, {
+      root: ROOT,
+      shown: 10,
+      fromStart: false,
+      activityTypes: [],
+      attachments: known,
+    });
+    expect(drawn.map((r) => r.id)).toEqual(['sent', 's2', 'typed', 'm2', 's1', 'm1']);
+    expect(drawn[0]).toMatchObject({
+      kind: 'line',
+      id: 'sent',
+      text: 'plan and map',
+      marks: BOLD,
+      source: 'typed',
+      textId: 'sent-words',
+      call: '',
+      attachments: [
+        { id: 'f1', name: 'plan.pdf', mimeType: 'application/pdf', size: 2048, sizeLabel: '2.0 KB' },
+        { id: 'f2', name: 'map.png', mimeType: 'image/png', size: 10, sizeLabel: '10 B' },
+      ],
+    });
+    expect(drawn[0]).toMatchObject({ content: lineContent({ text: 'plan and map', marks: BOLD, source: 'typed' }) });
+    // The line holds the card, never the bytes.
+    expect(JSON.stringify(drawn)).not.toContain('JVBE');
+    expect(asked.find((a) => a.entity === 'FileBlock')?.query.select).not.toContain('url');
+    // The parts of the messages on screen are read once for the window, by id: no read per message.
+    const partReads = asked.filter((a) => a.query.where?.id !== undefined && a.entity !== 'FileBlock');
+    expect(partReads.map((a) => a.entity).sort()).toEqual(['CollectionBlock', 'TextBlock']);
+    // A bare line holds no parts and no files.
+    expect(drawn.find((r) => r.id === 'm1')).toMatchObject({ attachments: [], textId: '' });
+
+    await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [], attachments: known });
+    expect(asked.filter((a) => a.entity === 'FileBlock')).toHaveLength(1);
+  });
+
+  it('draws a message with no files as one with words only, and reads no files for it', async () => {
+    const { find, asked } = store([...rows, ...message('plain', 10, 'standup', 'running late')]);
+    const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    expect(drawn[0]).toMatchObject({
+      id: 'plain',
+      text: 'running late',
+      call: 'standup',
+      callTitle: 'Standup',
+      textId: 'plain-words',
+      attachments: [],
+    });
+    expect(asked.some((a) => a.entity === 'FileBlock')).toBe(false);
+  });
+
+  it('draws a reply composition under a bare line, quoting it, and a bare reply under a composition', async () => {
+    const { find } = store([
+      ...rows,
+      ...message('re', 11, '', 'I have the venue', {
+        kind: 'reply',
+        files: [PLAN],
+        extra: { threadOf: 'typed', respondsTo: 'typed' },
+      }),
+      ...message('ask', 12, ROOT, 'who books lunch?'),
+      line('bare-re', 13, '', { threadOf: 'ask', respondsTo: 'ask', source: 'typed', text: 'me' }),
+    ]);
+    const { rows: drawn } = await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
+    expect(drawn.find((r) => r.id === 're')).toMatchObject({
+      text: 'I have the venue',
+      replyTo: { id: 'typed', text: 'typed' },
+      attachments: [{ id: 'f1', name: 'plan.pdf' }],
+    });
+    expect(drawn.find((r) => r.id === 'bare-re')).toMatchObject({
+      text: 'me',
+      replyTo: { id: 'ask', author: 'did:ann', text: 'who books lunch?' },
+    });
+  });
+
+  it('draws a message from its own words when the text block it holds cannot be read', async () => {
+    const stored = message('sent', 10, ROOT, 'plan', { files: [PLAN] });
+    const { find } = store([...rows, ...stored]);
+    const failing = async (entity: string, query: RecordQuery) => {
+      if (query.where?.id !== undefined && entity !== 'FileBlock') throw new Error('executor unreachable');
+      return find(entity, query);
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { rows: drawn } = await readFeedWindow(failing, {
+      root: ROOT,
+      shown: 10,
+      fromStart: false,
+      activityTypes: [],
+    });
+    warn.mockRestore();
+    expect(drawn[0]).toMatchObject({ id: 'sent', text: 'plan', marks: '', attachments: [] });
+  });
+
   it('stops between call pages once its answer is no longer wanted, rather than reading the rest', async () => {
     const { find, asked } = store(rows);
     const callPages = () => asked.filter((a) => a.entity === 'TextBlock' && a.query.within !== ROOT).length;
@@ -103,7 +267,7 @@ describe('the feed window', () => {
     const { find, asked } = store(rows);
     await readFeedWindow(find, { root: ROOT, shown: 10, fromStart: false, activityTypes: [] });
     // A whole call carries the id of every line said in it; the window draws its title and time.
-    const callList = asked.filter((a) => a.entity === 'CollectionBlock');
+    const callList = asked.filter((a) => a.entity === 'CollectionBlock' && a.query.where?.kind === 'call');
     expect(callList).toHaveLength(1);
     expect(callList[0].query.select).toEqual(['title', 'createdAt']);
   });

@@ -7,14 +7,18 @@
  * Writing into the space, replying to a line and correcting one are the Feed's own actions here, not
  * borrowed from transcription. The transcript's are bound to a call — the call in progress, its space,
  * its roster — and a module may not depend on another, so each list writes for itself. What they share
- * is what a message *is* (`@we/messages`): a `TextBlock` with its `source`, a reply linked from the
- * line it answers through `responses`, and a heard line turning `corrected` when somebody mends it.
+ * is what a message *is* (`@we/messages`): a `CollectionBlock` that holds a `TextBlock` with the words
+ * (and a group of the files sent with them), its `source`, a reply linked from the line it answers
+ * through `responses`, and a heard line turning `corrected` when somebody mends it. A heard line is a
+ * bare `TextBlock`; the transcript writes those.
  */
-import { sourceAfterEdit, TYPED } from '@we/messages';
+import { mentionedDids, parseMarks } from '@we/block-shared';
+import { ATTACHMENTS_KIND, mendLine, MESSAGE_KIND, REPLY_KIND, sourceAfterEdit, TYPED } from '@we/messages';
 import type { ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import { ATTACH_MAX_BYTES } from '@we/schema-kit';
 
 import { watchBotMessages } from './botWatch';
-import { createFeed, type FeedHolder } from './feedStore';
+import { createFeed, type FeedHolder, filesOf } from './feedStore';
 
 /**
  * Where a reply was started: the space's Feed, or the Feed of one call. Both lists are this store's,
@@ -31,6 +35,22 @@ const CALL_TITLE = 'this call';
 /** Lend a window its members unmarked: this store publishes them under the call's names. */
 const unmarked = (<T>(value: T) => value) as never;
 
+/** A write the host answered with no id: there was nowhere to write it. */
+class NotWritten extends Error {
+  constructor() {
+    super('nothing was written');
+  }
+}
+
+/** A browser file as the file-storage language takes it — see `FileData` in `@we/entities`. */
+async function fileData(file: File): Promise<{ data_base64: string; name: string; file_type: string }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  // In slices: one `fromCharCode` over a large file overflows the call stack.
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return { data_base64: btoa(binary), name: file.name, file_type: file.type || 'application/octet-stream' };
+}
+
 export function createFeedStore(deps: ModuleStoreDeps) {
   const { signal, effect, settings, dataset, onDispose, state, action } = deps;
   const { records, interpretation } = deps.kernels;
@@ -39,11 +59,113 @@ export function createFeedStore(deps: ModuleStoreDeps) {
   const updateEntity: RecordsKernel['update'] | undefined =
     typeof records?.update === 'function' ? (...args) => records.update(...args) : undefined;
 
-  /** One typed line, into whatever holds it: the space, or — as a reply — the line it answers. */
-  async function writeMessage(holder: FeedHolder, text: string, marks?: string) {
+  const linkEntity: RecordsKernel['link'] | undefined =
+    typeof records?.link === 'function' ? (...args) => records.link(...args) : undefined;
+  const removeEntity: RecordsKernel['remove'] | undefined =
+    typeof records?.remove === 'function' ? (...args) => records.remove(...args) : undefined;
+
+  /**
+   * One typed message, into whatever holds it: the space or a call, or — as a reply — the line it
+   * answers. Written as a composition (see `@we/messages`): a `CollectionBlock` that holds a
+   * `TextBlock` with the words and, when files were sent, a group with one `FileBlock` for each file.
+   * The people its marks mention are linked from the message itself (`mentions`), the root of what was
+   * sent, as a composed post's are from its root. Answers the id of the message collection.
+   */
+  async function writeMessage(holder: FeedHolder, text: string, marks?: string, files: File[] = []) {
     const words = String(text ?? '').trim();
-    if (!words || !createEntity) return null;
-    return createEntity('TextBlock', { text: words, source: TYPED, ...(marks ? { marks } : {}) }, { parent: holder });
+    if (!words || !createEntity || !linkEntity) return null;
+    const tooBig = files.filter((file) => file.size > ATTACH_MAX_BYTES);
+    if (tooBig.length)
+      throw new Error(
+        `Files over ${ATTACH_MAX_BYTES / (1024 * 1024)} MB can't be attached: ${tooBig.map((f) => f.name).join(', ')}`,
+      );
+    /*
+      The dataset is named once, here, before anything is awaited, and every write and removal below
+      goes to it. A shared space is named by its URI and any other by its local id. Left to the host,
+      a write with no dataset goes to the space on screen — and this send spans file reads and uploads
+      (and a call's Feed outlives navigation), so somebody changing space meanwhile would have the next
+      file, the message and the rollback land in the other one.
+    */
+    const name = deps.datasetUri?.() || deps.datasetId?.();
+    if (!name) throw new Error('This message cannot be sent: there is no space open to write it in.');
+    const target = { dataset: name };
+    /*
+      The kernel has no write group, so the message is built where nobody reads it and published by
+      one link. In order: the files (uploaded), unparented, and their group; the message,
+      unparented, with the words in `textContent`; its `TextBlock`; the group into it; the link that
+      puts it in its holder — the conversation's `children`, or the answered line's `responses`; and
+      then a `mentions` link from it to each person the marks name. Until the holder link, no reader
+      of the conversation sees the message; once it is there, every part is. The mentions come after
+      it, because a mention wakes an agent, a wake cannot be taken back, and the woken agent reads
+      the message's place in its conversation. A failure
+      at any step takes down every record written, newest first (`discard`), and the links out of
+      each go with it; the holder never had one to it.
+    */
+    const written: { entity: string; id: string }[] = [];
+    const write = async (entity: string, fields: Record<string, unknown>, options: Record<string, unknown>) => {
+      const id = await createEntity(entity, fields, { ...options, ...target });
+      if (!id) throw new NotWritten();
+      written.push({ entity, id });
+      return id;
+    };
+    try {
+      const fileIds: string[] = [];
+      for (const file of files) {
+        try {
+          fileIds.push(
+            await write(
+              'FileBlock',
+              { name: file.name, mimeType: file.type, size: file.size, url: await fileData(file) },
+              {},
+            ),
+          );
+        } catch (error) {
+          throw error instanceof NotWritten ? new Error(`Could not attach ${file.name}`) : error;
+        }
+      }
+      let group = '';
+      if (fileIds.length) {
+        group = await write('CollectionBlock', { kind: ATTACHMENTS_KIND, mode: 'document' }, {});
+        for (const fileId of fileIds) await linkEntity('CollectionBlock', group, 'children', fileId, target);
+      }
+      const id = await write(
+        'CollectionBlock',
+        {
+          kind: holder.relation === 'responses' ? REPLY_KIND : MESSAGE_KIND,
+          mode: 'document',
+          textContent: words,
+          source: TYPED,
+        },
+        {},
+      );
+      await write(
+        'TextBlock',
+        { text: words, source: TYPED, ...(marks ? { marks } : {}) },
+        { parent: { id, relation: 'children', entity: 'CollectionBlock' } },
+      );
+      if (group) await linkEntity('CollectionBlock', id, 'children', group, target);
+      // The answered line's class is not known here; `responses` is every node's (`WeNode`'s).
+      await linkEntity(holder.entity ?? 'WeNode', holder.id, holder.relation, id, target);
+      for (const did of mentionedDids(parseMarks(marks)))
+        await linkEntity('CollectionBlock', id, 'mentions', did, target);
+      return id;
+    } catch (error) {
+      await discard(written, target);
+      // Nowhere to write it: the caller says so to whoever sent it.
+      if (error instanceof NotWritten) return null;
+      throw error;
+    }
+  }
+
+  /** Take down what a failed write left, newest first; what cannot be removed is left, and the failure stands. */
+  async function discard(written: { entity: string; id: string }[], target: { dataset: string }) {
+    for (const { entity, id } of [...written].reverse()) {
+      try {
+        await removeEntity?.(entity, id, target);
+      } catch {
+        // The original failure is the one to report.
+      }
+    }
   }
 
   const {
@@ -226,7 +348,7 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       { ambient: true },
     ),
     cancelReply: action(() => setReply(null), 'Puts a reply down without sending it.', { ambient: true }),
-    reply: action(async (parentId: string, text: string, marks?: string) => {
+    reply: action(async (parentId: string, text: string, marks?: string, files?: File[]) => {
       if (!parentId) {
         console.warn('[feed] a reply has no line to answer, so it was not sent');
         return;
@@ -235,12 +357,18 @@ export function createFeedStore(deps: ModuleStoreDeps) {
       // Put down as the line is drawn, so the next message is not sent as a reply as well.
       if (reply === answering) setReply(null);
       const post = answering?.surface === 'callFeed' ? postToCall : postToFeed;
-      await post({ id: parentId, relation: 'responses' }, text, marks, {
-        id: parentId,
-        author: answering?.author ?? '',
-        text: answering?.text ?? '',
-      });
-    }, 'Answers one line with a typed line of its own, linked from it as a reply.'),
+      await post(
+        { id: parentId, relation: 'responses' },
+        text,
+        marks,
+        {
+          id: parentId,
+          author: answering?.author ?? '',
+          text: answering?.text ?? '',
+        },
+        filesOf(files),
+      );
+    }, 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.'),
     /*
       Correct the words on a line. Anybody may, as in a transcript, and it is not hidden: a heard line
       becomes `corrected` (see `sourceAfterEdit`), so a mended line never reads as a verbatim quote.
@@ -248,8 +376,16 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     editUtterance: action(async (id: string, text: string, was?: string) => {
       const words = String(text ?? '').trim();
       if (!id || !words || !updateEntity) return;
-      const source = sourceAfterEdit(was);
-      await updateEntity('TextBlock', id, { text: words, ...(source ? { source } : {}) });
+      // Named before anything is awaited, as a send's is: an edit stays in the space it began in.
+      const name = deps.datasetUri?.() || deps.datasetId?.();
+      if (!name) throw new Error('This line cannot be corrected: there is no space open to write it in.');
+      /*
+        A message composition holds its words two times: in the `TextBlock` it holds, and in its own
+        `textContent`, which readers draw first. `mendLine` changes both. A bare line is its own `TextBlock`.
+      */
+      const find: RecordsKernel['find'] | undefined =
+        typeof records?.find === 'function' ? (...args) => records.find(...args) : undefined;
+      await mendLine({ update: updateEntity, find }, id, words, sourceAfterEdit(was), { dataset: name });
     }, 'Corrects the words on a line, marking a heard line as corrected.'),
     callFeedRoot: state(callRoot, 'The call whose Feed is drawn — the one shown most recently — or empty.'),
     callFeedRows: state(

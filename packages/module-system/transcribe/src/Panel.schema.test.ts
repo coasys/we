@@ -10,6 +10,8 @@
  * Serialised and searched rather than walked, the same way the showcase templates are tested. A
  * schema is data; what matters is whether the token is in the tree, not the path it sits at.
  */
+import { compileQuery, executeQueryIR, type InMemoryDataset } from '@we/backend-shared';
+import { threadLines } from '@we/messages';
 import { markAction, markState, storeSurface } from '@we/module-shared';
 import { SECTION_LABEL_PROPS } from '@we/schema-kit';
 import {
@@ -268,10 +270,76 @@ describe('a transcript with nothing in it', () => {
   it('draws the window the reader’s way round, with the replies flattened in', () => {
     // Reversed exactly when the anchored end is the bottom — see `timelineOrder` in the schema kit.
     expect(linesJson).toContain(
-      '? reverse(threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })) :',
+      "? reverse(threadLines({ rows: local.utterances.filter(r, r.__subjectClass != 'CollectionBlock' || r.kind in ['message', 'reply']), newestFirst: !modules.transcribe.transcriptFromStart })) :",
     );
+    // One window over both shapes of a line: a heard TextBlock and a typed message composition.
+    expect(linesJson).toContain('"utterances":{"entity":["TextBlock","CollectionBlock"]');
     // Each line arrives with its thread: a reply is a child of nothing, so this is where it comes from.
-    expect(linesJson).toContain('"include":{"thread":true}');
+    expect(linesJson).toContain('"include":{"thread":{');
+  });
+
+  /**
+   * A message typed into the call with files draws its files.
+   *
+   * A message is a composition: its files are in a group the message holds, two containment levels
+   * below the row the window reads. The window's own read brings them — for its lines only, in the
+   * one read — and never a file's `url`, which for a stored file is the whole file. Run here through
+   * the reference engine, over records shaped as stored: a bare heard line, a message with a file,
+   * and a reply with a file in that message's thread.
+   */
+  it('brings the files of each message in its window, and of each reply in their threads', () => {
+    const query = (transcriptLines.$queries as unknown as Record<string, { include: Record<string, unknown> }>)
+      .utterances;
+    const file = (id: string, parent: string, name: string, size: number) => ({
+      id,
+      parent,
+      name,
+      mimeType: 'application/pdf',
+      size,
+      url: `{"data_base64":"${'A'.repeat(64)}"}`,
+    });
+    const data: InMemoryDataset = {
+      tables: {
+        TextBlock: [
+          { id: 'heard', parent: 'call', text: 'said aloud' },
+          { id: 'msg-words', parent: 'msg', text: 'the plan' },
+          { id: 'reply-words', parent: 'reply', text: 'and the map' },
+        ],
+        CollectionBlock: [
+          { id: 'call', kind: 'call' },
+          { id: 'msg', parent: 'call', kind: 'message', textContent: 'the plan', children: ['msg-words', 'msg-files'] },
+          { id: 'msg-files', parent: 'msg', kind: 'attachments' },
+          { id: 'reply', root: 'msg', kind: 'reply', textContent: 'and the map', respondsTo: 'msg' },
+          { id: 'reply-files', parent: 'reply', kind: 'attachments' },
+        ],
+        FileBlock: [file('plan', 'msg-files', 'plan.pdf', 2048), file('map', 'reply-files', 'map.pdf', 10)],
+      },
+      relations: Object.fromEntries(
+        ['TextBlock', 'CollectionBlock', 'FileBlock'].map((entity) => [
+          entity,
+          {
+            children: { target: '', cardinality: 'many', foreignKey: 'parent', ordered: true },
+            thread: { target: '', cardinality: 'many', foreignKey: 'root' },
+          },
+        ]),
+      ) as InMemoryDataset['relations'],
+    };
+    const { ir, unsupported } = compileQuery({ entity: 'CollectionBlock', include: query.include });
+    expect(unsupported).toEqual([]);
+    const rows = ['TextBlock', 'CollectionBlock'].flatMap((entity) =>
+      executeQueryIR({ ...ir, entity, filter: { field: 'parent', op: 'eq', value: 'call' } }, data),
+    );
+
+    const lines = threadLines({ rows });
+    const files = Object.fromEntries(lines.map((line) => [line.id, line.attachments]));
+    expect(files).toEqual({
+      heard: undefined,
+      msg: [{ id: 'plan', name: 'plan.pdf', mimeType: 'application/pdf', size: 2048, sizeLabel: '2.0 KB' }],
+      reply: [{ id: 'map', name: 'map.pdf', mimeType: 'application/pdf', size: 10, sizeLabel: '10 B' }],
+    });
+    // The files are read by their fields, at every place they are reached — never by `url`.
+    const selects = JSON.stringify(query.include).match(/"select":\[[^\]]*\]/g);
+    expect(selects).toEqual(['"select":["name","mimeType","size"]', '"select":["name","mimeType","size"]']);
   });
 
   /**
@@ -1331,7 +1399,7 @@ describe('the interpretation panel', () => {
     const order = ['No models are set up here', 'Nothing is selected to interpret', 'Nothing has been said yet'];
 
     expect(json).toContain(`!${targets}.exists(t, t.selected) ? 'Nothing is selected to interpret'`);
-    expect(json).toContain("!count(local.spoken) ? 'Nothing has been said yet'");
+    expect(json).toContain("!count(local.spoken) && !count(local.typed) ? 'Nothing has been said yet'");
     // Tested in the order they rule each other out: a space with no models has nothing to tick, and
     // a call with nothing ticked cannot be fixed by waiting for somebody to speak.
     for (let i = 1; i < order.length; i += 1) {
@@ -1351,7 +1419,7 @@ describe('the interpretation panel', () => {
     expect(json).toContain('"spoken":{"entity":"TextBlock"');
     // Scoped to the call on screen, through the relation its utterances hang off.
     expect(json).toContain(`"via":"children","anchorId":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
-    expect(json).toContain('!count(local.spoken) || !');
+    expect(json).toContain('(!count(local.spoken) && !count(local.typed)) || !');
     // `when`, for the reason every scoped query here carries it: an unresolved anchor is pruned
     // rather than sent, and pruning widens to every TextBlock in the space.
     expect(json).toContain(`"limit":1,"when":{"$":"${INTERPRETATION_SUBJECT_EXPR}"}`);
@@ -1450,6 +1518,26 @@ describe('the interpretation panel', () => {
     const owner = findNode(interpretationPanel, (n) => declares(n.$queries, 'spoken'));
     expect(owner).toBeDefined();
     expect(JSON.stringify(owner)).toContain('!count(local.spoken)');
+  });
+
+  it('counts a message typed into the call as something said', () => {
+    /*
+      A message typed into the call chat is a composition: a CollectionBlock with `kind: 'message'`
+      (or `'reply'`) under the call, and not a TextBlock under the call. A call that holds only typed
+      messages has had something said in it, so Interpret now must not wait for a heard line.
+    */
+    const owner = findNode(interpretationPanel, (n) => declares(n.$queries, 'typed'));
+    expect(owner).toBeDefined();
+    const queries = owner!.$queries as Record<string, Record<string, unknown>>;
+    expect(queries.typed).toMatchObject({
+      entity: 'CollectionBlock',
+      where: { kind: ['message', 'reply'] },
+      scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: INTERPRETATION_SUBJECT_EXPR } },
+      limit: 1,
+      when: { $: INTERPRETATION_SUBJECT_EXPR },
+    });
+    expect(json).toContain("!count(local.spoken) && !count(local.typed) ? 'Nothing has been said yet'");
+    expect(json).toContain('(!count(local.spoken) && !count(local.typed)) || !');
   });
 
   it('gives every named region in the panel the same heading treatment', () => {

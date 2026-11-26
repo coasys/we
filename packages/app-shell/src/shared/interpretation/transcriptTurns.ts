@@ -30,8 +30,25 @@ export interface GatherTurnsDeps {
   handle: unknown;
 }
 
-/** Entities whose instances can be a turn. Only TextBlock today; a list so a caller can widen it. */
-const DEFAULT_TURN_ENTITIES = ['TextBlock'];
+/**
+ * Entities whose instances can be a turn: a bare TextBlock line, and a message composition.
+ *
+ * A message composition is a CollectionBlock with `kind: message` (or `reply`) that holds its words in
+ * `textContent` (see `composition.ts` in `@we/messages`). A typed message in a call is one.
+ */
+const DEFAULT_TURN_ENTITIES = ['TextBlock', 'CollectionBlock'];
+
+/** The `kind`s of a message composition — the same as `MESSAGE_KINDS` in `@we/messages`. */
+export const MESSAGE_KINDS = ['message', 'reply'];
+
+/**
+ * The words of a row: `text` on a TextBlock, `textContent` on a message composition. Other
+ * collections (a call, a group of files) are not something said, so they have none.
+ */
+function wordsOf(row: Record<string, unknown>): string {
+  if (typeof row.text === 'string' && row.text) return row.text;
+  return MESSAGE_KINDS.includes(row.kind as string) && typeof row.textContent === 'string' ? row.textContent : '';
+}
 
 /**
  * What counts as input: what a person said or wrote, by the `source` WE stamps on every message it
@@ -95,6 +112,8 @@ export async function gatherTranscriptTurns(
   options: { entities?: string[]; limit?: number } = {},
 ): Promise<TranscriptTurn[]> {
   const turns: TranscriptTurn[] = [];
+  // A row read in two passes (a reply in the thread of a line of each entity) is one turn.
+  const taken = new Set<string>();
 
   for (const entity of options.entities ?? DEFAULT_TURN_ENTITIES) {
     const model = deps.modelFor(entity);
@@ -116,7 +135,9 @@ export async function gatherTranscriptTurns(
     );
 
     for (const row of rows) {
-      const text = typeof row.text === 'string' ? row.text.trim() : '';
+      const id = typeof row.id === 'string' ? row.id : '';
+      if (id && taken.has(id)) continue;
+      const text = wordsOf(row).trim();
       const speaker = typeof row.author === 'string' ? row.author : '';
       const timestamp = isoTimestamp(row.createdAt);
       if (!text || !speaker || !timestamp) continue;
@@ -127,6 +148,7 @@ export async function gatherTranscriptTurns(
       const source = typeof row.source === 'string' ? row.source : '';
       // Only what a person said or wrote — see `INPUT_SOURCES`.
       if (!(INPUT_SOURCES as readonly string[]).includes(source)) continue;
+      if (id) taken.add(id);
       turns.push({ speaker, text, timestamp, source });
     }
   }

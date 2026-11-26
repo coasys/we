@@ -81,12 +81,31 @@ export default class FileUpload extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) disabled = false;
   @property({ type: String }) name = '';
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
+  /**
+   * The files held, when the host owns the list: set it to `[]` after the files were taken (a message
+   * sent with them) and the drop zone lets go of them. Left unset, the element keeps its own list.
+   */
+  @property({ type: Array }) files?: File[];
+  /**
+   * The most one file may hold, in bytes; `0` is no limit. A larger file is not added: the element
+   * says so with a `reject` event — `detail.files`, and `detail.names` as one line to show — so the
+   * host can tell the person why.
+   */
+  @property({ type: Number, attribute: 'max-size' }) maxSize = 0;
+  /** Draw no list of the files held: the host shows them itself, as chips beside a one-button drop zone. */
+  @property({ type: Boolean, attribute: 'hide-list' }) hideList = false;
+  /** The file input's accessible name, for a page that holds more than one drop zone. */
+  @property({ type: String }) label = '';
 
   @state() private _files: File[] = [];
   @state() private _dragover = false;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
+  }
+
+  protected willUpdate(changed: Map<string, unknown>) {
+    if (changed.has('files') && this.files) this._files = [...this.files];
   }
 
   private _click() {
@@ -100,10 +119,24 @@ export default class FileUpload extends DesignSystemElement {
     input.value = '';
   }
 
-  private _addFiles(files: File[]) {
-    this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
-    const detail = this.multiple ? this._files : (this._files[0] ?? null);
-    this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
+  private _addFiles(chosen: File[]) {
+    const tooBig = this.maxSize > 0 ? chosen.filter((file) => file.size > this.maxSize) : [];
+    const files = tooBig.length ? chosen.filter((file) => !tooBig.includes(file)) : chosen;
+    if (files.length) {
+      this._files = this.multiple ? [...this._files, ...files] : files.slice(0, 1);
+      const detail = this.multiple ? this._files : (this._files[0] ?? null);
+      this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true, composed: true }));
+    }
+    // After the change, so a host that resets its note on a new choice does not erase this pick's own.
+    if (tooBig.length) {
+      this.dispatchEvent(
+        new CustomEvent('reject', {
+          detail: { files: tooBig, names: tooBig.map((file) => file.name).join(', ') },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+    }
   }
 
   private _removeFile(index: number) {
@@ -146,6 +179,7 @@ export default class FileUpload extends DesignSystemElement {
           part="native"
           type="file"
           accept=${this.accept || nothing}
+          aria-label=${this.label || nothing}
           ?multiple=${this.multiple}
           @change=${this._onFileSelect}
         />
@@ -155,7 +189,7 @@ export default class FileUpload extends DesignSystemElement {
         </slot>
 
         ${
-          this._files.length > 0
+          this._files.length > 0 && !this.hideList
             ? html`
                 <div part="file-list" @click=${(e: Event) => e.stopPropagation()}>
                   ${this._files.map(

@@ -23,6 +23,10 @@ import { describe, expect, it } from 'vitest';
 const UNSELECTED: string[] = [
   'module graph › seeds',
   'module notes › notes',
+  // A call's lines: heard `TextBlock`s and typed message compositions in one window. `select` is
+  // checked against each entity of a union, and no field list fits both. The containers it reads
+  // are messages, and a message holds its text and, at most, one attachments collection.
+  'module transcribe › utterances',
   'template discord › catChannelRows',
   'template discord › categoryRows',
   'template discord › channelRows',

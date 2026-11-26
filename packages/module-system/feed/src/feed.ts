@@ -26,7 +26,18 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
-import { lineContent, repliesInclude, SPOKEN, threadLines } from '@we/messages';
+import {
+  ATTACHMENTS_KIND,
+  FILE_FIELDS,
+  isMessageComposition,
+  lineContent,
+  MESSAGE_KINDS,
+  type MessageFile,
+  repliesInclude,
+  sizeLabel,
+  SPOKEN,
+  threadLines,
+} from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 
 type Row = Record<string, unknown>;
@@ -43,6 +54,11 @@ export const ACTIVITY_GROUP_MS = 60 * 1000;
 /** The first page, and the step each further one adds. */
 export const FEED_FIRST_PAGE = 50;
 export const FEED_PAGE = 100;
+
+/** A file sent with a message — what the line draws to name it, size it and offer it. */
+export type FeedAttachment = MessageFile;
+
+export { sizeLabel };
 
 /** One message, as the Feed draws it. */
 export interface FeedLine {
@@ -63,6 +79,13 @@ export interface FeedLine {
   replyTo: { id: string; author: string; text: string } | null;
   /** The line as the blocks a renderer draws, or `null` for a line with no words — see `lineContent`. */
   content: Record<string, unknown>[] | null;
+  /**
+   * The `TextBlock` that holds the words of a message composition, or `''` for a bare line (which is
+   * its own `TextBlock`) and for a message not yet read back.
+   */
+  textId: string;
+  /** The files sent with it — each a `FileBlock` in the group the message holds. */
+  attachments: FeedAttachment[];
   /** Sent from here and not yet read back — drawn at once, dimmed, until a read of the window has it. */
   sending: boolean;
 }
@@ -114,6 +137,8 @@ export interface FeedWindowOptions {
   spoken?: boolean;
   /** The kinds of record an activity row can be about. Empty draws messages only. */
   activityTypes: string[];
+  /** The files already read, by `FileBlock` id — kept by the caller between windows so none is read twice. */
+  attachments?: Map<string, FeedAttachment>;
   /** Records still awaiting a decision, by id. */
   pending?: ReadonlySet<string>;
   /**
@@ -165,7 +190,21 @@ function summarise(items: { entity: string }[]): string {
   return parts.length <= 1 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
+/** The ids of the children each message composition holds, until {@link readParts} has read them. */
+const heldParts = new WeakMap<FeedLine, string[]>();
+/** The ids of the files each line holds, until {@link readAttachments} has read them. */
+const heldFiles = new WeakMap<FeedLine, string[]>();
+
 function toLine(row: Row, call: string, callTitle: string): FeedLine {
+  const line = lineOf(row, call, callTitle);
+  if (isMessageComposition(row)) {
+    const parts = [row.children ?? []].flat().map(idOf).filter(Boolean);
+    if (parts.length) heldParts.set(line, parts);
+  }
+  return line;
+}
+
+function lineOf(row: Row, call: string, callTitle: string): FeedLine {
   return {
     kind: 'line',
     id: text(row.id),
@@ -180,8 +219,86 @@ function toLine(row: Row, call: string, callTitle: string): FeedLine {
     callTitle,
     replyTo: (row.replyTo as FeedLine['replyTo']) ?? null,
     content: lineContent(row),
+    textId: '',
+    attachments: [],
     sending: false,
   };
+}
+
+/**
+ * Fill in what the message compositions in a window hold: the marks of the `TextBlock` with their
+ * words, and the ids of the files in their group. Two reads for the whole window, by the ids each
+ * message carries as `children` — never one read per message. The words were drawn already, from the
+ * message's own `textContent`; if these reads fail, the lines stay as they are, with no marks and no
+ * files.
+ */
+async function readParts(rows: FeedRow[], find: FeedFind): Promise<void> {
+  const lines = rows.filter((row): row is FeedLine => row.kind === 'line' && heldParts.has(row));
+  const ids = [...new Set(lines.flatMap((line) => heldParts.get(line) ?? []))];
+  if (!ids.length) return;
+  let words: Row[];
+  let groups: Row[];
+  try {
+    [words, groups] = await Promise.all([
+      find('TextBlock', { where: { id: ids }, select: ['text', 'marks', 'source'] }),
+      find('CollectionBlock', { where: { id: ids, kind: ATTACHMENTS_KIND } }),
+    ]);
+  } catch (error) {
+    console.warn('[feed] could not read what the messages hold', error);
+    return;
+  }
+  const wordsById = new Map(words.map((row) => [text(row.id), row]));
+  const groupsById = new Map(groups.map((row) => [text(row.id), row]));
+  for (const line of lines) {
+    const parts = heldParts.get(line) ?? [];
+    // The first child that is a text block holds the words; the first that is a group holds the files.
+    const said = parts.map((id) => wordsById.get(id)).find(Boolean);
+    const group = parts.map((id) => groupsById.get(id)).find(Boolean);
+    if (said) {
+      line.textId = text(said.id);
+      line.text = line.text || text(said.text);
+      line.marks = text(said.marks);
+      line.content = lineContent({ text: line.text, marks: line.marks, source: line.source });
+    }
+    const files = [group?.children ?? []].flat().map(idOf).filter(Boolean);
+    if (files.length) heldFiles.set(line, files);
+  }
+}
+
+/**
+ * Fill in the files of the lines a window holds: one read of the `FileBlock`s they name, never of a
+ * file read before — a file's bytes do not change, and reading every one on each refresh would pull
+ * every attachment on the page through the executor again and again. A file that cannot be read is
+ * left off its line; the message is still drawn.
+ */
+async function readAttachments(rows: FeedRow[], find: FeedFind, known: Map<string, FeedAttachment>): Promise<void> {
+  const held = rows.flatMap((row) => (row.kind === 'line' ? (heldFiles.get(row) ?? []) : []));
+  const unread = [...new Set(held)].filter((id) => !known.has(id));
+  if (unread.length) {
+    try {
+      for (const file of await find('FileBlock', {
+        where: { id: unread },
+        // Never `url`: for a stored file that is the whole file. It is fetched when somebody saves it.
+        select: FILE_FIELDS,
+      })) {
+        const size = Number(file.size) || 0;
+        known.set(text(file.id), {
+          id: text(file.id),
+          name: text(file.name),
+          mimeType: text(file.mimeType),
+          size,
+          sizeLabel: sizeLabel(size),
+        });
+      }
+    } catch (error) {
+      console.warn('[feed] could not read the files sent with the messages', error);
+    }
+  }
+  for (const row of rows) {
+    if (row.kind !== 'line') continue;
+    const files = (heldFiles.get(row) ?? []).map((id) => known.get(id)).filter((f): f is FeedAttachment => !!f);
+    if (files.length) row.attachments = files;
+  }
 }
 
 /** Group extracted and hand-made records into activity rows — see the module comment. */
@@ -264,6 +381,18 @@ export async function readFeedWindow(
     limit: shown,
     include: repliesInclude(),
   });
+  /*
+    What a collection says: its bare lines (what a call hears, and every line written before messages
+    were compositions) and its message compositions, each a page. The two pages are merged by time
+    with the rest, and the window is cut after that, as for two calls.
+  */
+  const said = async (within: string): Promise<{ rows: Row[]; filled: boolean }> => {
+    const [bare, messages] = await Promise.all([
+      find('TextBlock', page(within)),
+      find('CollectionBlock', { ...page(within), where: { kind: MESSAGE_KINDS } }),
+    ]);
+    return { rows: [...bare, ...messages], filled: bare.length >= shown || messages.length >= shown };
+  };
 
   /*
     Of one call, what its passes wrote, by id — the call's own `extracted`, which each record's
@@ -283,7 +412,7 @@ export async function readFeedWindow(
         );
 
   const [loose, calls, ...extracted] = await Promise.all([
-    find('TextBlock', page(root)),
+    said(root),
     /*
       The calls in the space collection itself — a call about nothing. A call held about something
       is a response to it and a child of nothing, so it is not here: it belongs with what it is
@@ -341,7 +470,7 @@ export async function readFeedWindow(
     A source that filled its page may hold more than it answered with — a kind of record too: a
     pass's records draw as one row, so a full page of them leaves the window looking roomy.
   */
-  let filled = loose.length >= shown || extracted.some((kind) => kind.length >= shown);
+  let filled = loose.filled || extracted.some((kind) => kind.length >= shown);
   /*
     A spoken line this reader keeps hidden goes here, before the cut — only what the window can
     draw counts toward filling it (and toward a later call being out of reach). A reply stays: its
@@ -349,7 +478,7 @@ export async function readFeedWindow(
     the page just now.
   */
   const drawn = (row: FeedLine) => options.spoken !== false || row.source !== SPOKEN;
-  let lines: FeedLine[] = threadLines({ rows: loose, newestFirst: !fromStart })
+  let lines: FeedLine[] = threadLines({ rows: loose.rows, newestFirst: !fromStart })
     .map((row) => toLine(row, '', ''))
     .filter(drawn);
   let reachedCalls = 0;
@@ -365,10 +494,10 @@ export async function readFeedWindow(
     reachedCalls += 1;
     const callId = text(call.id);
     stop();
-    const said = await find('TextBlock', page(callId));
-    if (said.length >= shown) filled = true;
+    const inCall = await said(callId);
+    if (inCall.filled) filled = true;
     lines = lines.concat(
-      threadLines({ rows: said, newestFirst: !fromStart })
+      threadLines({ rows: inCall.rows, newestFirst: !fromStart })
         .map((row) => toLine(row, callId, titles.get(callId) ?? ''))
         .filter(drawn),
     );
@@ -377,5 +506,9 @@ export async function readFeedWindow(
   const activity = groupActivity(extracted.flat(), titles, options.pending);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
-  return { rows: merged.slice(0, shown), hasMore };
+  const window = merged.slice(0, shown);
+  stop();
+  await readParts(window, find);
+  await readAttachments(window, find, options.attachments ?? new Map<string, FeedAttachment>());
+  return { rows: window, hasMore };
 }

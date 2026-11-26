@@ -2972,6 +2972,46 @@ describe('mending a line somebody misheard', () => {
 
     expect(updates).toEqual([]);
   });
+
+  it('mends a typed message composition in its words and in the TextBlock it holds', async () => {
+    /*
+      A message typed into the call chat is a composition: a CollectionBlock with `kind: 'message'`.
+      The transcript draws it by its `textContent`, and its own TextBlock holds the same words. An
+      edit must change both, and must not write `text` onto the composition's id as a TextBlock.
+    */
+    const finds: Array<{ entity: string; query: Record<string, unknown> | undefined }> = [];
+    const h = harness(inCall, {
+      records: {
+        update: deps.records!.update,
+        find: async (entity: string, query?: Record<string, unknown>) => {
+          finds.push({ entity, query });
+          if (entity === 'CollectionBlock') return [{ id: 'message-1', kind: 'message' }];
+          if (entity === 'TextBlock') return [{ id: 'message-1-words', text: 'Sam is joinng late' }];
+          return [];
+        },
+      },
+    });
+
+    await h.store.editUtterance('message-1', 'Sam is joining late', 'typed');
+
+    expect(updates).toEqual([
+      { entity: 'TextBlock', id: 'message-1-words', fields: { text: 'Sam is joining late' } },
+      { entity: 'CollectionBlock', id: 'message-1', fields: { textContent: 'Sam is joining late' } },
+    ]);
+    expect(finds[1]).toMatchObject({ entity: 'TextBlock', query: { within: 'message-1' } });
+  });
+
+  it('mends a bare line as a TextBlock when no message composition has its id', async () => {
+    const h = harness(inCall, {
+      records: { update: deps.records!.update, find: async () => [] },
+    });
+
+    await h.store.editUtterance('block-1', 'Siobhan is joining late', 'spoken');
+
+    expect(updates).toEqual([
+      { entity: 'TextBlock', id: 'block-1', fields: { text: 'Siobhan is joining late', source: 'corrected' } },
+    ]);
+  });
 });
 
 /**

@@ -208,6 +208,10 @@ export const contextData: ContextData = {
         { name: 'multiple', type: 'boolean', optional: false, default: 'false' },
         { name: 'disabled', type: 'boolean', optional: false, default: 'false' },
         { name: 'name', type: 'string', optional: false, default: "''" },
+        { name: 'files', type: 'File[] | undefined', optional: true },
+        { name: 'maxSize', type: 'number', optional: false, default: '0' },
+        { name: 'hideList', type: 'boolean', optional: false, default: 'false' },
+        { name: 'label', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -1468,6 +1472,7 @@ export const contextData: ContextData = {
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'editorState', type: 'string', predicate: 'we://editor_state', required: false, default: 'null' },
         { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
+        { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
         { name: 'sourceRef', type: 'string', predicate: 'we://source_ref', required: false },
         { name: 'sourceName', type: 'string', predicate: 'we://source_name', required: false },
@@ -3462,6 +3467,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
       ambient: [
@@ -3549,6 +3555,7 @@ export const contextData: ContextData = {
         'copyGuestLink',
         'exportCallTranscript',
         'exportInterpretationLog',
+        'saveFileBlock',
         'removeSpaceFromGlobal',
       ],
     },
@@ -4692,7 +4699,7 @@ export const contextData: ContextData = {
         {
           name: 'threadLines',
           params: ['options'],
-          doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
+          doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, a line with marks carries `content` — the one block a BlockRenderer draws it from — and a message read with `partsInclude()` (its parts and their files, two levels down) carries `attachments`: { id, name, mimeType, size, sizeLabel } for each file sent with it. Options: rows (the page), newestFirst (boolean).',
           example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
         },
       ],
@@ -4779,7 +4786,7 @@ export const contextData: ContextData = {
         {
           name: 'reply',
           kind: 'action',
-          doc: 'Answers one line with a typed line of its own, linked from it as a reply.',
+          doc: 'Answers one line with a typed line of its own, linked from it as a reply — with the files attached to it, when it was given any.',
         },
         {
           name: 'replyingTo',
@@ -4794,7 +4801,7 @@ export const contextData: ContextData = {
         {
           name: 'sendToFeed',
           kind: 'action',
-          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.',
+          doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.',
         },
         {
           name: 'showCallTranscripts',

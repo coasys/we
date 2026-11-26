@@ -333,7 +333,9 @@ const CASES: Record<TemplateQueryCase, QueryCase> = {
   },
   'queries.transcript-lines-with-replies': {
     // A call's lines, each with its thread: the reply comes in its line's thread and not as a line,
-    // since it is a child of nothing. One page carries the whole conversation.
+    // since it is a child of nothing. One page carries the whole conversation. The panel asks for
+    // `['TextBlock', 'CollectionBlock']`; the renderer sends this same query once for each entity,
+    // so this case is the `TextBlock` half.
     from: 'module-system/transcribe/src/Panel.schema.ts',
     query: (k) => ({
       entity: 'TextBlock',

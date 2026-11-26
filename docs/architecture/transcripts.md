@@ -9,9 +9,14 @@ nothing enforces any of it.
 CollectionBlock                    ← one call's transcript
   kind: 'call'                     ← what sort of collection this is
   mode: 'feed'                     ← many agents append here; never reconcile
-  children:  [TextBlock, …]        ← the utterances, in order
-                each carries: text, author (who said it), createdAt
-                and `thread`: every reply typed to it, at any depth
+  children:  [TextBlock | CollectionBlock, …]   ← the lines, in order
+                a heard line is a TextBlock: text, author (who said it), createdAt
+                a typed line is a message composition: a CollectionBlock with kind 'message'
+                  or 'reply', source 'typed', its words in `textContent`, its own TextBlock
+                  under it and, if files were sent, a CollectionBlock of kind 'attachments'
+                  holding a FileBlock for each; the people its marks mention are its own
+                  `mentions` (we://mention), on the message and not on its TextBlock
+                each line has `thread`: every reply typed to it, at any depth
   participants: [did, …]           ← who was present, including people who never spoke
   ↑ a response to the node the call was about, through `we://response` (WeNode.responses), and in
     that node's thread — or, for a call about nothing, a child of the space collection
@@ -86,12 +91,12 @@ this page is the contract, and a change to the shape means changing every row ab
 ## Reading it
 
 Drill down from the collection, and include each line's thread — the replies are there, not among
-the children:
+the children. Ask for both shapes of a line in one query, so they share one order and one window:
 
 ```ts
 {
   $query: {
-    entity: 'TextBlock',
+    entity: ['TextBlock', 'CollectionBlock'],  // a heard line, and a typed message
     scope: { anchor: 'CollectionBlock', via: 'children', anchorId: <collection id> },
     order: { createdAt: 'desc' },  // the newest page, turned back the right way up when drawn
     limit: <window>,
@@ -100,6 +105,52 @@ the children:
 }
 ```
 
+The same `where` goes to each entity of a union, so the query cannot keep only the message
+compositions. Keep them in the expression: `rows.filter(r, r.__subjectClass != 'CollectionBlock' ||
+r.kind in ['message', 'reply'])` (the views use `callLines` in `views/src/views/callLines.ts`). The
+words of a line are `text` on a `TextBlock` and `textContent` on a composition. Count the filtered
+rows, not the raw window, but use the raw window to tell whether there are more.
+
 Then `threadLines({ rows, newestFirst })` flattens the threads in, sorts by when each line was said,
 and gives each reply the quote of what it answers. The transcript panel reads exactly this, windowed
 by `modules.transcribe.transcriptShown`; see `Panel.schema.ts`.
+
+A message's files are two containment levels below it (message → group → file), so the panel reads
+them in the same query: `include: { thread: { include: partsInclude() }, ...partsInclude() }`, where
+`partsInclude()` (in `@we/messages`) is each line's `children` and, below them, each file's `name`,
+`mimeType` and `size` — only for the lines in the window, in one read, and never a file's `url`,
+which for a stored file is the whole file. `threadLines` turns those into each message's
+`attachments`, which `messageLine` draws. The Feed reads its own window's parts and files itself
+(`readParts` and `readAttachments` in `feed.ts`, which keep files read between windows); its rows
+hold the parts as ids, and `threadLines` leaves their `attachments` alone.
+
+## Writing a typed message
+
+`writeMessage` in `@we/module-feed`'s `store.ts` writes every part first, where no reader of the
+conversation looks: the files and their group, the message (unparented), its `TextBlock`, the group
+into the message. Then **one link** publishes it: into the call's or the space's `children`, or —
+for a reply — the answered line's `responses` (the host completes the thread from that link). Only
+then come the `mentions` links from the message to each person its marks name: a mention wakes an
+agent, a wake cannot be taken back, and the agent reads the message's place in its conversation.
+The records kernel has no write group, so this is what stands in for one: until the holder link
+nothing reads the message, and a failure at any step removes every record written, newest first. Every write names the dataset
+it was sent from, captured before the first await.
+
+**Mentions are on the message.** A woken agent is woken on the record that carries the
+`we://mention` link and is told of the files up to two containment levels below it, which is the
+message's group of files — from its `TextBlock` they would be a sibling's. The host's
+`lineMentions.ts` keeps this so: it links nothing from a `TextBlock` written into a message, and
+when an edit changes such a `TextBlock`'s words, it moves the links on the message (found through
+`partOf`). Its readers — `myMentions` (`referrers` by relation, then `containerActivity`'s
+`mentionsOf`) — read the relation on any record, so they find messages as they find posts.
+
+**An edit** (`editUtterance` → `mendLine` in `@we/messages`) writes the words in both places they
+are held, the `TextBlock` and the message's `textContent`, to the dataset captured when the edit
+began. The two writes are not one transaction: if the second fails, the `TextBlock` is written back
+as it was — text, `source` and marks, so the host moves the mentions back with them — and the
+failure is reported.
+
+**A bot's notice** (`botWatch.ts`) watches the space's newest `TextBlock`s. The words of a message
+are a `TextBlock` whose `partOf` is the message, so a line whose parent is a message composition is
+weighed as the message — its id, and the collection the message is in — which is what the Feed draws
+and what "is the reader already looking at it" is asked about.

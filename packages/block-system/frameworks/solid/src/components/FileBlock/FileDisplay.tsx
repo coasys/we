@@ -47,6 +47,8 @@ export function FileDisplay(props: FileDisplayProps) {
           download={props.url?.startsWith('data:') ? props.name : undefined}
           textDecoration="none"
           display="flex"
+          // The link's own anchor is inline: a block row inside it left a blank line above and below the card.
+          styles={{ display: 'flex' }}
         >
           <Row
             gap="400"
@@ -58,7 +60,6 @@ export function FileDisplay(props: FileDisplayProps) {
             bg="surface-sunken"
             hoverProps={{ bg: 'surface-sunken' }}
           >
-            <we-icon name="download-simple" color="text-muted" />
             <Column gap="100" flex="1">
               <we-text fontSize="500" color="text">
                 {props.title || props.name || 'File'}

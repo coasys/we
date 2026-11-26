@@ -6,7 +6,8 @@
  * the assertions live beside the cases, so one scenario can be measured several ways.
  */
 import { resolveParts } from '@shared/registries/moduleParts';
-import { feedView } from '@we/module-feed';
+import { hostSourceBag } from '@shared/sources';
+import { callFeedView, feedView } from '@we/module-feed';
 import { transcriptLines } from '@we/module-transcribe';
 import {
   cardShell,
@@ -43,11 +44,13 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 // By path: the app shell does not depend on `@we/messages`, and a scenario only needs its reader.
-import { lineContent } from '../../../module-system/messages/src/index.ts';
+import { lineContent, threadLines } from '../../../module-system/messages/src/index.ts';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { treeSection } from '../../../templates/cartridges/src/coasys/space/tree.ts';
 import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { callsList } from '../../../templates/views/src/views/CardsView/CallsList.ts';
 import { channelList } from '../../../templates/views/src/views/FluxView/ChannelList.ts';
+import { recordPage } from '../../../templates/views/src/views/RecordPage/index.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -1296,6 +1299,123 @@ const transcriptAt = (rows: number): Scenario => ({
         transcriptFromStart: false,
       },
     },
+  },
+});
+
+/**
+ * A call that holds one heard line and one typed message — the two shapes of a line in one call.
+ *
+ * - The heard line is a bare `TextBlock` directly under the call, as transcription writes it.
+ * - The typed message is a composition: a `CollectionBlock` with `kind: 'message'` under the call,
+ *   with its words in `textContent`, and its own `TextBlock` under it (not under the call).
+ *
+ * A reader of the call must show each line once, heard line first. It must not show the typed words
+ * a second time from the composition's own `TextBlock`. The cases `typedAndHeard*` check this on each
+ * surface that reads a call's lines.
+ */
+const MIXED_CALL = 'call-mixed';
+const HEARD_WORDS = 'Heard on the call before anybody typed.';
+const TYPED_WORDS = 'Typed into the call chat after that.';
+
+const mixedCallData = () => ({
+  tables: {
+    CollectionBlock: [
+      {
+        id: MIXED_CALL,
+        kind: 'call',
+        title: 'Mixed call',
+        author: SPEAKERS[0],
+        participants: [SPEAKERS[0], SPEAKERS[1]],
+        createdAt: '2026-09-01T09:00:00',
+      },
+      {
+        id: 'typed-message',
+        parentId: MIXED_CALL,
+        kind: 'message',
+        textContent: TYPED_WORDS,
+        source: 'typed',
+        author: SPEAKERS[1],
+        createdAt: '2026-09-01T09:02:00',
+      },
+    ],
+    TextBlock: [
+      {
+        id: 'heard-line',
+        parentId: MIXED_CALL,
+        text: HEARD_WORDS,
+        source: 'spoken',
+        author: SPEAKERS[0],
+        createdAt: '2026-09-01T09:01:00',
+      },
+      {
+        id: 'typed-message-words',
+        parentId: 'typed-message',
+        text: TYPED_WORDS,
+        source: 'typed',
+        author: SPEAKERS[1],
+        createdAt: '2026-09-01T09:02:00',
+      },
+    ],
+  },
+  relations: {
+    CollectionBlock: { children: { type: 'hasMany' as const, target: 'TextBlock', foreignKey: 'parentId' } },
+  },
+});
+
+const mixedCallProfiles = { profiles: SPEAKERS.map((did, i) => ({ did, name: `Peer ${i + 1}` })) };
+
+/** The transcript panel's lines, on the mixed call. */
+const typedAndHeardTranscript = (): Scenario => ({
+  node: panelScroll({ pin: 'end', jump: 'both', children: [transcriptLines] }),
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    // `threadLines` is a function the transcribe module lends (`contributes.functions`). The harness
+    // mounts no module registry, so the scenario gives it, as `TemplateProvider` does in the app.
+    $sources: { ...hostSourceBag(), threadLines },
+    modules: {
+      transcribe: {
+        collectionId: MIXED_CALL,
+        callOnScreenLive: false,
+        transcriptShown: 200,
+        transcriptFromStart: true,
+      },
+      call: { liveCalls: [] },
+    },
+  },
+});
+
+/** The calls list in the Cards view, with each card open, on the mixed call. */
+const typedAndHeardCallsList = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '400', width: '100%' },
+    $localState: {
+      contentType: { type: 'string', initial: 'calls' },
+      displayMode: { type: 'string', initial: 'expanded' },
+      sortDirection: { type: 'string', initial: 'desc' },
+      showEmptyCalls: { type: 'boolean', initial: false },
+    },
+    children: [callsList],
+  },
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    routeStore: { params: {}, segments: [] },
+    shapeStore: { interpretationCandidates: [] },
+    recordStore: { displays: {} },
+    modules: { call: { liveCalls: [] } },
+  },
+});
+
+/** The call's own record page, on the mixed call. */
+const typedAndHeardRecordPage = (): Scenario => ({
+  node: recordPage,
+  ...mixedCallData(),
+  stores: {
+    profileStore: mixedCallProfiles,
+    routeStore: { params: { id: MIXED_CALL }, segments: ['record', 'CollectionBlock'] },
+    recordStore: { displays: {} },
   },
 });
 
@@ -2653,6 +2773,83 @@ const feedViewPage = (hasMore = false): Scenario => {
   };
 };
 
+/**
+ * A message sent with two files, in the space's Feed or in a call's chat, beside a line with none.
+ *
+ * The rows are the lines `readFeedWindow` makes of a message composition (`kind: message`, its
+ * TextBlock, and a group of two FileBlocks): the words from the TextBlock, and each file named and
+ * sized from its record, with no bytes, and offered to save. The feed's own tests hold the read; this
+ * holds how the line is drawn.
+ */
+const feedAttachments = (inCall: boolean): Scenario => {
+  const line = (id: string, author: string, text: string, at: string, attachments: object[] = []) => {
+    const row = {
+      kind: 'line',
+      id,
+      at,
+      createdAt: at,
+      updatedAt: at,
+      author,
+      text,
+      marks: '',
+      source: 'typed',
+      call: inCall ? 'call-1' : '',
+      callTitle: inCall ? 'Monday sync' : '',
+      replyTo: null,
+      textId: attachments.length ? `${id}-text` : '',
+      attachments,
+      sending: false,
+    };
+    return { ...row, content: lineContent(row) };
+  };
+  const rows = [
+    line('m2', 'did:me', 'The plan and the site map, for Friday.', '2026-11-25T10:01:00Z', [
+      { id: 'file-1', name: 'venue-plan.pdf', mimeType: 'application/pdf', size: 2_516_582, sizeLabel: '2.4 MB' },
+      { id: 'file-2', name: 'site-map.png', mimeType: 'image/png', size: 312_320, sizeLabel: '305 KB' },
+    ]),
+    line('m1', 'did:them', 'Can somebody send the plan?', '2026-11-25T10:00:00Z'),
+  ];
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '600px' },
+      children: [inCall ? callFeedView : feedView],
+    },
+    tables: {},
+    stores: {
+      // The call's chat draws the call the route names.
+      ...(inCall ? { routeStore: { params: { call: 'call-1' } } } : {}),
+      modules: {
+        feed: inCall
+          ? {
+              callFeedRows: rows,
+              callFeedLoaded: true,
+              callFeedHasMore: false,
+              callFeedFromStart: false,
+              timelineOrientation: 'newestBottom',
+              replyingTo: null,
+              botAuthors: [],
+            }
+          : {
+              feedRows: rows,
+              feedLoaded: true,
+              feedHasMore: false,
+              feedFromStart: false,
+              timelineOrientation: 'newestBottom',
+              replyingTo: null,
+              botAuthors: [],
+            },
+      },
+      profileStore: {
+        profiles: [
+          { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
+          { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+        ],
+      },
+    },
+  };
+};
+
 /** `[start, end)` of `needle` in `text`, in code points — the unit a stored mark counts in. */
 const cpRange = (text: string, needle: string): { start: number; end: number } => {
   const at = text.indexOf(needle);
@@ -2945,6 +3142,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'feed:view': () => feedViewPage(),
   'feed:view-more': () => feedViewPage(true),
   'feed:rich': feedRichLines,
+  'feed:attachments': () => feedAttachments(false),
+  'feed:call-attachments': () => feedAttachments(true),
   'perf:feedLines': (scale) => feedLinesAt(scale ?? 50),
   'coasys:space-feed': coasysSpaceFeed,
   'coasys:bar': coasysBar,
@@ -2980,6 +3179,9 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'canvas:tree-strip': treeStripOverCanvas,
   'canvas:voices': voicesPopover,
   'perf:transcript': (scale) => transcriptAt(scale ?? 100),
+  'calls:typed-and-heard-transcript': typedAndHeardTranscript,
+  'calls:typed-and-heard-list': typedAndHeardCallsList,
+  'calls:typed-and-heard-record': typedAndHeardRecordPage,
   'discussion:thread': discussionThread,
   'signals:reaction': reactionControl,
   'cards:counts': countControls,

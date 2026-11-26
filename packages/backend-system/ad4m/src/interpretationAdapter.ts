@@ -86,6 +86,11 @@ const THREAD_PREDICATE = 'we://thread';
 const TEXT_SOURCE_PREDICATE = 'we://text_source';
 /** What a person said or wrote, by that field. Anything else is not read as input. */
 const INPUT_SOURCES = ['spoken', 'typed', 'corrected'] as const;
+/** WE's containment, which holds the parts of a message composition — see {@link transcriptScopeQuery}. */
+const CHILD_PREDICATE = 'we://child';
+/** Where a collection keeps its `kind`, and the kinds that make it a message composition. */
+const KIND_PREDICATE = 'we://kind';
+const MESSAGE_KINDS = ['message', 'reply'] as const;
 
 /**
  * The conversation a request is about: its provenance where it names one, else its parent.
@@ -1621,12 +1626,24 @@ function createLinkedInterpretationPort(selfId?: () => string | undefined) {
  * than a walk down `we://response`. A `UNION` rather than a `?` path, so every predicate is written
  * out as a full IRI, which is what the executor reads a query's predicates from. A call held about a
  * line is in its thread too, and is not a text block, so the flag below leaves it out.
+ *
+ * A typed message is a composition: a collection with `kind` message (or reply, in a thread) whose
+ * first child is the TextBlock with its words. That TextBlock is the turn, so the two last branches
+ * go one `we://child` hop into a message composition, at the top and in a thread. Only a message
+ * composition is entered: a call in the conversation is a collection too, and its lines belong to
+ * its own transcript. The composition itself carries the same source but no text flag, so it is not
+ * read twice.
  */
 export function transcriptScopeQuery(parentId: string, childPredicate: string): string {
+  const message = `?msg <${KIND_PREDICATE}> ?kind . FILTER(?kind IN (${MESSAGE_KINDS.map((kind) => `"${kind}"`).join(', ')})) ?msg <${CHILD_PREDICATE}> ?m .`;
   return `SELECT ?speaker ?text ?timestamp WHERE {
   { <${parentId}> <${childPredicate}> ?m . }
   UNION
   { <${parentId}> <${childPredicate}> ?line . ?line <${THREAD_PREDICATE}> ?m . }
+  UNION
+  { <${parentId}> <${childPredicate}> ?msg . ${message} }
+  UNION
+  { <${parentId}> <${childPredicate}> ?line . ?line <${THREAD_PREDICATE}> ?msg . ${message} }
   ?m <${TEXT_BLOCK_FLAG.predicate}> <${TEXT_BLOCK_FLAG.value}> .
   ?m <${TEXT_SOURCE_PREDICATE}> ?source .
   FILTER(?source IN (${INPUT_SOURCES.map((source) => `"${source}"`).join(', ')}))

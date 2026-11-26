@@ -116,6 +116,56 @@ describe('gatherTranscriptTurns', () => {
     );
     expect(turns.map((t) => t.text)).toEqual(['said', 'typed', 'mended']);
   });
+
+  /*
+    A message typed into a call is a composition: a CollectionBlock (`kind: message`) that holds its
+    words in `textContent`, its TextBlock and its files. It is a turn the same as a bare line, and a
+    reply composition in a bare line's thread is a turn too. Other collections in the call (a call
+    held about a line, a group of files) have no words and no source, and are not turns.
+  */
+  it('reads a message composition as a turn, with its words from textContent', async () => {
+    const byEntity: Record<string, Record<string, unknown>[]> = {
+      TextBlock: [
+        {
+          id: 'said',
+          text: 'lunch at 1?',
+          author: 'did:a',
+          createdAt: 1_000,
+          source: 'spoken',
+          thread: [
+            { id: 'rep', kind: 'reply', textContent: 'yes', author: 'did:b', createdAt: 2_000, source: 'typed' },
+          ],
+        },
+      ],
+      CollectionBlock: [
+        {
+          id: 'msg',
+          kind: 'message',
+          textContent: 'the plan, attached',
+          author: 'did:b',
+          createdAt: 3_000,
+          source: 'typed',
+        },
+        { id: 'files', kind: 'attachments', author: 'did:b', createdAt: 3_000 },
+        { id: 'other', kind: 'call', textContent: 'not a message', author: 'did:c', createdAt: 4_000, source: 'typed' },
+      ],
+    };
+    const asked: string[] = [];
+    const turns = await gatherTranscriptTurns(
+      {
+        modelFor: (entity: string) =>
+          byEntity[entity] ? model(byEntity[entity], () => asked.push(entity)) : undefined,
+        handle: {},
+      },
+      'call-1',
+    );
+    expect(asked).toEqual(['TextBlock', 'CollectionBlock']);
+    expect(turns).toEqual([
+      { speaker: 'did:a', text: 'lunch at 1?', timestamp: new Date(1_000).toISOString(), source: 'spoken' },
+      { speaker: 'did:b', text: 'yes', timestamp: new Date(2_000).toISOString(), source: 'typed' },
+      { speaker: 'did:b', text: 'the plan, attached', timestamp: new Date(3_000).toISOString(), source: 'typed' },
+    ]);
+  });
 });
 
 describe('how a turn came to be', () => {

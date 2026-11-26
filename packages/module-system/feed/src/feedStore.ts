@@ -21,19 +21,27 @@
  * moved. The same answer the transcript's cards are marked from, read from the host rather than from
  * another module, which this one may not depend on.
  */
-import { lineContent, TYPED } from '@we/messages';
+import { lineContent, MESSAGE_KINDS, TYPED } from '@we/messages';
 import type { InterpretationKernel, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 import {
   CALL_FIELDS,
   FEED_FIRST_PAGE,
   FEED_PAGE,
+  type FeedAttachment,
   type FeedLine,
   FeedReadStopped,
   type FeedRow,
   markPending,
   readFeedWindow,
+  sizeLabel,
 } from './feed';
+
+/** The files a send was given, whatever the schema passed — a list of browser files, or nothing. */
+export const filesOf = (value: unknown): File[] =>
+  (Array.isArray(value) ? value : []).filter(
+    (file): file is File => typeof File !== 'undefined' && file instanceof File,
+  );
 
 /** How long a burst of changes is collected before the window is read again. */
 const SETTLE_MS = 250;
@@ -77,9 +85,10 @@ export interface FeedDeps {
   selfId?: () => string | null;
   /**
    * Write a message under `holder` — the store's own, so typed lines and feed messages are written
-   * one way. Resolves with the new record's id, or `null` when there was nowhere to write it.
+   * one way. Resolves with the new record's id, or `null` when there was nowhere to write it — which
+   * the send reports as a failure, so a caller never takes a message that was not made for one that was.
    */
-  write: (holder: FeedHolder, text: string, marks?: string) => Promise<string | null>;
+  write: (holder: FeedHolder, text: string, marks?: string, files?: File[]) => Promise<string | null>;
 }
 
 /** What a message is written under: the collection it is a child of, or the line it answers. */
@@ -121,6 +130,8 @@ export function createFeed(deps: FeedDeps) {
     what was read, never written into it.
   */
   const [sent, setSent] = signal<SentLine[]>([]);
+  /** The files read for the window, by `FileBlock` id — see `readAttachments`. */
+  let readFiles = new Map<string, FeedAttachment>();
   let sentKeys = 0;
   let lastSentAt = 0;
   /*
@@ -163,6 +174,9 @@ export function createFeed(deps: FeedDeps) {
     // A root that reads other signals (the calls drawn) can re-run this for the same collection.
     if (ds === datasetWas && now === rootWas) return;
     datasetWas = ds;
+    // A file's id means a file in one dataset only. A new map, not a cleared one: a read of the last
+    // dataset still in flight writes into the map it started with.
+    readFiles = new Map<string, FeedAttachment>();
     setRows([]);
     setSent([]);
     setLoaded(false);
@@ -281,6 +295,7 @@ export function createFeed(deps: FeedDeps) {
         fromStart: anchoredAtStart,
         spoken,
         activityTypes,
+        attachments: readFiles,
         pending: new Set(unconfirmed()),
         stopped: () => !same() || !looking(),
       });
@@ -316,9 +331,15 @@ export function createFeed(deps: FeedDeps) {
   /**
    * One line, drawn the moment it is sent and written behind it. Its id is only known once the write
    * resolves, so a read matches it by that id and never before: one that lands first leaves it be. A
-   * failed write takes it down and says so to whoever sent it.
+   * failed write — or one that wrote nothing — takes it down and says so to whoever sent it.
    */
-  async function post(holder: FeedHolder, text: string, marks?: string, replyTo: FeedLine['replyTo'] = null) {
+  async function post(
+    holder: FeedHolder,
+    text: string,
+    marks?: string,
+    replyTo: FeedLine['replyTo'] = null,
+    files: File[] = [],
+  ) {
     const words = text.trim();
     // Strictly later than the last, so two sends in one millisecond keep the order they were made in.
     lastSentAt = Math.max(Date.now(), lastSentAt + 1);
@@ -338,13 +359,22 @@ export function createFeed(deps: FeedDeps) {
       callTitle: '',
       replyTo,
       content: lineContent({ text: words, marks }),
+      textId: '',
+      // Named as they will be; there is nothing to download until the write has stored them.
+      attachments: files.map((file) => ({
+        id: '',
+        name: file.name,
+        mimeType: file.type,
+        size: file.size,
+        sizeLabel: sizeLabel(file.size),
+      })),
       sending: true,
     };
     setSent([...sent(), { key, line }]);
     const forget = () => setSent(sent().filter((entry) => entry.key !== key));
     try {
-      const id = await deps.write(holder, words, marks);
-      if (!id) return forget();
+      const id = await deps.write(holder, words, marks, files);
+      if (!id) throw new Error('The message could not be sent: there was nowhere to write it.');
       // A read may have landed with it while the write was resolving.
       if (rows().some((row) => row.id === id)) return forget();
       setSent(sent().map((entry) => (entry.key === key ? { key, line: { ...entry.line, id } } : entry)));
@@ -475,6 +505,18 @@ export function createFeed(deps: FeedDeps) {
     */
     const ownLines = deps.activityRoot ? { within: space } : {};
     stops.push(records.subscribe('TextBlock', { ...ownLines, ...newest }, onChange()));
+    /*
+      And the newest message composition, the same way: a typed message, or a reply, is a
+      `CollectionBlock` (see `@we/messages`). By its kinds, so a new post or call is not a new line.
+      Its parts arrive after it, and are heard through the lines on screen, below.
+    */
+    stops.push(
+      records.subscribe(
+        'CollectionBlock',
+        { ...ownLines, where: { kind: MESSAGE_KINDS }, ...newest, select: ['createdAt'] },
+        onChange(),
+      ),
+    );
     // The fields a window draws of a call: a new call or a renamed one moves them, and a line said in
     // one is heard by the TextBlock subscription above rather than through the call's line list.
     stops.push(
@@ -497,17 +539,25 @@ export function createFeed(deps: FeedDeps) {
   let shownStop: (() => void) | null = null;
   let shownKey = '';
   effect?.(() => {
-    const ids = rows()
-      .filter((row) => row.kind === 'line')
-      .map((row) => row.id)
-      .filter(Boolean);
-    const key = ids.join(',');
+    const lines = rows().filter((row): row is FeedLine => row.kind === 'line');
+    const ids = lines.map((line) => line.id).filter(Boolean);
+    /*
+      A line is a bare text block or a message composition (see `@we/messages`). A composition is
+      followed as itself — its words, and its group of files joining it — and through the text block
+      that holds its words. Each id is asked of both kinds; a kind that does not hold it answers nothing.
+    */
+    const texts = [...ids, ...lines.map((line) => line.textId).filter(Boolean)];
+    const key = texts.join(',');
     if (key === shownKey) return;
     shownKey = key;
     shownStop?.();
     shownStop = null;
     if (!ids.length || typeof records?.subscribe !== 'function') return;
-    shownStop = records.subscribe('TextBlock', { where: { id: ids } }, onChange());
+    const stops = [
+      records.subscribe('TextBlock', { where: { id: texts } }, onChange()),
+      records.subscribe('CollectionBlock', { where: { id: ids, kind: MESSAGE_KINDS } }, onChange()),
+    ];
+    shownStop = () => stops.forEach((stop) => stop());
   });
   deps.onDispose?.(() => {
     disposed = true;
@@ -566,10 +616,10 @@ export function createFeed(deps: FeedDeps) {
       'Re-anchors the Feed at the newest message.',
       { ambient: true },
     ),
-    sendToFeed: action(async (text: string, marks?: string) => {
+    sendToFeed: action(async (text: string, marks?: string, files?: File[]) => {
       const space = root();
       if (!space || !text?.trim()) return;
-      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks);
-    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.'),
+      await post({ id: space, relation: 'children', entity: 'CollectionBlock' }, text, marks, null, filesOf(files));
+    }, 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any, and the files attached to it, when it was given any.'),
   };
 }

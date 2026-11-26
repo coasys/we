@@ -110,6 +110,7 @@ class FakeBlock {
 
 class FakeText extends FakeBlock {}
 class FakeImage extends FakeBlock {}
+class FakeFile extends FakeBlock {}
 
 class FakeCollection extends FakeBlock {
   children: string[] = [];
@@ -140,6 +141,7 @@ registerBlock({
   entity: 'CollectionBlock',
 });
 registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockEntityStatic, entity: 'ImageBlock' });
+registerBlock({ nodeTypes: ['file'], model: FakeFile as unknown as BlockEntityStatic, entity: 'FileBlock' });
 
 // The dataset handle is opaque to the pipeline — an empty object is a complete fake.
 const perspective = {};
@@ -631,6 +633,37 @@ describe('deleteBlocks', () => {
     expect(post.deleted).toBe(true);
     expect(reply.deleted).toBe(true);
     expect(call.deleted).toBeFalsy();
+  });
+
+  it('removes a message with its words, its group of files and each file, with the conversation that holds it', async () => {
+    /*
+      A message is a composition: a collection (`kind: message`) whose children are its TextBlock and,
+      when files were sent, a collection (`kind: attachments`) with one FileBlock for each file. All of
+      it is `children`, so deleting the conversation (`spaceStore.deleteCollection`, which is this
+      walk) or the message itself removes every part, and leaves no file behind.
+    */
+    const collection = async (kind: string, children: string[]) => {
+      const made = (await FakeCollection.create(perspective, {})) as FakeCollection;
+      made.kind = kind;
+      made.children = children;
+      return made;
+    };
+    const text = (await FakeText.create(perspective, { text: 'the plan' })) as FakeText;
+    const files = [
+      (await FakeFile.create(perspective, { name: 'plan.pdf' })) as FakeFile,
+      (await FakeFile.create(perspective, { name: 'map.png' })) as FakeFile,
+    ];
+    const group = await collection(
+      'attachments',
+      files.map((file) => file.id),
+    );
+    const message = await collection('message', [text.id, group.id]);
+    const bare = (await FakeText.create(perspective, { text: 'an older line' })) as FakeText;
+    const call = await collection('call', [message.id, bare.id]);
+
+    await deleteBlocks(perspective, call.id);
+
+    for (const part of [call, message, text, group, ...files, bare]) expect(part.deleted).toBe(true);
   });
 
   it('skips a reply that resolves to nothing rather than failing the delete', async () => {

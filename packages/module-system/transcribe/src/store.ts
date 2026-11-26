@@ -1,5 +1,5 @@
 import { activitiesOfType } from '@we/backend-shared';
-import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
+import { CORRECTED, mendLine, sourceAfterEdit, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 import { coalesceByKey, latest } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
@@ -3983,19 +3983,19 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
      * so. Editing something `typed` leaves it `typed` — correcting your own writing is not a
      * correction *of a transcript* — and something already `corrected` stays that way.
      *
-     * `was` is passed in rather than read, because a module's data surface is write-only by design
-     * (see `transcriptTurns`) and the panel is holding the row already.
+     * `was` is passed in rather than read, because the panel is holding the row already. The one
+     * read here is whether the id is a message composition (see `mendLine`).
      */
     editUtterance: action(async (id: string, text: string, was?: string) => {
       const words = String(text ?? '').trim();
       if (!id || !words || !updateEntity) return;
-      await updateEntity(
-        'TextBlock',
-        id,
-        { text: words, ...(was === SPOKEN ? { source: CORRECTED } : {}) },
-        // The call's space, as every other write here. `callTarget` answers with it or undefined.
-        callTarget(),
-      );
+      /*
+        A line typed into the call chat is a message composition, which holds its words two times:
+        in its own `TextBlock` and in its `textContent`. `mendLine` changes both. A heard line is a
+        bare `TextBlock`. In the call's space, as every other write here: `callTarget` answers with
+        it or undefined.
+      */
+      await mendLine({ update: updateEntity, find: findEntity }, id, words, sourceAfterEdit(was), callTarget());
     }, 'Corrects the words on a line of the transcript, marking a spoken line as corrected.'),
     /** Write what has been heard so far without waiting for the buffer to fill. */
     flushNow: action(() => flush(), 'Writes what has been heard so far without waiting for the buffer to fill.'),

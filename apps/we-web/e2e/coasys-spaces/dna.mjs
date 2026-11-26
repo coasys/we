@@ -134,7 +134,8 @@ export async function installDnaThroughUi(who, spaceName, perspective, path = DN
   // The checklist offers only the spaces this agent runs. Just after a space is made, the app may not
   // yet know who made it, and offers none; the prompt is asked again until it lists this space.
   const deadline = Date.now() + 150_000;
-  const input = page.locator('we-file-upload input[type=file]').first();
+  // The Settings picker, by its name: a Feed composer behind Settings has a file input too.
+  const input = page.getByLabel('Install an app from a file', { exact: true });
   for (let tries = 1; ; tries++) {
     // Cleared first: choosing the file the input already holds fires no change, and asks nothing.
     await input.setInputFiles([]);

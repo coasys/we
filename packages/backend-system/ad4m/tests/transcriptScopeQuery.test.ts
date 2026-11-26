@@ -52,7 +52,7 @@ describe('transcriptScopeQuery', () => {
   it('uses the predicate it is given rather than assuming containment', () => {
     // A foreign container reaches its children through its own predicate; the caller resolves it.
     expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(`<${CALL}> <flux://messages> ?m`);
-    expect(transcriptScopeQuery(CALL, 'flux://messages')).not.toContain('we://child');
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).not.toContain(`<${CALL}> <we://child>`);
   });
 
   it('reads the replies through each line’s thread, one hop, not by following them down', () => {
@@ -63,6 +63,24 @@ describe('transcriptScopeQuery', () => {
     expect(query()).not.toContain('we://response');
     // Written out in full, never as a `?` path — the executor reads the predicates from the text.
     expect(query()).not.toMatch(/>\?/);
+  });
+
+  it('reads the words of a message composition through its text part, one hop down', () => {
+    // A typed message is a CollectionBlock (`kind: message`, or `reply` in a thread) whose first
+    // child is the TextBlock with its words. The TextBlock is the turn, so its author and time come
+    // off its own body link as for a bare line. Only a message composition is entered: a call held
+    // in the conversation is a collection too, and its lines are another transcript.
+    const kinds = 'FILTER(?kind IN ("message", "reply"))';
+    expect(query()).toContain(
+      `{ <${CALL}> <we://child> ?msg . ?msg <we://kind> ?kind . ${kinds} ?msg <we://child> ?m . }`,
+    );
+    expect(query()).toContain(
+      `{ <${CALL}> <we://child> ?line . ?line <we://thread> ?msg . ?msg <we://kind> ?kind . ${kinds} ?msg <we://child> ?m . }`,
+    );
+    // The parts of a composition are WE's own containment, whatever the conversation uses.
+    expect(transcriptScopeQuery(CALL, 'flux://messages')).toContain(
+      `{ <${CALL}> <flux://messages> ?msg . ?msg <we://kind> ?kind . ${kinds} ?msg <we://child> ?m . }`,
+    );
   });
 
   it('reads only what a person said or wrote', () => {

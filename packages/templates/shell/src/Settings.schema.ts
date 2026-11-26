@@ -298,6 +298,7 @@ const appsSection: SchemaNode = {
     {
       type: 'we-file-upload',
       props: {
+        label: 'Install an app from a file',
         accept: '.json,application/json',
         disabled: { $: 'bundleStore.busy' },
         onChange: { $invoke: 'bundleStore.installFromFile', args: [{ $: 'event.detail' }] },

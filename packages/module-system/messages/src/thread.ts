@@ -19,6 +19,7 @@
 import { isTextBlock, markdownToBlocks, parseMarks, withFoundLinks } from '@we/block-shared';
 import type { ModuleFunction } from '@we/module-shared';
 
+import { heldFiles, isMessageComposition, lineText } from './composition.ts';
 import { CORRECTED, SPOKEN } from './source.ts';
 
 /** What a reply's quote needs of the line it answers. */
@@ -74,7 +75,7 @@ type Row = Record<string, unknown>;
  * rather than not drawing the line at all.
  */
 export function lineContent(row: Row): Row[] | null {
-  const text = typeof row.text === 'string' ? row.text : '';
+  const text = lineText(row);
   if (!text) return null;
   const marks = parseMarks(row.marks);
   if (row.source === SPOKEN || row.source === CORRECTED)
@@ -105,7 +106,7 @@ function quoteOf(row: Row, byId: Map<string, Row>): ReplyQuote | null {
   return {
     id,
     author: typeof found!.author === 'string' ? found!.author : '',
-    text: typeof found!.text === 'string' ? found!.text : '',
+    text: lineText(found),
   };
 }
 
@@ -143,6 +144,9 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
     seen.add(id);
     const replyTo = quoteOf(row, byId);
     const content = lineContent(row);
+    // The files of a message read with its parts (`partsInclude`); a reader that reads them itself has
+    // only ids here, and keeps what it set.
+    const files = heldFiles(row);
     /*
       The identity fields named, not only spread.
 
@@ -158,8 +162,11 @@ export function threadLines(options: { rows?: unknown; newestFirst?: unknown } |
       author: row.author,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      // A message composition holds its words in `textContent`; a line is drawn and quoted by `text`.
+      ...(isMessageComposition(row) ? { text: lineText(row) } : {}),
       ...(replyTo ? { replyTo } : {}),
       ...(content ? { content } : {}),
+      ...(files.length ? { attachments: files } : {}),
     });
   }
   const newestFirst = options?.newestFirst === true;
@@ -174,7 +181,7 @@ export function repliesInclude(): Record<string, unknown> {
 export const threadLinesFunction: ModuleFunction = {
   name: 'threadLines',
   params: ['options'],
-  doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, and a line with marks carries `content` — the one block a BlockRenderer draws it from. Options: rows (the page), newestFirst (boolean).',
+  doc: 'A page of a conversation’s lines with every reply to them, each once, in time order — newest first when `newestFirst` is true. A reply is a child of nothing: it is in the `thread` of the line it answers, so read the page with `include: { thread: true }` and this flattens each line’s thread in beside it, leaving out any call held about a line. Each reply carries `replyTo: { id, author, text }`, its direct parent, for the quote drawn above it, a line with marks carries `content` — the one block a BlockRenderer draws it from — and a message read with `partsInclude()` (its parts and their files, two levels down) carries `attachments`: { id, name, mimeType, size, sizeLabel } for each file sent with it. Options: rows (the page), newestFirst (boolean).',
   example: 'threadLines({ rows: local.utterances, newestFirst: !modules.transcribe.transcriptFromStart })',
   fn: threadLines,
 };
