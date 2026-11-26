@@ -159,7 +159,7 @@ A watch otherwise waits for three new lines or two minutes, and the stub tier's 
 minutes, so this one-line call asks the watch to run after the first line.
 
 Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names another recording.
-V4's line is separate (`V4_LINE`, `V4_HEARD`, `V4_SCRIPT`) and is not in the recording.
+V4's call is one object, `V4_CALL` (`lines`, `heard`, `script`, built from `V4_LINE`, `V4_HEARD` and `V4_SCRIPT`). It is not in the recording. The decide journey passes that object to `callThatFinds`, and the unit test reads the same one.
 
 - Chromium plays the recording in a loop. So the suite waits until the call's stored lines hold one
   word of each line (`HEARD`: edits, quarter, release, friday), and then presses the call bar's

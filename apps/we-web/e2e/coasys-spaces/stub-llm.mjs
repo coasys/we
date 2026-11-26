@@ -26,9 +26,9 @@
  * {@link SCRIPT} maps what the suite says in a call to the records a model should find in it, by the
  * class's role rather than its exact name: a space whose classes are the social DNA package's
  * (`TeamQuestion`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
- * the task. V4's call says {@link V4_LINE} instead of the film; {@link V4_SCRIPT} is what that line
- * yields, and it is not part of {@link SCRIPT}. Only classes the prompt offers are answered, only
- * fields the prompt lists are filled, and
+ * the task. V4's call is {@link V4_CALL}: it says {@link V4_LINE} instead of the film, and
+ * {@link V4_SCRIPT} is what that line yields. It is not part of {@link SCRIPT}. Only classes the
+ * prompt offers are answered, only fields the prompt lists are filled, and
  * a record whose title the prompt lists as existing is not proposed again — the same discipline a
  * real model is asked for, so the executor's dedup is not what makes the result converge.
  *
@@ -74,11 +74,6 @@ export const V4_LINE = 'Should we keep a second copy of shared edits?';
 /** A word of {@link V4_LINE} the film does not say. The real tier waits for it, then stops. */
 export const V4_HEARD = ['copy'];
 
-/** The text V4's call speaks. One question, nothing else. */
-export function v4CallScript() {
-  return V4_LINE;
-}
-
 /**
  * What each line yields, per role. `when` is matched against the transcript (lower-cased); `role`
  * picks the class; `fields` are by the package's field names, with `title` as the fallback every
@@ -119,6 +114,17 @@ export const V4_SCRIPT = [
     fields: { asks: V4_LINE, status: 'open' },
   },
 ];
+
+/**
+ * The one call V4 speaks. The decide journey passes this object to `callThatFinds`.
+ * `lines` is what is said, `heard` is the word that means it landed, and `script` is
+ * what the stub answers. The unit test reads this same object.
+ */
+export const V4_CALL = {
+  lines: [V4_LINE],
+  heard: V4_HEARD,
+  script: V4_SCRIPT,
+};
 
 /**
  * Which role a class plays, from its name: the package's names, and WE's own task block. The one
