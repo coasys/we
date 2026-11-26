@@ -10,7 +10,7 @@
  *   • Signal controls row
  *   • Close button
  */
-import { OFFERED_SIGNAL_TYPES } from '@we/template-kit';
+import { giveSignal, OFFERED_SIGNAL_TYPES } from '@we/template-kit';
 
 export const agentModal = {
   type: 'we-modal',
@@ -100,10 +100,7 @@ export const agentModal = {
                         signalType: { $: 'sig' },
                         signals: [],
                         myDid: { $: 'me.did' },
-                        onSignal: {
-                          $invoke: 'spaceStore.upsertSignal',
-                          args: [{ $: 'agent.did' }, { $: 'sig.id' }, { $: 'arg' }],
-                        },
+                        onSignal: giveSignal('agent.did', 'sig.id'),
                       },
                     },
                   ],

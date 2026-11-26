@@ -152,7 +152,7 @@ export {
   LIKE_COUNT_TYPE,
   OFFERED_SIGNAL_TYPES,
 } from './we/signalTypes.ts';
-export { signalDisplay } from './we/signalDisplay.ts';
+export { giveSignal, signalDisplay } from './we/signalDisplay.ts';
 export {
   evidenceModal,
   type EvidenceModalOptions,

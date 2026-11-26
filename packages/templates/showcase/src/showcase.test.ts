@@ -1709,7 +1709,7 @@ describe('the workshop’s people', () => {
 
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {
     const calendar = route('/calendar');
-    expect(calendar).toContain('"$invoke":"spaceStore.respondTo"');
+    expect(calendar).toContain('"$invoke":"ops.core.respond"');
     expect(calendar).toContain('.committed');
     expect(calendar).not.toContain('event.participants');
     expect(calendar).not.toContain('setAttending');
@@ -1899,7 +1899,7 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('involvementMenu({ node: row.id');
     expect(inspector).toContain('"$invoke":"spaceStore.setInvolvement"');
     // Your own answer is withdrawn, never somebody else's.
-    expect(inspector).toContain('"$invoke":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
+    expect(inspector).toContain('"$invoke":"ops.core.respond","args":[{"node":{"$":"row.id"}}]');
     expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
   });
 

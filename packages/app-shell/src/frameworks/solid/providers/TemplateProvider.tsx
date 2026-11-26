@@ -15,20 +15,12 @@ import { buildTemplateBag, CHROME_TIER, type OperationHost, SPACE_TIER } from '@
 import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safeMode';
 import { hostSourceBag } from '@shared/sources';
 import { readSpaceRoot } from '@shared/spaceLandmarks';
-import { workflowStateOf } from '@shared/taskWorkflow';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withInterpretationDefaults } from '@we/entities';
 import { completeResponse, respondsThrough, threadSubject } from '@we/entities';
 
 import { signalOrder } from '../../../shared/signalOrder';
-
-/** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
-const idOf = (entry: unknown): string => {
-  if (typeof entry === 'string') return entry;
-  const id = (entry as { id?: unknown } | null)?.id;
-  return typeof id === 'string' ? id : '';
-};
 
 /** The part of a registered entity class a record write by name uses. */
 interface RecordModel {
@@ -74,15 +66,7 @@ import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
-import {
-  appFrame,
-  boardOptimism,
-  declareAppEdges,
-  declareAppFrame,
-  involvementOptimism,
-  signalOptimism,
-  taskWorkflowLive,
-} from '../stores/hostState';
+import { appFrame, declareAppEdges, declareAppFrame, taskWorkflowLive } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 import { buildRoutes } from '../utils/buildRoutes';
 
@@ -573,24 +557,6 @@ export default function TemplateProvider() {
     than a memo, because a source is a pure function and there is nothing here to react to.
   */
   /*
-    The sources, with the board's own wrapped so it draws what has been dragged but not yet stored.
-
-    The wrap is here and not in `arrangedBoard` because that function is pure and tested as such —
-    it takes the overlay as an argument and knows nothing about where one comes from. This is the
-    only place that has both the registry and the app's state, which is the same reason the bag is
-    assembled here at all.
-
-    Two things happen per call. The overlay goes in, which is what makes a dropped card appear in its
-    new column on the tick of the drop; and the columns just drawn are reported back, which is what
-    lets the store stop standing in for an arrangement the data has caught up with. Reporting from
-    *here* rather than where the rows arrive is the rule `pendingWrites` records for the canvas: a
-    read landing is not the same moment as the thing being drawn from it, and clearing on the read
-    put the old value back for the whole window in between.
-
-    Deferred to a microtask because this runs inside a memo, and writing a signal during a render is
-    how a re-entrancy bug starts.
-  */
-  /*
     The host's own functions, then the ones registered modules lend — `contributes.functions`. A
     module may not shadow a host function: the host's vocabulary is what every template was written
     against, and a module redefining `calendarMonth` would change every calendar at once. Reported,
@@ -609,78 +575,8 @@ export default function TemplateProvider() {
   const arrangedBoardSource = sources.arrangedBoard;
   stores.$sources = {
     ...sources,
-    arrangedBoard: (options: unknown) => {
-      const given = (options ?? {}) as { columns?: unknown; board?: unknown };
-      const workflowView = taskWorkflowLive.view();
-      const view = arrangedBoardSource({
-        ...given,
-        pending: boardOptimism.overlay(),
-        // Who is on each card, including a tick nobody's subscription has carried back yet — a
-        // filter that ignored it would dim the card somebody was just assigned to.
-        pendingInvolvements: involvementOptimism.overlay(),
-        // Where the space's states ask for agreement, a card is where its run is. See `taskWorkflow.ts`.
-        workflow: workflowView,
-      });
-
-      const rows = new Map<string, readonly string[]>();
-      const note = (record: unknown, relation: 'arranges' | 'children') => {
-        const row = record as { id?: string; arranges?: unknown; children?: unknown } | null;
-        if (!row?.id) return;
-        const value = relation === 'arranges' ? row.arranges : row.children;
-        if (Array.isArray(value)) rows.set(`${row.id}.${relation}`, value.map(idOf));
-      };
-      for (const column of (Array.isArray(given.columns) ? given.columns : []) as unknown[]) note(column, 'arranges');
-      note(given.board, 'children');
-      note(given.board, 'arranges');
-
-      // A card's state is held as an arrangement of one, so it settles through the same lookup —
-      // `<cardId>.status` against what the pool actually says the record's state is.
-      for (const record of Array.isArray((given as { records?: unknown }).records)
-        ? (given as { records: unknown[] }).records
-        : []) {
-        const row = record as { id?: string; status?: unknown } | null;
-        // Against the state the board draws — the run's where there is one — or a drop that moved a
-        // run would be held until `status` caught up, which it may never do if nobody mirrors it.
-        if (row?.id)
-          rows.set(`${row.id}.status`, [
-            workflowStateOf(workflowView, row.id) ?? (typeof row.status === 'string' ? row.status : ''),
-          ]);
-      }
-
-      queueMicrotask(() => boardOptimism.settle((id, relation) => rows.get(`${id}.${relation}`)));
-      const involvementRows = (given as { involvements?: unknown }).involvements;
-      if (Array.isArray(involvementRows)) {
-        queueMicrotask(() => involvementOptimism.settleFromRows(involvementRows));
-      }
-      return view;
-    },
-    /*
-      Who is on what, with the answers somebody gave and the data has not carried back yet — the
-      same two halves as the board above, for the same reason. The rows the view was drawn from are
-      reported, so a hold is released the moment they have overtaken it rather than when the write's
-      promise settles.
-    */
-    // The picker's ticks, from the same held answers — a member ticked in the menu stays ticked
-    // through the round trip rather than unticking for a second and ticking again.
-    involvementMenu: (options: unknown) => {
-      const given = (options ?? {}) as { rows?: unknown };
-      const entries = sources.involvementMenu({ ...given, pending: involvementOptimism.overlay() });
-      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
-      return entries;
-    },
-    involvement: (options: unknown) => {
-      const given = (options ?? {}) as { rows?: unknown };
-      const view = sources.involvement({ ...given, pending: involvementOptimism.overlay() });
-      queueMicrotask(() => involvementOptimism.settleFromRows(given.rows));
-      return view;
-    },
-    /*
-      A record's reactions, with this agent's own newest answer in it — the same two halves again.
-
-      The rows reported are the ones the overlay was applied OVER, which is what the record's
-      subscription actually says, so a hold is released the moment the data has overtaken it rather
-      than when the write's promise settles.
-    */
+    // Where the space's states ask for agreement, a card is where its run is. See `taskWorkflow.ts`.
+    arrangedBoard: (options: unknown) => arrangedBoardSource({ ...(options ?? {}), workflow: taskWorkflowLive.view() }),
     /*
       The order a record's reactions are drawn in, settled once and then held.
 
@@ -728,29 +624,6 @@ export default function TemplateProvider() {
       */
       if (getOwner()) onCleanup(() => signalOrder.release(record));
       return typeof given.limit === 'number' && given.limit >= 0 ? all.slice(0, given.limit) : all;
-    },
-    reactions: (options: unknown) => {
-      const given = (options ?? {}) as { signals?: unknown; record?: unknown; type?: unknown; me?: unknown };
-      const list = sources.reactions({ ...given, pending: signalOptimism.overlay() });
-      /*
-        Reported for the PAIR this call was about, never for the record.
-
-        The list handed in is one type's — every surface asks per type — so it is evidence about that
-        type and nothing else. Read as evidence about the record it said "no reaction of any kind",
-        which dropped a withdrawal hold the instant any other type on the same record drew: the heart
-        came back on until the real data caught up. See `settleFromSignals`.
-      */
-      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
-        queueMicrotask(() =>
-          signalOptimism.settleFromSignals(
-            given.record as string,
-            given.type as string,
-            given.me as string,
-            given.signals,
-          ),
-        );
-      }
-      return list;
     },
   };
 

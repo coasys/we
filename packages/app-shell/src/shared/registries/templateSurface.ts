@@ -575,8 +575,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     taskStatesLoaded: state('content'),
     /*
       Who is on what. Reading the kinds is `content` for the reason reading states is. Giving your own
-      answer and assigning somebody are content too — any member may do either, as any member may drag
-      a card — and the store is what refuses one member answering for another, not this table.
+      answer is `ops.core.respond`; assigning somebody is this store action (the operation's untick is
+      destructive by its effects), content too, as any member may drag a card. The operations refuse
+      one member answering for another themselves.
     */
     involvementTypes: state('content'),
     offeredInvolvementTypes: state('content'),
@@ -590,7 +591,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // What the space's policy allows — read by any template deciding what to offer, through `can()`.
     policy: state('content'),
     setInvolvement: action('content'),
-    respondTo: action('content'),
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
@@ -610,8 +610,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // `createTaskState`, never from a schema, which has `ops.core.addBoardColumn` for a board it can see.
     addStateToSpaceBoard: WIRING,
     removeBoardColumn: action('content'),
-    reorderBoardColumns: action('content'),
-    arrangeColumn: action('content'),
     moveCardToColumn: action('content'),
     approveTaskMove: action('content'),
     withdrawTaskMove: action('content'),
@@ -624,8 +622,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     setSignalTypeRetired: action('signals'),
-    upsertSignal: action('signals'),
-    withdrawSignal: action('signals'),
     /*
       The vocabulary of states, the third of the same kind — a community naming what it means by
       something, alongside its reactions and its connections.

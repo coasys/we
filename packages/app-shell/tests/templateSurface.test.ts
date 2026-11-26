@@ -189,7 +189,7 @@ describe('what the space tier can reach', () => {
     for (const path of [
       'spaceStore.currentSpace',
       'spaceStore.createPost',
-      'spaceStore.upsertSignal',
+      'spaceStore.moveCardToColumn',
       'spaceStore.memberDids',
       'spaceStore.unreadNodeIds',
       'spaceStore.myMentions',

@@ -92,12 +92,7 @@ import {
   type StateRow as KernelStateRow,
 } from '../kernels/boardArrangement';
 import { type TaskMoveCard, taskMoveCard, type TaskWorkflowView, workflowStateOf } from '../taskWorkflow';
-import {
-  involvement,
-  type InvolvementKindInput,
-  type InvolvementRowInput,
-  type PendingInvolvement,
-} from './involvement';
+import { involvement, type InvolvementKindInput, type InvolvementRowInput } from './involvement';
 
 /** What the fragment hands over: the rows of three subscriptions and the community's vocabulary. */
 export interface ArrangedBoardOptions {
@@ -109,16 +104,6 @@ export interface ArrangedBoardOptions {
   records?: CardRow[] | null;
   /** The community's states, for a heading's name, icon and colour where the column has none. */
   states?: StateRow[] | null;
-  /**
-   * Arrangements written and not yet seen come back — see `@we/optimism`.
-   *
-   * Applied to the **inputs** rather than to the answers below, which is the whole reason this is
-   * three lines rather than a second pass over every field. `contents`, `unplaced`, `available` and
-   * the counts are all derived from the columns' `arranges` and the records' `status`; substitute
-   * those two before the working out and every one of them follows, including the ones nobody would
-   * remember to patch — a heading's count, and whether the Unplaced column appears at all.
-   */
-  pending?: PendingBoardState | null;
   /** The `Involvement` rows — who is on what. Omit for a board that does not filter by people. */
   involvements?: InvolvementRowInput[] | null;
   /** `spaceStore.involvementTypes`, so a declined answer is known as one whatever it is called. */
@@ -136,13 +121,11 @@ export interface ArrangedBoardOptions {
   onlyShow?: string | null;
   /** The viewer's DID, so `involved` can lead with them. */
   me?: string | null;
-  /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
-  pendingInvolvements?: readonly PendingInvolvement[] | null;
   /**
    * The space's task workflow, where its states ask for agreement — supplied by the host.
    *
-   * A card with a run is read as being in its run's state rather than its `status`, substituted with
-   * the optimistic overlay at the one place a state is read, so every count follows. See
+   * A card with a run is read as being in its run's state rather than its `status`, substituted at
+   * the one place a state is read, so every count follows. See
    * `shared/taskWorkflow.ts` for why the two can differ at all.
    */
   workflow?: TaskWorkflowView | null;
@@ -158,29 +141,6 @@ export interface CellContents {
   arranged: CardRow[];
   unarranged: CardRow[];
   count: number;
-}
-
-/**
- * What has been written and not yet observed: an order per `<recordId>.<relation>`, and a state per
- * record.
- *
- * Both are needed and neither is enough. Dropping a card into a bound column writes two things — the
- * target column's order, and the card's own `status` — and they arrive on two different
- * subscriptions. Overlaying only the order leaves a window where the column claims the card and the
- * stale-hint rule below throws it out again for having the wrong state, which draws the card in
- * *neither* column: worse than the flash, and the reason this takes both.
- */
-export interface PendingBoardState {
-  /** The order to draw, by `<recordId>.<relation>`; `undefined` means draw what arrived. */
-  order?: (recordId: string, relation: string, observed: readonly string[]) => string[] | undefined;
-  /**
-   * The state to read a record as having, or `undefined` to read the stored one.
-   *
-   * Given what the record actually says, for the same reason `order` is: whether an overlay still
-   * applies is decided by whether the data has moved since it was written, and only the caller of
-   * this function has the data.
-   */
-  status?: (recordId: string, observed: string | undefined) => string | undefined;
 }
 
 export type { BoardRow, CardRow, ColumnRow } from '../kernels/boardArrangement';
@@ -298,19 +258,6 @@ export interface ArrangedBoard {
  */
 const LANE_COLOR = 'text-muted';
 
-/** A relation comes back as ids, or as hydrated rows carrying an id; read either. */
-function idsOf(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const out: string[] = [];
-  for (const entry of value) {
-    if (typeof entry === 'string') out.push(entry);
-    else if (entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string') {
-      out.push((entry as { id: string }).id);
-    }
-  }
-  return out;
-}
-
 const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
 export function arrangedBoard(options: ArrangedBoardOptions | null | undefined): ArrangedBoard {
@@ -318,33 +265,22 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const columnRows = asRows<ColumnRow>(options?.columns).filter((c) => c && typeof c.id === 'string');
   const records = asRows<CardRow>(options?.records).filter((r) => r && typeof r.id === 'string');
   const states = asRows<StateRow>(options?.states);
-  const pending = options?.pending ?? null;
   const workflow = options?.workflow ?? null;
 
   /*
-    The two substitutions — a write not yet seen, and a run's state — made once, as data, before the
-    arrangement is worked out. Everything the kernel derives (every count, whether Unplaced appears)
-    then follows them, where a second pass patching the answers would miss one.
+    A run's state, substituted once, as data, before the arrangement is worked out. Everything the
+    kernel derives (every count, whether Unplaced appears) then follows it, where a second pass
+    patching the answers would miss one. A card dropped and not yet stored needs no substitution: the
+    rows already carry the drop, since the host lays an invoked operation's predicted writes over the
+    queries they come from.
   */
-  const orders: Record<string, Record<string, string[]>> = {};
-  const overlay = (id: string | undefined, relation: string, stored: unknown) => {
-    if (!id || !pending?.order) return;
-    const drawn = pending.order(id, relation, idsOf(stored));
-    if (drawn) (orders[id] ??= {})[relation] = drawn;
-  };
-  if (board?.id) {
-    overlay(board.id, 'children', board.children);
-    overlay(board.id, 'arranges', board.arranges);
-  }
-  for (const column of columnRows) overlay(column.id, 'arranges', column.arranges);
   const statuses: Record<string, string> = {};
   for (const record of records) {
-    const stored = workflowStateOf(workflow, record.id) ?? record.status;
-    const drawn = pending?.status?.(record.id, stored) ?? stored;
+    const drawn = workflowStateOf(workflow, record.id) ?? record.status;
     if (drawn !== record.status && drawn !== undefined) statuses[record.id] = drawn;
   }
 
-  const arranged = arrangeBoard({ board, columns: columnRows, records, states, statuses, orders });
+  const arranged = arrangeBoard({ board, columns: columnRows, records, states, statuses });
   const { ready, gathers, columns } = arranged;
   const stateBySlug = new Map(states.filter((s) => s && s.slug).map((s) => [s.slug, s]));
 
@@ -382,7 +318,6 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
   const everyoneOn = involvement({
     rows: options?.involvements ?? null,
     types: options?.kinds ?? null,
-    pending: options?.pendingInvolvements ?? null,
     me: options?.me ?? null,
   });
   const on = everyoneOn.byNode;

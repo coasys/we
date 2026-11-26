@@ -836,10 +836,8 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
     if (!dataset || !rows.length) return;
 
-    // Connections among them stop being drawn now rather than when the delete comes back.
-    const held = rows
-      .filter((row) => row.recordType === RELATIONSHIP)
-      .map((row) => connections.hold({ kind: 'removed', id: row.recordId! }));
+    // Drawn gone at once, connections among them included: the host draws an invoked operation's
+    // deletes before they land. What stays here is the undo history, which only this store holds.
     try {
       await runOp(
         'core.deleteRecords',
@@ -855,9 +853,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
       */
       history.clear();
-      for (const key of held) connections.done(key);
     } catch (error) {
-      for (const key of held) connections.release(key);
       console.error('RecordStore: deleting records failed', error);
       toasts.error('Could not delete those.');
     }

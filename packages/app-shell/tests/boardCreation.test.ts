@@ -163,13 +163,13 @@ describe('a board’s columns', () => {
 
   it('reorders only the columns the board holds, the rest after', async () => {
     const [todo, doing, done] = ids((await read(boardId))?.children);
-    await actions().reorderBoardColumns(boardId, [done, 'stranger', todo]);
+    await op('reorderBoardColumns', { board: boardId, ids: [done, 'stranger', todo] });
     expect(ids((await read(boardId))?.children)).toEqual([done, todo, doing]);
   });
 
   it('hands a removed column’s cards to the board, and deletes only the column', async () => {
     const [todo] = ids((await read(boardId))?.children);
-    await actions().arrangeColumn(todo, ['task']);
+    await op('arrangeColumn', { column: todo, ids: ['task'] });
     await actions().removeBoardColumn(boardId, todo);
 
     const board = await read(boardId);
@@ -182,8 +182,16 @@ describe('a board’s columns', () => {
   it('stores a column’s order as the ids given, then what it still holds', async () => {
     const [todo] = ids((await read(boardId))?.children);
     await model('TaskBlock').create(dataset, { title: 'Two', status: 'todo' }, { id: 'two' });
-    await actions().arrangeColumn(todo, ['task', 'two']);
-    await actions().arrangeColumn(todo, ['two']);
+    await op('arrangeColumn', { column: todo, ids: ['task', 'two'] });
+    await op('arrangeColumn', { column: todo, ids: ['two'] });
     expect(ids((await read(todo))?.arranges)).toEqual(['two', 'task']);
+  });
+
+  it('puts a column showing part of itself back in its places, the hidden cards keeping theirs', async () => {
+    // What a people filter does: the column holds a, h, b and shows a and b; b is dragged above a.
+    const [todo] = ids((await read(boardId))?.children);
+    await op('arrangeColumn', { column: todo, ids: ['a', 'h', 'b'] });
+    await op('arrangeColumn', { column: todo, ids: ['b', 'a'], order: ['a', 'h', 'b'] });
+    expect(ids((await read(todo))?.arranges)).toEqual(['b', 'h', 'a']);
   });
 });

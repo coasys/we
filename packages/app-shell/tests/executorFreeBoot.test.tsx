@@ -276,6 +276,7 @@ import { useBackend, usePlatform } from '../src/frameworks/solid/providers/Platf
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
+import { invokeOperation } from '../src/shared/invokeOperation';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
@@ -3865,12 +3866,19 @@ describe('changing a reaction', () => {
         where: { signalTypeId: stars.id, author: 'did:test:james' },
       } as never)) as unknown as { id: string; value: number }[];
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    // As a template invokes them: through the host's one way to run an operation.
+    const give = (value: number | null) =>
+      invokeOperation(
+        value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
+        { node: subject.id, signalType: stars.id, ...(value === null ? {} : { value }) },
+        { dataset: handle, invoker: 'did:test:james' },
+      );
+    await give(3);
     const first = await mine();
     expect(first).toHaveLength(1);
     expect(first[0].value).toBe(3);
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    await give(4);
     const second = await mine();
     // One reaction, the new value — not two rows where the reader finds the stale one first.
     expect(second).toHaveLength(1);
@@ -3885,7 +3893,7 @@ describe('changing a reaction', () => {
       { parent: { id: subject.id, relation: 'signals' } } as never,
     );
     expect(await mine()).toHaveLength(2);
-    await stores.spaces.upsertSignal(subject.id, stars.id, 5);
+    await give(5);
     const healed = await mine();
     expect(healed).toHaveLength(1);
     expect(healed[0].value).toBe(5);
@@ -3897,13 +3905,13 @@ describe('changing a reaction', () => {
       0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
       apart: a number is a reaction, `null` takes it back.
     */
-    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    await give(0);
     const zeroed = await mine();
     expect(zeroed).toHaveLength(1);
     expect(zeroed[0].value).toBe(0);
 
     // And withdrawing is its own act, which removes the record rather than storing anything.
-    await stores.spaces.withdrawSignal(subject.id, stars.id);
+    await give(null);
     expect(await mine()).toHaveLength(0);
   }, 10000);
 });

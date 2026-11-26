@@ -295,16 +295,13 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       expect(store.pendingConnections().added).toHaveLength(0);
     });
 
-    it('stops drawing a deleted connection at once, and forgets it once it is gone', async () => {
+    it('leaves a deleted connection to the delete’s own prediction, holding nothing itself', async () => {
+      // `core.deleteRecords` is invoked as every operation is, so the graph's reads draw the delete
+      // before it lands; a hold here as well would be a second mechanism for the same write.
       const store = mount();
       await store.deleteRecords([{ recordId: 'pa', recordType: 'Relationship' }]);
-      expect(store.pendingConnections().removed).toEqual(['pa']);
-
-      // The graph still drawing it from an answer that predates the delete.
-      store.observeConnections([...(await drawn()), { id: 'pa', source: 'p', target: 'a' }]);
-      expect(store.pendingConnections().removed).toEqual(['pa']);
-      store.observeConnections(await drawn());
       expect(store.pendingConnections().removed).toEqual([]);
+      expect((await drawn()).map((c) => c.id)).not.toContain('pa');
     });
 
     it('draws a re-attached end at its new card until the connection says so', async () => {

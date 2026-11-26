@@ -148,30 +148,41 @@ const NEW_TYPE_OPEN = 'signalTypeFormOpen';
 type Resolved = SignalDisplayOptions & { mode: NonNullable<SignalDisplayOptions['mode']>; as: string };
 
 /**
- * One type's signals here, less the ones from agents this reader has muted — and with this agent's
- * own newest answer in place whether or not it has been read back yet.
+ * One type's signals here, less the ones from agents this reader has muted.
  *
- * Through `reactions`, which is the overlay every reaction surface draws from. A press writes a
- * record and the subscription answers about a second later, with the executor's own 250ms debounce
- * under that; without the overlay the glyph stays unfilled and the count stays put, and the press
- * reads as having failed.
+ * A press is drawn in it before it lands: the host lays an invoked operation's predicted writes over
+ * every read, the record's `signals` included, so the glyph fills and the count moves on the click
+ * rather than a second later when the subscription answers.
  *
- * Wrapped HERE rather than at each use, so the number, the mark's "is this mine", and the control's
- * filled star all come off one list and cannot disagree — which is exactly what happened when only
- * the count was overlaid and the heart sat unfilled beside a number that had moved.
+ * Written HERE rather than at each use, so the number, the mark's "is this mine", and the control's
+ * filled star all come off one list and cannot disagree.
  */
 const forType = (record: string, as: string) =>
-  `reactions({ signals: filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } }), record: ${record}.id, type: ${as}.id, me: me.did })`;
+  `filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } })`;
+
+/**
+ * Giving a reaction, changing it, or — for `null` — taking it back: `core.upsertSignal` or
+ * `core.withdrawSignal`, chosen when the handler fires. `value` is an expression read then (`arg`,
+ * what a control emitted). A withdrawal is its own operation rather than a zero, because on a mode
+ * whose range includes zero a nought is a rating.
+ */
+export function giveSignal(record: string, type: string, value = 'arg') {
+  return {
+    $if: {
+      condition: { $: `${value} == null` },
+      then: { $invoke: 'ops.core.withdrawSignal', args: [{ $: `{ node: ${record}, signalType: ${type} }` }] },
+      else: {
+        $invoke: 'ops.core.upsertSignal',
+        args: [{ $: `{ node: ${record}, signalType: ${type}, value: ${value} }` }],
+      },
+    },
+  };
+}
 
 /**
  * Everything on the record, less muted authors — what the single total counts.
  *
- * Not overlaid, and that is not an oversight. `reactions` stands in for this agent's answer for ONE
- * type; a total spans every type at once, so there is no single hold that answers for it. The number
- * it shows is how many people reacted at all, which a press only changes when it is somebody's first
- * reaction of any kind on that record — the rarest case, and the one where being a round trip late
- * costs least. Overlaying it properly means holding per record as well as per type, which is a
- * second mechanism for a number nobody is watching that closely.
+ * A press shows here at once too: the pending reaction is in the record's `signals` like any other.
  */
 const everything = (record: string) => `filter(${record}.signals, { author: { not: spaceStore.mutedDids } })`;
 
@@ -348,10 +359,7 @@ function control(opts: Resolved, as: string): SchemaNode {
       ...(opts.readOnly
         ? {}
         : {
-            onSignal: {
-              $invoke: 'spaceStore.upsertSignal',
-              args: [{ $: `${opts.record}.id` }, { $: `${as}.id` }, { $: 'arg' }],
-            },
+            onSignal: giveSignal(`${opts.record}.id`, `${as}.id`),
           }),
     },
   };
@@ -380,16 +388,13 @@ function mark(opts: Resolved, as: string): SchemaNode {
       label: { $: `${as}.name` },
       ...(press && pressable
         ? {
-            onPress: {
-              $invoke: 'spaceStore.upsertSignal',
-              // A toggle is on or off, so its press is its whole vocabulary: give the type's top of
-              // range, or take it back. `arg` is not available — nothing emitted a value.
-              args: [
-                { $: `${opts.record}.id` },
-                { $: `${as}.id` },
-                { $: `${mineOfType(opts.record, as)} ? 0 : ${as}.rangeMax` },
-              ],
-            },
+            // A toggle is on or off, so its press is its whole vocabulary: give the type's top of
+            // range, or take it back. `arg` is not available — nothing emitted a value.
+            onPress: giveSignal(
+              `${opts.record}.id`,
+              `${as}.id`,
+              `(${mineOfType(opts.record, as)} ? null : ${as}.rangeMax)`,
+            ),
           }
         : {}),
     },

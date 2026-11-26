@@ -16,7 +16,6 @@ import {
 } from '@we/block-shared';
 import { CollectionBlock, compressImageToFileData, type DatasetProxy, dataURIToFileData } from '@we/entities';
 
-import type { BoardOptimism } from '../../boardOptimism';
 import { createBoardActions } from '../../boards';
 import { uploadOf } from '../../uploadOf';
 import type { RecordStore } from '../RecordStore';
@@ -33,8 +32,6 @@ export interface SpaceContentDeps extends SpaceContext {
     'reloadSpaceStructure'
   >;
   taskStates: Pick<SpaceTaskStates, 'offeredTaskStates' | 'boardWorkflow'>;
-  /** Cards drawn where they were dropped, ahead of the data — the app's one. */
-  boardOptimism: BoardOptimism;
 }
 
 /** A file's contents as a data URI. */
@@ -126,7 +123,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   /*
     The board writes, from `shared/boards.ts`.
 
-    Ten actions over one shape, and what they decide is the board design rather than anything about
+    The board actions that need the host, and what they decide is the board design rather than anything about
     this store: which list to store, what a drop means, and the invariant that a board's children are
     columns. They live there because they are a subsystem rather than because this file is long — the
     ordering itself is the backend's, so what is left in them is meaning, and meaning reads better
@@ -140,10 +137,6 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   const boards = createBoardActions({
     dataset: datasetFor,
     invoker: () => session.me()?.did,
-    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
-    // board reports when the data has overtaken it. See that module for why nothing releases on
-    // success.
-    ...deps.boardOptimism.ports,
     offeredStates: () => taskStates.offeredTaskStates(),
     notify: (message) => toasts.error(message),
     landmarksChanged: () => void reloadSpaceStructure(),
@@ -214,8 +207,6 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     | 'ensureBoardFor'
     | 'addStateToSpaceBoard'
     | 'removeBoardColumn'
-    | 'reorderBoardColumns'
-    | 'arrangeColumn'
     | 'moveCardToColumn'
     | 'addTaskToColumn'
   > = {

@@ -524,8 +524,6 @@ export const storeEntries: StoreEntry[] = [
       'deleteCollection',
       'openBoardFor',
       'removeBoardColumn',
-      'reorderBoardColumns',
-      'arrangeColumn',
       'moveCardToColumn',
       'addTaskToColumn',
       'updateSpaceImage',
@@ -544,7 +542,6 @@ export const storeEntries: StoreEntry[] = [
       'addTaskStateEvidence',
       'removeTaskStateEvidence',
       'setInvolvement',
-      'respondTo',
       'createInvolvementType',
       'createRole',
       'updateRole',
@@ -553,8 +550,6 @@ export const storeEntries: StoreEntry[] = [
       'setPolicyPreset',
       'updateInvolvementType',
       'setInvolvementTypeRetired',
-      'upsertSignal',
-      'withdrawSignal',
       'navigateToSpace',
       'openRecordRef',
       'canAdministerSpace',
@@ -1574,12 +1569,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(anchorId?: string, title?: string, dataset?: string): the board for a container \u2014 one call\u2019s, or the space\u2019s own \u2014 making it if nobody has yet. Returns its id either way. The board it makes gathers from that container, a fact the board carries in its `gathers` relation, so anything rendering it needs only the id. Call it from a click rather than on mount: creating a board writes records into a space everybody shares',
       removeBoardColumn:
         '(boardId: string, columnId: string): takes a column off a board \u2014 the column record only, never the work in it. A column arranges its cards rather than owning them, so nothing that walks children can reach them; on a made board they are handed to the board itself so they stay on it. They keep their state, so they reappear in another column bound to it or in the unplaced column',
-      reorderBoardColumns:
-        '(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable\u2019s onReorder and pass { $: "arg.detail" }',
-      arrangeColumn:
-        '(columnId: string, orderedIds: string[], columnOrder?: string[]): records the order somebody dragged one column\u2019s cards into \u2014 the column\u2019s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable\u2019s onReorder. Where the column shows only some of its cards \u2014 a people filter hiding the rest, one person\u2019s row \u2014 pass the column\u2019s whole order as columnOrder (arrangedBoard\u2019s contents[col].order): the moved cards go back into their own slots and the hidden ones keep theirs, where without it every hidden card would drop to the bottom of the column for everybody',
       moveCardToColumn:
-        '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], toSlug?: string, columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. Pass toSlug — the state the target column stands for, which the board already has on screen — and the card is drawn in its new column the instant it is dropped rather than a round trip later: the store cannot know that state without reading the column, and until it does the card cannot be drawn there at all. A hint for the drawing only; the write reads the column itself, so a stale one costs a frame and never a wrong write. columnOrder is the target column\u2019s whole order, for a drop into a column showing only part of itself \u2014 see arrangeColumn',
+        '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns, and drawn in its new column before it lands. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. columnOrder is the target column\u2019s whole order (arrangedBoard\u2019s contents[col].order), for a drop into a column showing only part of itself. A store action rather than ops.core.moveCard because where the space\u2019s states ask for agreement the drop asks instead of writing, and a staged suggestion for the card\u2019s state is settled first',
       addTaskToColumn:
         '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
       updateSpaceImage:
@@ -1605,9 +1596,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       setWorkflowArchived:
         '(name: string, archived: boolean): puts a workflow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the workflow — offer it in place of deleting one that has any',
       setInvolvement:
-        '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
-      respondTo:
-        '(nodeId: string, kind: string): gives this agent\u2019s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands',
+        '(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to ops.core.respond, and refused for anybody but the agent it is about. Drawn before it lands. A store action rather than ops.core.setInvolvement because taking somebody off deletes an involvement another member made, so the operation is destructive by its effects and a template calling it would be asked to confirm every untick Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }`',
       createRole:
         '(config: { name, description? }): names a role this community holds — "Moderator", "Steward". Its slug is derived from the name and fixed: grants and rules hold it. A name already used is refused, in a toast. Only whoever administers the space; rejects otherwise',
       updateRole:
@@ -1632,10 +1621,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer writes from the @mentions in a post',
       uploadFile:
         '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
-      upsertSignal:
-        "(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right",
-      withdrawSignal:
-        "(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears",
       navigateToSpace:
         '(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together',
       openRecordRef:

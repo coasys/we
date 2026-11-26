@@ -8,7 +8,9 @@
  * it, create the new one — and nothing serialised it. Two calls for the same pair therefore both
  * read *before* either wrote: both found the same record, both deleted it, and both created one.
  * The result is two reactions by one person on one type, which every count then believes, and which
- * no later change repairs because `findOne` only ever reaches the first of them.
+ * no later change repairs because `findOne` only ever reaches the first of them. (A declared
+ * operation says this with its `serial` key, and the host queues it; this is for host work that is
+ * not an operation, such as an interpretation runtime's watches.)
  *
  * It surfaced as a slider in the reactions modal showing the same person twice with the same value,
  * and the first theory — that the control committed twice for one drag — was wrong: a real drag,

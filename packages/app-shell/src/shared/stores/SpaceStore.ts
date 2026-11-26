@@ -13,14 +13,11 @@ import type { InvolvementSemantic, MutedAgent, Space } from '@we/entities';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { ResolvedView } from '@we/schema-shared';
 
-import type { BoardOptimism } from '../boardOptimism';
 import type { FirstScreen } from '../firstScreen';
-import type { InvolvementOptimism } from '../involvementOptimism';
 import type { InvolvementTypeView } from '../involvements';
 import type { SettingRow, SettingValue } from '../moduleSettings';
 import type { ModuleSurface } from '../registries/moduleRegistry';
 import type { SharingPickerOption } from '../sharingOptions';
-import type { SignalOptimism } from '../signalOptimism';
 import type { signalOrder } from '../signalOrder';
 import type { SpaceAppearance } from '../spaceAppearance';
 import type { PolicyPreset, SpacePolicyView } from '../spacePolicy';
@@ -277,17 +274,16 @@ export interface SpaceStore {
   addStateToSpaceBoard: (slug: string, name: string) => Promise<void>;
   /** Take a column off a board. The column record only — never the work positioned in it. */
   removeBoardColumn: (boardId: string, columnId: string) => Promise<void>;
-  /** The order this board reads its columns in. */
-  reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
-  /** Record the order somebody dragged one column's cards into. */
-  arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
-  /** Move a card between columns — and write its state, when the column it joins names one. */
+  /**
+   * Move a card between columns — and write its state, when the column it joins names one. A store
+   * action because a staged suggestion for the state is settled first and a workflow's state asks
+   * rather than writes; see `shared/boards.ts`.
+   */
   moveCardToColumn: (
     fromColumnId: string,
     toColumnId: string,
     cardId: string,
     orderedIds?: string[],
-    toSlug?: string,
     columnOrder?: string[],
   ) => Promise<void>;
   /** Make a task straight into a column, parented to the board's anchor when there is one. */
@@ -540,8 +536,6 @@ export interface SpaceStore {
    * it shows. A reflexive kind is only ever the agent's own answer, and is refused for anybody else.
    */
   setInvolvement: (nodeId: string, agent: string, kind: string, on: boolean) => Promise<void>;
-  /** This agent's own answer to a record — going, maybe, not going — replacing any other; `''` withdraws it. */
-  respondTo: (nodeId: string, kind: string) => Promise<void>;
   /** Name a kind of part people can have. Refused for a slug the space already has. */
   createInvolvementType: (config: {
     name: string;
@@ -558,12 +552,6 @@ export interface SpaceStore {
   ) => Promise<void>;
   /** Withdraw a kind from use, or bring it back — never touching anybody who holds it. */
   setInvolvementTypeRetired: (slug: string, retired: boolean) => Promise<void>;
-  /**
-   * Give a reaction, or change one. `null` withdraws it — a zero is an ordinary value and is stored.
-   */
-  upsertSignal: (nodeId: string, signalTypeId: string, value: number | null) => Promise<void>;
-  /** Take back this agent's reaction of one type on one record. */
-  withdrawSignal: (nodeId: string, signalTypeId: string) => Promise<void>;
   navigateToSpace: (spaceId: string, view?: string) => Promise<void>;
   openRecordRef: (ref: string) => Promise<void>;
   /** Whether this agent may change what every member of that space sees. */
@@ -629,12 +617,6 @@ export interface SpaceStore {
  * app keeps a single copy of, made over the same reactivity port as the stores.
  */
 export interface SpaceHostState {
-  /** Cards drawn where they were dropped, ahead of the data. */
-  boardOptimism: BoardOptimism;
-  /** People put on or taken off a record, ahead of the data. */
-  involvementOptimism: InvolvementOptimism;
-  /** Reactions drawn ahead of the data. */
-  signalOptimism: SignalOptimism;
   /** The order each record's reactions settled into, forgotten with the space. */
   signalOrder: Pick<typeof signalOrder, 'reset'>;
   /** The space's task workflow as the board draws it. */
@@ -772,8 +754,6 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   // Who is on what in each space, and what each person gave.
   const involvements = createSpaceInvolvements({
     ...ctx,
-    involvementOptimism: host.involvementOptimism,
-    signalOptimism: host.signalOptimism,
     signalOrder: host.signalOrder,
   });
 
@@ -786,7 +766,6 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     recordStore,
     navigation,
     taskStates,
-    boardOptimism: host.boardOptimism,
   });
 
   // Each space's own record — its picture, name and place, defaults, thread mode — and its members.

@@ -2532,7 +2532,7 @@ const ANSWERS = `spaceStore.offeredInvolvementTypes.filter(k, k.reflexive && ('E
  * Answering an invitation, and who else has.
  *
  * One button per answer, the chosen one filled; pressing it again takes the answer back, which is
- * the first thing anybody tries. Only ever this agent's own answer — `respondTo` writes nobody
+ * the first thing anybody tries. Only ever this agent's own answer — `core.respond` writes nobody
  * else's — and one per event, so pressing Maybe after Going replaces it.
  *
  * The roster is who said they are coming, and a count of who might. Not `participants`, which is a
@@ -2558,8 +2558,10 @@ const rsvp: SchemaNode = {
                 size: 'xs',
                 variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'soft' : 'ghost'` },
                 onClick: {
-                  $invoke: 'spaceStore.respondTo',
-                  args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
+                  $invoke: 'ops.core.respond',
+                  args: [
+                    { $: `{ node: event.id, kind: ${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug }` },
+                  ],
                 },
               },
               children: [
