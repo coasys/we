@@ -46,8 +46,10 @@ import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 // By path: the app shell does not depend on `@we/messages`, and a scenario only needs its reader.
 import { lineContent, threadLines } from '../../../module-system/messages/src/index.ts';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
+import { treeSection } from '../../../templates/cartridges/src/coasys/space/tree.ts';
 import { callBarAside, spaceRoutes } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { callsList } from '../../../templates/views/src/views/CardsView/CallsList.ts';
+import { channelList } from '../../../templates/views/src/views/FluxView/ChannelList.ts';
 import { recordPage } from '../../../templates/views/src/views/RecordPage/index.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
@@ -2390,7 +2392,7 @@ const coasysFlowsPage = (): Scenario => {
     return undefined;
   };
   const { path: _path, ...page } = find(coasysBundle) as SchemaNode & { path?: string };
-  const record = (id: string, title: string, stateLabel: string) => ({
+  const record = (id: string, title: string, stateLabel: string, stalled = false) => ({
     id,
     record: id,
     title,
@@ -2398,14 +2400,14 @@ const coasysFlowsPage = (): Scenario => {
     startedAt: '2026-11-18T10:00:00.000Z',
     state: stateLabel.toLowerCase(),
     stateLabel,
-    stalled: false,
+    stalled,
     waiting: [],
     walk: [],
     next: [],
   });
   const review = { name: 'review', label: 'Review', archived: false, records: 3, running: 3, editable: true };
   return {
-    node: { type: 'Column', theme: glow, props: { width: '900px', height: '640px', bg: 'page' }, children: [page] },
+    node: { type: 'Column', theme: glow, props: { width: '100%', height: '640px', bg: 'page' }, children: [page] },
     tables: {},
     stores: {
       routeStore: {
@@ -2434,7 +2436,8 @@ const coasysFlowsPage = (): Scenario => {
           records: [
             record('r1', 'Fix the roof', 'Checking'),
             record('r2', 'Paint the gate', 'Draft'),
-            record('r3', 'Order the tiles', 'Draft'),
+            // Stuck: its chip is a sentence, which must wrap inside a narrow pane.
+            record('r3', 'Order the tiles', 'Draft', true),
           ],
         },
       },
@@ -3083,6 +3086,57 @@ const coasysSpaceFeed = (): Scenario => {
   };
 };
 
+/** A Flux message card, from the Flux view itself, for an author whose name is a long DID. */
+const fluxChannels = (): Scenario => {
+  // The card: the Row that opens with the author's avatar.
+  const find = (node: unknown): SchemaNode | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    const n = node as SchemaNode;
+    if (n.type === 'Row' && (n.children?.[0] as SchemaNode | undefined)?.type === 'we-avatar') return n;
+    for (const value of Object.values(node)) {
+      const hit = find(value);
+      if (hit) return hit;
+    }
+    return undefined;
+  };
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', p: '300', bg: 'page' },
+      children: [
+        { type: '$each', props: { items: { $: 'flux.messages' }, as: 'message' }, children: [find(channelList)!] },
+      ],
+    },
+    stores: {
+      flux: {
+        messages: [
+          {
+            author: 'did:key:z6MkhMzZpmfUkbkqbj6DTNMy8FZtZukr3LDoNVMEvMEB7Gzs',
+            timestamp: '2026-11-24T09:00:00.000Z',
+            body: '<p>Is the venue booked?</p>',
+          },
+        ],
+      },
+    },
+    tables: {},
+  };
+};
+
+/** The Coasys sidebar's own section: the space's header over its tree, in a lane as wide as the mount. */
+const coasysTreeSection = (): Scenario => ({
+  node: { type: 'Column', props: { width: '100%', height: '500px', bg: 'chrome' }, children: [treeSection] },
+  stores: {
+    routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
+    shellStore: { collapsedLanes: [] },
+    spaceStore: {
+      currentSpace: { name: 'Community', description: 'A space for the people building it.', uuid: 'space-1' },
+      activeModules: [],
+      firstScreenOpen: true,
+    },
+  },
+  tables: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': () => feedViewPage(),
@@ -3106,6 +3160,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'coasys:tree-top': coasysTreeTop,
+  'coasys:tree-section': coasysTreeSection,
+  'flux:channels': fluxChannels,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
   'space:create-shared': createSpaceShared,
