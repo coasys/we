@@ -34,7 +34,7 @@ import {
   type ParentRef,
   type RecordInstance,
 } from '@we/backend-shared';
-import { copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
+import { type ContentInput, copyableContent, createBlock, createBlocks, deleteBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import {
   CollectionBlock,
@@ -73,6 +73,7 @@ import {
 } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
+import { createPlacement, writeCanvasCard } from '../../../shared/canvasCardWrite';
 import { routeWrite } from '../../../shared/edgeRoute';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
@@ -170,30 +171,6 @@ function entityNamed(name: string): AnyEntity {
  * and on a map of what the space has defined — each as the fields its settings form asks for.
  */
 const DISPLAY_ONLY = [RELATIONSHIP, 'SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] as const;
-
-/**
- * Write one placement, node reference included, inside whatever write group the caller is in.
- *
- * The reference goes in as a **one-element array**, which is what makes it part of the same commit.
- * The ORM skips a relation field handed a plain value — that is the trap `Relationship`'s endpoints
- * hit — and the generated `setNode` accessor takes no batch, so linking afterwards would commit
- * separately and reintroduce the intermediate state. An array value routes through
- * `setRelationValues` *with* the batch, which is the documented path and the only one that composes.
- */
-async function createPlacement(
-  dataset: unknown,
-  parent: ParentRef,
-  nodeId: string,
-  nodeType: string,
-  at: { x: number; y: number },
-  batchId?: string,
-): Promise<void> {
-  await Placement.create(
-    dataset,
-    { nodeType, x: at.x, y: at.y, node: [nodeId] },
-    { parent, ...(batchId ? { batchId } : {}) },
-  );
-}
 
 /**
  * A connection's dedup key — the format `Relationship.connection`'s hint asks an extraction pass for.
@@ -1480,9 +1457,10 @@ export function RecordStoreProvider(props: ParentProps) {
   /**
    * Compose a card onto a canvas and place it, in one write group.
    *
-   * `createBlocks` transacts internally, so it takes the batch rather than opening its own — see
-   * `runEntityTransaction`'s `join`. Everything here lands as a single commit, which is the whole
-   * point: the canvas never observes a card that exists but is not yet anywhere.
+   * The group is {@link writeCanvasCard}. `createBlocks` joins that batch rather than opening its
+   * own, and the placement is written there too, so the canvas does not observe a card that exists
+   * but is not yet anywhere — where the backend's runner commits the batch as one. The card lives
+   * wherever this canvas's content lives; its placement is the canvas's own.
    */
   async function createCardOnCanvas(
     editorState: unknown,
@@ -1490,20 +1468,15 @@ export function RecordStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !options.canvas) return;
-    const parent = { id: options.canvas, relation: 'children', entity: 'CollectionBlock' };
-    // The card lives wherever this canvas's content lives; its placement is the canvas's own.
-    const home = { id: contentHome(options.canvas) ?? options.canvas, relation: 'children', entity: 'CollectionBlock' };
+    const contentHomeId = contentHome(options.canvas) ?? options.canvas;
 
     try {
-      await runEntityTransaction(dataset.handle, async (tx) => {
-        const root = (await createBlocks(dataset.handle, editorState as never, {
-          kind: 'card',
-          anchor: home,
-          batchId: tx.batchId,
-        })) as { id?: string } | undefined;
-
-        if (!options.at || !root?.id) return;
-        await createPlacement(dataset.handle, parent, root.id, 'CollectionBlock', options.at, tx.batchId);
+      await writeCanvasCard({
+        dataset: dataset.handle,
+        canvas: options.canvas,
+        contentHomeId,
+        content: editorState as ContentInput,
+        at: options.at,
       });
     } catch (error) {
       console.error('RecordStore: creating a card on a canvas failed', error);

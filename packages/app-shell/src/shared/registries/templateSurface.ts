@@ -41,7 +41,7 @@ import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
 import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
-import { reserveId } from '../templateIdentity';
+import { writeCanvasCard } from '../canvasCardWrite';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -2261,8 +2261,8 @@ export function resolveClassOnSurface(
  * One card made for a class.
  *
  * `classIri` is the class. `templateId` is which template drew the card. They are different
- * fields, and neither is `id`. `id` is reserved the way a stored template's id is reserved, so
- * the card cannot take the template's identity.
+ * fields, and neither is `id`. `id` is the id the collection model's `create` assigned inside
+ * {@link writeCanvasCard}. It is not derived from the template id, and it is not the class IRI.
  */
 export interface ClassTemplateCard {
   id: string;
@@ -2274,32 +2274,22 @@ export interface ClassTemplateCard {
 export type ClassTemplateCardResult =
   { status: 'created'; card: ClassTemplateCard } | { status: 'no-template'; classIri: string; surface: string };
 
-/** What the canvas write is asked to store. `kind` is the card `createCardOnCanvas` stamps. */
-export interface CanvasCardWrite {
-  id: string;
-  classIri: string;
-  templateId: string;
-  surface: string;
-  canvas: string;
-  kind: 'card';
-  at?: { x: number; y: number };
-}
-
 /**
- * The write group behind `RecordStore.createCardOnCanvas`
- * (`packages/app-shell/src/frameworks/solid/stores/RecordStore.tsx`), which the canvas templates
- * call (`packages/templates/views/src/views/GraphView/Canvas.ts`,
- * `packages/templates/kit/src/we/canvasCards.ts`).
+ * One dataset's class-card creates.
  *
- * That function opens one `runEntityTransaction`, creates the card with `createBlocks`
- * (`kind: 'card'`, joined to the batch), and writes the placement in the same batch when a point
- * was given. This slice does not switch that caller. CollectionBlock has no class field, and
- * published-template discovery is a later slice. Callers pass a port with the same shape: `create`
- * is the whole group, and a throw may leave a staged card that `remove` drops.
+ * Hold one port for a dataset and pass that same object on every call. In-flight dedupe and the
+ * class sidecar are keyed by this object, not by the canvas id string. A new object is a new
+ * scope, even when `dataset` is the same handle, so a port that is rebuilt per call does not
+ * collapse duplicates and does not see the previous sidecar. Two datasets are two ports.
  */
-export interface CanvasCardCreation {
-  create(card: CanvasCardWrite): Promise<void>;
-  remove(id: string): Promise<void>;
+export interface CanvasCardPort {
+  /** Dataset handle passed to `runEntityTransaction` and the registered models. */
+  readonly dataset: unknown;
+  /**
+   * Where the card's content is parented. The live caller passes `contentHome(canvas) ?? canvas`.
+   * Omitted, the canvas itself is the home.
+   */
+  contentHome?(canvas: string): string | undefined;
 }
 
 export interface ClassTemplateCardRequest {
@@ -2310,41 +2300,48 @@ export interface ClassTemplateCardRequest {
   canvas: string;
   /** Where the card sits. Omitted, the card is created with no placement, as the toolbar path does. */
   at?: { x: number; y: number };
-  /**
-   * Ids the card must not take. The resolved template id is always reserved too, so a caller
-   * cannot hand the card the template's identity by passing a list that leaves it out.
-   */
-  reservedIds?: readonly string[];
 }
 
-const cardSubmissions = new WeakMap<CanvasCardCreation, Map<string, Promise<ClassTemplateCardResult>>>();
+/**
+ * Class metadata for one created card.
+ *
+ * `CollectionBlock` stores `kind`, `mode`, `title`, `description`, `slug`, `editorState`, and the
+ * other fields on that manifest entry. It has no class IRI and no template id. `createBlocks`
+ * only assigns a field the model instance already has, so putting the class on the block would
+ * drop it. The pair is kept here, beside the card, under the id the model assigned.
+ */
+export interface ClassCardMeta {
+  id: string;
+  classIri: string;
+  surface: string;
+  templateId: string;
+}
+
+const cardSubmissions = new WeakMap<CanvasCardPort, Map<string, Promise<ClassTemplateCardResult>>>();
+const cardSidecars = new WeakMap<CanvasCardPort, ClassCardMeta[]>();
+
+/** The class metadata stored beside cards created through `port`. Empty when that port has created none. */
+export function classCardSidecar(port: CanvasCardPort): readonly ClassCardMeta[] {
+  return [...(cardSidecars.get(port) ?? [])];
+}
 
 function submissionKey(request: ClassTemplateCardRequest): string {
   return `${request.canvas}\0${request.surface}\0${request.classIri}`;
 }
 
-/**
- * An id the card may keep.
- *
- * `reserveId` is the rule a stored template already follows: an id a built-in holds is not free,
- * and the derived id stays recognisably derived from it. The class IRI is reserved as well, so
- * the card is not named by its class either.
- */
-function classCardId(templateId: string, classIri: string, reserved: readonly string[]): string {
-  const taken = reserved.includes(templateId) ? [...reserved] : [templateId, ...reserved];
-  if (!taken.includes(classIri)) taken.push(classIri);
-  let id = reserveId(templateId, taken);
-  if (id === templateId || id === classIri) id = reserveId(`${templateId}-card`, [...taken, id]);
-  return id;
+function rememberClassCard(port: CanvasCardPort, card: ClassTemplateCard): void {
+  const rows = cardSidecars.get(port) ?? [];
+  rows.push({ id: card.id, classIri: card.classIri, surface: card.surface, templateId: card.templateId });
+  cardSidecars.set(port, rows);
 }
 
 async function instantiateClassCard(
   request: ClassTemplateCardRequest,
   bindings: readonly ClassSurfaceBinding[],
   knownTemplate: (templateId: string) => boolean,
-  creation: CanvasCardCreation,
+  port: CanvasCardPort,
 ): Promise<ClassTemplateCardResult> {
-  // Resolve before any write. A miss must not stage a card that a later check would abandon.
+  // Resolve before any write. A miss must not open the write group.
   const resolution = resolveClassOnSurface(
     { classIri: request.classIri, surface: request.surface },
     bindings,
@@ -2354,28 +2351,22 @@ async function instantiateClassCard(
     return { status: 'no-template', classIri: request.classIri, surface: request.surface };
   }
 
-  const templateId = resolution.templateId;
+  const written = await writeCanvasCard({
+    dataset: port.dataset,
+    canvas: request.canvas,
+    contentHomeId: port.contentHome?.(request.canvas) ?? request.canvas,
+    content: [],
+    ...(request.at ? { at: request.at } : {}),
+  });
+  if (!written?.id) throw new Error('createClassTemplateCard: the canvas write created no card');
+
   const card: ClassTemplateCard = {
-    id: classCardId(templateId, request.classIri, request.reservedIds ?? []),
+    id: written.id,
     classIri: request.classIri,
     surface: request.surface,
-    templateId,
+    templateId: resolution.templateId,
   };
-  const write: CanvasCardWrite = {
-    ...card,
-    canvas: request.canvas,
-    kind: 'card',
-    ...(request.at ? { at: request.at } : {}),
-  };
-
-  try {
-    await creation.create(write);
-  } catch (error) {
-    // The group may have staged the card before throwing. Drop it. A remove that itself fails
-    // must not replace the original error — the card is still a failed create.
-    await creation.remove(card.id).catch(() => undefined);
-    throw error;
-  }
+  rememberClassCard(port, card);
   return { status: 'created', card };
 }
 
@@ -2383,28 +2374,36 @@ async function instantiateClassCard(
  * Create one class-backed card, or create nothing.
  *
  * Uses `resolveClassOnSurface` and no other lookup. Bindings are the caller's — the fixture list,
- * in this slice. Nothing here searches published templates.
+ * in this slice. Nothing here searches published templates. A miss returns before
+ * {@link writeCanvasCard}, so no card, membership, or placement is staged.
  *
- * A second call for the same canvas, surface and class IRI, while the first has not settled,
- * shares the first. Two settled calls are two cards: a canvas may hold more than one of a class.
- * The live `createCardOnCanvas` path is unchanged.
+ * The card and its placement are that shared write group, the one `RecordStore.createCardOnCanvas`
+ * calls. The live caller is otherwise unchanged: it does not read this sidecar, and a class is not
+ * written onto the block.
+ *
+ * A second call for the same canvas, surface and class IRI, on the same port, while the first has
+ * not settled, shares the first. The first request wins. A different position, binding list, or
+ * known-template check on the second call does not start another card. Two settled calls are two
+ * cards: the model's `create` assigns each its own id, and a canvas may hold more than one of a class.
+ *
+ * The port stays the one this dataset was given. Replacing it does not dedupe against the old one.
  */
 export function createClassTemplateCard(
   request: ClassTemplateCardRequest,
   bindings: readonly ClassSurfaceBinding[],
   knownTemplate: (templateId: string) => boolean,
-  creation: CanvasCardCreation,
+  port: CanvasCardPort,
 ): Promise<ClassTemplateCardResult> {
-  let pending = cardSubmissions.get(creation);
+  let pending = cardSubmissions.get(port);
   if (!pending) {
     pending = new Map();
-    cardSubmissions.set(creation, pending);
+    cardSubmissions.set(port, pending);
   }
   const key = submissionKey(request);
   const existing = pending.get(key);
   if (existing) return existing;
 
-  const run = instantiateClassCard(request, bindings, knownTemplate, creation).finally(() => {
+  const run = instantiateClassCard(request, bindings, knownTemplate, port).finally(() => {
     if (pending.get(key) === run) pending.delete(key);
   });
   pending.set(key, run);

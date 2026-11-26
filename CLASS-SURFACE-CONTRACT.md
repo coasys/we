@@ -11,10 +11,10 @@ The request is a pair:
 
 The answer is one of:
 
-- `{ status: 'template', classIri, surface, templateId }` — exactly one binding matched, and its template id is an identity the caller knows.
+- `{ status: 'template', classIri, surface, templateId }` — the bindings for that class and surface name exactly one template id, and that id is an identity the caller knows. Two bindings that repeat the same id are one match.
 - `{ status: 'no-template', classIri, surface }` — anything else. An unsupported class, a class on a surface it is not bound to, an empty request, two bindings that name different template ids, or a template id the caller does not know. The miss is explicit. The other class of the same display name is not a fallback.
 
-`displayName` may sit on a binding so a caller can show what the class is called. Resolution never reads it.
+`displayName` is carried on the binding so a caller can show what the class is called. Resolution never reads it, and it is not part of the match. Two bindings may share one.
 
 ## Template identity
 
@@ -45,6 +45,14 @@ This contract adds `resolveClassOnSurface` beside them. It does not change the g
 
 Automatic published-template selection is not implemented. Nothing in the contract settles it. The `Template` record has `name`, `description`, `icon`, `origin`, `version`, `slug`, `schema`, `themeId`, and `role`. None of those says "the published template for this class IRI on this surface". `TemplateMeta.recordViews` is keyed by entity name, which is the collision this path exists to avoid, and changing it would be a new template format. Published-template discovery belongs to a later slice. Until a field is settled, a caller passes an explicit binding or gets `no-template`.
 
-## Out of scope
+## Card creation
 
-Creating a card, choosing among several published templates, and binding a live class are not this slice. A class with no matching binding creates nothing here, because nothing is created here at all.
+Fixture-backed card creation is included: a matching class/surface binding creates a card through the shared canvas creation write group, with class IRI and template ID kept separate. A missing binding performs no writes. Published-template discovery and binding a live class remain out of scope; the current demo and production callers are unchanged.
+
+The group is `writeCanvasCard` in `packages/app-shell/src/shared/canvasCardWrite.ts`. `RecordStore.createCardOnCanvas` calls it, and so does `createClassTemplateCard`. It opens one `runEntityTransaction`, creates the card with `createBlocks` (`kind: 'card'`, anchored to the canvas's content home, joined to the batch), and writes the placement in that batch when a point was given. The card's id is the one the registered collection model's `create` assigns. This path does not reserve an id of its own.
+
+`CollectionBlock` has no class field and no template field. The class IRI and the template id are stored in a sidecar on the caller's port, keyed by the card id (`classCardSidecar`). They are not written onto the block.
+
+The group commits together only where the connected backend's runner commits that batch when the callback settles and discards it when the callback throws. The default runner, until a backend registers one, runs the callback with no batch token and each write commits on its own. This slice does not add a second cleanup pass, and it does not claim a rollback the runner did not perform.
+
+A port is one dataset. Hold the same port for every create against that dataset. While a create for one canvas, surface and class IRI is in flight on that port, a second call with the same triple shares the first result: the first request wins, including its position. A settled success is not a lifetime dedupe. The next call creates another card, with its own id. Two ports do not share in-flight calls or sidecars, even when they name the same canvas.
