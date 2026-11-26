@@ -315,9 +315,10 @@ record key is unwrapped in Rust with the phone's own enc seed, and never sent to
     unlock that opened the master key, and names the device ("Send your master key to Work
     laptop"). `rename` asks too ("Rename Phone to Office").
   - The document is checked when the call arrives and again after every prompt, scan or link step
-    that precedes a change. Not yet confirmed on a device: that `onPageStarted` stays silent for
-    `pushState` on a real WebView (below the Capacitor source, it is Android's documented
-    `WebViewClient` behaviour). WebView debugging stays off unless a build asks for
+    that precedes a change. Not yet confirmed on a device: that `TransportWebView` is the WebView
+    the layout override inflates, that `CallerWebViewClient` is in place before the first
+    navigation's callbacks, and that `onPageCommitVisible` arrives for `identity.html` (if it does
+    not, the identity page is refused). WebView debugging stays off unless a build asks for
     it (below), since a call from DevTools would come from the page it is on.
 - **The camera.** `ScanActivity.kt`: CameraX and ML Kit's bundled barcode scanner (the model ships
   in the app; no Play services, nothing sent anywhere). A QR that is not the expected kind is passed
