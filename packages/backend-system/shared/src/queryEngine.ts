@@ -285,8 +285,8 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
 
   if (scope.limitPerAnchor === undefined) return kept;
 
-  // Per-anchor, in the order the rows already carry — the caller's `sort` has not run yet here, so
-  // this mirrors the backend contract rather than promising a "top" N of its own.
+  // Per-anchor, in the order the rows already carry: the query's order when it has one, since
+  // `executeQueryIR` sorts before a bounded walk, and otherwise whichever order they are stored in.
   const takenPerAnchor = new Map<string, number>();
   return kept.filter((r) => {
     const key = scope.direction === 'in' ? idOf(r) : parentOf(r);
@@ -341,7 +341,13 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
   const entity = query.entity;
   let rows = (data.tables[entity] ?? []).slice();
 
-  if (query.scope) rows = scopeRows(rows, entity, query.scope, data);
+  if (query.scope) {
+    // A bounded walk keeps the first records of the order where it must drop some, so the order is
+    // applied before the walk chooses; the sort below then orders what was kept.
+    const bounded = query.scope.levels !== undefined || query.scope.limitPerAnchor !== undefined;
+    if (bounded && query.sort) rows = applySort(rows, query.sort, entity, data);
+    rows = scopeRows(rows, entity, query.scope, data);
+  }
   if (query.filter) rows = rows.filter((r) => matchesFilter(r, query.filter!, entity, data));
 
   for (const agg of query.aggregate ?? []) {
