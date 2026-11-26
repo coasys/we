@@ -20,7 +20,7 @@ export {
   operationWrites,
 } from './catalog';
 export { type EffectOptions, effectSummary, type OperationEffects, type OperationEffectVerb } from './effects';
-export { callSegment, datasetSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
+export { callSegment, deriveIdentityId, deriveRecordId, domainSegment, identityText, keySegment } from './ids';
 export { identityIdOf } from './identity';
 export {
   categoryMembers,

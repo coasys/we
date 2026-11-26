@@ -113,8 +113,11 @@ export interface OperationCase {
    * and before the operation ends. What an `expect` exists to notice.
    */
   concurrent?: SeedRecord[];
-  /** The dataset's shared id, for a case about a dataset several agents hold as one. Absent: none. */
-  sharedId?: string;
+  /**
+   * The dataset's identity domain, for a case about a dataset that names itself by a record (a
+   * space). Absent: none.
+   */
+  domain?: string;
   /** The manifest version the caller wrote against, for a case about calling the wrong one. Absent: none given. */
   version?: string;
   /** Entities the host refuses this caller when a step chooses them at call time. Absent: none. */
@@ -168,7 +171,7 @@ export interface OperationVector {
   invocationId: string;
   invokedAt: string;
   concurrent?: SeedRecord[];
-  sharedId?: string;
+  domain?: string;
   version?: string;
   deniedChosen?: string[];
   observe: Observation[];
@@ -1176,15 +1179,15 @@ const CASES: OperationCase[] = [
     observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
   },
   {
-    id: 'identity-id-shared',
-    note: 'in a dataset with a shared id, the same identity derives another id, within that shared id',
+    id: 'identity-id-in-space',
+    note: 'in a dataset with an identity domain (a space), the same identity derives another id, within that domain',
     operations: OPERATIONS,
     dataset: [],
     operation: 'nameState',
     args: { slug: 'blocked' },
     invocationId: '00000000-0000-4000-8000-000000000041',
     invokedAt: AT,
-    sharedId: 'QmSpaceA',
+    domain: 'urn:example:space-a',
     observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
   },
   {
@@ -1705,8 +1708,8 @@ export async function runVector(
       invoker,
       invocationId: vector.invocationId,
       invokedAt: vector.invokedAt,
-      // The case's, never the host's: a dataset in a vector has the shared id the file gives it.
-      sharedId: vector.sharedId ?? null,
+      // The case's, never the host's: a dataset in a vector has the identity domain the file gives it.
+      domain: vector.domain ?? null,
       ...(vector.version ? { version: vector.version } : {}),
       ...(vector.deniedChosen ? { admitChosen: (entity: string) => !vector.deniedChosen!.includes(entity) } : {}),
     });
@@ -1737,7 +1740,7 @@ export function vectorInput(c: OperationCase): VectorInput {
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
     ...(c.concurrent ? { concurrent: c.concurrent } : {}),
-    ...(c.sharedId ? { sharedId: c.sharedId } : {}),
+    ...(c.domain ? { domain: c.domain } : {}),
     ...(c.version ? { version: c.version } : {}),
     ...(c.deniedChosen ? { deniedChosen: c.deniedChosen } : {}),
     observe: c.observe,

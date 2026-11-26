@@ -84,7 +84,7 @@
     },
     {
       "id": "ids.identity-slug",
-      "note": "the state in identity-id: a task state by its slug, in a dataset with no shared id",
+      "note": "the state in identity-id: a task state by its slug, in a dataset with no identity domain",
       "kind": "identity",
       "entity": "TaskState",
       "identity": [["slug", "blocked"]],
@@ -92,24 +92,24 @@
       "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
     },
     {
-      "id": "ids.identity-shared",
-      "note": "the state in identity-id-shared: the same identity within a dataset’s shared id",
+      "id": "ids.identity-in-space",
+      "note": "the state in identity-id-in-space: the same identity within a space’s own record",
       "kind": "identity",
       "entity": "TaskState",
       "identity": [["slug", "blocked"]],
-      "sharedId": "QmSpaceA",
-      "framed": "0:10:d=QmSpaceA9:TaskState4:slug7:blocked",
-      "result": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d"
+      "domain": "urn:example:space-a",
+      "framed": "0:21:d=urn:example:space-a9:TaskState4:slug7:blocked",
+      "result": "urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f"
     },
     {
-      "id": "ids.identity-other-dataset",
-      "note": "the same identity in another shared dataset: another record",
+      "id": "ids.identity-other-space",
+      "note": "the same identity in another space: another record",
       "kind": "identity",
       "entity": "TaskState",
       "identity": [["slug", "blocked"]],
-      "sharedId": "QmSpaceB",
-      "framed": "0:10:d=QmSpaceB9:TaskState4:slug7:blocked",
-      "result": "urn:uuid:ae7c15a7-c97c-8bac-adfb-5569983e5eda"
+      "domain": "urn:example:space-b",
+      "framed": "0:21:d=urn:example:space-b9:TaskState4:slug7:blocked",
+      "result": "urn:uuid:ea99375c-b545-886d-b300-15865134e59d"
     },
     {
       "id": "ids.identity-role",

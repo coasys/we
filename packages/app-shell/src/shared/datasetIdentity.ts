@@ -67,6 +67,11 @@ export function datasetOfHandle<D extends { id: string; handle: unknown }>(
 ): D | undefined {
   const byHandle = known.find((d) => d.handle === handle);
   if (byHandle) return byHandle;
-  const id = (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
+  const id = handleDatasetId(handle);
   return id ? known.find((d) => d.id === id) : undefined;
+}
+
+/** The local dataset id a handle carries, for one no known dataset holds: `uuid` first, as above. */
+export function handleDatasetId(handle: unknown): string | undefined {
+  return (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
 }

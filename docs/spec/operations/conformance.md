@@ -45,7 +45,7 @@ Each case:
 | `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                    |
 | `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                       |
 | `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                     |
-| `sharedId`     | Optional. The dataset's shared id ([Identity ids](execution.md#identity-ids)). Absent: the dataset has none.                                                                                                        |
+| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)). Absent: the dataset has none.                                                                                                  |
 | `version`      | Optional. The invocation's `version`. Absent: none is passed.                                                                                                                                                       |
 | `deniedChosen` | Optional. Entities the host refuses this caller when a step chooses them at call time ([Chosen entities](execution.md#chosen-entities)). Absent: every entity the `oneOf` admits is written.                        |
 | `observe`      | What to read back afterwards: a list of `{ "entity", "fields", "relations" }`. `fields` may name `author`.                                                                                                          |
@@ -75,7 +75,7 @@ fails before it writes anything, so the runner's agent remains the only writer.
 2. **Register.** Register `manifest.operations` under `conformance`, at `manifest.version`, and each
    entry of `calls` under its own namespace.
 3. **Invoke** `conformance.<operation>` with `args`, `invoker`, `invocationId`, `invokedAt` and the
-   dataset, under the file's policy. The dataset's shared id is `sharedId`, and it has none when the
+   dataset, under the file's policy. The dataset's identity domain is `domain`, and it has none when the
    case gives none. Pass `version` only when the case gives one. When the case has `deniedChosen`,
    the host refuses each entity it lists when a step chooses it (static `notGranted`). When the case has `concurrent`, commit those
    records outside the operation's transaction, as another writer, once the operation's first
@@ -182,7 +182,7 @@ mostly made of:
 | `relation-order`               | An ordered relation keeps the order written, an unordered one compares as a set, and records list in code-point order.                 |
 | `identity-id`                  | A create keyed by `identity` takes its id from the entity and the slug, not the invocation.                                            |
 | `identity-id-other-invocation` | Another invocation naming the same identity gets the same id as `identity-id`.                                                         |
-| `identity-id-shared`           | In a dataset with a shared id, the same identity gets another id, derived within the shared id.                                        |
+| `identity-id-in-space`         | In a dataset with an identity domain (a space), the same identity gets another id, derived within it.                                  |
 | `identity-twice`               | A second create of the same identity is refused as `recordExists`; nothing lands.                                                      |
 | `identity-not-invocation`      | A record keyed by identity and one keyed by the invocation get different ids.                                                          |
 
@@ -262,7 +262,7 @@ summary's; `writes` is whether the operation writes at all. Every core operation
 [`ids.json`](../../../packages/backend-system/conformance/vectors/operations/ids.json) holds the id
 derivation on its own ([Ids](execution.md#ids)). Each case is an invocation's,
 `{ "kind": "invocation", "invocationId", "path" }`, or an identity's,
-`{ "kind": "identity", "entity", "identity", "sharedId"? }` with `identity` a list of
+`{ "kind": "identity", "entity", "identity", "domain"? }` with `identity` a list of
 `[field, value as text]`, and carries `framed`, the text hashed (as its UTF-8 bytes), and `result`,
 the id. Derive the id and compare; `framed` says whether a disagreement is in the framing or after it.
 
@@ -313,7 +313,7 @@ which runs every vector on a backend built from the file's `entities` alone, wit
 vector's `calls` registered.
 [`operationSuites.test.ts`](../../../packages/backend-system/conformance/tests/operationSuites.test.ts)
 (every static-check, effect, id and RDF vector run from its file, and every core operation read back
-from its triples, e.g. `static.identity`, `effects.per-call-any`, `ids.identity-shared`,
+from its triples, e.g. `static.identity`, `effects.per-call-any`, `ids.identity-in-space`,
 `rdf.make-board`), [`operationsCoverage.test.ts`](../../../packages/backend-system/conformance/tests/operationsCoverage.test.ts)
 (the coverage rule), and [`operationGroups.test.ts`](../../../packages/app-shell/tests/operationGroups.test.ts)
 (WE's permission table and its reading of every effect vector).

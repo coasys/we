@@ -5142,8 +5142,8 @@
       }
     },
     {
-      "id": "identity-id-shared",
-      "note": "in a dataset with a shared id, the same identity derives another id, within that shared id",
+      "id": "identity-id-in-space",
+      "note": "in a dataset with an identity domain (a space), the same identity derives another id, within that domain",
       "manifest": {
         "version": "1",
         "operations": {
@@ -5187,7 +5187,7 @@
       "invoker": "did:example:invoker",
       "invocationId": "00000000-0000-4000-8000-000000000041",
       "invokedAt": "2026-11-24T00:00:00.000Z",
-      "sharedId": "QmSpaceA",
+      "domain": "urn:example:space-a",
       "observe": [
         {
           "entity": "TaskState",
@@ -5196,12 +5196,12 @@
         }
       ],
       "outcome": {
-        "result": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d"
+        "result": "urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f"
       },
       "records": {
         "TaskState": [
           {
-            "id": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d",
+            "id": "urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f",
             "name": "blocked",
             "slug": "blocked"
           }

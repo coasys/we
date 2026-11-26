@@ -19,15 +19,17 @@ import { provideFileSaver } from '@we/design-utils';
 import {
   AgentSettings,
   CollectionBlock,
-  datasetSharedId,
   deriveIdentityId,
   getEntity,
   getEntityForDataset,
+  identityDomainOf,
   ModelRun,
   Policy,
+  registerOperations,
   Space,
   SpaceLandmark,
   unregisterEntity,
+  unregisterOperations,
 } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
@@ -2594,11 +2596,12 @@ describe('what the stores actually wrote', () => {
     }
   }, 10000);
 
-  it('seeds a new space’s vocabulary with the ids its operations would give it, within its shared id once shared', async () => {
+  it('seeds a new space’s vocabulary within its own record, so the same slug made after sharing is the same record', async () => {
     /*
-      A task state's id derives from what it is (its slug), so a member making "done" later names the
-      starter's record rather than a second one. Before the space is shared it has no shared id, so the
-      starter's records take the ids a personal dataset gives; a starter naming one twice writes one.
+      A task state's id derives from what it is (its slug) within the space's own record, which is
+      written before the vocabulary and is the same on every member. So the starter's "done" and a
+      "done" made after the space is shared, here or by a member who joined, are one record: the
+      second create is refused as recordExists. A starter naming one twice writes one.
     */
     provideSeed({
       name: 'test',
@@ -2614,12 +2617,32 @@ describe('what the stores actually wrote', () => {
         },
       ],
     } as never);
+    // A create keyed by the slug and nothing else: what a member's create comes to when its find
+    // has not yet seen the state, as on a member who has not synced it.
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
     try {
       const stores = mountShell();
       await ready(stores);
       const id = (await stores.spaces.createSpace('Vocabulary', 'x', 'personal', 'hidden'))!;
       const ref = (await lifecycle.list()).find((d) => d.id === id)!;
-      expect(datasetSharedId(ref.handle)).toBeNull();
+      const [space] = await Space.findAll(ref.handle, { where: { uuid: id } });
+      expect(await identityDomainOf(ref.handle)).toBe(space.id);
       const states = (await getEntityForDataset('TaskState', ref.handle)!.findAll(ref.handle)) as unknown as {
         id: string;
         slug: string;
@@ -2629,16 +2652,38 @@ describe('what the stores actually wrote', () => {
         ['doing', 'Doing'],
         ['done', 'Done'],
       ]);
-      for (const state of states) expect(state.id).toBe(await deriveIdentityId('TaskState', [['slug', state.slug]]));
+      for (const state of states)
+        expect(state.id).toBe(await deriveIdentityId('TaskState', [['slug', state.slug]], space.id));
 
-      // Once shared, the host names the dataset by its shared id, and an identity is derived within it.
       await stores.spaces.shareSpace(id);
-      await vi.waitFor(async () => {
-        const shared = (await lifecycle.list()).find((d) => d.id === id)!;
-        expect(shared.sharedId).toBeTruthy();
-        expect(datasetSharedId(shared.handle)).toBe(shared.sharedId);
+      const shared = await vi.waitFor(async () => {
+        const now = (await lifecycle.list()).find((d) => d.id === id)!;
+        expect(now.sharedId).toBeTruthy();
+        return now;
       });
+      // The record a member who joins reads the space by (its address) is the one the domain is.
+      const joinerReads = await Space.findOne(shared.handle, { where: { url: shared.sharedId } });
+      expect(joinerReads?.id).toBe(space.id);
+      expect(await identityDomainOf(shared.handle)).toBe(space.id);
+
+      const done = states.find((s) => s.slug === 'done')!;
+      await expect(
+        runOperation('identitytest.nameState', { slug: 'done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError', code: 'recordExists' });
+      // The vocabulary operation itself finds the state first and refuses the name it already has.
+      await expect(
+        runOperation('core.createTaskState', { name: 'Done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError' });
+      // A slug nobody made yet lands, at the id every member derives for it.
+      const blocked = await runOperation(
+        'identitytest.nameState',
+        { slug: 'blocked' },
+        { dataset: shared.handle, invoker: 'did:test:me' },
+      );
+      expect((blocked as { id: string }).id).toBe(await deriveIdentityId('TaskState', [['slug', 'blocked']], space.id));
+      expect(done.id).not.toBe(await deriveIdentityId('TaskState', [['slug', 'done']]));
     } finally {
+      unregisterOperations('identitytest');
       provideSeed({ name: 'test', modules: [] } as never);
     }
   }, 10000);

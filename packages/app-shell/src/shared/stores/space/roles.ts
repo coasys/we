@@ -13,8 +13,8 @@
 import { isPolicyRefusal, isRecordExists, SELF_PERSONS, validatePolicy } from '@we/backend-shared';
 import {
   type DatasetProxy,
-  datasetSharedId,
   deriveIdentityId,
+  identityDomainOf,
   Policy,
   registerEntityWriteCheck,
   Role,
@@ -275,10 +275,10 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     gap: what decides who may write is never written by an operation, so a template cannot reach it
     through one. They follow the operations' slug rule all the same — derived from the name, refused
     when the space holds it — and its identity: a role's id derives from its slug as a vocabulary
-    create's does, within the space's shared id, so two nodes naming one role at once write one record.
+    create's does, within the space's own record, so two nodes naming one role at once write one record.
   */
   async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
-    const id = await deriveIdentityId('Role', [['slug', fields.slug]], datasetSharedId(dataset));
+    const id = await deriveIdentityId('Role', [['slug', fields.slug]], await identityDomainOf(dataset));
     try {
       await Role.create(dataset, fields, { id });
     } catch (error) {

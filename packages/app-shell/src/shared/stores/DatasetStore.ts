@@ -16,12 +16,12 @@
  * `currentDataset` signal.
  */
 import { datasetKey, type DatasetRef, type EntityManifestEntry, trace } from '@we/backend-shared';
-import { AgentSettings, type DatasetProxy, registerDatasetSharedId } from '@we/entities';
+import { AgentSettings, type DatasetProxy } from '@we/entities';
 import { latest } from '@we/module-shared';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { createCallKernel } from '../callKernel';
-import { datasetOfHandle, sameDataset } from '../datasetIdentity';
+import { sameDataset } from '../datasetIdentity';
 import { distinctSignal } from '../distinctSignal';
 import type { FirstScreen } from '../firstScreen';
 import { hostListeners } from '../hostSlot';
@@ -906,22 +906,6 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
       toasts.error('Could not open that space');
     }
   }
-
-  /*
-    What a shared dataset is named by on every peer, found from the handle a write carries: the id an
-    identity-keyed record's id is derived within. Registered here, the one place that holds every
-    dataset this agent has open, so an operation run from anywhere finds it without its caller
-    passing it.
-  */
-  registerDatasetSharedId((handle) =>
-    untrack(() => {
-      const known = [...datasets(), rootDataset(), personalDataset(), testDataset()].filter((d): d is AppDataset =>
-        Boolean(d),
-      );
-      return datasetOfHandle(known, handle)?.sharedId;
-    }),
-  );
-  onCleanup(() => registerDatasetSharedId(null));
 
   const store: DatasetStore = {
     datasets,

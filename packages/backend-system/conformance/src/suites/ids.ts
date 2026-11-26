@@ -1,6 +1,6 @@
 /**
  * The id derivation as vectors, standalone (`execution.md`, "Ids" and "Identity ids"): an invocation
- * id and a step path, or an entity, its identity and the dataset's shared id, to the text framed, and
+ * id and a step path, or an entity, its identity and the dataset's identity domain, to the text framed, and
  * the `urn:uuid` it gives.
  *
  * `framed` is the input to SHA-256 as text (it is hashed as its UTF-8 bytes), so an implementation
@@ -16,7 +16,7 @@ export type IdCase =
       kind: 'identity';
       entity: string;
       identity: [field: string, value: string][];
-      sharedId?: string;
+      domain?: string;
     };
 
 const INV = '00000000-0000-4000-8000-000000000001';
@@ -87,26 +87,26 @@ export const ID_CASES: IdCase[] = [
   },
   {
     id: 'ids.identity-slug',
-    note: 'the state in identity-id: a task state by its slug, in a dataset with no shared id',
+    note: 'the state in identity-id: a task state by its slug, in a dataset with no identity domain',
     kind: 'identity',
     entity: 'TaskState',
     identity: [['slug', 'blocked']],
   },
   {
-    id: 'ids.identity-shared',
-    note: 'the state in identity-id-shared: the same identity within a dataset’s shared id',
+    id: 'ids.identity-in-space',
+    note: 'the state in identity-id-in-space: the same identity within a space’s own record',
     kind: 'identity',
     entity: 'TaskState',
     identity: [['slug', 'blocked']],
-    sharedId: 'QmSpaceA',
+    domain: 'urn:example:space-a',
   },
   {
-    id: 'ids.identity-other-dataset',
-    note: 'the same identity in another shared dataset: another record',
+    id: 'ids.identity-other-space',
+    note: 'the same identity in another space: another record',
     kind: 'identity',
     entity: 'TaskState',
     identity: [['slug', 'blocked']],
-    sharedId: 'QmSpaceB',
+    domain: 'urn:example:space-b',
   },
   {
     id: 'ids.identity-role',
@@ -167,14 +167,14 @@ const frame = (parts: readonly string[]) => parts.map((part) => `${encoder.encod
 /** The segments a case frames, in order. */
 export function segmentsOf(c: IdCase): string[] {
   if (c.kind === 'invocation') return [c.invocationId, ...c.path];
-  return ['', ...(c.sharedId ? [`d=${c.sharedId}`] : []), c.entity, ...c.identity.flat()];
+  return ['', ...(c.domain ? [`d=${c.domain}`] : []), c.entity, ...c.identity.flat()];
 }
 
 /** What the reference derives for a case. */
 export async function derivedId(c: IdCase): Promise<string> {
   return c.kind === 'invocation'
     ? deriveRecordId(c.invocationId, c.path)
-    : deriveIdentityId(c.entity, c.identity, c.sharedId ?? null);
+    : deriveIdentityId(c.entity, c.identity, c.domain ?? null);
 }
 
 /** `ids.json`: per case its inputs, the text framed, and the id. */
