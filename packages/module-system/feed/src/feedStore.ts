@@ -405,7 +405,7 @@ export function createFeed(deps: FeedDeps) {
     a device's person arrives after its profile, which may be after the read that grouped it. So the
     authors a read grouped are watched, and when one's person is no longer what it was grouped under
     the window is arranged again from what that read found (`drawnParts`) — the two devices' rows
-    become one with no query to the backend, which would cost seconds of executor time per space. A
+    become one with no query to the backend, which would cost seconds of the backend's time per space. A
     person arriving for an author not on screen, or the same person again, redraws nothing. An author
     nobody has fetched is fetched here.
   */

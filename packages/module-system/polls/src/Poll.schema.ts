@@ -14,9 +14,12 @@ const PENDING = 'modules.polls.pendingVote[block.id]';
  *
  * The held vote goes in, so the bars move on the press rather than a round trip later. `tally`
  * counts it in place of this agent's stored votes, so changing a vote does not count twice, and
- * counts this agent once across all their devices — their newest vote, the row it marks `mine`.
+ * counts every voter once across all their devices — their newest vote — so everyone reading the poll
+ * sees the same totals. The reader's own newest is the row it marks `mine`.
  */
-const ROWS = { $: `tally({ votes: local.votes, options: block.options, me: me.dids, pending: ${PENDING} })` };
+const ROWS = {
+  $: `tally({ votes: local.votes, options: block.options, me: me.dids, profiles: profileStore.profiles, pending: ${PENDING} })`,
+};
 /**
  * This agent's own vote, if any — the held one first, then the newest from any of their devices.
  *

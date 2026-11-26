@@ -36,6 +36,7 @@ import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { reactions } from '../../../shared/sources/signalTally';
 import { useDatasetStore } from '../stores/DatasetStore';
+import { useProfileStore } from '../stores/ProfileStore';
 import { useSessionStore } from '../stores/SessionStore';
 import { useSpaceStore } from '../stores/SpaceStore';
 
@@ -69,6 +70,7 @@ export function ReactionBadge(props: {
   keepStill?: (on: boolean) => void;
 }) {
   const datasetStore = useDatasetStore();
+  const profileStore = useProfileStore();
   const sessionStore = useSessionStore();
   const spaceStore = useSpaceStore();
 
@@ -143,6 +145,7 @@ export function ReactionBadge(props: {
         record: record(),
         type: typeId(),
         me: sessionStore.me()?.dids ?? sessionStore.me()?.did,
+        profiles: profileStore.profiles(),
         pending: signalOptimism.overlay(),
       }) as ReactionRow[];
     }

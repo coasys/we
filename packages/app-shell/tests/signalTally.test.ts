@@ -187,3 +187,37 @@ describe('a reaction drawn before it is stored', () => {
     ]);
   });
 });
+
+describe('reactions across everybody’s computers', () => {
+  // Ana liked from both of her computers and both reactions stand; Ben liked once.
+  const ana = { did: 'did:scid:ana', devices: ['did:ana-phone', 'did:ana-laptop'] };
+  const ben = { did: 'did:scid:ben', devices: ['did:ben-desktop'] };
+  const profiles = [ana, ben];
+  const signals = [
+    { id: 's1', author: 'did:ana-laptop', signalTypeId: 'st-like', value: 1, createdAt: 1000 },
+    { id: 's2', author: 'did:ana-phone', signalTypeId: 'st-like', value: 1, createdAt: 2000 },
+    { id: 's3', author: 'did:ben-desktop', signalTypeId: 'st-like', value: 1, createdAt: 500 },
+  ];
+  const count = (me: string[]) =>
+    signalTally({ signals: reactions({ signals, record: 'post-1', type: 'st-like', me, profiles }), type: like });
+
+  it('counts somebody else’s two computers once, as their newest', () => {
+    const read = reactions({ signals, record: 'post-1', type: 'st-like', me: ['did:ben-desktop'], profiles });
+    expect(read).toHaveLength(2);
+    expect(read).toContain(signals[1]);
+    expect(read).not.toContain(signals[0]);
+  });
+
+  it('gives two readers the same count', () => {
+    const asAna = count(['did:ana-phone', 'did:ana-laptop', 'did:scid:ana']);
+    expect(asAna).toBe(2);
+    expect(count(['did:ben-desktop', 'did:scid:ben'])).toBe(asAna);
+    expect(count(['did:carol'])).toBe(asAna);
+  });
+
+  it('counts a key no profile lists as its own person', () => {
+    expect(reactions({ signals, record: 'post-1', type: 'st-like', me: ['did:carol'], profiles: [ben] })).toHaveLength(
+      3,
+    );
+  });
+});

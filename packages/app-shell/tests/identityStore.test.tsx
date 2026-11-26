@@ -72,8 +72,24 @@ const add: KeyLogView['events'][number] = {
   revoked: [],
 };
 const devices: DeviceKeyView[] = [
-  { keyId: 'd2', sign: 'z6MkTwo', thisDevice: false, addedSeq: 1, unlinkedSeq: null, revokedSeq: null },
-  { keyId: 'd1', sign: 'z6MkOne', thisDevice: true, addedSeq: 0, unlinkedSeq: null, revokedSeq: null },
+  {
+    keyId: 'd2',
+    sign: 'z6MkTwo',
+    author: 'did:key:z6MkTwo',
+    thisDevice: false,
+    addedSeq: 1,
+    unlinkedSeq: null,
+    revokedSeq: null,
+  },
+  {
+    keyId: 'd1',
+    sign: 'z6MkOne',
+    author: 'did:key:z6MkOne',
+    thisDevice: true,
+    addedSeq: 0,
+    unlinkedSeq: null,
+    revokedSeq: null,
+  },
 ];
 
 /** A backend whose identity is whatever the test says, and which counts what it was asked. */

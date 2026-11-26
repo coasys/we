@@ -141,9 +141,9 @@ These are always present on every model instance but are only surfaced in the UI
 
 ### `author` is a device; the person is resolved
 
-A record's `author` is the device key that signed it (`did:key:…`), and stays that: queries, `$query`
+A record's `author` is the device key that signed it, and stays that: queries, `$query`
 author filters and the write check all match on it. A person who writes from two computers is two
-device keys listed in one key log, whose DID (`did:scid:…`) is the person. WE turns the one into the
+device keys listed in one key log, whose own id is the person. WE turns the one into the
 other wherever a record is _shown_. Through `PersonPort`, `$agent` and `profileStore.profileFor`
 answer an author with the person's profile (`did` is the person, `device` the key that signed), and
 the Feed groups by person. Templates decide "mine" with `author in me.dids`, and "is this person me"

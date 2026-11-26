@@ -32,7 +32,7 @@ export interface AgentProfileSummary {
    * The device key this profile was asked for, when `did` is the person it speaks for.
    *
    * A record's `author` is the device that signed it; a person who writes from two computers is
-   * two device keys and one person (`did:scid:…`). The host answers an author with the person's
+   * two device keys and one person, with an id of its own. The host answers an author with the person's
    * profile, so both computers' posts carry one name and one face, and keeps the device here for
    * anything that needs to know which computer signed. Absent when the author is its own person.
    */

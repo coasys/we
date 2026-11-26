@@ -54,8 +54,8 @@ export interface ProfileStore {
    */
   profileFor: (did: string) => AgentProfileSummary | undefined;
   /**
-   * The person a DID speaks for: for a device key that a person's key log lists, that person's
-   * `did:scid`; for anything else, the DID itself. Reactive per DID, and asks the backend the first
+   * The person a DID speaks for: for a device key that a person's key log lists, that person's id;
+   * for anything else, the DID itself. Reactive per DID, and asks the backend the first
    * time a key is read. `profileFor` already answers an author as their person (with `device` kept),
    * so this is for code that groups or compares authors without drawing them.
    */
@@ -226,7 +226,7 @@ export function ProfileStoreProvider(props: ParentProps) {
   const personMissedAt = new Map<string, number>();
 
   function resolvePerson(did: string): void {
-    if (!did.startsWith('did:key:') || personAsked.has(did)) return;
+    if (!did || personAsked.has(did)) return;
     const missedAt = personMissedAt.get(did);
     if (missedAt !== undefined && Date.now() - missedAt < PERSON_MISS_RETRY_MS) return;
     const persons = session.backendPorts()?.persons;

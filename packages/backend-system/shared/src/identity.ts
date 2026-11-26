@@ -210,6 +210,11 @@ export interface DeviceKeyView {
   keyId: string;
   /** The key, a multikey. */
   sign: string;
+  /**
+   * The id a record this device signs carries as its `author` — what `me.dids` lists and an author
+   * filter matches. The backend derives it from the key; neutral code never builds one.
+   */
+  author: string;
   /** Whether it is this session's own device key. */
   thisDevice: boolean;
   /** The seq of the event that added it. */

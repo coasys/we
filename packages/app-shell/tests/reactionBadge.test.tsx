@@ -26,6 +26,9 @@ vi.mock('@we/entities', async () => {
 vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
   useDatasetStore: () => ({ currentDataset: () => ({ id: 'ds', handle: {} }) }),
 }));
+vi.mock('../src/frameworks/solid/stores/ProfileStore', () => ({
+  useProfileStore: () => ({ profiles: () => [] }),
+}));
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
   useSessionStore: () => ({ me: () => ({ did: 'did:me' }) }),
 }));

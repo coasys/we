@@ -85,7 +85,7 @@ const CONTEXT_REFS: ScopeRef[] = [
     path: 'me.person',
     label: 'me.person',
     valueType: 'string',
-    hint: 'the person this device speaks for (their did:scid), or me.did when there is no key log',
+    hint: 'the person this device speaks for (a person’s id), or me.did when there is no key log',
   },
   { id: 'context:me.handle', kind: 'context', path: 'me.handle', label: 'me.handle', valueType: 'string' },
   { id: 'context:me.avatar', kind: 'context', path: 'me.avatar', label: 'me.avatar', valueType: 'string' },

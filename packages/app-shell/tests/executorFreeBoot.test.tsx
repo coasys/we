@@ -1349,6 +1349,7 @@ describe('what the backend can do with an identity', () => {
           {
             keyId: 'k1',
             sign: 'z6MkTestThisDevice',
+            author: 'did:key:z6MkTestThisDevice',
             thisDevice: true,
             addedSeq: 0,
             unlinkedSeq: null,
@@ -1357,6 +1358,7 @@ describe('what the backend can do with an identity', () => {
           {
             keyId: 'k2',
             sign: 'z6MkTestOtherDevice',
+            author: 'did:key:z6MkTestOtherDevice',
             thisDevice: false,
             addedSeq: 1,
             unlinkedSeq: null,
@@ -3748,6 +3750,7 @@ describe('changing a reaction', () => {
           {
             keyId: 'k1',
             sign: 'z6MkTestThisDevice',
+            author: 'did:key:z6MkTestThisDevice',
             thisDevice: true,
             addedSeq: 0,
             unlinkedSeq: null,
@@ -3756,6 +3759,7 @@ describe('changing a reaction', () => {
           {
             keyId: 'k2',
             sign: 'z6MkTestOtherDevice',
+            author: 'did:key:z6MkTestOtherDevice',
             thisDevice: false,
             addedSeq: 1,
             unlinkedSeq: null,

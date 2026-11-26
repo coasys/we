@@ -899,7 +899,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   sessionStore: {
     state: {
       client: 'the backend client handle | undefined',
-      me: "Agent | undefined — the authenticated identity; prefer the $me token in schemas. `did` is this computer's device key, the author of what it writes; `person` is the person it speaks for (their did:scid, or `did` without a key log) and `dids` every device key that writes as them, then the person itself. 'Is this me' is always `X in me.dids`: a record's author (`post.author in me.dids` — a post from my other computer is mine), a presence peer (`p.did in me.dids`), a member or a profile entry (`m.did in me.dids`, since those are persons), and inside $agent `author.did in me.dids`",
+      me: "Agent | undefined — the authenticated identity; prefer the $me token in schemas. `did` is this computer's device key, the author of what it writes; `person` is the person it speaks for (the person’s id, or `did` without a key log) and `dids` every device key that writes as them, then the person itself. 'Is this me' is always `X in me.dids`: a record's author (`post.author in me.dids` — a post from my other computer is mine), a presence peer (`p.did in me.dids`), a member or a profile entry (`m.did in me.dids`, since those are persons), and inside $agent `author.did in me.dids`",
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
         "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
@@ -1199,7 +1199,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   profileStore: {
     state: {
       profiles:
-        "AgentProfileSummary[] — everybody whose profile has been fetched, ONE ENTRY PER PERSON (did, devices, firstName, lastName, handle, bio, avatar, coverImage, location). `did` is the person (did:scid where they have a key log) and `devices` the device keys seen for them. A record's author is a device key, so look its author up with `profileStore.profiles.find(p, p.did == post.author || post.author in p.devices)` — `find(profileStore.profiles, { did: post.author })` misses somebody writing from a computer whose key is not the entry's did",
+        "AgentProfileSummary[] — everybody whose profile has been fetched, ONE ENTRY PER PERSON (did, devices, firstName, lastName, handle, bio, avatar, coverImage, location). `did` is the person (the person’s id where they have a key log) and `devices` the device keys seen for them. A record's author is a device key, so look its author up with `profileStore.profiles.find(p, p.did == post.author || post.author in p.devices)` — `find(profileStore.profiles, { did: post.author })` misses somebody writing from a computer whose key is not the entry's did",
       ownProfile:
         'AgentProfileSummary | undefined — reactive accessor for the current user\'s own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name',
       ownProfileLoaded:

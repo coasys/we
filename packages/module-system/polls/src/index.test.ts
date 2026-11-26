@@ -204,3 +204,41 @@ describe('tally across one person’s computers', () => {
     expect(tally({ votes, options: 'tea' })[0].count).toBe(2);
   });
 });
+
+describe('tally across everybody’s computers', () => {
+  // Ana votes from two computers and both votes stand; Ben votes once. Each reader knows the other
+  // through their profile, one entry per person listing the keys they write from.
+  const ana = { did: 'did:scid:ana', devices: ['did:ana-phone', 'did:ana-laptop'] };
+  const ben = { did: 'did:scid:ben', devices: ['did:ben-desktop'] };
+  const profiles = [ana, ben];
+  const votes = [
+    { id: 'v1', author: 'did:ana-laptop', option: 'tea', createdAt: '2026-11-01T10:00:00.000Z' },
+    { id: 'v2', author: 'did:ana-phone', option: 'coffee', createdAt: '2026-11-01T11:00:00.000Z' },
+    { id: 'v3', author: 'did:ben-desktop', option: 'tea', createdAt: '2026-11-01T09:00:00.000Z' },
+  ];
+  const counts = (me: string[]) =>
+    tally({ votes, options: 'tea,coffee', me, profiles }).map((row) => [row.option, row.count]);
+
+  it('counts somebody else’s two computers once, as their newest', () => {
+    expect(counts(['did:ben-desktop', 'did:scid:ben'])).toEqual([
+      ['tea', 1],
+      ['coffee', 1],
+    ]);
+  });
+
+  it('gives two readers the same totals', () => {
+    const asAna = counts(['did:ana-phone', 'did:ana-laptop', 'did:scid:ana']);
+    const asBen = counts(['did:ben-desktop', 'did:scid:ben']);
+    const asNobody = counts(['did:carol']);
+    expect(asBen).toEqual(asAna);
+    expect(asNobody).toEqual(asAna);
+  });
+
+  it('counts a key no profile lists as its own person', () => {
+    const rows = tally({ votes, options: 'tea,coffee', me: ['did:carol'], profiles: [ben] });
+    expect(rows.map((row) => [row.option, row.count])).toEqual([
+      ['tea', 2],
+      ['coffee', 1],
+    ]);
+  });
+});
