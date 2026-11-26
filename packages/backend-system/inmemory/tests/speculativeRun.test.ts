@@ -69,7 +69,7 @@ describe('speculateOperation', () => {
   it('predicts nothing for a run that fails on a precondition', async () => {
     await expect(
       speculateOperation('core.setInvolvement', { node: post.id, agent: ME, kind: 'nope', on: true }, invocation('i')),
-    ).rejects.toMatchObject({ class: 'precondition', code: 'unknownKind' });
+    ).rejects.toMatchObject({ class: 'precondition', code: 'unknownKind', declared: true });
   });
 
   it('reads the predictions still pending, so a second press is predicted from the first', async () => {

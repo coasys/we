@@ -41,7 +41,7 @@ import {
 } from '@we/expressions';
 
 import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
-import { isOperationError, OperationError, preconditionError, staticError } from './errors';
+import { declaredError, isOperationError, OperationError, preconditionError, staticError } from './errors';
 import { callSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
@@ -418,7 +418,7 @@ async function runStep(
       const message = op.errors?.[code];
       if (message === undefined)
         throw staticError('malformed', `"${code}" is not one of this operation's errors`, step);
-      throw preconditionError(code, message, step);
+      throw declaredError(code, message, step);
     }
 
     case 'forEach': {

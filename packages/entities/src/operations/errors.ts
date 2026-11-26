@@ -39,6 +39,11 @@ export interface OperationErrorInit {
   step?: string;
   /** Why the space's policy refused a write, for a `refused` error: a caller may treat a policy it could not read apart from one that said no. */
   refusal?: Refusal;
+  /**
+   * The error is one of the operation's own `errors`, raised by a `check`, and its message is the
+   * declaration's: words written for the person who asked, which a host may show them as they are.
+   */
+  declared?: boolean;
 }
 
 export class OperationError extends Error {
@@ -46,6 +51,7 @@ export class OperationError extends Error {
   readonly code: string;
   readonly step?: string;
   readonly refusal?: Refusal;
+  readonly declared?: boolean;
 
   constructor(init: OperationErrorInit) {
     super(init.message);
@@ -54,6 +60,7 @@ export class OperationError extends Error {
     this.code = init.code;
     if (init.step !== undefined) this.step = init.step;
     if (init.refusal !== undefined) this.refusal = init.refusal;
+    if (init.declared) this.declared = true;
   }
 }
 
@@ -67,3 +74,7 @@ export const staticError = (code: StaticErrorCode, message: string, step?: strin
 
 export const preconditionError = (code: string, message: string, step?: string) =>
   new OperationError({ class: 'precondition', code, message, step });
+
+/** A `check` that failed: one of the operation's own errors, in its own words. */
+export const declaredError = (code: string, message: string, step?: string) =>
+  new OperationError({ class: 'precondition', code, message, step, declared: true });

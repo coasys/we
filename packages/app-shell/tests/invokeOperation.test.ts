@@ -78,3 +78,27 @@ describe('invokeOperation', () => {
     live.dispose();
   });
 });
+it('withdraws the prediction when the real run fails, and says a declared error once in its own words', async () => {
+  const said: string[] = [];
+  await expect(
+    invokeOperation(
+      'core.setInvolvement',
+      { node: post.id, agent: ME, kind: 'nope', on: true },
+      { dataset, invoker: ME, notify: (m) => said.push(m) },
+    ),
+  ).rejects.toMatchObject({ code: 'unknownKind' });
+  expect(said).toEqual(['That is not a kind of involvement this space has.']);
+  expect(predictionsFor(dataset)).toEqual([]);
+});
+
+it('says a failure the operation does not name in the caller’s words', async () => {
+  const said: string[] = [];
+  await expect(
+    invokeOperation(
+      'core.moveCard',
+      { to: 'nowhere', card: 'c' },
+      { dataset, invoker: ME, notify: (m) => said.push(m), failure: 'Could not move that card' },
+    ),
+  ).rejects.toBeTruthy();
+  expect(said).toEqual(['Could not move that card']);
+});
