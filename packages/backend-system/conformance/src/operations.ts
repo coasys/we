@@ -1799,8 +1799,7 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
         expect(vectorOf(c, { outcome: vector!.outcome, records: vector!.records })).toEqual(vector);
         expect(await runVector(subject, file, vector!)).toEqual({ outcome: vector!.outcome, records: vector!.records });
       };
-      // Typed by the suite's case list, which names no operation case yet; read by name.
-      const gap = (harness.knownGaps as Partial<Record<string, string>> | undefined)?.[id];
+      const gap = harness.knownGaps?.[id];
       if (gap) it.fails(`${c.note} [known gap: ${gap}]`, body, timeout);
       else it(c.note, body, timeout);
     }
