@@ -24,9 +24,6 @@ const target = {
   signalType: { type: 'string', required: true, description: 'The SignalType’s id.' },
 } as const;
 
-/** Whether a row `r` is about `node` — a to-one relation reads back as the id, or as the one-entry list it was written as. */
-const ON_NODE = '(r.node == node || node in r.node)';
-
 export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
   upsertSignal: {
     description:
@@ -91,9 +88,6 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
     Every write names its own agent and its own pair, so two members assigning two different people
     at once cannot drop each other. Two toggling the same pair at the same instant can leave a
     duplicate; it reads as one involvement, and the next write removes both.
-
-    The node is matched on the rows rather than in the where: "everything this agent is on" is the
-    native question, and the node is narrowed from it.
   */
   setInvolvement: {
     description:
@@ -118,20 +112,24 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         when: { $: 'first(kinds).reflexive' },
       },
       {
-        find: { as: 'held', entity: 'Involvement', where: { agent: { $: 'agent' }, kind: { $: 'kind' } } },
+        find: {
+          as: 'held',
+          entity: 'Involvement',
+          where: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: { $: 'node' } },
+        },
         when: { $: '!first(kinds).reflexive' },
       },
       {
         create: {
           entity: 'Involvement',
-          fields: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: [{ $: 'node' }] },
+          fields: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: { $: 'node' } },
         },
-        when: { $: `!first(kinds).reflexive && on && !held.exists(r, ${ON_NODE})` },
+        when: { $: '!first(kinds).reflexive && on && count(held) == 0' },
       },
       // Every copy, not the first: a duplicate must not survive the person who meant to remove it.
       {
         forEach: {
-          in: { $: `held.filter(r, ${ON_NODE})` },
+          in: { $: 'held' },
           as: 'row',
           steps: [{ delete: { entity: 'Involvement', id: { $: 'row' } } }],
         },
@@ -159,12 +157,12 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         find: {
           as: 'held',
           entity: 'Involvement',
-          where: { agent: { $: 'invoker' }, kind: { $: 'answers.map(t, t.slug)' } },
+          where: { agent: { $: 'invoker' }, kind: { $: 'answers.map(t, t.slug)' }, node: { $: 'node' } },
         },
       },
       {
         forEach: {
-          in: { $: `held.filter(r, ${ON_NODE} && r.kind != kind)` },
+          in: { $: 'held.filter(r, r.kind != kind)' },
           as: 'stale',
           steps: [{ delete: { entity: 'Involvement', id: { $: 'stale' } } }],
         },
@@ -172,9 +170,9 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
       {
         create: {
           entity: 'Involvement',
-          fields: { agent: { $: 'invoker' }, kind: { $: 'kind' }, node: [{ $: 'node' }] },
+          fields: { agent: { $: 'invoker' }, kind: { $: 'kind' }, node: { $: 'node' } },
         },
-        when: { $: `kind && !held.exists(r, ${ON_NODE} && r.kind == kind)` },
+        when: { $: 'kind && !held.exists(r, r.kind == kind)' },
       },
     ],
   },

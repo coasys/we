@@ -59,11 +59,22 @@ MAY be `required`, and MAY declare a `default`, the value a record reads back wi
 or `many` (to-many) and optionally a `target` entity. A to-many relation MAY be `ordered`, in which
 case its members have an order that writes set and reads preserve.
 
-- A to-many relation is written with `link`, `unlink` and `setRelation`, or as a list of ids in a
-  `create`'s or `update`'s fields.
-- A to-one relation is written as a field on `create` or `update`, never linked. Its value in an
-  operation SHOULD be a list holding one id; an implementation MUST accept that form, and SHOULD
-  accept a bare id or a record with an `id` as the same thing.
+The cardinality decides the value's shape, the same way in every write and every read:
+
+- A **to-many** relation's value is a list of ids. It is written with `link`, `unlink` and
+  `setRelation`, or as a list of ids (or records with an `id`) in a `create`'s or `update`'s
+  fields. A read without `include` gives the list of ids; with `include`, the list of records.
+- A **to-one** relation's value is **one id**. It is written as a field on `create` or `update`,
+  never linked; the value written is that id, or a record with an `id`, which means its id. A
+  write giving a to-one a list MUST be refused, whatever the list holds. A read without `include`
+  gives the id itself, never a list holding it: as committed, as an `update` left it, as found by a
+  `find`, and as a record this same operation created. With `include`, the record. A `where` compares a
+  to-one with an id as it compares a property: `{ "node": { "$": "node" } }`.
+- `''` or `null` written to a to-one clears it ([The absent-value rule](#the-absent-value-rule)).
+
+> **Why one shape.** A to-one that read back as an id from one backend and as a list of one from
+> another made every reader compare both ways (`r.node == node || node in r.node`), and a reader that
+> forgot one form matched nothing on the backend that used it.
 
 **Category.** A closed set of names standing for "every entity of a kind", resolved against the
 entities registered when a step runs rather than when the operation was written:

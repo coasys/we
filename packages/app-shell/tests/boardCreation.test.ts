@@ -110,7 +110,7 @@ describe('making a board', () => {
 
   it('makes the space’s own board once, gathering from the space collection, and names it by landmark', async () => {
     await model('CollectionBlock').create(dataset, { kind: 'space' }, { id: 'root' });
-    await model('Space').create(dataset, { name: 'Space', root: ['root'] }, { id: 'space' });
+    await model('Space').create(dataset, { name: 'Space', root: 'root' }, { id: 'space' });
     const landmarksChanged = vi.fn();
     const space = actions({ landmarksChanged });
 
@@ -147,7 +147,7 @@ describe('a board’s columns', () => {
   });
 
   it('adds a column for a new state to the space’s board only when it lacks one', async () => {
-    await model('SpaceLandmark').create(dataset, { name: 'board', node: [boardId] });
+    await model('SpaceLandmark').create(dataset, { name: 'board', node: boardId });
     await actions().addStateToSpaceBoard('todo', 'To do');
     await actions().addStateToSpaceBoard('review', 'Review');
     expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done', 'review']);

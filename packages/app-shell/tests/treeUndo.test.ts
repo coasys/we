@@ -85,13 +85,13 @@ function mount(): RecordStore {
 const link = (id: string, source: string, target: string) =>
   model('Relationship').create(
     handle,
-    { relationshipTypeId: SPINE, source: [source], target: [target], sourceType: 'Card', targetType: 'Card' },
+    { relationshipTypeId: SPINE, source, target, sourceType: 'Card', targetType: 'Card' },
     { id },
   );
 const place = (node: string, rank?: number) =>
   model('Placement').create(
     handle,
-    { nodeType: 'Card', node: [node], ...(rank ? { rank } : {}) },
+    { nodeType: 'Card', node, ...(rank ? { rank } : {}) },
     { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
   );
 const links = () => model('Relationship').findAll(handle);
@@ -192,7 +192,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     it('leaves a card alone when a peer has moved it since', async () => {
       const store = mount();
       await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
-      await peer('pb', { source: ['q'] });
+      await peer('pb', { source: 'q' });
 
       await store.undoCanvas(CANVAS);
       expect(await parentOf('b')).toBe('q');

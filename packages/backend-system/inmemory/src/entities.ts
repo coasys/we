@@ -88,6 +88,21 @@ function idsIn(value: unknown): string[] | null {
   return ids;
 }
 
+/**
+ * The one id a to-one relation is written as: an id, or a record standing for its id. A list is
+ * refused rather than read as its first entry — it is a to-many's value, and a caller writing one to
+ * a to-one has the relation's cardinality wrong, which no guess fixes for them.
+ */
+function toOneId(entity: string, relation: string, value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    throw new Error(
+      `${entity}.${relation} is a to-one relation: write the one record's id, not a list (a list is a to-many's value)`,
+    );
+  }
+  const id = typeof value === 'string' ? value : (value as { id?: unknown } | null | undefined)?.id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
 function writeField(row: Record<string, unknown>, key: string, value: unknown): void {
   if (value === '' || value === null) delete row[key];
   else row[key] = value;
@@ -624,15 +639,11 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
               if (!sameJson(row[key], value)) changed[key] = value;
               continue;
             }
-            /*
-              A to-one relation written in an edit is stored as the one id it points at, however it
-              arrives — an id, a record, or a one-element list, which is the spelling AD4M's save
-              needs to write the link at all. A create already reads it that way.
-            */
+            // A to-one relation written in an edit is stored as the one id it points at: an id, or a
+            // record standing for its id. A create reads it the same way.
             if (toOne.has(key) && value !== '' && value !== null) {
-              const one: unknown = Array.isArray(value) ? value[0] : value;
-              const id = typeof one === 'string' ? one : (one as AnyRow | null | undefined)?.id;
-              if (typeof id !== 'string' || !id) continue;
+              const id = toOneId(name, key, value);
+              if (!id) continue;
               if (row[key] === id) continue;
               changed[key] = id;
               continue;
@@ -810,6 +821,8 @@ export function compileEntities(manifest: EntityManifest, runtime: EntityRuntime
         if ('id' in data) {
           throw new Error(`${name}.create(): "id" is not a field — pass the id a caller chose as the "id" option`);
         }
+        // A to-one given as a list is refused before anything is written.
+        for (const [key, value] of Object.entries(data)) if (toOne.has(key) && value != null) toOneId(name, key, value);
         const chosen = options?.id;
         if (chosen !== undefined && (typeof chosen !== 'string' || !chosen)) {
           throw new Error(`${name}.create(): the "id" option must be a non-empty string`);

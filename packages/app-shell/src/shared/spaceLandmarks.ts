@@ -126,11 +126,10 @@ export function shareListedSpace(
   );
 }
 
-/** A to-one relation's id, however a row carries it: the id, a one-element list, or the record. */
+/** A to-one relation's id: the id itself, or the record when the read included it. */
 function relationId(value: unknown): string {
-  const one: unknown = Array.isArray(value) ? value[0] : value;
-  if (typeof one === 'string') return one;
-  const id = (one as { id?: unknown } | null | undefined)?.id;
+  if (typeof value === 'string') return value;
+  const id = (value as { id?: unknown } | null | undefined)?.id;
   return typeof id === 'string' ? id : '';
 }
 
@@ -141,7 +140,6 @@ export async function writeSpaceLandmark(
   name: string,
   nodeId: string,
 ): Promise<void> {
-  // An untyped to-one is written as a one-element list at creation — see `createBoard`.
-  const landmark = await SpaceLandmark.create(dataset, { name, node: [nodeId] });
+  const landmark = await SpaceLandmark.create(dataset, { name, node: nodeId });
   await Space.addRelation(dataset, spaceId, 'landmarks', landmark.id);
 }

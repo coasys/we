@@ -508,8 +508,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
    * one of them.
    *
    * The endpoint and its type are written together. `sourceType` is an ordinary property; the
-   * endpoint is a to-one relation, written in an edit as a one-element list — a plain value is
-   * skipped by the model layer, so `{ source: uri }` typechecks, runs, and moves nothing.
+   * endpoint is a to-one relation, written as the one id it points at.
    *
    * That end's **anchor is cleared**, and the waypoints are left alone. A side pinned against the
    * card that used to be there is a decision about something no longer in the picture, and applying
@@ -580,8 +579,8 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
             id: event.recordId,
             fields:
               event.end === 'source'
-                ? { sourceType: event.nodeType, source: [event.nodeId] }
-                : { targetType: event.nodeType, target: [event.nodeId] },
+                ? { sourceType: event.nodeType, source: event.nodeId }
+                : { targetType: event.nodeType, target: event.nodeId },
           },
           dataset.handle,
         );

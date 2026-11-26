@@ -519,19 +519,37 @@ const CASES: OperationCase[] = [
       {
         entity: 'Involvement',
         id: 'urn:example:said-maybe',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:event'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:event' },
       },
       {
         entity: 'Involvement',
         id: 'urn:example:other-event',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:elsewhere'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:elsewhere' },
       },
     ],
     operation: 'respond',
     args: { node: 'urn:example:event', kind: 'going' },
     invocationId: '00000000-0000-4000-8000-000000000008',
     invokedAt: AT,
-    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: [] }],
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
+  },
+  {
+    id: 'core-set-involvement-to-one',
+    note: 'core.setInvolvement finds the pair on this record by its to-one, leaves the same pair on another record, and writes the new one’s node as one id',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'InvolvementType', id: 'urn:example:assignee', fields: { name: 'Assignee', slug: 'assignee' } },
+      {
+        entity: 'Involvement',
+        id: 'urn:example:on-other-task',
+        fields: { agent: 'did:example:ana', kind: 'assignee', node: 'urn:example:other-task' },
+      },
+    ],
+    operation: 'setInvolvement',
+    args: { node: 'urn:example:task', agent: 'did:example:ana', kind: 'assignee', on: true },
+    invocationId: '00000000-0000-4000-8000-000000000013',
+    invokedAt: AT,
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
   },
   {
     id: 'core-create-post-reply',
@@ -1064,13 +1082,21 @@ async function observe(
 ): Promise<Record<string, ObservedRecord[]>> {
   const records: Record<string, ObservedRecord[]> = {};
   for (const { entity, fields, relations } of observations) {
-    const include = Object.fromEntries(relations.map((relation) => [relation, true]));
-    const rows = await model(entity).findAll(dataset, relations.length ? { include } : {});
+    const toOne = (relation: string) => entities[entity]?.relations[relation]?.cardinality === 'one';
+    // A to-one is read as it stands on the row, the one id, so a backend holding it any other way
+    // differs from the file; a to-many is included and read as its members.
+    const included = relations.filter((relation) => !toOne(relation));
+    const include = Object.fromEntries(included.map((relation) => [relation, true]));
+    const rows = await model(entity).findAll(dataset, included.length ? { include } : {});
     records[entity] = rows
       .map((row) => {
         const out: ObservedRecord = { id: row.id as string };
         for (const field of fields) if (present(row[field])) out[field] = row[field];
         for (const relation of relations) {
+          if (toOne(relation)) {
+            if (present(row[relation])) out[relation] = row[relation];
+            continue;
+          }
           const ids = idsIn(row[relation]);
           if (!ids.length) continue;
           out[relation] = entities[entity]?.relations[relation]?.ordered ? ids : [...ids].sort(compareCodePoints);

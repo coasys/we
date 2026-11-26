@@ -60,7 +60,7 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
           entity: 'CollectionBlock',
           // `mode: 'feed'`: a board's children are columns several people write, never one author's document.
           fields: {
-            $: "merge({ kind: 'board', mode: 'feed', title: trim(title) }, gathers ? { gathers: [gathers] } : {})",
+            $: "merge({ kind: 'board', mode: 'feed', title: trim(title) }, gathers ? { gathers: gathers } : {})",
           },
         },
       },
@@ -120,10 +120,9 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
       /*
         The collection points at its board, rather than the board carrying a marker: a single-valued
         link converges when two members make one at once, and the other is left an ordinary board.
-        A to-one written as a one-element list, as a create writes one.
       */
       {
-        update: { entity: 'CollectionBlock', id: { $: 'anchor' }, fields: { board: [{ $: 'made' }] } },
+        update: { entity: 'CollectionBlock', id: { $: 'anchor' }, fields: { board: { $: 'made' } } },
         when: { $: 'made' },
       },
     ],
@@ -190,7 +189,7 @@ export const BOARDS_OPERATIONS: Record<string, OperationDefinition> = {
       {
         create: {
           entity: 'SpaceLandmark',
-          fields: { name: 'board', node: [{ $: 'made' }] },
+          fields: { name: 'board', node: { $: 'made' } },
           parent: { id: { $: 'space' }, relation: 'landmarks', entity: 'Space' },
         },
       },

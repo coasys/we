@@ -100,16 +100,13 @@ describe('seedSpaceRoot', () => {
     expect(findOne).not.toHaveBeenCalled();
   });
 
-  it('reads the collection however the row carries it', async () => {
+  it('reads the collection as its id, or from the record when it was included', async () => {
     const asId = dataset();
-    const asList = dataset();
     const asRecord = dataset();
     seedSpaceRoot(asId, { id: 'a', root: 'a-root' });
-    seedSpaceRoot(asList, { id: 'b', root: ['b-root'] });
     seedSpaceRoot(asRecord, { id: 'c', root: { id: 'c-root' } });
 
     expect(await readSpaceRoot(asId)).toEqual({ id: 'a', root: 'a-root' });
-    expect(await readSpaceRoot(asList)).toEqual({ id: 'b', root: 'b-root' });
     expect(await readSpaceRoot(asRecord)).toEqual({ id: 'c', root: 'c-root' });
     expect(findOne).not.toHaveBeenCalled();
   });

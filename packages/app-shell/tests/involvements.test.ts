@@ -76,7 +76,7 @@ describe('who is on each record', () => {
   const types = SEEDED_INVOLVEMENT_TYPES;
   const rows = [
     { id: 'i1', node: 't1', agent: ANA, kind: 'assignee' },
-    { id: 'i2', node: ['t1'], agent: ME, kind: 'reviewer' },
+    { id: 'i2', node: 't1', agent: ME, kind: 'reviewer' },
     { id: 'i3', node: { id: 'e1' }, agent: ME, kind: 'going' },
     { id: 'i4', node: 'e1', agent: ANA, kind: 'not-going' },
   ];
@@ -273,9 +273,9 @@ describe('the writes', () => {
   });
 
   it('takes every copy off, so a duplicate does not outlive the person removing it', async () => {
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t2'] });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't1' });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't1' });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't2' });
     await actions().setInvolvement('t1', ANA, 'assignee', false);
     expect((await table()).map((r) => r.node)).toEqual(['t2']);
   });

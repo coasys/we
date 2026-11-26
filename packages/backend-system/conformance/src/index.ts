@@ -183,6 +183,9 @@ export const CONFORMANCE_CASES = [
   'relations.delete-takes-links-to-it',
   'relations.ordered-read',
   'relations.create-links-one',
+  'relations.to-one-is-an-id',
+  'relations.to-one-takes-a-record',
+  'relations.to-one-refuses-a-list',
   'relations.edit-points-one',
   'relations.update-as-save',
   'relations.create-links-many',
@@ -838,8 +841,8 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
 
       /*
         An edit that names a to-one relation points it somewhere else — what a declared operation's
-        `update` of one does, through the record's own save. Written as a one-element list, the
-        spelling a create takes too.
+        `update` of one does, through the record's own save. Written as the one id, as a create
+        writes it.
       */
       test('relations.edit-points-one', 'points a to-one relation named in an edit', async () => {
         const [here, there] = [
@@ -854,7 +857,7 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         const [found] = (await model('EventBlock').findAll(subject.dataset, { where: { id: event.id } })) as (Row & {
           save(batch?: string): Promise<void>;
         })[];
-        found.location = [there.id];
+        found.location = there.id;
         await found.save();
 
         const [row] = await reader('EventBlock').findAll(subject.dataset, {
@@ -883,12 +886,12 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
         const postA = await Collection.create(subject.dataset, { kind: 'post', children: [a.id] });
         const postB = await Collection.create(subject.dataset, { kind: 'post', children: [d.id] });
 
-        await model('EventBlock').update(subject.dataset, viaUpdate.id, { location: [there.id] });
+        await model('EventBlock').update(subject.dataset, viaUpdate.id, { location: there.id });
         await Collection.update(subject.dataset, postA.id, { children: [b.id, c.id] });
         const [event] = (await model('EventBlock').findAll(subject.dataset, { where: { id: viaSave.id } })) as (Row & {
           save(batch?: string): Promise<void>;
         })[];
-        event.location = [there.id];
+        event.location = there.id;
         await event.save();
         const [post] = (await Collection.findAll(subject.dataset, { where: { id: postB.id } })) as (Row & {
           save(batch?: string): Promise<void>;
@@ -909,6 +912,56 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           [b.id, c.id],
           [e.id, f.id],
         ]);
+      });
+
+      /*
+        A to-one relation holds one record, and is written and read as that record's id: never a
+        list of one. A reader comparing a row's to-one with an id compares two ids, on every backend,
+        whether the row was just made, read back, edited, or found by a where-object.
+      */
+      test('relations.to-one-is-an-id', 'reads a to-one back as the one id it was written as', async () => {
+        const [here, there] = [
+          await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' }),
+          await model('LocationBlock').create(subject.dataset, { name: 'Shapwick' }),
+        ];
+        const made = await model('EventBlock').create(subject.dataset, { title: 'Dawn walk', location: here.id });
+        expect(made.location).toBe(here.id);
+        const [read] = await reader('EventBlock').findAll(subject.dataset, { where: { id: made.id } });
+        expect(read.location).toBe(here.id);
+
+        await model('EventBlock').update(subject.dataset, made.id, { location: there.id });
+        const [edited] = await reader('EventBlock').findAll(subject.dataset, { where: { id: made.id } });
+        expect(edited.location).toBe(there.id);
+
+        const [included] = await reader('EventBlock').findAll(subject.dataset, {
+          where: { id: made.id },
+          include: { location: true },
+        });
+        expect((included.location as Row).id).toBe(there.id);
+
+        const found = await reader('EventBlock').findAll(subject.dataset, { where: { location: there.id } });
+        expect(found.map((row) => row.id)).toEqual([made.id]);
+        expect(await reader('EventBlock').findAll(subject.dataset, { where: { location: here.id } })).toEqual([]);
+      });
+
+      test('relations.to-one-takes-a-record', 'writes a record given for a to-one as its id', async () => {
+        const place = await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' });
+        const made = await model('EventBlock').create(subject.dataset, { title: 'Dawn walk', location: place });
+        expect(made.location).toBe(place.id);
+        const [read] = await reader('EventBlock').findAll(subject.dataset, { where: { id: made.id } });
+        expect(read.location).toBe(place.id);
+      });
+
+      test('relations.to-one-refuses-a-list', 'refuses a list written to a to-one', async () => {
+        const place = await model('LocationBlock').create(subject.dataset, { name: 'Ham Wall' });
+        await expect(
+          model('EventBlock').create(subject.dataset, { title: 'Dawn walk', location: [place.id] }),
+        ).rejects.toThrow(/to-one/);
+        const made = await model('EventBlock').create(subject.dataset, { title: 'Dawn walk', location: place.id });
+        await expect(model('EventBlock').update(subject.dataset, made.id, { location: [place.id] })).rejects.toThrow(
+          /to-one/,
+        );
+        expect(await reader('EventBlock').findAll(subject.dataset, { where: { title: 'Dawn walk' } })).toHaveLength(1);
       });
 
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {

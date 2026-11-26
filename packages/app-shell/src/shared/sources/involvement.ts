@@ -5,7 +5,7 @@
  *
  * Every question a card or a row asks — who is assigned, who is reviewing, am I going, how many said
  * maybe — is a join of three things an expression handles badly: a list of rows keyed by a relation
- * that may arrive as a string or a one-element list, the community's vocabulary to learn what each
+ * that arrives as an id or, included, as the record, the community's vocabulary to learn what each
  * slug *means*, and a rule about duplicates. Written as comprehensions it would be the same join
  * inlined at every call site, which is the shape `arrangedBoard` was moved out of the expression
  * layer to escape.

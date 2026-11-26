@@ -567,7 +567,7 @@ describe('core.createRecord', () => {
       'core.createRecord',
       {
         entity: 'EventBlock',
-        fields: { title: 'Dawn walk', startDate: '2026-10-10', location: [place] },
+        fields: { title: 'Dawn walk', startDate: '2026-10-10', location: place },
         inline: [{ key: 'location.0', entity: 'LocationBlock', fields: { name: 'Ham Wall' } }],
       },
       { dataset, invoker: AGENT, invocationId },

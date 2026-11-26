@@ -91,10 +91,9 @@ export function resolveInvolvementTypes(own: readonly InvolvementTypeView[]): In
   return [...bySlug.values()].sort((a, b) => rank(a.semantic) - rank(b.semantic));
 }
 
-/** A relation read back as an id, whichever shape the backend handed it over in. */
+/** A to-one relation's id: the id itself, or the record when the read included it. */
 export function relationId(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (Array.isArray(value)) return relationId(value[0]);
   if (value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string') {
     return (value as { id: string }).id;
   }

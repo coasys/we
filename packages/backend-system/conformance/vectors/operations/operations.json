@@ -1959,6 +1959,9 @@
                     },
                     "kind": {
                       "$": "answers.map(t, t.slug)"
+                    },
+                    "node": {
+                      "$": "node"
                     }
                   }
                 }
@@ -1966,7 +1969,7 @@
               {
                 "forEach": {
                   "in": {
-                    "$": "held.filter(r, (r.node == node || node in r.node) && r.kind != kind)"
+                    "$": "held.filter(r, r.kind != kind)"
                   },
                   "as": "stale",
                   "steps": [
@@ -1991,15 +1994,13 @@
                     "kind": {
                       "$": "kind"
                     },
-                    "node": [
-                      {
-                        "$": "node"
-                      }
-                    ]
+                    "node": {
+                      "$": "node"
+                    }
                   }
                 },
                 "when": {
-                  "$": "kind && !held.exists(r, (r.node == node || node in r.node) && r.kind == kind)"
+                  "$": "kind && !held.exists(r, r.kind == kind)"
                 }
               }
             ]
@@ -2032,7 +2033,7 @@
           "fields": {
             "agent": "did:example:invoker",
             "kind": "maybe",
-            "node": ["urn:example:event"]
+            "node": "urn:example:event"
           }
         },
         {
@@ -2041,7 +2042,7 @@
           "fields": {
             "agent": "did:example:invoker",
             "kind": "maybe",
-            "node": ["urn:example:elsewhere"]
+            "node": "urn:example:elsewhere"
           }
         }
       ],
@@ -2057,7 +2058,7 @@
         {
           "entity": "Involvement",
           "fields": ["agent", "kind"],
-          "relations": []
+          "relations": ["node"]
         }
       ],
       "outcome": {
@@ -2068,12 +2069,307 @@
           {
             "id": "urn:example:other-event",
             "agent": "did:example:invoker",
-            "kind": "maybe"
+            "kind": "maybe",
+            "node": "urn:example:elsewhere"
           },
           {
             "id": "urn:uuid:1d772f7f-2bc7-80e3-b30b-11fe1d59c661",
             "agent": "did:example:invoker",
-            "kind": "going"
+            "kind": "going",
+            "node": "urn:example:event"
+          }
+        ]
+      }
+    },
+    {
+      "id": "core-set-involvement-to-one",
+      "note": "core.setInvolvement finds the pair on this record by its to-one, leaves the same pair on another record, and writes the new one’s node as one id",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "setInvolvement": {
+            "description": "Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.",
+            "params": {
+              "node": {
+                "type": "string",
+                "required": true,
+                "description": "The record they are on."
+              },
+              "agent": {
+                "type": "string",
+                "required": true,
+                "description": "Who, as a DID."
+              },
+              "kind": {
+                "type": "string",
+                "required": true,
+                "description": "The InvolvementType’s slug."
+              },
+              "on": {
+                "type": "boolean",
+                "required": true,
+                "description": "The state wanted, so pressing twice cannot undo itself."
+              }
+            },
+            "errors": {
+              "unknownKind": "That is not a kind of involvement this space has.",
+              "notYours": "Only the person it is about can give that answer."
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "kinds",
+                  "entity": "InvolvementType",
+                  "where": {
+                    "slug": {
+                      "$": "kind"
+                    }
+                  },
+                  "order": {
+                    "createdAt": "asc"
+                  }
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "count(kinds) > 0"
+                  },
+                  "error": "unknownKind"
+                }
+              },
+              {
+                "check": {
+                  "condition": {
+                    "$": "!first(kinds).reflexive || agent == invoker"
+                  },
+                  "error": "notYours"
+                }
+              },
+              {
+                "call": {
+                  "operation": "core.respond",
+                  "args": {
+                    "node": {
+                      "$": "node"
+                    },
+                    "kind": {
+                      "$": "on ? kind : null"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "first(kinds).reflexive"
+                }
+              },
+              {
+                "find": {
+                  "as": "held",
+                  "entity": "Involvement",
+                  "where": {
+                    "agent": {
+                      "$": "agent"
+                    },
+                    "kind": {
+                      "$": "kind"
+                    },
+                    "node": {
+                      "$": "node"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "!first(kinds).reflexive"
+                }
+              },
+              {
+                "create": {
+                  "entity": "Involvement",
+                  "fields": {
+                    "agent": {
+                      "$": "agent"
+                    },
+                    "kind": {
+                      "$": "kind"
+                    },
+                    "node": {
+                      "$": "node"
+                    }
+                  }
+                },
+                "when": {
+                  "$": "!first(kinds).reflexive && on && count(held) == 0"
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "held"
+                  },
+                  "as": "row",
+                  "steps": [
+                    {
+                      "delete": {
+                        "entity": "Involvement",
+                        "id": {
+                          "$": "row"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "when": {
+                  "$": "!first(kinds).reflexive && !on"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {
+        "core.respond": {
+          "description": "Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.",
+          "params": {
+            "node": {
+              "type": "string",
+              "required": true,
+              "description": "The record answered."
+            },
+            "kind": {
+              "type": "string",
+              "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
+            }
+          },
+          "errors": {
+            "notAnAnswer": "That is not an answer anybody can give to this."
+          },
+          "steps": [
+            {
+              "find": {
+                "as": "answers",
+                "entity": "InvolvementType",
+                "where": {
+                  "reflexive": true
+                }
+              }
+            },
+            {
+              "check": {
+                "condition": {
+                  "$": "!kind || kind in answers.map(t, t.slug)"
+                },
+                "error": "notAnAnswer"
+              }
+            },
+            {
+              "find": {
+                "as": "held",
+                "entity": "Involvement",
+                "where": {
+                  "agent": {
+                    "$": "invoker"
+                  },
+                  "kind": {
+                    "$": "answers.map(t, t.slug)"
+                  },
+                  "node": {
+                    "$": "node"
+                  }
+                }
+              }
+            },
+            {
+              "forEach": {
+                "in": {
+                  "$": "held.filter(r, r.kind != kind)"
+                },
+                "as": "stale",
+                "steps": [
+                  {
+                    "delete": {
+                      "entity": "Involvement",
+                      "id": {
+                        "$": "stale"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "create": {
+                "entity": "Involvement",
+                "fields": {
+                  "agent": {
+                    "$": "invoker"
+                  },
+                  "kind": {
+                    "$": "kind"
+                  },
+                  "node": {
+                    "$": "node"
+                  }
+                }
+              },
+              "when": {
+                "$": "kind && !held.exists(r, r.kind == kind)"
+              }
+            }
+          ]
+        }
+      },
+      "dataset": [
+        {
+          "entity": "InvolvementType",
+          "id": "urn:example:assignee",
+          "fields": {
+            "name": "Assignee",
+            "slug": "assignee"
+          }
+        },
+        {
+          "entity": "Involvement",
+          "id": "urn:example:on-other-task",
+          "fields": {
+            "agent": "did:example:ana",
+            "kind": "assignee",
+            "node": "urn:example:other-task"
+          }
+        }
+      ],
+      "operation": "setInvolvement",
+      "args": {
+        "node": "urn:example:task",
+        "agent": "did:example:ana",
+        "kind": "assignee",
+        "on": true
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000013",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "Involvement",
+          "fields": ["agent", "kind"],
+          "relations": ["node"]
+        }
+      ],
+      "outcome": {
+        "result": null
+      },
+      "records": {
+        "Involvement": [
+          {
+            "id": "urn:example:on-other-task",
+            "agent": "did:example:ana",
+            "kind": "assignee",
+            "node": "urn:example:other-task"
+          },
+          {
+            "id": "urn:uuid:c053a63e-384a-82f2-8c14-aaa4067ff444",
+            "agent": "did:example:ana",
+            "kind": "assignee",
+            "node": "urn:example:task"
           }
         ]
       }
@@ -2139,7 +2435,7 @@
                   "as": "post",
                   "entity": "CollectionBlock",
                   "fields": {
-                    "$": "generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: [generatedBy] }) : merge(root, { mentions: mentions ?? [] })"
+                    "$": "generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: generatedBy }) : merge(root, { mentions: mentions ?? [] })"
                   },
                   "parent": {
                     "id": {
@@ -2818,7 +3114,7 @@
                 "create": {
                   "entity": "Placement",
                   "fields": {
-                    "$": "merge(fields, { nodeType: nodeType, node: [node] })"
+                    "$": "merge(fields, { nodeType: nodeType, node: node })"
                   },
                   "parent": {
                     "id": {

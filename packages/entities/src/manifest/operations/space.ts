@@ -127,12 +127,6 @@ const settingWritten = (settings: string) => {
   return `count(keys(${group})) > 0 ? put(${settings}, group, ${group}) : pick(${settings}, without(keys(${settings}), group))`;
 };
 
-/**
- * A relation's ids as a list, whichever way it reads back: a to-one relation is the id itself, or
- * the one-entry list it was written as. `trim` answers '' for anything that is not text.
- */
-const idsOf = (relation: string) => `concat(${relation}, [${relation}].filter(l, trim(l ?? '') != ''))`;
-
 const spaceParam: OperationParam = { type: 'string', required: true, description: 'The space record’s id.' };
 const uuidParam: OperationParam = { type: 'string', required: true, description: 'The space’s dataset id.' };
 const fallbackParam: OperationParam = {
@@ -629,13 +623,8 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
       },
       // The space's own place only, never every place in the space: an event has one too.
       {
-        forEach: {
-          in: { $: idsOf('record.location') },
-          as: 'old',
-          key: { $: 'old' },
-          steps: [{ delete: { entity: 'LocationBlock', id: { $: 'old' } } }],
-        },
-        when: { $: 'location || clearLocation' },
+        delete: { entity: 'LocationBlock', id: { $: 'record.location' } },
+        when: { $: '(location || clearLocation) && record.location' },
       },
       {
         create: {
@@ -653,7 +642,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
         when: { $: 'location' },
       },
       {
-        update: { entity: 'Space', id: { $: 'space' }, fields: { location: [{ $: 'place.id' }] } },
+        update: { entity: 'Space', id: { $: 'space' }, fields: { location: { $: 'place.id' } } },
         when: { $: 'location' },
       },
     ],
@@ -670,7 +659,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
     steps: [
       findSpace,
       // Exactly one per space: a second would split the space's content between them.
-      { check: { condition: { $: `count(${idsOf('record.root')}) == 0` }, error: 'hasCollection' } },
+      { check: { condition: { $: '!record.root' }, error: 'hasCollection' } },
       {
         create: {
           as: 'root',
@@ -687,7 +676,7 @@ export const SPACE_OPERATIONS: Record<string, OperationDefinition> = {
           },
         },
       },
-      { update: { entity: 'Space', id: { $: 'space' }, fields: { root: [{ $: 'root.id' }] } } },
+      { update: { entity: 'Space', id: { $: 'space' }, fields: { root: { $: 'root.id' } } } },
     ],
     returns: { $: 'root.id' },
   },

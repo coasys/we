@@ -264,10 +264,9 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
    * off `from`. `parent` null takes it off `from` and points it nowhere. Answers whether it was written.
    *
    * A to-one is the child's own field, written as an edit of the card (`core.editRecord`), `''` to
-   * clear it, which every backend reads as "remove this field's links". The parent is spelled as the
-   * card's model takes it: a one-element list where the field is a relation with accessors of its
-   * own, the id itself where it is a plain property holding one — which is how an installed schema's
-   * single-valued relation arrives on some backends, and the common case there, not an edge one.
+   * clear it, which every backend reads as "remove this field's links". The parent is written as its
+   * id, which is how a to-one is written whether the model declares it as a relation or an installed
+   * schema holds it as a plain property.
    *
    * A to-many is the parent's list: off the old holder's, onto the new one's, in one write
    * (`core.moveUnder`), so no reader sees the card on neither list or on both.
@@ -298,10 +297,11 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
     } as never)) as Record<string, unknown> | null;
     // A card deleted between the drop and the write: nothing to point, which is not a failure.
     if (!record) return false;
-    const suffix = relation.name.charAt(0).toUpperCase() + relation.name.slice(1);
-    const accessed = typeof record[`set${suffix}`] === 'function' || typeof record[`add${suffix}`] === 'function';
-    const value = parent ? (accessed ? [parent] : parent) : '';
-    await runOp('core.editRecord', { entity: relation.holder, id: cardId, fields: { [relation.name]: value } }, handle);
+    await runOp(
+      'core.editRecord',
+      { entity: relation.holder, id: cardId, fields: { [relation.name]: parent ?? '' } },
+      handle,
+    );
     return true;
   }
 

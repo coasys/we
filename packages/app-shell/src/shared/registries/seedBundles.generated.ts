@@ -33108,7 +33108,7 @@ export const seedBundles: Bundle[] = [
           {
             $id: 'board',
             entity: 'CollectionBlock',
-            fields: { kind: 'board', mode: 'feed', title: 'Everything', gathers: ['$root'] },
+            fields: { kind: 'board', mode: 'feed', title: 'Everything', gathers: '$root' },
             in: '$root',
           },
           {

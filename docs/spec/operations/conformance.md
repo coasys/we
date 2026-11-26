@@ -74,10 +74,13 @@ the invoker is the agent making the call).
    - `id`;
    - each field in `fields` that has a value (absent, `null` and `''` are left out), `author`
      included;
-   - each relation in `relations` that has members, as the list of its members' ids: in the order the
-     backend reads them when the schema in `entities` says the relation is `ordered`, and sorted by
-     code point when it does not, since a set has no order to compare (a relation with none is left
-     out).
+   - each to-many relation in `relations` that has members, as the list of its members' ids: in the
+     order the backend reads them when the schema in `entities` says the relation is `ordered`, and
+     sorted by code point when it does not, since a set has no order to compare (a relation with none
+     is left out);
+   - each to-one relation in `relations` that has a value, as the record reads it without `include`:
+     the one id ([Relation](README.md#the-data-model)), so a backend holding it any other way fails
+     the comparison.
 
    Under `records[entity]`, list these sorted by `id`, by code point.
 
@@ -135,6 +138,7 @@ mostly made of:
 | ------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `core-upsert-signal`           | `upsertSignal`      | With no reaction yet, makes one under the record and answers with its id.                                    |
 | `core-respond-replaces`        | `respond`           | Removes the invoker's earlier answer on this record only, and makes the new one.                             |
+| `core-set-involvement-to-one`  | `setInvolvement`    | Finds the pair on this record by its to-one in a `where`, and writes the new record's `node` as one id.      |
 | `core-create-post-reply`       | `createPost`        | A reply: in its subject's responses and thread, a child of nothing, its block under it. Calls `core.thread`. |
 | `core-move-card`               | `moveCard`          | A card leaves one column, joins another where dropped, and takes the bound column's state.                   |
 | `core-remove-board-column`     | `removeBoardColumn` | A column's cards go to the board, and the column is deleted, never a card.                                   |
