@@ -1468,7 +1468,6 @@ export const contextData: ContextData = {
         { name: 'slug', type: 'string', predicate: 'we://slug', required: false },
         { name: 'editorState', type: 'string', predicate: 'we://editor_state', required: false, default: 'null' },
         { name: 'textContent', type: 'string', predicate: 'we://text_content', required: false },
-        { name: 'source', type: 'string', predicate: 'we://text_source', required: false },
         { name: 'version', type: 'number', predicate: 'we://version', required: false },
         { name: 'sourceRef', type: 'string', predicate: 'we://source_ref', required: false },
         { name: 'sourceName', type: 'string', predicate: 'we://source_name', required: false },
@@ -3379,8 +3378,6 @@ export const contextData: ContextData = {
         'updatePost',
         'openBoardFor',
         'removeBoardColumn',
-        'reorderBoardColumns',
-        'arrangeColumn',
         'moveCardToColumn',
         'addTaskToColumn',
         'setAttending',
@@ -3420,12 +3417,9 @@ export const contextData: ContextData = {
         'setTaskStateRetired',
         'reorderTaskStates',
         'setInvolvement',
-        'respondTo',
         'createInvolvementType',
         'updateInvolvementType',
         'setInvolvementTypeRetired',
-        'upsertSignal',
-        'withdrawSignal',
         'navigateToSpace',
         'openRecordRef',
         'canAdministerSpace',
@@ -3457,8 +3451,6 @@ export const contextData: ContextData = {
         'createPost',
         'updatePost',
         'removeBoardColumn',
-        'reorderBoardColumns',
-        'arrangeColumn',
         'moveCardToColumn',
         'addTaskToColumn',
         'setAttending',
@@ -3498,12 +3490,9 @@ export const contextData: ContextData = {
         'setTaskStateRetired',
         'reorderTaskStates',
         'setInvolvement',
-        'respondTo',
         'createInvolvementType',
         'updateInvolvementType',
         'setInvolvementTypeRetired',
-        'upsertSignal',
-        'withdrawSignal',
         'navigateToSpace',
         'openRecordRef',
         'canAdministerSpace',
@@ -3899,13 +3888,6 @@ export const contextData: ContextData = {
       params: ['options'],
       doc: "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
       example: 'signalTally({ signals: row.signals, type: sig })',
-    },
-    {
-      name: 'reactions',
-      params: ['options'],
-      doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
-      example:
-        'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
     },
     {
       name: 'reactors',
@@ -5141,11 +5123,6 @@ export const contextData: ContextData = {
       members: [
         { name: 'lastError', kind: 'state', doc: 'Why the last vote could not be recorded, or empty.' },
         {
-          name: 'pendingVote',
-          kind: 'state',
-          doc: 'This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.',
-        },
-        {
           name: 'revealBeforeVoting',
           kind: 'state',
           doc: 'Whether a poll shows its counts before this agent has voted — the community’s setting here.',
@@ -5178,9 +5155,8 @@ export const contextData: ContextData = {
         {
           name: 'tally',
           params: ['options'],
-          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).',
-          example:
-            'tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })',
+          doc: 'Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).',
+          example: 'tally({ votes: local.votes, options: block.options })',
         },
       ],
       views: [{ id: 'polls', name: 'Polls', segment: 'polls' }],
@@ -5271,7 +5247,7 @@ export const contextData: ContextData = {
         },
       },
       returns: false,
-      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.addTaskToColumn',
@@ -5306,14 +5282,14 @@ export const contextData: ContextData = {
           description: 'The column (or a board, for what it holds in no column).',
         },
         ids: { type: 'list', required: true, description: 'Card ids, in the order wanted.' },
+        order: {
+          type: 'list',
+          description:
+            'The column’s whole order as the board draws it, for a column showing only some of its cards: the ids given go back into the places of the ones it shows, and the hidden ones keep theirs. Omit when the ids are the whole column.',
+        },
       },
       returns: true,
-      effects: {
-        entities: { CollectionBlock: ['add:arranges', 'remove:arranges'] },
-        categories: {},
-        bulk: false,
-        destructive: true,
-      },
+      effects: { entities: { CollectionBlock: ['add:arranges'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.clearPlacements',
@@ -5515,7 +5491,7 @@ export const contextData: ContextData = {
         fields: {
           type: 'object',
           required: true,
-          description: 'Its fields, relations among them as lists of ids (a to-one as a one-element list).',
+          description: 'Its fields, relations among them as ids: a to-many as a list of ids, a to-one as the one id.',
         },
         home: { type: 'string', description: 'The collection it is made inside.' },
       },
@@ -5815,7 +5791,7 @@ export const contextData: ContextData = {
         index: { type: 'number', required: true, description: 'Its position in the list, from 0.' },
       },
       returns: false,
-      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.renameBoardColumn',
@@ -5842,12 +5818,7 @@ export const contextData: ContextData = {
         ids: { type: 'list', required: true, description: 'Column ids, in the order wanted.' },
       },
       returns: true,
-      effects: {
-        entities: { CollectionBlock: ['add:children', 'remove:children'] },
-        categories: {},
-        bulk: false,
-        destructive: true,
-      },
+      effects: { entities: { CollectionBlock: ['add:children'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.reorderTaskStates',
@@ -5888,7 +5859,7 @@ export const contextData: ContextData = {
         kind: { type: 'string', description: 'A reflexive InvolvementType’s slug; absent withdraws the answer.' },
       },
       returns: false,
-      effects: { entities: { Involvement: ['create', 'delete'] }, categories: {}, bulk: true, destructive: true },
+      effects: { entities: { Involvement: ['create', 'deleteOwn'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.restyleSpaceType',
@@ -5958,7 +5929,12 @@ export const contextData: ContextData = {
         on: { type: 'boolean', required: true, description: 'The state wanted, so pressing twice cannot undo itself.' },
       },
       returns: false,
-      effects: { entities: { Involvement: ['create', 'delete'] }, categories: {}, bulk: true, destructive: true },
+      effects: {
+        entities: { Involvement: ['create', 'delete', 'deleteOwn'] },
+        categories: {},
+        bulk: true,
+        destructive: true,
+      },
     },
     {
       name: 'core.setInvolvementTypeRetired',
@@ -5969,7 +5945,7 @@ export const contextData: ContextData = {
         retired: { type: 'boolean', required: true, description: 'Withdrawn from use, or brought back.' },
       },
       returns: false,
-      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.setModuleEnabled',
@@ -6074,7 +6050,7 @@ export const contextData: ContextData = {
         retired: { type: 'boolean', required: true, description: 'Withdrawn from use, or brought back.' },
       },
       returns: false,
-      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.setViewEnabled',
@@ -6159,7 +6135,7 @@ export const contextData: ContextData = {
         appliesTo: { type: 'string', description: 'The entities it is offered on, comma-separated; empty for all.' },
       },
       returns: false,
-      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { InvolvementType: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.updateSpaceMeta',
@@ -6180,7 +6156,7 @@ export const contextData: ContextData = {
       effects: {
         entities: { LocationBlock: ['create', 'delete'], Space: ['edit'] },
         categories: {},
-        bulk: true,
+        bulk: false,
         destructive: true,
       },
     },
@@ -6206,7 +6182,7 @@ export const contextData: ContextData = {
         evidence: { type: 'json', description: 'What must be there first, as the state stores it; empty clears it.' },
       },
       returns: false,
-      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: true, destructive: false },
+      effects: { entities: { TaskState: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.upsertSignal',
@@ -6223,10 +6199,10 @@ export const contextData: ContextData = {
       },
       returns: true,
       effects: {
-        entities: { '*': ['add:signals'], Signal: ['create', 'delete', 'edit'] },
+        entities: { '*': ['add:signals'], Signal: ['create', 'deleteOwn', 'edit'] },
         categories: {},
         bulk: true,
-        destructive: true,
+        destructive: false,
       },
     },
     {
@@ -6238,7 +6214,7 @@ export const contextData: ContextData = {
         signalType: { type: 'string', required: true, description: 'The SignalType’s id.' },
       },
       returns: false,
-      effects: { entities: { Signal: ['delete'] }, categories: {}, bulk: true, destructive: true },
+      effects: { entities: { Signal: ['deleteOwn'] }, categories: {}, bulk: true, destructive: false },
     },
     {
       name: 'core.writeEdgeRoute',
