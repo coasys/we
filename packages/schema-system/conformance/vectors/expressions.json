@@ -352,6 +352,7 @@
       "id": "print.member-eq",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a.b == 'x'",
+      "core": true,
       "result": false,
       "print": "a.b == 'x'"
     },
@@ -359,6 +360,7 @@
       "id": "print.precedence",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "!a || b && c",
+      "core": true,
       "result": true,
       "print": "!a || b && c"
     },
@@ -366,6 +368,7 @@
       "id": "print.parens",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "(a || b) && c",
+      "core": true,
       "result": false,
       "print": "(a || b) && c"
     },
@@ -373,6 +376,7 @@
       "id": "print.conditional-chain",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a ? b : c ? d : e",
+      "core": true,
       "result": {
         "$undefined": true
       },
@@ -382,6 +386,7 @@
       "id": "print.conditional-binary",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "(a ? b : c) == d",
+      "core": true,
       "result": true,
       "print": "(a ? b : c) == d"
     },
@@ -389,6 +394,7 @@
       "id": "print.sub-group",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a - (b - c)",
+      "core": true,
       "result": 0,
       "print": "a - (b - c)"
     },
@@ -396,6 +402,7 @@
       "id": "print.sub-left",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a - b - c",
+      "core": true,
       "result": 0,
       "print": "a - b - c"
     },
@@ -403,6 +410,7 @@
       "id": "print.unary-arith",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "-a * 2 + 1",
+      "core": true,
       "result": 1,
       "print": "-a * 2 + 1"
     },
@@ -410,6 +418,7 @@
       "id": "print.call-in",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "count(items) > 0 && 'x' in list",
+      "core": true,
       "result": false,
       "print": "count(items) > 0 && 'x' in list"
     },
@@ -417,6 +426,7 @@
       "id": "print.macro-count",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "items.filter(x, x.done).count()",
+      "core": true,
       "result": 0,
       "print": "items.filter(x, x.done).count()"
     },
@@ -424,6 +434,7 @@
       "id": "print.filter-where",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "items.filter({ role: 'admin' }, 2)",
+      "core": true,
       "result": [],
       "print": "items.filter({ role: 'admin' }, 2)"
     },
@@ -431,6 +442,7 @@
       "id": "print.template",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "`hi ${me.handle}!`",
+      "core": true,
       "result": "hi !",
       "print": "`hi ${me.handle}!`"
     },
@@ -438,6 +450,7 @@
       "id": "print.index-mixed",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a[0].b[\"c-d\"]",
+      "core": true,
       "result": {
         "$undefined": true
       },
@@ -447,6 +460,7 @@
       "id": "print.object",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "{ 'a-b': 1, c: [1, 2] }",
+      "core": true,
       "result": {
         "a-b": 1,
         "c": [1, 2]
@@ -457,6 +471,7 @@
       "id": "print.nullish",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "a ?? b",
+      "core": true,
       "result": {
         "$undefined": true
       },
@@ -466,6 +481,7 @@
       "id": "print.neq-null",
       "note": "the printer: parse(source) → printExpression reproduces this string",
       "source": "local.x != null",
+      "core": true,
       "result": true,
       "print": "local.x != null"
     },
@@ -474,6 +490,7 @@
       "note": "evaluation over the named env",
       "source": "filter(spaceStore.members, { role: 'admin' }).count()",
       "env": "stock",
+      "core": false,
       "result": 1,
       "print": "filter(spaceStore.members, { role: 'admin' }).count()"
     },
@@ -482,6 +499,7 @@
       "note": "evaluation over the named env",
       "source": "sum(rows.map(r, count(r.kids)))",
       "env": "stock",
+      "core": false,
       "result": 3,
       "print": "sum(rows.map(r, count(r.kids)))"
     },
@@ -489,6 +507,7 @@
       "id": "eval.reverse-list",
       "note": "evaluation over the named env",
       "source": "reverse([1, 2, 3])",
+      "core": true,
       "result": [3, 2, 1],
       "print": "reverse([1, 2, 3])"
     },
@@ -497,6 +516,7 @@
       "note": "evaluation over the named env",
       "source": "reverse(rows)",
       "env": "stock",
+      "core": false,
       "result": [
         {
           "kids": [3]
@@ -515,6 +535,7 @@
       "note": "evaluation over the named env",
       "source": "reverse(nothing)",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "reverse(nothing)"
     },
@@ -522,6 +543,7 @@
       "id": "eval.reverse-string",
       "note": "evaluation over the named env",
       "source": "reverse('abc')",
+      "core": true,
       "result": [],
       "print": "reverse('abc')"
     },
@@ -530,6 +552,7 @@
       "note": "evaluation over the named env",
       "source": "spaceStore.members.count() > 1",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "spaceStore.members.count() > 1"
     },
@@ -538,6 +561,7 @@
       "note": "evaluation over the named env",
       "source": "spaceStore.logout",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -548,6 +572,7 @@
       "note": "evaluation over the named env",
       "source": "spaceStore",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -558,6 +583,7 @@
       "note": "evaluation over the named env",
       "source": "item.role == 'admin'",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "item.role == 'admin'"
     },
@@ -566,6 +592,7 @@
       "note": "evaluation over the named env",
       "source": "store.byId['we://a-call'].targets",
       "env": "keyed",
+      "core": false,
       "result": ["we://a-call"],
       "print": "store.byId['we://a-call'].targets"
     },
@@ -574,6 +601,7 @@
       "note": "evaluation over the named env",
       "source": "store.byId['we://a-call'].canExtract",
       "env": "keyed",
+      "core": false,
       "result": true,
       "print": "store.byId['we://a-call'].canExtract"
     },
@@ -582,6 +610,7 @@
       "note": "evaluation over the named env",
       "source": "store.byId[item.id].targets",
       "env": "keyed",
+      "core": false,
       "result": ["we://another"],
       "print": "store.byId[item.id].targets"
     },
@@ -590,6 +619,7 @@
       "note": "evaluation over the named env",
       "source": "count(store.byId['we://a-call'].targets)",
       "env": "keyed",
+      "core": false,
       "result": 1,
       "print": "count(store.byId['we://a-call'].targets)"
     },
@@ -597,6 +627,7 @@
       "id": "eval.split",
       "note": "evaluation over the named env",
       "source": "split('ImageBlock, TextBlock')",
+      "core": true,
       "result": ["ImageBlock", "TextBlock"],
       "print": "split('ImageBlock, TextBlock')"
     },
@@ -604,6 +635,7 @@
       "id": "eval.split-empty",
       "note": "evaluation over the named env",
       "source": "split('')",
+      "core": true,
       "result": [],
       "print": "split('')"
     },
@@ -611,6 +643,7 @@
       "id": "eval.split-sep",
       "note": "evaluation over the named env",
       "source": "split('a|b', '|')",
+      "core": true,
       "result": ["a", "b"],
       "print": "split('a|b', '|')"
     },
@@ -618,6 +651,7 @@
       "id": "eval.join-split",
       "note": "evaluation over the named env",
       "source": "join(split('a,,b'), ',')",
+      "core": true,
       "result": "a,b",
       "print": "join(split('a,,b'), ',')"
     },
@@ -625,6 +659,7 @@
       "id": "eval.in-split",
       "note": "evaluation over the named env",
       "source": "'b' in split('a,b')",
+      "core": true,
       "result": true,
       "print": "'b' in split('a,b')"
     },
@@ -633,6 +668,7 @@
       "note": "evaluation over the named env",
       "source": "missing.deep.path",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -642,6 +678,7 @@
       "id": "eval.div-zero",
       "note": "evaluation over the named env",
       "source": "1 / 0",
+      "core": true,
       "result": 0,
       "print": "1 / 0"
     },
@@ -649,6 +686,7 @@
       "id": "eval.concat-mixed",
       "note": "evaluation over the named env",
       "source": "'a' + 1",
+      "core": true,
       "result": "a1",
       "print": "'a' + 1"
     },
@@ -656,6 +694,7 @@
       "id": "eval.null-arith",
       "note": "evaluation over the named env",
       "source": "null + 1",
+      "core": true,
       "result": 1,
       "print": "null + 1"
     },
@@ -663,6 +702,7 @@
       "id": "eval.in-string",
       "note": "evaluation over the named env",
       "source": "'x' in 'xyz'",
+      "core": true,
       "result": false,
       "print": "'x' in 'xyz'"
     },
@@ -670,6 +710,7 @@
       "id": "eval.count-num",
       "note": "evaluation over the named env",
       "source": "count(5)",
+      "core": true,
       "result": 0,
       "print": "count(5)"
     },
@@ -677,6 +718,7 @@
       "id": "eval.sum-bad",
       "note": "evaluation over the named env",
       "source": "sum('nonsense')",
+      "core": true,
       "result": 0,
       "print": "sum('nonsense')"
     },
@@ -684,6 +726,7 @@
       "id": "eval.sum-mixed",
       "note": "evaluation over the named env",
       "source": "sum([1, \"two\", 3])",
+      "core": true,
       "result": 4,
       "print": "sum([1, 'two', 3])"
     },
@@ -692,6 +735,7 @@
       "note": "evaluation over the named env",
       "source": "nothing.filter(x, x)",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "nothing.filter(x, x)"
     },
@@ -700,6 +744,7 @@
       "note": "evaluation over the named env",
       "source": "nothing.map(x, x)",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "nothing.map(x, x)"
     },
@@ -708,6 +753,7 @@
       "note": "evaluation over the named env",
       "source": "nothing.all(x, x)",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "nothing.all(x, x)"
     },
@@ -715,6 +761,7 @@
       "id": "eval.or-fallback",
       "note": "evaluation over the named env",
       "source": "'' || 'fallback'",
+      "core": true,
       "result": true,
       "print": "'' || 'fallback'"
     },
@@ -722,6 +769,7 @@
       "id": "eval.and",
       "note": "evaluation over the named env",
       "source": "'x' && 'y'",
+      "core": true,
       "result": true,
       "print": "'x' && 'y'"
     },
@@ -729,6 +777,7 @@
       "id": "eval.and-empty",
       "note": "evaluation over the named env",
       "source": "'' && 'y'",
+      "core": true,
       "result": false,
       "print": "'' && 'y'"
     },
@@ -736,6 +785,7 @@
       "id": "eval.nullish-empty",
       "note": "evaluation over the named env",
       "source": "'' ?? 'fallback'",
+      "core": true,
       "result": "",
       "print": "'' ?? 'fallback'"
     },
@@ -744,6 +794,7 @@
       "note": "evaluation over the named env",
       "source": "missing ?? 'fallback'",
       "env": "stock",
+      "core": false,
       "result": "fallback",
       "print": "missing ?? 'fallback'"
     },
@@ -752,6 +803,7 @@
       "note": "evaluation over the named env",
       "source": "0 && missing.thing",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "0 && missing.thing"
     },
@@ -760,6 +812,7 @@
       "note": "evaluation over the named env",
       "source": "`${count(items)} ${plural(count(items), \"one\", \"many\")}`",
       "env": "stock",
+      "core": false,
       "result": "2 many",
       "print": "`${count(items)} ${plural(count(items), 'one', 'many')}`"
     },
@@ -768,6 +821,7 @@
       "note": "evaluation over the named env",
       "source": "`${missing}`",
       "env": "stock",
+      "core": false,
       "result": "",
       "print": "`${missing}`"
     },
@@ -776,6 +830,7 @@
       "note": "evaluation over the named env",
       "source": "items.filter(x, x.ok).map(x, x.n)",
       "env": "stock",
+      "core": false,
       "result": [1],
       "print": "items.filter(x, x.ok).map(x, x.n)"
     },
@@ -784,6 +839,7 @@
       "note": "evaluation over the named env",
       "source": "items.map(y, x)",
       "env": "stock",
+      "core": false,
       "result": ["outer", "outer"],
       "print": "items.map(y, x)"
     },
@@ -792,6 +848,7 @@
       "note": "evaluation over the named env",
       "source": "items.exists(x, x.n == 2)",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "items.exists(x, x.n == 2)"
     },
@@ -800,6 +857,7 @@
       "note": "evaluation over the named env",
       "source": "items.find(x, x.n == 2).n",
       "env": "stock",
+      "core": false,
       "result": 2,
       "print": "items.find(x, x.n == 2).n"
     },
@@ -807,14 +865,85 @@
       "id": "eval.map-object",
       "note": "evaluation over the named env",
       "source": "{ a: 1 }.map(x, x.a)",
+      "core": true,
       "result": 1,
       "print": "{ a: 1 }.map(x, x.a)"
+    },
+    {
+      "id": "eval.core-find",
+      "note": "evaluation over the named env",
+      "source": "[{ n: 1 }, { n: 2 }].find(x, x.n == 2).n",
+      "core": true,
+      "result": 2,
+      "print": "[{ n: 1 }, { n: 2 }].find(x, x.n == 2).n"
+    },
+    {
+      "id": "eval.core-find-none",
+      "note": "evaluation over the named env",
+      "source": "[1, 2].find(x, x > 5)",
+      "core": true,
+      "result": {
+        "$undefined": true
+      },
+      "print": "[1, 2].find(x, x > 5)"
+    },
+    {
+      "id": "eval.core-exists",
+      "note": "evaluation over the named env",
+      "source": "[1, 2, 3].exists(x, x > 2)",
+      "core": true,
+      "result": true,
+      "print": "[1, 2, 3].exists(x, x > 2)"
+    },
+    {
+      "id": "eval.core-exists-empty",
+      "note": "evaluation over the named env",
+      "source": "[].exists(x, true)",
+      "core": true,
+      "result": false,
+      "print": "[].exists(x, true)"
+    },
+    {
+      "id": "eval.core-all",
+      "note": "evaluation over the named env",
+      "source": "[1, 2, 3].all(x, x > 0)",
+      "core": true,
+      "result": true,
+      "print": "[1, 2, 3].all(x, x > 0)"
+    },
+    {
+      "id": "eval.core-all-empty",
+      "note": "evaluation over the named env",
+      "source": "[].all(x, false)",
+      "core": true,
+      "result": true,
+      "print": "[].all(x, false)"
+    },
+    {
+      "id": "eval.core-nonlist-find",
+      "note": "evaluation over the named env",
+      "source": "'abc'.find(x, true)",
+      "core": true,
+      "result": {
+        "$undefined": true
+      },
+      "print": "'abc'.find(x, true)"
+    },
+    {
+      "id": "eval.core-filter-map",
+      "note": "evaluation over the named env",
+      "source": "events.filter(e, e.seats > 5).map(e, e.id)",
+      "env": "where",
+      "core": true,
+      "result": ["b", "c"],
+      "print": "events.filter(e, e.seats > 5).map(e, e.id)"
     },
     {
       "id": "eval.distinct-kinds",
       "note": "evaluation over the named env",
       "source": "distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))",
       "env": "distinct",
+      "core": true,
       "result": ["TaskBlock", "EventBlock", "NoteBlock"],
       "print": "distinct(found.map(r, r.__subjectClass), placements.map(p, p.nodeType))"
     },
@@ -823,6 +952,7 @@
       "note": "evaluation over the named env",
       "source": "distinct(a, b).map(r, r.v)",
       "env": "distinct",
+      "core": true,
       "result": ["x", "z"],
       "print": "distinct(a, b).map(r, r.v)"
     },
@@ -831,6 +961,7 @@
       "note": "evaluation over the named env",
       "source": "distinct(nothing, [1, 1, 2])",
       "env": "stock",
+      "core": false,
       "result": [1, 2],
       "print": "distinct(nothing, [1, 1, 2])"
     },
@@ -838,6 +969,7 @@
       "id": "eval.distinct-none",
       "note": "evaluation over the named env",
       "source": "distinct()",
+      "core": true,
       "result": [],
       "print": "distinct()"
     },
@@ -846,6 +978,7 @@
       "note": "evaluation over the named env",
       "source": "filter(items, { name: { contains: 'AN' } }).count()",
       "env": "where",
+      "core": true,
       "result": 1,
       "print": "filter(items, { name: { contains: 'AN' } }).count()"
     },
@@ -854,6 +987,7 @@
       "note": "evaluation over the named env",
       "source": "filter(items, { OR: [{ name: 'Bob' }, { name: 'Anna' }] }).count()",
       "env": "where",
+      "core": true,
       "result": 2,
       "print": "filter(items, { OR: [{ name: 'Bob' }, { name: 'Anna' }] }).count()"
     },
@@ -862,6 +996,7 @@
       "note": "evaluation over the named env",
       "source": "find(items, { tags: { exists: false } }).name",
       "env": "where",
+      "core": true,
       "result": "Bob",
       "print": "find(items, { tags: { exists: false } }).name"
     },
@@ -870,6 +1005,7 @@
       "note": "evaluation over the named env",
       "source": "find(items, { name: 'Zed' }).name",
       "env": "where",
+      "core": true,
       "result": {
         "$undefined": true
       },
@@ -880,6 +1016,7 @@
       "note": "evaluation over the named env",
       "source": "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)",
       "env": "where",
+      "core": true,
       "result": ["b"],
       "print": "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)"
     },
@@ -888,6 +1025,7 @@
       "note": "evaluation over the named env",
       "source": "filter(events, { seats: { gt: 5 } }).map(e, e.id)",
       "env": "where",
+      "core": true,
       "result": ["c"],
       "print": "filter(events, { seats: { gt: 5 } }).map(e, e.id)"
     },
@@ -895,6 +1033,7 @@
       "id": "eval.host-source",
       "note": "evaluation over the named env",
       "source": "calendarMonth({ month: 8 })",
+      "core": false,
       "result": [
         {
           "date": "1969-12-28",
@@ -1197,6 +1336,7 @@
       "id": "eval.host-source-month-iso",
       "note": "evaluation over the named env",
       "source": "calendarMonth({ month: '2025-08-15' })",
+      "core": false,
       "result": [
         {
           "date": "2025-07-27",
@@ -1499,6 +1639,7 @@
       "id": "eval.host-source-month-noon",
       "note": "evaluation over the named env",
       "source": "calendarMonth({ month: '2025-08-01T12:00:00' })",
+      "core": false,
       "result": [
         {
           "date": "2025-07-27",
@@ -1801,6 +1942,7 @@
       "id": "eval.host-source-month-offset",
       "note": "evaluation over the named env",
       "source": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })",
+      "core": false,
       "result": [
         {
           "date": "2025-10-27",
@@ -2104,6 +2246,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "local.page + 1",
       "env": "callback",
+      "core": false,
       "result": 3,
       "print": "local.page + 1"
     },
@@ -2112,6 +2255,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "local.nope",
       "env": "callback",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2122,6 +2266,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "event.detail.key",
       "env": "callback",
+      "core": false,
       "result": "Enter",
       "print": "event.detail.key"
     },
@@ -2130,6 +2275,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "event.save",
       "env": "callback",
+      "core": false,
       "result": {
         "$callable": "bound"
       },
@@ -2140,6 +2286,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "event.tick",
       "env": "callback",
+      "core": false,
       "result": "sig:1",
       "print": "event.tick"
     },
@@ -2148,6 +2295,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "event",
       "env": "callback",
+      "core": false,
       "result": {
         "id": "ev:9",
         "detail": {
@@ -2167,6 +2315,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "arg.id",
       "env": "callback",
+      "core": false,
       "result": "ev:9",
       "print": "arg.id"
     },
@@ -2175,6 +2324,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "arg.id",
       "env": "stock",
+      "core": false,
       "result": "r:1",
       "print": "arg.id"
     },
@@ -2183,6 +2333,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "result.id",
       "env": "callback",
+      "core": false,
       "result": "res:1",
       "print": "result.id"
     },
@@ -2191,6 +2342,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "result.done",
       "env": "callback",
+      "core": false,
       "result": {
         "$callable": "bound"
       },
@@ -2201,6 +2353,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "$item.role",
       "env": "callback",
+      "core": false,
       "result": "global-shadowed",
       "print": "$item.role"
     },
@@ -2209,6 +2362,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "item.role",
       "env": "callback",
+      "core": false,
       "result": "visible",
       "print": "item.role"
     },
@@ -2217,6 +2371,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "clock",
       "env": "callback",
+      "core": false,
       "result": "tick:tock",
       "print": "clock"
     },
@@ -2225,6 +2380,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "me.did",
       "env": "callback",
+      "core": false,
       "result": "did:me",
       "print": "me.did"
     },
@@ -2233,6 +2389,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "counter.value",
       "env": "callback",
+      "core": false,
       "result": 7,
       "print": "counter.value"
     },
@@ -2241,6 +2398,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "counter.fn",
       "env": "callback",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2251,6 +2409,7 @@
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "local.dirty ? 'd' : event.id",
       "env": "callback",
+      "core": false,
       "result": "ev:9",
       "print": "local.dirty ? 'd' : event.id"
     },
@@ -2258,6 +2417,7 @@
       "id": "op.mod",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "7 % 3",
+      "core": true,
       "result": 1,
       "print": "7 % 3"
     },
@@ -2265,6 +2425,7 @@
       "id": "op.mod-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "7 % 0",
+      "core": true,
       "result": 0,
       "print": "7 % 0"
     },
@@ -2272,6 +2433,7 @@
       "id": "op.div",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "7 / 2",
+      "core": true,
       "result": 3.5,
       "print": "7 / 2"
     },
@@ -2279,6 +2441,7 @@
       "id": "op.div-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "7 / 0",
+      "core": true,
       "result": 0,
       "print": "7 / 0"
     },
@@ -2286,6 +2449,7 @@
       "id": "op.div-zero-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'x' / 0",
+      "core": true,
       "result": 0,
       "print": "'x' / 0"
     },
@@ -2293,6 +2457,7 @@
       "id": "op.mul",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "3 * 4",
+      "core": true,
       "result": 12,
       "print": "3 * 4"
     },
@@ -2300,6 +2465,7 @@
       "id": "op.mul-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'3' * '4'",
+      "core": true,
       "result": 12,
       "print": "'3' * '4'"
     },
@@ -2307,6 +2473,7 @@
       "id": "op.sub",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "10 - 4",
+      "core": true,
       "result": 6,
       "print": "10 - 4"
     },
@@ -2314,6 +2481,7 @@
       "id": "op.sub-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'10' - 4",
+      "core": true,
       "result": 6,
       "print": "'10' - 4"
     },
@@ -2321,6 +2489,7 @@
       "id": "op.add-nums",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 + 2",
+      "core": true,
       "result": 3,
       "print": "1 + 2"
     },
@@ -2328,6 +2497,7 @@
       "id": "op.add-strings",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' + 'b'",
+      "core": true,
       "result": "ab",
       "print": "'a' + 'b'"
     },
@@ -2335,6 +2505,7 @@
       "id": "op.add-bool",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "true + 1",
+      "core": true,
       "result": 1,
       "print": "true + 1"
     },
@@ -2343,6 +2514,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing + 1",
       "env": "stock",
+      "core": false,
       "result": 1,
       "print": "missing + 1"
     },
@@ -2350,6 +2522,7 @@
       "id": "op.lt",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 < 2",
+      "core": true,
       "result": true,
       "print": "1 < 2"
     },
@@ -2357,6 +2530,7 @@
       "id": "op.lt-strings",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'b' < 'a'",
+      "core": true,
       "result": false,
       "print": "'b' < 'a'"
     },
@@ -2364,6 +2538,7 @@
       "id": "op.lte",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "2 <= 2",
+      "core": true,
       "result": true,
       "print": "2 <= 2"
     },
@@ -2371,6 +2546,7 @@
       "id": "op.gt",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "3 > 2",
+      "core": true,
       "result": true,
       "print": "3 > 2"
     },
@@ -2378,6 +2554,7 @@
       "id": "op.gte",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "2 >= 3",
+      "core": true,
       "result": false,
       "print": "2 >= 3"
     },
@@ -2385,6 +2562,7 @@
       "id": "op.eq-null",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "null == null",
+      "core": true,
       "result": true,
       "print": "null == null"
     },
@@ -2393,6 +2571,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "null == missing",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "null == missing"
     },
@@ -2400,6 +2579,7 @@
       "id": "op.eq-coerce",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 == '1'",
+      "core": true,
       "result": false,
       "print": "1 == '1'"
     },
@@ -2407,6 +2587,7 @@
       "id": "op.neq",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 != '1'",
+      "core": true,
       "result": true,
       "print": "1 != '1'"
     },
@@ -2414,6 +2595,7 @@
       "id": "op.neq-obj",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{a:1} != {a:1}",
+      "core": true,
       "result": true,
       "print": "{ a: 1 } != { a: 1 }"
     },
@@ -2422,6 +2604,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "item == item",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "item == item"
     },
@@ -2429,6 +2612,7 @@
       "id": "op.in-arr",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' in ['a','b']",
+      "core": true,
       "result": true,
       "print": "'a' in ['a', 'b']"
     },
@@ -2436,6 +2620,7 @@
       "id": "op.in-obj",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' in {a:1}",
+      "core": true,
       "result": false,
       "print": "'a' in { a: 1 }"
     },
@@ -2443,6 +2628,7 @@
       "id": "op.in-num",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 in [1,2]",
+      "core": true,
       "result": true,
       "print": "1 in [1, 2]"
     },
@@ -2451,6 +2637,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' in missing",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "'a' in missing"
     },
@@ -2458,6 +2645,7 @@
       "id": "op.not",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "!false",
+      "core": true,
       "result": true,
       "print": "!false"
     },
@@ -2465,6 +2653,7 @@
       "id": "op.not-num",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "!0",
+      "core": true,
       "result": true,
       "print": "!0"
     },
@@ -2472,6 +2661,7 @@
       "id": "op.not-str",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "!''",
+      "core": true,
       "result": true,
       "print": "!''"
     },
@@ -2479,6 +2669,7 @@
       "id": "op.neg",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-5",
+      "core": true,
       "result": -5,
       "print": "-5"
     },
@@ -2486,6 +2677,7 @@
       "id": "op.neg-str",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-'3'",
+      "core": true,
       "result": -3,
       "print": "-'3'"
     },
@@ -2494,6 +2686,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-missing",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "-missing"
     },
@@ -2501,6 +2694,7 @@
       "id": "op.cond",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "true ? 1 : 2",
+      "core": true,
       "result": 1,
       "print": "true ? 1 : 2"
     },
@@ -2508,6 +2702,7 @@
       "id": "op.cond-false",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "false ? 1 : 2",
+      "core": true,
       "result": 2,
       "print": "false ? 1 : 2"
     },
@@ -2516,6 +2711,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing ? 1 : 0 ? 2 : 3",
       "env": "stock",
+      "core": false,
       "result": 3,
       "print": "missing ? 1 : 0 ? 2 : 3"
     },
@@ -2523,6 +2719,7 @@
       "id": "op.template-parts",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "`a${1}b${'x'}c`",
+      "core": true,
       "result": "a1bxc",
       "print": "`a${1}b${'x'}c`"
     },
@@ -2530,6 +2727,7 @@
       "id": "op.template-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "`${[1,2]}`",
+      "core": true,
       "result": "1,2",
       "print": "`${[1, 2]}`"
     },
@@ -2537,6 +2735,7 @@
       "id": "op.template-bool",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "`${true}`",
+      "core": true,
       "result": "true",
       "print": "`${true}`"
     },
@@ -2544,6 +2743,7 @@
       "id": "op.list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[1, 'x', [2]]",
+      "core": true,
       "result": [1, "x", [2]],
       "print": "[1, 'x', [2]]"
     },
@@ -2551,6 +2751,7 @@
       "id": "op.object",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{ a: 1, 'b c': [true] }",
+      "core": true,
       "result": {
         "a": 1,
         "b c": [true]
@@ -2561,6 +2762,7 @@
       "id": "op.index-num",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[7,8,9][1]",
+      "core": true,
       "result": 8,
       "print": "[7, 8, 9][1]"
     },
@@ -2568,6 +2770,7 @@
       "id": "op.index-neg",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[7,8,9][-1]",
+      "core": true,
       "result": {
         "$undefined": true
       },
@@ -2577,6 +2780,7 @@
       "id": "op.index-str",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'abc'[1]",
+      "core": true,
       "result": "b",
       "print": "'abc'[1]"
     },
@@ -2584,6 +2788,7 @@
       "id": "op.index-str-key",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{ 'x-y': 5 }['x-y']",
+      "core": true,
       "result": 5,
       "print": "{ 'x-y': 5 }['x-y']"
     },
@@ -2592,6 +2797,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing[0]",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2601,6 +2807,7 @@
       "id": "op.member-proto",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "a.__proto__",
+      "core": true,
       "error": "syntax",
       "message": "\"__proto__\" is not a readable property",
       "span": [2, 11]
@@ -2609,6 +2816,7 @@
       "id": "op.index-proto",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "a['constructor']",
+      "core": true,
       "error": "syntax",
       "message": "\"constructor\" is not a readable property",
       "span": [2, 15]
@@ -2617,6 +2825,7 @@
       "id": "op.object-proto",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{ __proto__: 1 }",
+      "core": true,
       "error": "syntax",
       "message": "\"__proto__\" is not a readable property",
       "span": [2, 11]
@@ -2625,6 +2834,7 @@
       "id": "op.too-deep",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((a))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))",
+      "core": true,
       "error": "syntax",
       "message": "Expression is nested too deeply",
       "span": [20, 21]
@@ -2633,6 +2843,7 @@
       "id": "op.member-str-length",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'abc'.length",
+      "core": true,
       "result": 3,
       "print": "'abc'.length"
     },
@@ -2641,6 +2852,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "item.n.toString",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2651,6 +2863,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "item.a.b.c.d",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2660,6 +2873,7 @@
       "id": "op.call-unknown",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "notAFunction(1)",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2670,6 +2884,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "first(list, {x:'a'}).count()",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "first(list, { x: 'a' }).count()"
     },
@@ -2678,6 +2893,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "items.find(x, x.n == 9)",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2688,6 +2904,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "items.exists(x, x.n == 9)",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "items.exists(x, x.n == 9)"
     },
@@ -2696,6 +2913,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing.find(x, x)",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -2706,6 +2924,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing.exists(x, x)",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "missing.exists(x, x)"
     },
@@ -2713,6 +2932,7 @@
       "id": "op.macro-map-num",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "(5).map(x, x)",
+      "core": true,
       "result": [],
       "print": "5.map(x, x)"
     },
@@ -2720,6 +2940,7 @@
       "id": "op.and-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[1] && [2]",
+      "core": true,
       "result": true,
       "print": "[1] && [2]"
     },
@@ -2727,6 +2948,7 @@
       "id": "op.or-obj",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{a:1} || false",
+      "core": true,
       "result": true,
       "print": "{ a: 1 } || false"
     },
@@ -2734,6 +2956,7 @@
       "id": "op.nullish-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "0 ?? 9",
+      "core": true,
       "result": 0,
       "print": "0 ?? 9"
     },
@@ -2741,6 +2964,7 @@
       "id": "op.nullish-null",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "null ?? 9",
+      "core": true,
       "result": 9,
       "print": "null ?? 9"
     },
@@ -2748,6 +2972,7 @@
       "id": "op.nullish-false",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "false ?? 9",
+      "core": true,
       "result": false,
       "print": "false ?? 9"
     },
@@ -2755,6 +2980,7 @@
       "id": "op.eq-bool",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "true == true",
+      "core": true,
       "result": true,
       "print": "true == true"
     },
@@ -2762,6 +2988,7 @@
       "id": "op.eq-arr",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[1] == [1]",
+      "core": true,
       "result": false,
       "print": "[1] == [1]"
     },
@@ -2769,6 +2996,7 @@
       "id": "op.mixed-chain",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 + 2 * 3 - 4 / 2 % 3",
+      "core": true,
       "result": 5,
       "print": "1 + 2 * 3 - 4 / 2 % 3"
     },
@@ -2776,6 +3004,7 @@
       "id": "op.parens-num",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "(1 + 2) * 3",
+      "core": true,
       "result": 9,
       "print": "(1 + 2) * 3"
     },
@@ -2783,6 +3012,7 @@
       "id": "op.not-eq",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "!('a' == 'a')",
+      "core": true,
       "result": false,
       "print": "!('a' == 'a')"
     },
@@ -2790,6 +3020,7 @@
       "id": "op.cond-cond",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "1 ? 2 ? 'a' : 'b' : 'c'",
+      "core": true,
       "result": "a",
       "print": "1 ? 2 ? 'a' : 'b' : 'c'"
     },
@@ -2797,6 +3028,7 @@
       "id": "op.big-or",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "false || false || 'x'",
+      "core": true,
       "result": true,
       "print": "false || false || 'x'"
     },
@@ -2804,6 +3036,7 @@
       "id": "op.big-and",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "true && 1 && 'x'",
+      "core": true,
       "result": true,
       "print": "true && 1 && 'x'"
     },
@@ -2812,6 +3045,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "count(distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))"
     },
@@ -2820,6 +3054,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value",
       "env": "stock",
+      "core": false,
       "result": "NoteBlock",
       "print": "first(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).value"
     },
@@ -2828,6 +3063,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "first(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "first(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n })))).via == 'composer'"
     },
@@ -2836,6 +3072,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "arg.detail.key == 'Enter' && count(distinct(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via == 'composer'), recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'), distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))))"
     },
@@ -2844,6 +3081,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "distinct(['TaskBlock', 'EventBlock', 'ImageBlock', 'AudioBlock', 'VideoBlock', 'TextBlock', 'FileBlock', 'LocationBlock', 'LinkBlock', 'CodeBlock', 'TagBlock', 'CalloutBlock'], recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).map(k, k.value)).filter(n, recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).exists(k, k.value == n && k.via != 'composer' && k.group != 'This space')).map(n, find(recordStore.creatableEntities, { value: n }))"
     },
@@ -2852,6 +3090,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) <= 6 || local.changesOpen",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) <= 6 || local.changesOpen"
     },
@@ -2860,6 +3099,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })"
     },
@@ -2868,6 +3108,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "`${count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : []))} pending ${plural(count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])), 'change', 'changes')}`",
       "env": "stock",
+      "core": false,
       "result": "1 pending change",
       "print": "`${count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : [])} pending ${plural(count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []), 'change', 'changes')}`"
     },
@@ -2876,6 +3117,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) > 6",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) > 6"
     },
@@ -2884,6 +3126,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])) > 1",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : []) > 1"
     },
@@ -2892,6 +3135,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
       "env": "stock",
+      "core": false,
       "result": "dna|signal|sig:1",
       "print": "(routeStore.params.view == 'canvas' || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows' : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
     },
@@ -2900,6 +3144,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : []))",
       "env": "stock",
+      "core": false,
       "result": 1,
       "print": "count(row.id in modules.transcribe.changedIds ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, '' + row[f.name] != f.value) : [])"
     },
@@ -2908,6 +3153,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model'",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'model'"
     },
@@ -2916,6 +3162,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(local.link) ? [{ role: 'From', end: first(local.link).source, stored: first(local.link).sourceType }, { role: 'To', end: first(local.link).target, stored: first(local.link).targetType }].map(e, { role: e.role, end: e.end, type: (e.stored ? e.stored : e.end.__subjectClass) }).map(e, { role: e.role, id: e.end.id ?? e.end, type: e.type, name: (!e.end ? 'Removed' : e.end[recordStore.displays[e.type].title] ? e.end[recordStore.displays[e.type].title] : e.end.textContent ? e.end.textContent : (e.type == 'CollectionBlock' ? 'Note' : recordStore.displays[e.type].label ? recordStore.displays[e.type].label : e.type)), icon: (e.type == 'CollectionBlock' ? 'note' : recordStore.displays[e.type].icon) }) : []",
       "env": "stock",
+      "core": false,
       "result": [
         {
           "role": "From",
@@ -2941,6 +3188,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
     },
@@ -2949,6 +3197,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') || (((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' || routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
     },
@@ -2957,6 +3206,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((row.id in modules.transcribe.changedIds) ? find(modules.transcribe.pendingProposals, { id: row.id }).fields.filter(f, ('' + row[f.name]) != f.value) : [])",
       "env": "stock",
+      "core": false,
       "result": [
         {
           "name": "text",
@@ -2970,6 +3220,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)"
     },
@@ -2978,6 +3229,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
@@ -2986,6 +3238,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
@@ -2994,6 +3247,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))"
     },
@@ -3002,6 +3256,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
@@ -3010,6 +3265,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
@@ -3018,6 +3274,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
@@ -3026,6 +3283,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
@@ -3034,6 +3292,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
@@ -3042,6 +3301,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]]] : [], split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] != 'policy' ? [split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]] : [])"
     },
@@ -3050,6 +3310,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
       "env": "stock",
+      "core": false,
       "result": "Definition",
       "print": "(split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy' ? split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]].find(d, d.id == split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]).name) ?? 'Definition'"
     },
@@ -3058,6 +3319,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "!(!(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
     },
@@ -3066,6 +3328,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "[\n  { key: 'signals', label: 'Signal types', entity: 'SignalType', opens: { entity: recordStore.creatableEntities.map(k, k.value), through: 'signals', field: 'signalTypeId', key: 'id', label: 'reacted to', limit: 12 } },\n  { key: 'connections', label: 'Connection types', entity: 'RelationshipType', opens: { entity: 'Relationship', field: 'relationshipTypeId', key: 'id', pair: ['source', 'target'], label: 'connects', limit: 12 } },\n  { key: 'states', label: 'Task states', entity: 'TaskState', opens: { entity: 'TaskBlock', field: 'status', key: 'slug', label: 'in it', limit: 12 } },\n  { key: 'kinds', label: 'Involvement', entity: 'InvolvementType', opens: { entity: 'Involvement', field: 'kind', key: 'slug', follow: 'node', label: 'involved in', limit: 12 } },\n  { key: 'topics', label: 'Topics', entity: 'Topic', opens: { entity: 'Relationship', through: 'target', field: 'id', key: 'id', follow: 'source', label: 'about it', limit: 12 } },\n  { key: 'models', label: 'Models', models: recordStore.creatableEntities.map(k, { name: k.value, label: k.label }) },\n  { key: 'other', label: 'From other apps', models: datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value))).map(e, { name: e.name }) },\n  { key: 'workflows', label: 'Workflows', workflows: workflowStore.workflows.map(f, { name: f.name, label: f.label, steps: f.steps, moves: f.moves }) },\n  { key: 'policy', label: 'Policy', items: spaceStore.policy.sentences.map(s, { id: s, label: s }) }\n].filter(b, b.key != 'other' || count(b.models))",
       "env": "stock",
+      "core": false,
       "result": [
         {
           "key": "signals",
@@ -3164,6 +3427,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'topic'",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'topic'"
     },
@@ -3172,6 +3436,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'signal'",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'signal'"
     },
@@ -3180,6 +3445,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'state'",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'state'"
     },
@@ -3188,6 +3454,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'connection'",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'connection'"
     },
@@ -3196,6 +3463,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy'",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy'"
     },
@@ -3204,6 +3472,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'involvement'",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'involvement'"
     },
@@ -3212,6 +3481,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
@@ -3220,6 +3490,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "recordStore.recordDraft.fields.filter(f, !(recordStore.recordDraft.fields.exists(f, f.name == 'latitude') && recordStore.recordDraft.fields.exists(f, f.name == 'longitude')) || !(f.name in ['latitude', 'longitude']))"
     },
@@ -3228,6 +3499,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "count(recordStore.creatableEntities.filter(k, contains((k.via == 'composer' ? 'Note' : k.label), local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))",
       "env": "stock",
+      "core": false,
       "result": 1,
       "print": "count(recordStore.creatableEntities.filter(k, contains(k.via == 'composer' ? 'Note' : k.label, local.typeSearch) || contains(k.description, local.typeSearch)).filter(k, k.via != 'composer' && k.group == 'This space'))"
     },
@@ -3236,6 +3508,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "(local.discussionRoot ? count(first(local.discussionFocus).responses) : count(row.responses)) - count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply')) > 0",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "(local.discussionRoot ? count(first(local.discussionFocus).responses) : count(row.responses)) - count(local.threadRows.filter(r, r.respondsTo.id == (local.discussionRoot ? local.discussionRoot : row.id) && r.kind == 'reply')) > 0"
     },
@@ -3244,6 +3517,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "(workflowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "(workflowStore.open.steps ?? []).map(s, { id: 'step:' + s.name, kind: 'cluster', type: 'workflow-step', label: s.label + (count(s.requires) ? '\\n' + join(s.requires, '\\n') : '') + (s.hint ? '\\n' + s.hint : ''), data: { final: s.final } })"
     },
@@ -3252,6 +3526,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
     },
@@ -3260,6 +3535,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
       "env": "stock",
+      "core": false,
       "result": "Added by  · ",
       "print": "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `"
     },
@@ -3268,6 +3544,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3278,6 +3555,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "`${(lane.column - 1) * 228 + 90}px`",
       "env": "stock",
+      "core": false,
       "result": "-138px",
       "print": "`${(lane.column - 1) * 228 + 90}px`"
     },
@@ -3286,6 +3564,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!lane.main && lane.rejoinsLane >= 0 && lane.rejoinsColumn > lane.lastColumn",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "!lane.main && lane.rejoinsLane >= 0 && lane.rejoinsColumn > lane.lastColumn"
     },
@@ -3294,6 +3573,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sigWho.value < 0 && sig.iconSecondary ? sig.iconSecondary : sig.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3304,6 +3584,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })"
     },
@@ -3312,6 +3593,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })"
     },
@@ -3320,6 +3602,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })",
       "env": "stock",
+      "core": false,
       "result": "did:a=50",
       "print": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })"
     },
@@ -3328,6 +3611,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "`Add ${lower(field.targetLabel)}`",
       "env": "stock",
+      "core": false,
       "result": "Add ",
       "print": "`Add ${lower(field.targetLabel)}`"
     },
@@ -3336,6 +3620,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })",
       "env": "stock",
+      "core": false,
       "result": [],
       "print": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
     },
@@ -3344,6 +3629,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "arg",
       "env": "stock",
+      "core": false,
       "result": {
         "detail": {
           "key": "Enter"
@@ -3359,6 +3645,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sig",
       "env": "stock",
+      "core": false,
       "result": {
         "id": "sig:1",
         "aggregate": "sum"
@@ -3370,6 +3657,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rule",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3380,6 +3668,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "true",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "true"
     },
@@ -3388,6 +3677,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "need",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3398,6 +3688,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'all'",
       "env": "stock",
+      "core": false,
       "result": "all",
       "print": "'all'"
     },
@@ -3406,6 +3697,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event",
       "env": "stock",
+      "core": false,
       "result": {
         "detail": "e:1"
       },
@@ -3416,6 +3708,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "index",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3426,6 +3719,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "false",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "false"
     },
@@ -3434,6 +3728,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "me.did",
       "env": "stock",
+      "core": false,
       "result": "did:me",
       "print": "me.did"
     },
@@ -3442,6 +3737,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "row.id",
       "env": "stock",
+      "core": false,
       "result": "row:1",
       "print": "row.id"
     },
@@ -3450,6 +3746,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "arg.id",
       "env": "stock",
+      "core": false,
       "result": "r:1",
       "print": "arg.id"
     },
@@ -3458,6 +3755,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "ask.to",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3468,6 +3766,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "end.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3478,6 +3777,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sig.id",
       "env": "stock",
+      "core": false,
       "result": "sig:1",
       "print": "sig.id"
     },
@@ -3486,6 +3786,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "def.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3496,6 +3797,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'hash'",
       "env": "stock",
+      "core": false,
       "result": "hash",
       "print": "'hash'"
     },
@@ -3504,6 +3806,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!end.id",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!end.id"
     },
@@ -3512,6 +3815,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "to.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3522,6 +3826,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "conn.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3532,6 +3837,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.x",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3542,6 +3848,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.y",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3552,6 +3859,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "move.to",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3562,6 +3870,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'state'",
       "env": "stock",
+      "core": false,
       "result": "state",
       "print": "'state'"
     },
@@ -3570,6 +3879,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'topic'",
       "env": "stock",
+      "core": false,
       "result": "topic",
       "print": "'topic'"
     },
@@ -3578,6 +3888,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'model'",
       "env": "stock",
+      "core": false,
       "result": "model",
       "print": "'model'"
     },
@@ -3586,6 +3897,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "problem",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3596,6 +3908,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'138px'",
       "env": "stock",
+      "core": false,
       "result": "138px",
       "print": "'138px'"
     },
@@ -3604,6 +3917,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "def.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3614,6 +3928,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "theme.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3624,6 +3939,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "arg.kind",
       "env": "stock",
+      "core": false,
       "result": "assignee",
       "print": "arg.kind"
     },
@@ -3632,6 +3948,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "ask.mine",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3642,6 +3959,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "to.label",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3652,6 +3970,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "end.type",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3662,6 +3981,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "end.role",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3672,6 +3992,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "end.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3682,6 +4003,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "end.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3692,6 +4014,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sig.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3702,6 +4025,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sig.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3712,6 +4036,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!(false)",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!false"
     },
@@ -3720,6 +4045,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3730,6 +4056,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rec.walk",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3740,6 +4067,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rec.next",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3750,6 +4078,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'signal'",
       "env": "stock",
+      "core": false,
       "result": "signal",
       "print": "'signal'"
     },
@@ -3758,6 +4087,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'policy'",
       "env": "stock",
+      "core": false,
       "result": "policy",
       "print": "'policy'"
     },
@@ -3766,6 +4096,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "replySig",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3776,6 +4107,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "voiceDid",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3786,6 +4118,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "index > 0",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "index > 0"
     },
@@ -3794,6 +4127,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "part.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3804,6 +4138,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "conn.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3814,6 +4149,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "conn.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3824,6 +4160,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply2.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3834,6 +4171,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply3.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3844,6 +4182,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "entry.key",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3854,6 +4193,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "step.hint",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3864,6 +4204,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "step.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3874,6 +4215,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "move.from",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3884,6 +4226,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "move.mine",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3894,6 +4237,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "step.when",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3904,6 +4248,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply2Sig",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3914,6 +4259,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply3Sig",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3924,6 +4270,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!lane.main",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!lane.main"
     },
@@ -3932,6 +4279,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "arg.detail",
       "env": "stock",
+      "core": false,
       "result": {
         "key": "Enter"
       },
@@ -3942,6 +4290,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "space.uuid",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3952,6 +4301,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "space.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3962,6 +4312,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "person.did",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3972,6 +4323,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "theme.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3982,6 +4334,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.card",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -3992,6 +4345,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4002,6 +4356,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.save",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4012,6 +4367,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "row.author",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4022,6 +4378,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "holder.did",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4032,6 +4389,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "conn.arrow",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4042,6 +4400,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sigWho.did",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4052,6 +4411,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4062,6 +4422,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.slug",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4072,6 +4433,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.mode",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4082,6 +4444,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4092,6 +4455,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.step",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4102,6 +4466,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "focused.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4112,6 +4477,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "author.did",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4122,6 +4488,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.many",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4132,6 +4499,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "kind.value",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4142,6 +4510,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.text",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4152,6 +4521,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "lane.steps",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4162,6 +4532,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "step.label",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4172,6 +4543,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "step.final",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4182,6 +4554,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "lane.index",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4192,6 +4565,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rec.record",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4202,6 +4576,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "person.bio",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4212,6 +4587,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "focusedSig",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4222,6 +4598,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!local.name",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!local.name"
     },
@@ -4230,6 +4607,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.calls",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4240,6 +4618,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "person.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4250,6 +4629,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "template.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4260,6 +4640,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "change.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4270,6 +4651,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.label",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4280,6 +4662,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "picture.src",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4290,6 +4673,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "holder.kind",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4300,6 +4684,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "author.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4310,6 +4695,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "replySig.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4320,6 +4706,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.value",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4330,6 +4717,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.spine",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4340,6 +4728,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.order",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4350,6 +4739,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.value",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4360,6 +4750,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "entry.label",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4370,6 +4761,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.newAt",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4380,6 +4772,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.focus",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4390,6 +4783,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.marks",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4400,6 +4794,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.excTo",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4410,6 +4805,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rec.stalled",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4420,6 +4816,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "rec.waiting",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4430,6 +4827,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'group|dna'",
       "env": "stock",
+      "core": false,
       "result": "group|dna",
       "print": "'group|dna'"
     },
@@ -4438,6 +4836,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!arg.checked",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!arg.checked"
     },
@@ -4446,6 +4845,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "panel.inputs",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4456,6 +4856,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "space.avatar",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4466,6 +4867,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.detail",
       "env": "stock",
+      "core": false,
       "result": "e:1",
       "print": "event.detail"
     },
@@ -4474,6 +4876,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.topics",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4484,6 +4887,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.target",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4494,6 +4898,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.linked",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4504,6 +4909,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "conn.otherId",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4514,6 +4920,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "sigWho.value",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4524,6 +4931,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply.author",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4534,6 +4942,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply2Sig.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4544,6 +4953,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "reply3Sig.id",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4554,6 +4964,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.voices",
       "env": "stock",
+      "core": false,
       "result": "did:a=50",
       "print": "local.voices"
     },
@@ -4562,6 +4973,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.action",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4572,6 +4984,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "field.accept",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4582,6 +4995,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "event.submit",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4592,6 +5006,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "lane.rejoins",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4602,6 +5017,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "'connection'",
       "env": "stock",
+      "core": false,
       "result": "connection",
       "print": "'connection'"
     },
@@ -4610,6 +5026,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!conn.otherId",
       "env": "stock",
+      "core": false,
       "result": true,
       "print": "!conn.otherId"
     },
@@ -4618,6 +5035,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "!local.voices",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "!local.voices"
     },
@@ -4626,6 +5044,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "space.spaceId",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4636,6 +5055,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "person.avatar",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4646,6 +5066,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "template.icon",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4656,6 +5077,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "template.name",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4666,6 +5088,7 @@
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
       "source": "local.editing",
       "env": "stock",
+      "core": false,
       "result": {
         "$undefined": true
       },
@@ -4676,6 +5099,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing * 2",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "missing * 2"
     },
@@ -4684,6 +5108,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "0 - missing",
       "env": "stock",
+      "core": false,
       "result": 0,
       "print": "0 - missing"
     },
@@ -4691,6 +5116,7 @@
       "id": "op.neg-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-0",
+      "core": true,
       "result": 0,
       "print": "-0"
     },
@@ -4698,6 +5124,7 @@
       "id": "op.neg-null",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-null",
+      "core": true,
       "result": 0,
       "print": "-null"
     },
@@ -4705,6 +5132,7 @@
       "id": "op.neg-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-'x'",
+      "core": true,
       "result": 0,
       "print": "-'x'"
     },
@@ -4712,6 +5140,7 @@
       "id": "op.mul-neg-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "0 * -1",
+      "core": true,
       "result": 0,
       "print": "0 * -1"
     },
@@ -4719,6 +5148,7 @@
       "id": "op.div-neg-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "0 / -5",
+      "core": true,
       "result": 0,
       "print": "0 / -5"
     },
@@ -4726,6 +5156,7 @@
       "id": "op.mod-neg-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-1 % 1",
+      "core": true,
       "result": 0,
       "print": "-1 % 1"
     },
@@ -4733,6 +5164,7 @@
       "id": "op.add-neg-zero",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-0 + -0",
+      "core": true,
       "result": 0,
       "print": "-0 + -0"
     },
@@ -4740,6 +5172,7 @@
       "id": "op.mod-zero-neg",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-7 % 0",
+      "core": true,
       "result": 0,
       "print": "-7 % 0"
     },
@@ -4747,6 +5180,7 @@
       "id": "op.min-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "min([3, 1, 2])",
+      "core": true,
       "result": 1,
       "print": "min([3, 1, 2])"
     },
@@ -4755,6 +5189,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "max(events.map(e, e.seats))",
       "env": "where",
+      "core": true,
       "result": 20,
       "print": "max(events.map(e, e.seats))"
     },
@@ -4762,6 +5197,7 @@
       "id": "op.min-variadic",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "min(3, 1, 2)",
+      "core": true,
       "result": 1,
       "print": "min(3, 1, 2)"
     },
@@ -4769,6 +5205,7 @@
       "id": "op.or-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'' || 'x'",
+      "core": true,
       "result": true,
       "print": "'' || 'x'"
     },
@@ -4776,6 +5213,7 @@
       "id": "op.and-string",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' && 'b'",
+      "core": true,
       "result": true,
       "print": "'a' && 'b'"
     },
@@ -4783,6 +5221,7 @@
       "id": "op.contains-case",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "contains('Anna', 'ANN')",
+      "core": true,
       "result": true,
       "print": "contains('Anna', 'ANN')"
     },
@@ -4790,6 +5229,7 @@
       "id": "op.startswith-case",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "startsWith('Anna', 'an')",
+      "core": true,
       "result": false,
       "print": "startsWith('Anna', 'an')"
     },
@@ -4797,6 +5237,7 @@
       "id": "op.endswith-case",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "endsWith('photo.PNG', '.png')",
+      "core": true,
       "result": false,
       "print": "endsWith('photo.PNG', '.png')"
     },
@@ -4804,6 +5245,7 @@
       "id": "op.lt-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'b' < 'c'",
+      "core": true,
       "result": true,
       "print": "'b' < 'c'"
     },
@@ -4811,6 +5253,7 @@
       "id": "op.lt-numeric-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'3' < '10'",
+      "core": true,
       "result": true,
       "print": "'3' < '10'"
     },
@@ -4818,6 +5261,7 @@
       "id": "op.lt-text-numeral-and-word",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'3' < 'b'",
+      "core": true,
       "result": true,
       "print": "'3' < 'b'"
     },
@@ -4825,6 +5269,7 @@
       "id": "op.lt-number-and-word",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "3 < 'b'",
+      "core": true,
       "result": false,
       "print": "3 < 'b'"
     },
@@ -4832,6 +5277,7 @@
       "id": "op.lt-padded-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "' 3' < '10'",
+      "core": true,
       "result": true,
       "print": "' 3' < '10'"
     },
@@ -4839,6 +5285,7 @@
       "id": "op.gt-exponent-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'1e3' > 999",
+      "core": true,
       "result": true,
       "print": "'1e3' > 999"
     },
@@ -4846,6 +5293,7 @@
       "id": "op.ge-iso-dates",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'2026-09-30T18:00' >= '2026-09-15'",
+      "core": true,
       "result": true,
       "print": "'2026-09-30T18:00' >= '2026-09-15'"
     },
@@ -4854,6 +5302,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing < 1",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "missing < 1"
     },
@@ -4862,6 +5311,7 @@
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "missing >= 0",
       "env": "stock",
+      "core": false,
       "result": false,
       "print": "missing >= 0"
     },
@@ -4869,6 +5319,7 @@
       "id": "op.lt-null",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "null < 1",
+      "core": true,
       "result": false,
       "print": "null < 1"
     },
@@ -4876,6 +5327,7 @@
       "id": "op.lt-bool",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "false < true",
+      "core": true,
       "result": false,
       "print": "false < true"
     },
@@ -4883,6 +5335,7 @@
       "id": "op.gt-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[5] > 1",
+      "core": true,
       "result": false,
       "print": "[5] > 1"
     },
@@ -4890,6 +5343,7 @@
       "id": "op.le-same-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'a' <= 'a'",
+      "core": true,
       "result": true,
       "print": "'a' <= 'a'"
     },
@@ -4897,6 +5351,7 @@
       "id": "op.mul-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[5] * 2",
+      "core": true,
       "result": 0,
       "print": "[5] * 2"
     },
@@ -4904,6 +5359,7 @@
       "id": "op.add-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "[2] + 1",
+      "core": true,
       "result": 1,
       "print": "[2] + 1"
     },
@@ -4911,6 +5367,7 @@
       "id": "op.sub-object",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "{ a: 1 } - 1",
+      "core": true,
       "result": -1,
       "print": "{ a: 1 } - 1"
     },
@@ -4918,6 +5375,7 @@
       "id": "op.neg-list",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "-[3]",
+      "core": true,
       "result": 0,
       "print": "-[3]"
     },
@@ -4925,6 +5383,7 @@
       "id": "op.mul-hex-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'0x10' * 1",
+      "core": true,
       "result": 0,
       "print": "'0x10' * 1"
     },
@@ -4932,6 +5391,7 @@
       "id": "op.mul-padded-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "' 4' * 2",
+      "core": true,
       "result": 0,
       "print": "' 4' * 2"
     },
@@ -4939,6 +5399,7 @@
       "id": "op.mul-numeral-text",
       "note": "an operator or grammar rule, pinned against a stub env",
       "source": "'2.5' * 2",
+      "core": true,
       "result": 5,
       "print": "'2.5' * 2"
     }

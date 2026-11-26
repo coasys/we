@@ -19,7 +19,15 @@ import { fileURLToPath } from 'node:url';
 // agree wherever they run; the vitest configs pin it for the test side the same way.
 process.env.TZ = 'UTC';
 
-import { evaluateExpression, getFunction, parseExpression, printExpression } from '@we/expressions';
+import {
+  evaluateExpression,
+  type Expr,
+  getFunction,
+  isCoreFunction,
+  parseExpression,
+  printExpression,
+  walkExpr,
+} from '@we/expressions';
 
 import { resolvePlacement } from '../../../app-shell/src/shared/dockGeometry.ts';
 import { activePanels } from '../../../app-shell/src/shared/panelScope.ts';
@@ -78,6 +86,25 @@ const EXPR_NOTES: [RegExp, string][] = [
 const noteFor = (id: string, table: [RegExp, string][], fallback: string) =>
   table.find(([re]) => re.test(id))?.[1] ?? fallback;
 
+/**
+ * Whether a case is in the core subset an operation is written in (the operations spec's
+ * expressions.md): the grammar and the core functions over names bound to plain data. So a case of
+ * the grammar, evaluation or the printer, over no env or an env of plain names only, calling no
+ * function outside the core library. A case reading a store, a local or a callback value, or calling
+ * a host's function, is the template language's alone.
+ */
+function isCoreCase(id: string, envName: string | undefined, ast: Expr | undefined): boolean {
+  if (!/^(op|eval|print)\./.test(id)) return false;
+  const spec = envName ? EXPRESSION_ENVS[envName] : undefined;
+  if (spec && (spec.stores || spec.local)) return false;
+  let core = true;
+  if (ast)
+    walkExpr(ast, (node) => {
+      if (node.kind === 'call' && !isCoreFunction(node.callee)) core = false;
+    });
+  return core;
+}
+
 export function recordExpressions() {
   return {
     version: 1,
@@ -95,10 +122,17 @@ export function recordExpressions() {
         ast = parseExpression(c.source);
       } catch (error) {
         const e = error as Error & { span?: number[] };
-        return { ...base, error: 'syntax', message: e.message, span: e.span ?? null };
+        return {
+          ...base,
+          core: isCoreCase(c.id, c.env, undefined),
+          error: 'syntax',
+          message: e.message,
+          span: e.span ?? null,
+        };
       }
       return {
         ...base,
+        core: isCoreCase(c.id, c.env, ast),
         result: encodeValue(evaluateExpression(ast, env)),
         print: printExpression(ast),
       };
@@ -123,6 +157,8 @@ export function recordFunctions() {
         id: c.id,
         note: `the ${c.name} built-in${c.context ? ' with $localMeta context' : ''}`,
         fn: c.name,
+        // A core function called with no form context: what an operation can call, as it would.
+        core: isCoreFunction(c.name) && !c.context,
         args: c.args,
         ...(c.context ? { context: c.context } : {}),
         result: encodeValue(result),
