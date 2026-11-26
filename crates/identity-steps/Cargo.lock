@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a35c2ede1d7e793854fba2a15b277a6a6a1b61bf#a35c2ede1d7e793854fba2a15b277a6a6a1b61bf"
+source = "git+https://github.com/coasys/ad4m?rev=7a83e7f2180d150ca5e0d05b7093d7408525da11#7a83e7f2180d150ca5e0d05b7093d7408525da11"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -18,7 +18,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a35c2ede1d7e793854fba2a15b277a6a6a1b61bf#a35c2ede1d7e793854fba2a15b277a6a6a1b61bf"
+source = "git+https://github.com/coasys/ad4m?rev=7a83e7f2180d150ca5e0d05b7093d7408525da11#7a83e7f2180d150ca5e0d05b7093d7408525da11"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",
@@ -37,7 +37,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=a35c2ede1d7e793854fba2a15b277a6a6a1b61bf#a35c2ede1d7e793854fba2a15b277a6a6a1b61bf"
+source = "git+https://github.com/coasys/ad4m?rev=7a83e7f2180d150ca5e0d05b7093d7408525da11#7a83e7f2180d150ca5e0d05b7093d7408525da11"
 dependencies = [
  "ad4m-hash-chain",
  "base64",
@@ -61,8 +61,9 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=a35c2ede1d7e793854fba2a15b277a6a6a1b61bf#a35c2ede1d7e793854fba2a15b277a6a6a1b61bf"
+source = "git+https://github.com/coasys/ad4m?rev=7a83e7f2180d150ca5e0d05b7093d7408525da11#7a83e7f2180d150ca5e0d05b7093d7408525da11"
 dependencies = [
+ "ad4m-model-derive",
  "futures",
  "js-sys",
  "serde",
@@ -70,6 +71,16 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "ad4m-model-derive"
+version = "0.13.0-test-1"
+source = "git+https://github.com/coasys/ad4m?rev=7a83e7f2180d150ca5e0d05b7093d7408525da11#7a83e7f2180d150ca5e0d05b7093d7408525da11"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
