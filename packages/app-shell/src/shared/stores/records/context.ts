@@ -7,9 +7,10 @@
  * `recordStore` templates read (`../RecordStore.ts`); this is what they share.
  */
 import type { EntityStatic, RecordInstance } from '@we/backend-shared';
-import { getEntity, runOperation } from '@we/entities';
+import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
+import { invokeOperation } from '../../invokeOperation';
 import type { Toasts } from '../../toasts';
 import type { DatasetStore } from '../DatasetStore';
 import type { SessionStore } from '../SessionStore';
@@ -25,7 +26,8 @@ export interface RecordContext {
   datasetStore: RecordDatasets;
   /**
    * Run one of the declared operations (`core.placeCard` …) as the signed-in agent. The writes are
-   * declared so every host and an agent make the same ones; what is drawn ahead and the undo stay here.
+   * declared so every host and an agent make the same ones, and run as the host runs every one
+   * (`invokeOperation`), drawn before they land; the undo stays here.
    */
   runOp: <T = unknown>(name: string, args: Record<string, unknown>, handle: unknown) => Promise<T>;
 }
@@ -35,7 +37,7 @@ export function operationRunner(sessionStore: Pick<SessionStore, 'me'>): RecordC
   return async <T>(name: string, args: Record<string, unknown>, handle: unknown): Promise<T> => {
     const invoker = sessionStore.me()?.did;
     if (!invoker) throw new Error(`${name}: nobody is signed in`);
-    return (await runOperation(name, args, { dataset: handle, invoker })) as T;
+    return (await invokeOperation(name, args, { dataset: handle, invoker })) as T;
   };
 }
 

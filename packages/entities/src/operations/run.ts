@@ -74,6 +74,21 @@ export interface RunOperationOptions {
    * summary already names. Absent, every chosen entity the `oneOf` admits is written.
    */
   admitChosen?: (entity: string) => boolean;
+  /**
+   * What the steps read and write through, in place of the connected backend: the statics an entity
+   * is reached by, and the write group the steps run in. A host's speculative run passes a view that
+   * reads committed rows with its own pending writes laid over them and records each write instead of
+   * making it (`speculateOperation`). Absent, the backend's own classes and transaction runner.
+   */
+  view?: OperationView;
+}
+
+/** A dataset as an operation sees it — see {@link RunOperationOptions.view}. */
+export interface OperationView {
+  /** The statics `name` is read and written through, or undefined when the dataset has no such entity. */
+  entity(name: string, dataset: unknown): unknown;
+  /** Run the steps as one write group, as `runEntityTransaction` does. */
+  transaction<R>(dataset: unknown, fn: (tx: { batchId?: string }) => Promise<R>): Promise<R>;
 }
 
 /** A record as a step binds it: its fields as data, never the backend's instance. */
@@ -112,6 +127,7 @@ interface Expectation {
 /** What one run shares across its steps and the operations it calls. */
 interface Run {
   dataset: unknown;
+  view?: OperationView;
   batchId?: string;
   invocationId: string;
   invoker: string;
@@ -157,6 +173,7 @@ export async function runOperation(
     invoker: options.invoker,
     invokedAt: options.invokedAt ?? new Date().toISOString(),
     ...(options.admitChosen ? { admitChosen: options.admitChosen } : {}),
+    ...(options.view ? { view: options.view } : {}),
     instances: new Map(),
     membership: new Map(),
     created: new Map(),
@@ -165,12 +182,15 @@ export async function runOperation(
   };
 
   try {
-    return await runEntityTransaction(options.dataset, async ({ batchId }) => {
+    const steps = async ({ batchId }: { batchId?: string }) => {
       run.batchId = batchId;
       const result = await invoke(run, name, op, args ?? {}, [], name);
       await checkExpectations(run);
       return result;
-    });
+    };
+    return await (options.view
+      ? options.view.transaction(options.dataset, steps)
+      : runEntityTransaction(options.dataset, steps));
   } catch (error) {
     throw asOperationError(error, run);
   }
@@ -291,7 +311,7 @@ async function runStep(
 
     case 'create': {
       const entity = chosenEntity(run, body, scope, step);
-      const Model = statics(entity, run.dataset, step);
+      const Model = statics(run, entity, step);
       const fields = fieldsOf(value('fields'), step);
       const id = body.identity
         ? await identityId(entity, body.identity as string[], fields, step)
@@ -353,7 +373,7 @@ async function runStep(
     case 'link':
     case 'unlink': {
       const entity = chosenEntity(run, body, scope, step);
-      const Model = statics(entity, run.dataset, step);
+      const Model = statics(run, entity, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
       const target = idOf(value('target'), `${step}.target`);
@@ -382,7 +402,7 @@ async function runStep(
 
     case 'setRelation': {
       const entity = chosenEntity(run, body, scope, step);
-      const Model = statics(entity, run.dataset, step);
+      const Model = statics(run, entity, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
       const targets = idsOf(value('targets') ?? []);
@@ -453,7 +473,7 @@ async function runStep(
 
 async function find(run: Run, body: Record<string, unknown>, scope: Map<string, unknown>, step: string) {
   const entity = body.entity as string;
-  const Model = statics(entity, run.dataset, step);
+  const Model = statics(run, entity, step);
   const query = findQuery(body, scope, step);
   const rows = query === null ? [] : await Model.findAll(run.dataset, query);
   for (const row of rows) if (!run.instances.has(row.id)) run.instances.set(row.id, row);
@@ -550,7 +570,7 @@ function withoutAbsentValue(clause: unknown): unknown {
 /** Read each `expect` find again, still inside the transaction, and refuse if its answer moved. */
 async function checkExpectations(run: Run): Promise<void> {
   for (const expectation of run.expectations) {
-    const Model = statics(expectation.entity, run.dataset, expectation.step);
+    const Model = statics(run, expectation.entity, expectation.step);
     const rows = expectation.query === null ? [] : await Model.findAll(run.dataset, expectation.query);
     const now = rows.map((row) => row.id).sort();
     const then = [...expectation.ids].sort();
@@ -571,9 +591,7 @@ function chosenEntity(run: Run, body: Record<string, unknown>, scope: Map<string
   const oneOf = (body.oneOf as OneOfEntry[] | undefined) ?? [];
   const allowed =
     typeof chosen === 'string' &&
-    oneOf.some((entry) =>
-      typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, run.dataset),
-    );
+    oneOf.some((entry) => (typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, run)));
   if (!allowed)
     throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
   writable(chosen, step);
@@ -588,8 +606,8 @@ function chosenEntity(run: Run, body: Record<string, unknown>, scope: Map<string
  * dataset can write — a community's shape and a foreign app's model included, which no registered
  * manifest declares — save an abstract one, which nothing is ever made as.
  */
-function inCategoryNow(category: OperationCategory, entity: string, dataset: unknown): boolean {
-  if (category === 'any') return !isAbstract(entity) && getEntityForDataset(entity, dataset) !== undefined;
+function inCategoryNow(category: OperationCategory, entity: string, run: Run): boolean {
+  if (category === 'any') return !isAbstract(entity) && entityIn(run, entity) !== undefined;
   return categoryMembers(category).has(entity);
 }
 
@@ -628,10 +646,15 @@ function writable(entity: string, step: string): string {
   return entity;
 }
 
-function statics(entity: string, dataset: unknown, step: string): Statics {
-  const Model = getEntityForDataset(entity, dataset) as unknown as Statics | undefined;
+function statics(run: Run, entity: string, step: string): Statics {
+  const Model = entityIn(run, entity) as Statics | undefined;
   if (!Model) throw staticError('unknownEntity', `No entity "${entity}" is registered for this dataset`, step);
   return Model;
+}
+
+/** The class an entity is reached by: the view's, else the backend's. */
+function entityIn(run: Run, entity: string): unknown {
+  return run.view ? run.view.entity(entity, run.dataset) : getEntityForDataset(entity, run.dataset);
 }
 
 /** The instance a write reaches a record through: the one a step held, else the committed record. */
@@ -644,7 +667,7 @@ async function instanceOf(
 ): Promise<Instance | null> {
   const held = run.instances.get(id);
   if (held) return held;
-  const found = await statics(entity, run.dataset, step).findOne(run.dataset, { where: { id } });
+  const found = await statics(run, entity, step).findOne(run.dataset, { where: { id } });
   if (found) run.instances.set(id, found);
   else if (!opts.optional) throw preconditionError('notFound', `No ${entity} ${id}`, step);
   return found;

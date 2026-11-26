@@ -28,7 +28,8 @@
   ],
   "dependencies": {
     "@we/backend-shared": "workspace:*",
-    "@we/expressions": "workspace:*"
+    "@we/expressions": "workspace:*",
+    "@we/optimism": "workspace:*"
   },
   "peerDependencies": {},
   "devDependencies": {

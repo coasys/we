@@ -14,10 +14,11 @@
  * written until the form saves, as one declared operation, inline records included.
  */
 import { namePropertyOf } from '@we/backend-shared';
-import { compressImageToFileData, dataURIToFileData, inlineRecordId, runOperation } from '@we/entities';
+import { compressImageToFileData, dataURIToFileData, inlineRecordId } from '@we/entities';
 import type { Accessor } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import { invokeOperation } from '../../invokeOperation';
 import { imagePropertyOf } from '../../shapes/creatableKinds';
 import {
   asEntityName,
@@ -572,7 +573,7 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
       const invoker = session.me()?.did;
       if (!invoker) throw new Error('Sign in to make this.');
       const run = (name: string, args: Record<string, unknown>) =>
-        runOperation(name, args, { dataset: dataset.handle, invoker, invocationId });
+        invokeOperation(name, args, { dataset: dataset.handle, invoker, invocationId });
       const createdId = link
         ? await run('core.connectRecords', {
             source: link.sourceId,

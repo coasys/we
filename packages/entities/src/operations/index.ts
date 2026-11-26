@@ -30,7 +30,8 @@ export {
   registerOperations,
   unregisterOperations,
 } from './registry';
-export { runOperation, type RunOperationOptions } from './run';
+export { type OperationView, runOperation, type RunOperationOptions } from './run';
+export { speculateOperation, type Speculation } from './speculate';
 export {
   callsOf,
   type OperationIssue,

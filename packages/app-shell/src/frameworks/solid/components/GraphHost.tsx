@@ -38,6 +38,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
 import { followRead, idsOf, readKey, readThroughWatch, wholeAnswer } from '../../../shared/graphWatch';
+import { withPredictedReads } from '../../../shared/predictedBindings';
 import { pretendPeopleAvailable } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
@@ -267,15 +268,17 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    * from the session store either way.
    */
   const bindings = createMemo(() =>
-    sessionStore.backendPorts()?.dataBindings({
-      currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
-      profiles: profileStore.profiles,
-      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
-      profileFor: profileStore.profileFor,
-      fetchProfile: profileStore.fetchProfile,
-      ephemeral: sessionStore.ephemeralPort,
-    }),
+    withPredictedReads(
+      sessionStore.backendPorts()?.dataBindings({
+        currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
+        currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
+        profiles: profileStore.profiles,
+        // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+        profileFor: profileStore.profileFor,
+        fetchProfile: profileStore.fetchProfile,
+        ephemeral: sessionStore.ephemeralPort,
+      }),
+    ),
   );
 
   /**

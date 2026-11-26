@@ -1452,6 +1452,9 @@ importers:
       '@we/expressions':
         specifier: workspace:*
         version: link:../schema-system/expressions
+      '@we/optimism':
+        specifier: workspace:*
+        version: link:../optimism
     devDependencies:
       '@types/node':
         specifier: ^26.6.6

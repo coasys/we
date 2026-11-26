@@ -12,7 +12,7 @@
  * find, so a peer's change in between is left alone.
  */
 import { type ContentInput, planPost } from '@we/block-shared';
-import { COMPOSE_CARD_POST, EdgeRoute, Placement, runOperation } from '@we/entities';
+import { COMPOSE_CARD_POST, EdgeRoute, Placement } from '@we/entities';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type History } from '@we/history';
 import { createOptimism, keyOf, sameValue } from '@we/optimism';
@@ -31,6 +31,7 @@ import {
   styleBaseline,
 } from '../../canvas/placements';
 import { rerouteWrite, routeWrite } from '../../edgeRoute';
+import { invokeOperation } from '../../invokeOperation';
 import type { PendingWrites, RecordStore } from '../RecordStore';
 import type { RecordConnections } from './connections';
 import { canvasChildren, entityNamed, type RecordContext, RELATIONSHIP } from './context';
@@ -166,7 +167,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         kind: 'card',
         within: COMPOSE_CARD_POST,
       });
-      await runOperation(
+      await invokeOperation(
         'core.composeCard',
         {
           root: args.root,

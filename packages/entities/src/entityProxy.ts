@@ -30,6 +30,20 @@
  * left with a reason to hold a real class.
  */
 import { type EntityClass, getEntity } from './entityRegistry';
+import { withPredictions } from './predictions/live';
+
+/**
+ * Each implementation's reads with this agent's pending writes in them, made once per class. A
+ * proxy's reads go through it, so a store reading `Signal.query(…)` sees a reaction pressed a moment
+ * ago, as a template's `$query` does — see `predictions/`.
+ */
+const predicted = new WeakMap<object, object>();
+const PREDICTED_READS = new Set<PropertyKey>(['query', 'findAll', 'findOne']);
+function predictedOf(cls: EntityClass, name: string): object {
+  let found = predicted.get(cls);
+  if (!found) predicted.set(cls, (found = withPredictions(cls, [name])));
+  return found;
+}
 
 /**
  * A stand-in for the entity named `name`. Typed as the implementation's own class so statics,
@@ -56,7 +70,10 @@ export function defineEntity(name: string): EntityClass {
   // `function(){}` as the target: `apply`/`construct` stay available, so `new Space(...)` and any
   // callable use forward too rather than throwing an unrelated proxy error.
   return new Proxy(function entityStandIn() {} as unknown as EntityClass, {
-    get: (_target, prop, receiver): unknown => Reflect.get(resolve() as object, prop, receiver),
+    get: (_target, prop, receiver): unknown =>
+      PREDICTED_READS.has(prop)
+        ? Reflect.get(predictedOf(resolve(), name), prop, receiver)
+        : Reflect.get(resolve() as object, prop, receiver),
     set: (_target, prop, value) => Reflect.set(resolve() as object, prop, value),
     has: (_target, prop) => Reflect.has(resolve() as object, prop),
     ownKeys: () => Reflect.ownKeys(resolve() as object),
