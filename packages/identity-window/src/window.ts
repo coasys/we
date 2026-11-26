@@ -258,7 +258,7 @@ function body(screen: Screen): Child[] {
       waitFor({ kind: 'wait-claim' });
       return shareable(screen.link, screen.qrSvg, 'QR code for the link', screen.expires, 'Waiting for your device…');
     case 'enter-code': {
-      const code = textField('Code', '', 'coasys:device:1:…');
+      const code = textField('Code', '', 'Paste the link from the new device');
       const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
       return [
         code.label,
