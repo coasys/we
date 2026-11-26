@@ -13,6 +13,7 @@ import type { BackendPorts } from '@we/backend-shared';
 import { afterAll, inject } from 'vitest';
 
 import { createAd4mBackendPorts } from '../../src/backendPortsAdapter';
+import { QUERY_VECTOR_GAPS } from './queryVectorGaps';
 
 let backend: Promise<{ client: Ad4mClient; ports: BackendPorts; agent: string }> | undefined;
 
@@ -46,6 +47,7 @@ describeBackendConformance('AD4M', {
   },
   timing: { settle: 10_000, quiet: 2_000 },
   knownGaps: {
+    ...QUERY_VECTOR_GAPS,
     'queries.reply-total-leaves-calls-out':
       "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
     'queries.newest-in-a-channel':
