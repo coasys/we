@@ -8,6 +8,7 @@
  * offer (`create`): the backend answers the match code the identity window asks the person to check,
  * and the bot's credential. The credential is shown once and let go: when the person dismisses it
  * (`dismissCreated`) or leaves the page it was shown on. It is never kept beyond that, nor logged.
+ * Letting it go only forgets it on this side: it does not revoke or expire it on the backend.
  *
  * The grant is replaced whole and names the version it replaces. When another change came first
  * the save is refused, the grant is read again and shown as it is now, with a line that says so.
@@ -46,7 +47,6 @@ import {
   createSignal,
   on,
   type ParentProps,
-  untrack,
   useContext,
 } from 'solid-js';
 
@@ -231,12 +231,15 @@ export function BotStoreProvider(props: ParentProps) {
     template can read this store, so it is not left here after that page is gone: leaving the page
     (another settings page, or the overlay closed) lets it go, as dismissing it does.
   */
-  let createdOn: string | null = null;
+  let navigations = 0;
   createEffect(
     on(
       () => shell.shellPage(),
-      (page) => {
-        if (created() && page !== createdOn) setCreated(null);
+      () => {
+        // Any navigation ends every create still in flight (its reply is dropped, below) and lets go
+        // of a credential on show. Away and back counts: it is not the page the reply was asked on.
+        navigations++;
+        setCreated(null);
       },
       { defer: true },
     ),
@@ -454,9 +457,18 @@ export function BotStoreProvider(props: ParentProps) {
       }
       setCreating(true);
       setCreateError('');
+      const askedAt = navigations;
       try {
         const made = await p.create(offer, name);
-        createdOn = untrack(shell.shellPage);
+        if (askedAt !== navigations || port() !== p) {
+          // The person left the page while this was pending. The bot exists, so it is listed, but its
+          // credential is not shown where it was never asked for; it is simply not kept.
+          setCreateError(
+            'The bot was made, but you left the page before its credential could be shown, so it was not kept. The bot is in your list: remove it and make a new one to get a credential.',
+          );
+          await refresh();
+          return false;
+        }
         setCreated({
           name: name.trim() || 'Unnamed bot',
           matchCode: made.matchCode,

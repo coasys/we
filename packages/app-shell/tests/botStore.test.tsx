@@ -234,6 +234,68 @@ describe('botStore', () => {
     expect(store.created()).toBeNull();
   });
 
+  describe('a create that resolves after the person left the page', () => {
+    /** A port whose create waits until the test answers it. */
+    function slowCreate() {
+      const fake = fakePort();
+      let answer!: () => void;
+      let lists = 0;
+      const port: BotPort = {
+        ...fake.port,
+        list: async () => {
+          lists++;
+          return fake.port.list();
+        },
+        create: () =>
+          new Promise((resolve) => {
+            answer = () =>
+              resolve({
+                did: BOT,
+                owner: OWNER,
+                matchCode: 'R7K Q2M',
+                expires: 1_760_000_300,
+                token: 'late-token',
+              });
+          }),
+      };
+      return { port, answer: () => answer(), lists: () => lists };
+    }
+
+    const cases: Array<[string, () => void]> = [
+      ['goes to another page', () => setShellPage('/account')],
+      ['closes the overlay', () => setShellPage(null)],
+      [
+        'goes away and comes back',
+        () => {
+          setShellPage('/account');
+          setShellPage('/bots');
+        },
+      ],
+    ];
+
+    it.each(cases)('keeps the credential out of sight when the person %s', async (_name, leave) => {
+      const slow = slowCreate();
+      setPorts({ identity: { bots: slow.port } });
+      const store = mount();
+      await settle();
+      const listsBefore = slow.lists();
+
+      const pending = store.create('coasys:offer:1:x', 'Test bot');
+      leave();
+      slow.answer();
+      expect(await pending).toBe(false);
+      await settle();
+
+      expect(store.created()).toBeNull();
+      expect(store.creating()).toBe(false);
+      expect(store.createError()).toContain('credential could be shown');
+      // The bot exists on the backend, so the list is read again and shows it.
+      expect(slow.lists()).toBeGreaterThan(listsBefore);
+      expect(store.bots().map((b) => b.did)).toEqual([BOT]);
+      expect(JSON.stringify(store.bots())).not.toContain('late-token');
+    });
+  });
+
   it('edits the grant as a draft over the person’s spaces and sends it whole, with its version', async () => {
     const fake = fakePort();
     setPorts({ identity: { bots: fake.port } });
