@@ -528,6 +528,36 @@ describe('servers — which device serves the account', () => {
     expect(registry.list().find((a) => a.id === other)?.name).toBe('unregistered');
   });
 
+  it('writes a name into the entry it creates for a scanned account, so the shared registry has none nameless', () => {
+    const other = join(defaultPath, 'we-accounts', 'unregistered');
+    mkdirSync(other, { recursive: true });
+    registry.select(other);
+    registry.addServer({ address: HOME });
+    const stored = JSON.parse(readFileSync(join(defaultPath, 'we-accounts', 'registry.json'), 'utf8'));
+    expect(stored.accounts.find((a) => a.path === other)).toMatchObject({ name: 'unregistered' });
+
+    // The default account gets the display name, and an existing name is left alone.
+    registry.select(defaultPath);
+    registry.addServer({ address: HOME });
+    registry.setDisplay(defaultPath, { name: 'Ada' });
+    registry.addServer({ address: 'https://other.example:1' });
+    const after = JSON.parse(readFileSync(join(defaultPath, 'we-accounts', 'registry.json'), 'utf8'));
+    expect(after.accounts.find((a) => a.path === defaultPath).name).toBe('Ada');
+  });
+
+  it('refuses to choose a saved host whose address it would not dial, and keeps the saved choice', () => {
+    registry.addServer({ address: HOME });
+    registry.chooseServer(HOME);
+    // A hand-edited entry: plain http to another computer, which the startup guard refuses.
+    const file = join(defaultPath, 'we-accounts', 'registry.json');
+    const stored = JSON.parse(readFileSync(file, 'utf8'));
+    stored.accounts[0].servers.push({ address: 'http://192.168.1.99:12000', name: 'edited' });
+    writeFileSync(file, JSON.stringify(stored), 'utf8');
+
+    expect(() => registry.chooseServer('http://192.168.1.99:12000')).toThrow(/https:\/\//);
+    expect(registry.servers().serving).toBe(HOME);
+  });
+
   it('refuses plain http to another computer, and keeps it for this one', () => {
     for (const address of [
       'http://192.168.1.20:12000',

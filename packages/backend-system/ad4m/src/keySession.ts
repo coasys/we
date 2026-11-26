@@ -22,7 +22,13 @@
  * A device the person revokes loses its sessions: the server ends the grant and closes the socket,
  * and the client reports the refused token. Which of the two happened — this device was removed, or
  * the session merely ended — is asked of the server itself, by trying a login once more: a revoked
- * key is refused `key`.
+ * key is refused `key`. Only a refusal from the server leads to that question: a failure of this
+ * computer's own signer is retried like any other, and the question is never sent once the session
+ * is closed.
+ *
+ * Adding a server tries a login and logs straight out. If the host's logout cannot be confirmed the
+ * trial is reported as `logout` rather than as a role, so a grant that may still be open is not
+ * kept as a clean result.
  */
 import {
   Ad4mClient,
@@ -173,6 +179,8 @@ export function describeRefusal(reason: string, origin?: string): string {
       return "The host couldn't verify this computer. Try again.";
     case 'local-only':
       return "This computer couldn't sign you in.";
+    case 'logout':
+      return "The host let you in, but the test sign-in didn't close. Try again.";
     case 'insecure':
       return "That address uses http://, which isn't encrypted. Use its https:// address.";
     case 'unreachable':
@@ -265,6 +273,7 @@ async function login(
   audience: string,
   app: KeySessionApp,
   now: () => number,
+  cancelled: () => boolean = () => false,
 ): Promise<KeySessionResult> {
   const challenge = await remote.agent.sessionChallenge();
   const proof = await signer.agent.signSessionStatement({
@@ -276,6 +285,8 @@ async function login(
     client: { kind: 'native' },
     issuedAt: now(),
   });
+  // The caller gave up while the statement was signed: no login is sent, so no grant is left behind.
+  if (cancelled()) throw new KeySessionError('closed', 'The session was closed.');
   return remote.agent.loginWithKey(proof, app);
 }
 
@@ -286,10 +297,11 @@ async function loginOnce(
   connect: ConnectRemote,
   app: KeySessionApp,
   now: () => number,
+  cancelled?: () => boolean,
 ): Promise<KeySessionResult> {
   const anonymous = connect(address);
   try {
-    return await login(signer, anonymous, address, app, now);
+    return await login(signer, anonymous, address, app, now, cancelled);
   } catch (error) {
     const reason = refusalReason(error);
     throw new KeySessionError(reason, describeRefusal(reason, address));
@@ -355,8 +367,12 @@ export async function openKeySession(
   async function renew(): Promise<void> {
     timer = null;
     if (finished) return;
+    // Whether the call in flight is this computer's signer: a 401 from it says nothing about the
+    // remote token, so only the server's calls may lead to the probe.
+    let signing = false;
     try {
       const challenge = await client.agent.sessionChallenge();
+      signing = true;
       const proof = await signer.agent.signSessionStatement({
         v: 1,
         purpose: 'renew',
@@ -367,6 +383,7 @@ export async function openKeySession(
         grant: opened.grantId,
         issuedAt: now(),
       });
+      signing = false;
       // close() may have run while the statement was signed: send nothing on a closed client.
       if (finished) return;
       const renewed = await client.agent.renewSession(proof);
@@ -383,7 +400,7 @@ export async function openKeySession(
       if (reason === 'grant') return end('ended');
       // The server refused the token: it ended the grant. Which way is the probe's to say, so a
       // removed device reads as `revoked` rather than as merely `ended`.
-      if (isUnauthorized(error)) return probe();
+      if (!signing && isUnauthorized(error)) return probe();
       // Anything else (the server restarting, the network) is tried again while the token lasts: at
       // the usual interval while that fits, then once more halfway to the expiry, until none is left.
       const left = expiresAt - now();
@@ -402,7 +419,7 @@ export async function openKeySession(
     probing = true;
     void (async () => {
       try {
-        const probeLogin = await loginOnce(signer, origin, connect, app, now);
+        const probeLogin = await loginOnce(signer, origin, connect, app, now, () => finished);
         // It lets this computer in still, so the session merely ended. The probe's own grant is
         // not kept: the app starts over to use a new one.
         const probeClient = connect(origin, () => probeLogin.token);
@@ -456,7 +473,15 @@ export async function tryKeyLogin(
   const origin = normalizeServerAddress(address);
   const opened = await loginOnce(signer, origin, connect, options.app ?? WE_KEY_SESSION_APP, options.now ?? unixNow);
   const session = connect(origin, () => opened.token);
-  await session.agent.logout().catch(() => false);
-  session.close();
+  let closed = false;
+  try {
+    closed = await session.agent.logout();
+  } catch {
+    closed = false;
+  } finally {
+    session.close();
+  }
+  // A trial grant the host may still hold is not a clean trial: say so rather than report a role.
+  if (!closed) throw new KeySessionError('logout', describeRefusal('logout', origin));
   return opened.role === 'operator' ? 'operator' : 'agent';
 }

@@ -284,7 +284,12 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
   /** Rewrites one account's entry, creating it when the scan found the account but nothing named it. */
   function updateEntry(path, change) {
     const state = read();
-    const entry = state.accounts.find((a) => a.path === path) ?? { path };
+    // A new entry carries the name the list shows for it, so the shared registry never holds a
+    // nameless one: the tauri host requires `name`, and a name it cannot read means it drops the file.
+    const entry = state.accounts.find((a) => a.path === path) ?? {
+      path,
+      name: path === defaultPath ? defaultName : basename(path),
+    };
     const next = change(entry);
     const listed = state.accounts.some((a) => a.path === path);
     const accounts = listed ? state.accounts.map((a) => (a.path === path ? next : a)) : [...state.accounts, next];
@@ -490,7 +495,11 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           delete rest.serving;
           return rest;
         }
-        if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error("Can't find that host.");
+        const saved = (entry.servers ?? []).find((s) => s.address === address);
+        if (!saved) throw new Error("Can't find that host.");
+        // A hand-edited entry can hold an address the startup guard refuses to dial (plain http to
+        // another computer): refused here, before the caller closes a working session to switch to it.
+        serverOrigin(saved.address);
         return { ...entry, serving: address };
       });
     },

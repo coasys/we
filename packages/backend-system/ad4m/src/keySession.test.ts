@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { type Ad4mServerHost, createAd4mIdentityPort } from './identityPort';
 import {
+  type ConnectRemote,
   describeRefusal,
   KeySessionError,
   type KeySessionRemote,
@@ -353,6 +354,56 @@ describe('a key session on a server', () => {
     expect(ended).toHaveBeenCalledWith('revoked');
   });
 
+  it('does not read a 401 from this computer’s signer as a refused token, and tries the renewal again', async () => {
+    const server = fakeServer();
+    const signer = fakeSigner();
+    const timers = fakeTimers();
+    const session = await open(server, signer, timers);
+    const ended = vi.fn();
+    session.onEnded(ended);
+    const grant = [...server.grants][0];
+
+    signer.agent.signSessionStatement.mockRejectedValueOnce(new FakeRpcError(401, 'unauthorized'));
+    server.advance(3300);
+    await timers.fire();
+    await flush();
+    await flush();
+
+    // No probe: the signer was asked for the login and the failed renewal only, and the session lives.
+    expect(signer.agent.signSessionStatement).toHaveBeenCalledTimes(2);
+    expect(ended).not.toHaveBeenCalled();
+    expect(server.grants.has(grant)).toBe(true);
+    expect(timers.pending.size).toBe(1);
+  });
+
+  it('sends no probe login when closed while the probe’s statement is signed', async () => {
+    const server = fakeServer();
+    const signer = fakeSigner();
+    const session = await open(server, signer);
+    const ended = vi.fn();
+    session.onEnded(ended);
+    const tokensBefore = server.tokens.size;
+
+    let sign!: () => void;
+    const signNow = signer.agent.signSessionStatement.getMockImplementation()!;
+    signer.agent.signSessionStatement.mockImplementationOnce(
+      (statement) => new Promise((resolve) => (sign = () => resolve(signNow(statement)))),
+    );
+    // The server ends the grant: the socket reports a refused token, which starts the probe.
+    server.endGrants();
+    await vi.waitFor(() => expect(signer.agent.signSessionStatement).toHaveBeenCalledTimes(2));
+
+    await session.close();
+    sign();
+    await flush();
+    await flush();
+
+    // The probe never sent its login: no grant exists, none was issued, nobody was told it ended.
+    expect(server.tokens.size).toBe(tokensBefore);
+    expect(server.grants.size).toBe(0);
+    expect(ended).not.toHaveBeenCalled();
+  });
+
   it('tells every listener, and closes its client, even when one listener throws', async () => {
     const server = fakeServer();
     const session = await open(server);
@@ -610,6 +661,35 @@ describe('a key session on a server', () => {
     }
     expect(signer.agent.signSessionStatement).not.toHaveBeenCalled();
     expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('reports a trial login whose logout cannot be confirmed, and still closes its client', async () => {
+    const server = fakeServer();
+    for (const failure of ['rejects', 'false'] as const) {
+      const closeCalls = vi.fn();
+      const wrapped: ConnectRemote = (address, token) => {
+        const remote = server.connect(address, token);
+        if (token) {
+          remote.agent.logout = async () => {
+            if (failure === 'rejects') throw new Error('socket closed');
+            return false;
+          };
+          const close = remote.close.bind(remote);
+          remote.close = () => {
+            closeCalls();
+            close();
+          };
+        }
+        return remote;
+      };
+      const error = await tryKeyLogin(fakeSigner(), ADDRESS, { connect: wrapped, now: server.now }).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(KeySessionError);
+      expect((error as KeySessionError).reason).toBe('logout');
+      expect((error as KeySessionError).message).toMatch(/didn't close/);
+      expect(closeCalls).toHaveBeenCalledTimes(1);
+    }
   });
 
   it('tries a login and logs straight out', async () => {
