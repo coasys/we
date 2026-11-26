@@ -2193,3 +2193,64 @@ export function inspectTemplateSurface(schema: unknown, grants: readonly Capabil
 
   return { allowed, blocked, groups: [...groups] };
 }
+
+/**
+ * A class drawn on one surface, bound to a template by identity.
+ *
+ * The class is its IRI. Two classes may share a display name — `we://Topic` and `flux://Topic` are
+ * both "Topic" — and a lookup by that name would hand one class the other's template. `displayName`
+ * is carried so a caller can show it. It is never a key.
+ *
+ * The template is its id, the key the registry and `reserveId` use, never `meta.name`. "Acorn" is a
+ * label; `acorn` is the template.
+ *
+ * One binding is one explicit choice. No field on the template or the class says a published
+ * template should be selected by itself, so this does not try. See `CLASS-SURFACE-CONTRACT.md`.
+ */
+export interface ClassSurfaceBinding {
+  /** Target class IRI. The identity. */
+  classIri: string;
+  /** Where the class is drawn. The fixture uses `card`, the canvas card. */
+  surface: string;
+  /** Template identity: a registry key, or an id `reserveId` would keep. Never `meta.name`. */
+  templateId: string;
+  /** What the class is called. Not a key. Two bindings may share one. */
+  displayName: string;
+}
+
+/** A template was found for this class on this surface, or it was not. Never a guess. */
+export type ClassSurfaceResolution =
+  | { status: 'template'; classIri: string; surface: string; templateId: string }
+  | { status: 'no-template'; classIri: string; surface: string };
+
+/**
+ * Which template draws this class on this surface.
+ *
+ * Matches `(classIri, surface)` exactly, and only when that pair names exactly one template id
+ * that `knownTemplate` accepts. A class with no binding, a class bound on a different surface, two
+ * bindings that disagree, and a binding whose template id is not an identity this caller knows all
+ * answer `no-template` — an explicit miss, never the other class of the same display name.
+ *
+ * `buildTemplateBag` and `inspectTemplateSurface` above resolve capability references. They do not
+ * resolve a class, and this does not change them.
+ */
+export function resolveClassOnSurface(
+  request: { classIri: string; surface: string },
+  bindings: readonly ClassSurfaceBinding[],
+  knownTemplate: (templateId: string) => boolean,
+): ClassSurfaceResolution {
+  const { classIri, surface } = request;
+  const miss: ClassSurfaceResolution = { status: 'no-template', classIri, surface };
+  if (!classIri || !surface) return miss;
+
+  const templateIds = new Set(
+    bindings
+      .filter((binding) => binding.classIri === classIri && binding.surface === surface)
+      .map((binding) => binding.templateId),
+  );
+  if (templateIds.size !== 1) return miss;
+
+  const templateId = [...templateIds][0];
+  if (!knownTemplate(templateId)) return miss;
+  return { status: 'template', classIri, surface, templateId };
+}

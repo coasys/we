@@ -20,11 +20,12 @@ import { REACTIVE_ACCESSOR, runWithGesture } from '@we/schema-shared';
 import { vi } from 'vitest';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { CapabilityGroup } from '../src/shared/registries/templateSurface';
+import type { CapabilityGroup, ClassSurfaceBinding } from '../src/shared/registries/templateSurface';
 import {
   buildTemplateBag,
   CAPABILITY_GROUPS,
   CHROME_TIER,
+  resolveClassOnSurface,
   SPACE_TIER,
   TEMPLATE_SURFACE,
 } from '../src/shared/registries/templateSurface';
@@ -576,5 +577,82 @@ describe('a template cannot send a chat question or pick its scope', () => {
     expect(opts.viaTemplate).toBe(true);
     // And the inputs passed through as data — a forgeable `{ draft, at }` is what finding 2 removed.
     expect(inputs.draft).toBe('x');
+  });
+});
+
+/**
+ * Two classes, one display name.
+ *
+ * The executor addresses a class by its target class IRI, so `we://Topic` and `flux://Topic` can
+ * share a space and a name. A surface that picked a template by that name would draw one class
+ * with the other's template. The pair is the key, and a miss is said outright.
+ */
+describe('resolving a class IRI on a surface', () => {
+  const topic: ClassSurfaceBinding = {
+    classIri: 'we://Topic',
+    displayName: 'Topic',
+    surface: 'card',
+    templateId: 'acorn',
+  };
+  const fluxTopic: ClassSurfaceBinding = {
+    classIri: 'flux://Topic',
+    displayName: 'Topic',
+    surface: 'card',
+    templateId: 'workshop',
+  };
+  const known = (id: string) => id === 'acorn' || id === 'workshop';
+
+  it('resolves the requested class IRI on the requested surface, not the other class of the same display name', () => {
+    expect(resolveClassOnSurface({ classIri: 'we://Topic', surface: 'card' }, [topic, fluxTopic], known)).toEqual({
+      status: 'template',
+      classIri: 'we://Topic',
+      surface: 'card',
+      templateId: 'acorn',
+    });
+    expect(resolveClassOnSurface({ classIri: 'flux://Topic', surface: 'card' }, [topic, fluxTopic], known)).toEqual({
+      status: 'template',
+      classIri: 'flux://Topic',
+      surface: 'card',
+      templateId: 'workshop',
+    });
+  });
+
+  it('does not treat the display name as the class', () => {
+    expect(resolveClassOnSurface({ classIri: 'Topic', surface: 'card' }, [topic, fluxTopic], known)).toEqual({
+      status: 'no-template',
+      classIri: 'Topic',
+      surface: 'card',
+    });
+  });
+
+  it('returns no-template for a class with no binding, and for a bound class on another surface', () => {
+    expect(resolveClassOnSurface({ classIri: 'we://Other', surface: 'card' }, [topic, fluxTopic], known)).toEqual({
+      status: 'no-template',
+      classIri: 'we://Other',
+      surface: 'card',
+    });
+    expect(resolveClassOnSurface({ classIri: 'we://Topic', surface: 'detail' }, [topic, fluxTopic], known)).toEqual({
+      status: 'no-template',
+      classIri: 'we://Topic',
+      surface: 'detail',
+    });
+  });
+
+  it('refuses a binding whose template id is a display name', () => {
+    const labelled: ClassSurfaceBinding = { ...topic, templateId: 'Acorn' };
+    expect(resolveClassOnSurface({ classIri: 'we://Topic', surface: 'card' }, [labelled], known)).toEqual({
+      status: 'no-template',
+      classIri: 'we://Topic',
+      surface: 'card',
+    });
+  });
+
+  it('refuses two bindings that disagree, rather than picking one', () => {
+    const again: ClassSurfaceBinding = { ...topic, templateId: 'workshop' };
+    expect(resolveClassOnSurface({ classIri: 'we://Topic', surface: 'card' }, [topic, again], known)).toEqual({
+      status: 'no-template',
+      classIri: 'we://Topic',
+      surface: 'card',
+    });
   });
 });

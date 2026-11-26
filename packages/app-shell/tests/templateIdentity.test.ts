@@ -17,6 +17,13 @@
 import { reserveId } from '@shared/templateIdentity';
 import { describe, expect, it } from 'vitest';
 
+import {
+  CLASS_SURFACE_FIXTURE,
+  isValidTemplateId,
+  resolveFixtureClassOnSurface,
+  templateRegistry,
+} from '../src/shared/registries/templateRegistry';
+
 const BUILT_IN = ['default', 'workshop', 'discord', 'twitter'];
 
 describe('reserving a template id', () => {
@@ -51,5 +58,58 @@ describe('reserving a template id', () => {
   it('reserves every built-in, not just the one somebody thought of', () => {
     // The list is the app's own template registry, so this holds for a built-in added tomorrow.
     for (const id of BUILT_IN) expect(reserveId(id, BUILT_IN)).not.toBe(id);
+  });
+});
+
+/**
+ * The fixture binds a class IRI to a template id.
+ *
+ * The id is the identity `reserveId` protects: a stored record that asked to be saved as that
+ * built-in would be given another id, and the template's own display name is a different string.
+ * A second class called the same thing is a different IRI, and the fixture does not answer it.
+ */
+describe('a class on a surface is a template identity, not a display name', () => {
+  it('ships one fixture binding, by class IRI and surface, to a real template id', () => {
+    expect(CLASS_SURFACE_FIXTURE).toHaveLength(1);
+    const binding = CLASS_SURFACE_FIXTURE[0];
+    expect(binding.surface).toBe('card');
+    expect(binding.displayName).toBe('Topic');
+    expect(isValidTemplateId(binding.templateId)).toBe(true);
+    if (!isValidTemplateId(binding.templateId)) return;
+
+    const template = templateRegistry[binding.templateId];
+    // The label and the id are different words. Keying by the label would miss the template.
+    expect(template.meta.name).not.toBe(binding.templateId);
+    expect(template.meta.name).not.toBe(binding.displayName);
+    // A stored template may not keep this id. The binding names the built-in itself.
+    expect(reserveId(binding.templateId, [binding.templateId])).not.toBe(binding.templateId);
+  });
+
+  it('resolves the fixture class on its surface, and not another class of the same display name', () => {
+    const binding = CLASS_SURFACE_FIXTURE[0];
+    expect(resolveFixtureClassOnSurface(binding.classIri, binding.surface)).toEqual({
+      status: 'template',
+      classIri: binding.classIri,
+      surface: binding.surface,
+      templateId: binding.templateId,
+    });
+
+    // Same display name, different IRI. The fixture has no binding for it, and must not borrow one.
+    const twinIri = 'flux://Topic';
+    expect(twinIri).not.toBe(binding.classIri);
+    expect(binding.displayName).toBe('Topic');
+    expect(resolveFixtureClassOnSurface(twinIri, binding.surface)).toEqual({
+      status: 'no-template',
+      classIri: twinIri,
+      surface: binding.surface,
+    });
+  });
+
+  it('returns no-template for an unsupported class', () => {
+    expect(resolveFixtureClassOnSurface('we://NotInTheFixture', 'card')).toEqual({
+      status: 'no-template',
+      classIri: 'we://NotInTheFixture',
+      surface: 'card',
+    });
   });
 });

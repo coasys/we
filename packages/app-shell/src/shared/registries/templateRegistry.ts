@@ -33,6 +33,7 @@
 import { bundledTemplates } from './bundledTemplates.generated';
 import { withDerivedIdsAll } from './derivedIds';
 import { seedBundleShells } from './seedBundles';
+import { type ClassSurfaceBinding, type ClassSurfaceResolution, resolveClassOnSurface } from './templateSurface';
 
 /**
  * With the ids each template's nodes have in every build — see `derivedIds.ts`. And with the space
@@ -49,4 +50,25 @@ export { devOnlyTemplateIds } from './bundledTemplates.generated';
 
 export function isValidTemplateId(key: unknown): key is TemplateId {
   return typeof key === 'string' && key in templateRegistry;
+}
+
+/**
+ * The one fixture-backed binding: a class IRI on the canvas card surface, to a template by its id.
+ *
+ * Not a catalogue, and not the live `we://Topic` class. A second class of the same display name is
+ * absent on purpose — it resolves only when a caller passes its own binding, and never by the name.
+ * Published-template selection has no settled field and is not done here.
+ */
+export const CLASS_SURFACE_FIXTURE: readonly ClassSurfaceBinding[] = [
+  {
+    classIri: 'fixture://class-surface/topic',
+    displayName: 'Topic',
+    surface: 'card',
+    templateId: 'acorn',
+  },
+];
+
+/** The fixture binding, resolved. An unsupported class or surface is `no-template`. */
+export function resolveFixtureClassOnSurface(classIri: string, surface: string): ClassSurfaceResolution {
+  return resolveClassOnSurface({ classIri, surface }, CLASS_SURFACE_FIXTURE, isValidTemplateId);
 }
