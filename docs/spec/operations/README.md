@@ -21,25 +21,35 @@ the same ids everywhere.
 
 ## Contents
 
-| File                          | What it specifies                                                                                                                       |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [This file](#the-data-model)  | The data model operations write: records, entities, fields, relations, categories, and the absent-value rule.                           |
-| [Format](format.md)           | An operation definition: names and namespaces, params, errors, values, every step and its fields, static checks.                        |
-| [Execution](execution.md)     | How an operation runs: invocation, names and scope, each step's semantics, ids, atomicity, the write check, errors, the effect summary. |
-| [Expressions](expressions.md) | The expression subset: grammar, evaluation, the where-object, and the core function library.                                            |
-| [Versioning](versioning.md)   | Compatible and incompatible changes to an operation, and how manifests and bundles signal format.                                       |
-| [Conformance](conformance.md) | The vectors: their shape, how to run them, how results are compared, and which cases exist.                                             |
+| File                          | What it specifies                                                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [This file](#the-data-model)  | The data model operations write (provisional): records, entities, fields, relations and their cardinality, order, categories, and the absent-value rule. |
+| [Format](format.md)           | An operation definition: names and namespaces, params, errors, values, every step and its fields, static checks.                                         |
+| [Execution](execution.md)     | How an operation runs: invocation, names and scope, each step's semantics, ids, atomicity, the write check, errors, the effect summary.                  |
+| [Expressions](expressions.md) | The expression subset: grammar, evaluation, the where-object, and the core function library.                                                             |
+| [Versioning](versioning.md)   | Compatible and incompatible changes to an operation, and how manifests and bundles signal format.                                                        |
+| [Conformance](conformance.md) | The vectors: their shape, how to run them, how results are compared, and which cases exist.                                                              |
 
 ## The data model
 
 Operations are written against a record model that any backend can hold. This section defines the
 terms the rest of the spec uses; it does not define how a backend stores anything.
 
+> **Provisional.** This section stands in for the shared model spec of the Living Web family, which
+> does not exist yet, and gives way to it: once that spec is published this section shrinks to a
+> reference to it, and where the two differ the model spec wins. It is written in that spec's terms
+> so the move is a cut, not a rewrite: _classes_ (here, entities), _properties_, _relations_ with a
+> _cardinality_, the _write verbs_ (create, update, delete, and add, remove and set on a relation),
+> _ordered collections_, and the _clearing rule_. The clearing rule below ([The absent-value
+> rule](#the-absent-value-rule)) is WE's proposal for the shared rule, not a rule the family has
+> settled.
+
 **Dataset.** A set of records an operation reads and writes, chosen by the caller. An operation
 runs against exactly one dataset.
 
 **Record.** One stored thing. Every record has an `id`, a non-empty string unique within its
-dataset, and belongs to one entity. A backend MAY keep metadata on a record that no operation
+dataset, and belongs to one entity. A record an operation creates has an id derived from the
+invocation, or from its identity where the create declares one ([Ids](execution.md#ids)). A backend MAY keep metadata on a record that no operation
 writes: `author`, `createdAt`, `updatedAt` and `timestamp` are readable in a `find`'s `where` and
 `order` and never written by an operation.
 
@@ -57,7 +67,7 @@ MAY be `required`, and MAY declare a `default`, the value a record reads back wi
 
 **Relation.** A named field whose values are other records, with a `cardinality` of `one` (to-one)
 or `many` (to-many) and optionally a `target` entity. A to-many relation MAY be `ordered`, in which
-case its members have an order that writes set and reads preserve.
+case its members have an order that writes set and reads preserve ([Order](#order)).
 
 The cardinality decides the value's shape, the same way in every write and every read:
 
@@ -88,6 +98,53 @@ No other category exists in this version. The access-control entities ([Protecte
 entities](execution.md#protected-entities)) are members of no category for writing: an operation
 can never write them.
 
+### Order
+
+An order is part of the data, not of how one host draws it: two hosts reading the same records MUST
+put them in the same order, and a host writing a new position MUST write what another host will read
+as that position. There are two ways an order is held, and the model says which a relation uses.
+
+**An ordered relation.** A to-many relation declared `ordered` holds its members as a sequence. The
+sequence is the value: `setRelation` writes it whole, in the order given; `link` appends a member at
+the end; `unlink` removes a member and leaves the others in their order; a `create` or `update` that
+names the relation in its fields writes the list as given. Every read gives the members in that
+order. A to-many relation that is not ordered is a set: a read MAY give its members in any order, and
+nothing may depend on it. How a backend keeps the sequence (positions, a linked list, a CRDT) is its
+own; what it reads back is not.
+
+**A rank.** Where the position belongs to a record of its own rather than to a list (the place a card
+holds on one canvas, which another canvas holding the same card does not share), the order is a
+`number` property, its _rank_, and the records are read lowest rank first. One record per position
+means a move is one write, and two people moving different cards in one row on two nodes do not
+rewrite each other's. The rule, which every host writing ranks MUST follow:
+
+1. **Reading.** Records with a rank come first, lowest first, two with the same rank by `id` in
+   code-point order. Records without one come after, in whatever order the view gives them (when
+   each was made, say), which a rank does not decide. `0` is not a rank: a rank property reads `0` as
+   never set, so a record whose rank is `0` sorts with the unranked ones, and a host MUST NOT write
+   `0` as a rank.
+2. **Seating one record** at a position in a row (its siblings without it, in the order the reader
+   sees them): when every sibling has a rank and the ranks rise strictly along the row, the record
+   takes one rank and nothing else is written:
+   - between two neighbours, their midpoint, `(before + after) / 2`;
+   - after the last, `last + 1024`; before the first, `first − 1024`;
+   - into an empty row, `1024`.
+
+   The step, `1024`, is the gap a renumbering leaves, so many seatings into one gap are arithmetic.
+
+3. **Renumbering.** Otherwise (a sibling without a rank, two siblings out of rising order, or a
+   rank from step 2 that is `0` or does not land strictly between its neighbours because the gap has
+   closed) the whole row, the record included at its new position, is renumbered `1024`, `2048`,
+   `3072`, … in the order seen, and only the ranks that change are written, the seated record's
+   always. Renumbering in the order the reader sees is what makes the order that persists the one on
+   screen: an unranked record's place depends on how the host shows it, and a midpoint computed
+   against it would land somewhere the reader did not put it.
+
+> **Why two.** An ordered relation is the order of a thing somebody made as a sequence: a post's
+> blocks, a board's columns, the cards a column lists. A rank is an order somebody imposed on records
+> that belong to something else, per view, where rewriting a shared list on every move would make
+> concurrent moves lose each other.
+
 ### The absent-value rule
 
 A field a record has never had written, and a field that was cleared, has **no value**. Three
@@ -113,12 +170,21 @@ distinct.
 ---
 
 Implemented by: [`manifest.ts`](../../../packages/backend-system/shared/src/manifest.ts) (entity
-schema, `OPERATION_CATEGORIES`, `inCategory`),
+schema, `OPERATION_CATEGORIES`, `inCategory`), the reference implementations of [Order](#order):
+[`treeRanks.ts`](../../../packages/app-shell/src/shared/kernels/treeRanks.ts) (`seatInRow`,
+`rowFor`, `isRank`: ranks) and
+[`boardArrangement.ts`](../../../packages/app-shell/src/shared/kernels/boardArrangement.ts)
+(`arrangeBoard`: a board read through its ordered `children` and `arranges`),
 [`recordContract.ts`](../../../packages/backend-system/shared/src/recordContract.ts) (`WriteValue`,
 `json` properties), [`whereMatch.ts`](../../../packages/backend-system/shared/src/whereMatch.ts)
 (`isAbsent`), [`registry.ts`](../../../packages/entities/src/operations/registry.ts)
 (`categoryMembers`).
-Pinned by: [`emptyValues.ts`](../../../packages/backend-system/conformance/src/emptyValues.ts),
+Pinned by: [`treeRanks.json`](../../../packages/app-shell/src/shared/kernels/vectors/treeRanks.json)
+and [`boardArrangement.json`](../../../packages/app-shell/src/shared/kernels/vectors/boardArrangement.json)
+(the order rules, run by `app-shell/tests/treeRanks.test.ts` and `boardArrangement.test.ts`), the
+`relations.ordered-read` and `relations.to-one-*` cases in
+[`conformance/src/index.ts`](../../../packages/backend-system/conformance/src/index.ts), the
+`relation-order` operations vector, [`emptyValues.ts`](../../../packages/backend-system/conformance/src/emptyValues.ts),
 [`jsonValues.ts`](../../../packages/backend-system/conformance/src/jsonValues.ts),
 [`inmemory/tests/operations.test.ts`](../../../packages/backend-system/inmemory/tests/operations.test.ts)
 ("a category in oneOf", "any record type").
