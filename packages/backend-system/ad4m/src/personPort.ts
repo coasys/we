@@ -9,12 +9,13 @@
  *
  * ## Revocation is not judged here
  *
- * The port answers which person a key belongs to, and takes no moment. The executor judges
- * revocation per link, before anything reaches WE: a link names the seq of the log it was signed at,
- * and a model query counts only links whose key was valid there (ad4m #1597). References it cannot
- * confirm carry an `AuthorVerdict` instead. WE could not judge a moment itself: a key log orders its
- * events by seq and carries no time. So the answer is the person the log lists the key under, and a
- * revoked key still answers that person.
+ * The port answers which person a key belongs to, and takes no moment. Revocation is the executor's
+ * per-link judgement, from the trusted log and its receipt and order evidence: the log position a
+ * link names, when the executor first received it, a revoke's `since`, and a bot key's expiry
+ * (ad4m #1597). A model query counts only links that judgement accepts, and references it cannot
+ * confirm carry an `AuthorVerdict` instead. WE holds none of that evidence, so it cannot judge
+ * revocation itself. The answer is the person the log lists the key under, and a revoked key still
+ * answers that person.
  *
  * ## Caching
  *

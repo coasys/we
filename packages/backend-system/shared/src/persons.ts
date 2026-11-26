@@ -11,8 +11,9 @@
  * what a device wrote while it spoke for somebody stays theirs.
  *
  * Whether a write signed *after* a revocation counts is not decided here. The backend judges each write
- * against the signer's key log: AD4M's executor counts only links whose key was valid at the log
- * position they name when a model is queried, and marks a reference whose author it cannot confirm with
+ * against the signer's key log and its own receipt and order evidence: AD4M's executor counts only
+ * the links that judgement accepts when a model is queried (the log position a link names, when it
+ * first received the link, a revoke's `since`, a bot key's expiry), and marks a reference whose author it cannot confirm with
  * an `AuthorVerdict` (`cantCheck` or `flagged`; see `Referrer`). WE's role and policy judgement
  * (`spacePolicy.ts`, `spaceRoles.ts`) does not read that verdict: it relies on the executor's filtering
  * of queried records, and a flagged reference is only drawn with a quiet mark.
