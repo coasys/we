@@ -2,6 +2,7 @@ package org.coasys.app.devicekey
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import java.io.File
@@ -58,11 +59,42 @@ class CallerGuardJvmTest {
   private val identity = "https://localhost/mobile/identity.html"
   private val main = "https://localhost/"
 
+  /** A commit of [url], and the plugin's call queue running the barrier it posts. */
+  private fun CallerDocument.commit(url: String?) {
+    committed(url)?.let(::drained)
+  }
+
   /** A real load of [url]: it starts, its content commits, it finishes. */
   private fun CallerDocument.load(url: String?) {
     started(url)
-    committed(url)
+    commit(url)
     finished(url)
+  }
+
+  @Test
+  fun aCallQueuedBeforeTheIdentityPageCommitsIsRefused() {
+    val doc = CallerDocument()
+    doc.load(main)
+    // The main page posts a call; the plugin's queue has not run it yet.
+    doc.started(identity)
+    val barrier = doc.committed(identity)!!
+    doc.finished(identity)
+    // The queued call runs before the barrier: the identity page is loaded, but not drained.
+    assertNull(doc.admit(identityOnly = true))
+    doc.drained(barrier)
+    assertNotNull(doc.admit(identityOnly = true))
+  }
+
+  @Test
+  fun aBarrierFromAnEarlierLoadDoesNotDrainALaterOne() {
+    val doc = CallerDocument()
+    doc.started(identity)
+    val first = doc.committed(identity)!!
+    doc.started(identity)
+    doc.committed(identity)
+    doc.finished(identity)
+    doc.drained(first)
+    assertNull(doc.admit(identityOnly = true))
   }
 
   @Test
@@ -94,7 +126,7 @@ class CallerGuardJvmTest {
     assertNull(doc.admit(identityOnly = true))
     // The app's other pages are open to it anyway (WE signs in while booting).
     assertTrue(doc.admit(identityOnly = false) != null)
-    doc.committed(identity)
+    doc.commit(identity)
     assertNull(doc.admit(identityOnly = true)) // committed, not yet finished
     doc.finished(identity)
     assertTrue(doc.admit(identityOnly = true) != null)
@@ -104,7 +136,7 @@ class CallerGuardJvmTest {
   fun aFinishThatIsNotTheLoadingDocumentAdmitsNothing() {
     val doc = CallerDocument()
     doc.started(identity)
-    doc.committed(identity)
+    doc.commit(identity)
     doc.finished(main) // an earlier page's finish, or a redirect
     assertNull(doc.admit(identityOnly = true))
     doc.finished(null)
@@ -129,11 +161,11 @@ class CallerGuardJvmTest {
   fun aCommitForAnotherAddressAdmitsNothing() {
     val doc = CallerDocument()
     doc.started(identity)
-    doc.committed(main) // the old document's commit, or a redirect's
-    doc.committed(null)
+    doc.commit(main) // the old document's commit, or a redirect's
+    doc.commit(null)
     doc.finished(identity)
     assertNull(doc.admit(identityOnly = true))
-    doc.committed(identity)
+    doc.commit(identity)
     assertTrue(doc.admit(identityOnly = true) != null)
   }
 
@@ -142,7 +174,7 @@ class CallerGuardJvmTest {
     val doc = CallerDocument()
     doc.started(identity)
     doc.finished(identity)
-    doc.committed(identity)
+    doc.commit(identity)
     assertTrue(doc.admit(identityOnly = true) != null)
   }
 
@@ -151,13 +183,13 @@ class CallerGuardJvmTest {
     // Two overlapping starts: the first one's commit and finish count for nothing once the second began.
     val doc = CallerDocument()
     doc.started(identity)
-    doc.committed(identity)
+    doc.commit(identity)
     doc.started(main)
     doc.finished(identity)
     assertNull(doc.admit(identityOnly = true))
     doc.started(identity)
     assertNull(doc.admit(identityOnly = true)) // the earlier commit and finish are gone
-    doc.committed(identity)
+    doc.commit(identity)
     doc.finished(identity)
     assertTrue(doc.admit(identityOnly = true) != null)
   }
@@ -170,7 +202,7 @@ class CallerGuardJvmTest {
     doc.load(main)
     doc.started(identity)
     assertNull(doc.admit(identityOnly = true))
-    doc.committed(identity)
+    doc.commit(identity)
     assertNull(doc.admit(identityOnly = true))
     doc.finished(identity)
     assertTrue(doc.admit(identityOnly = true) != null)
@@ -187,7 +219,7 @@ class CallerGuardJvmTest {
     val old = doc.admit(identityOnly = false)!!
     doc.started(identity)
     assertFalse(doc.holds(old))
-    doc.committed(identity)
+    doc.commit(identity)
     doc.finished(identity)
     assertFalse(doc.holds(old))
     assertTrue(doc.holds(doc.admit(identityOnly = true)!!))

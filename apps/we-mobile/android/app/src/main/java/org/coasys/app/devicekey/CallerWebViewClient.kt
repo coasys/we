@@ -16,7 +16,7 @@ import com.getcapacitor.BridgeWebViewClient
  * Installed with `Bridge.setWebViewClient` after the bridge is built (`Bridge` installs its own
  * client at the end of its constructor, after plugins load): see [DeviceKeyPlugin.installPageGate].
  */
-class CallerWebViewClient(bridge: Bridge, private val document: CallerDocument) : BridgeWebViewClient(bridge) {
+class CallerWebViewClient(private val calls: Bridge, private val document: CallerDocument) : BridgeWebViewClient(calls) {
   override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
     super.onPageStarted(view, url, favicon)
     document.started(url)
@@ -24,7 +24,11 @@ class CallerWebViewClient(bridge: Bridge, private val document: CallerDocument) 
 
   override fun onPageCommitVisible(view: WebView, url: String?) {
     super.onPageCommitVisible(view, url)
-    document.committed(url)
+    // A barrier on the queue plugin calls run on (`Bridge.execute` posts to the same handler as
+    // `callPluginMethod`): every call the old document posted is ahead of it, so none of them is
+    // admitted as the new document.
+    val generation = document.committed(url) ?: return
+    calls.execute { document.drained(generation) }
   }
 
   override fun onPageFinished(view: WebView, url: String?) {
