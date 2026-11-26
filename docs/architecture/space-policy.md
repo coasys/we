@@ -102,8 +102,10 @@ a time. What it adds is reach (one press, many writes), and that is what its cap
 out from what it writes, is for.
 
 - **A refused write fails the whole operation.** The refusal reaches the caller as an `OperationError`
-  of class `precondition` and code `refused`, carrying the check's reason, and none of the operation's
-  writes land, the ones before the refused write included.
+  of class `precondition` and code `refused`, carrying the check's reason as its message and the
+  `Refusal` itself as `refusal`, and none of the operation's writes land, the ones before the refused
+  write included. Rules that cannot be read refuse an operation's writes as they refuse any other
+  (`unreadable`).
 - **Operations may not write `Policy`, `Role` or `RoleGrant`.** Refused when the manifest is validated
   (`validateOperations`) and again when the operation runs, whatever the policy says. Changing the rules
   or handing out roles stays an act somebody makes on its own, where it can be seen for what it is,

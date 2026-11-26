@@ -3164,6 +3164,58 @@ describe('following a space from the rows its live queries push', () => {
     failingWatch.mockRestore();
   }, 15000);
 
+  it('refuses an operation’s writes while the space’s policy cannot be read', async () => {
+    const { stores, handle } = await openSpace('Operation Unreadable');
+    const here = stores.datasets.currentDataset()!.id;
+    await stores.spaces.createSpace('Operation Unreadable Elsewhere', 'x', 'personal', 'hidden');
+    const elsewhere = (await lifecycle.list()).find((d) => d.name === 'Operation Unreadable Elsewhere')!;
+    await stores.datasets.switchDataset(elsewhere.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Operation Unreadable Elsewhere'));
+
+    const model = getEntity('Policy') as unknown as {
+      query: (...a: unknown[]) => unknown;
+      findAll: (...a: unknown[]) => Promise<unknown>;
+    };
+    const failingWatch = vi.spyOn(model, 'query').mockImplementation(() => ({
+      first: Promise.reject(new Error('executor unreachable')),
+      getSnapshot: () => ({ status: 'error', initial: false }),
+      subscribe: () => () => undefined,
+      dispose: () => undefined,
+    }));
+    const failingRead = vi.spyOn(model, 'findAll').mockRejectedValue(new Error('executor unreachable'));
+    await stores.datasets.switchDataset(here);
+    await vi.waitFor(() => expect(failingRead).toHaveBeenCalled());
+    expect(stores.spaces.policy().loaded).toBe(false);
+    const later = Date.now() + 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => later);
+    const boards = () => CollectionBlock.findAll(handle, { where: { kind: 'board' } } as never);
+    const before = (await boards()).length;
+
+    // An operation's writes pass the same check as any other write, so the rules nobody could read
+    // refuse it as they refuse a single write, and nothing of it lands.
+    const run = () =>
+      runOperation(
+        'core.createBoard',
+        { title: 'Board', states: ['todo', 'done'] },
+        {
+          dataset: handle,
+          invoker: 'did:test:james',
+        },
+      );
+    await expect(run()).rejects.toMatchObject({
+      name: 'OperationError',
+      code: 'refused',
+      refusal: { reason: 'unreadable' },
+    });
+    expect((await boards()).length).toBe(before);
+
+    failingRead.mockRestore();
+    await expect(run()).resolves.toBeTruthy();
+    expect((await boards()).length).toBe(before + 1);
+    clock.mockRestore();
+    failingWatch.mockRestore();
+  }, 15000);
+
   it('marks the policy loaded when a push brings its versions after the opening read gave none', async () => {
     const { stores } = await openSpace('Policy Comes Back');
     const here = stores.datasets.currentDataset()!.id;
