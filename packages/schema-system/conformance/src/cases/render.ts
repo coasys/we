@@ -54,6 +54,14 @@ export interface RenderCase {
   storage?: Record<string, string>;
   /** Profiles the host knows, by DID, for `$agent`. */
   identities?: Record<string, Record<string, unknown>>;
+  /**
+   * The capability groups the template is granted. Set, the template is drawn through the host's
+   * real bag — ungranted members absent, unasked writes refused, destructive actions confirmed —
+   * and every expect entry lists the `confirmations` the host asked for.
+   */
+  grants?: string[];
+  /** The person's answer to every confirmation the host asks. Default: declined. */
+  confirm?: boolean;
   start?: string;
   steps?: RenderStep[];
 }
@@ -1349,4 +1357,33 @@ export const RENDER_CASES: RenderCase[] = [
     } as SchemaNode,
     { steps: [{ op: 'click', target: 'bump' }] },
   ),
+
+  /* ── elements and URLs: the rest of the refusals ──────────────────────────────────────── */
+  C('render.safety.url-schemes', 'vbscript: and a data: URL that is not media are refused; a data: image stays', {
+    type: 'Column',
+    children: [
+      { type: 'a', props: { href: 'VBScript:msgbox(1)' }, children: ['vbscript'] },
+      { type: 'a', props: { href: 'data:text/html,<script>alert(1)</script>' }, children: ['data html'] },
+      { type: 'img', props: { src: 'data:image/png;base64,iVBORw0KGgo=', alt: 'kept' } },
+      { type: 'form', props: { action: 'javascript:alert(1)' }, children: ['form'] },
+    ],
+  }),
+  C(
+    'render.safety.inline-handler-text',
+    'an on… prop holding text on a native element is refused: it would be a script',
+    {
+      type: 'Column',
+      children: [{ type: 'div', props: { onclick: 'alert(1)', title: 'kept' }, children: ['x'] }],
+    },
+  ),
+  C('render.safety.native-tags-more', 'style, link, object and embed mount nothing either', {
+    type: 'Column',
+    children: [
+      { type: 'style', children: ['body { display: none }'] },
+      { type: 'link', props: { rel: 'stylesheet', href: 'https://example.org/x.css' } },
+      { type: 'object', props: { data: 'https://example.org/' } },
+      { type: 'embed', props: { src: 'https://example.org/' } },
+      text('after'),
+    ],
+  }),
 ];

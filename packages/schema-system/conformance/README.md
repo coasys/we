@@ -24,10 +24,10 @@ real token/theme stylesheets, applies each theme through `applyThemeVars`, and r
 run _before_ `pnpm record` for `style.json`'s computed values to resolve.
 
 Navigation and render vectors mount real Solid on jsdom (a RouteStore over real history; the
-renderer itself), so `pnpm record` is two steps: `tsx src/record.ts` writes six files, then
+renderer itself), so `pnpm record` is two steps: `tsx src/record.ts` writes eight files, then
 `vitest.config.record.ts` runs `tests/record-navigation.test.tsx`, `tests/record-render.test.tsx`
 and `tests/record-profiles.test.tsx` (excluded from the default projects on purpose), which write
-`vectors/navigation.json`, `vectors/render.json` and `vectors/profiles.json`.
+`vectors/navigation.json`, `vectors/render.json`, `vectors/safety.json` and `vectors/profiles.json`.
 
 ## Files
 
@@ -42,7 +42,14 @@ vectors/host-functions.json host source name + options → result
 vectors/style.json          DS props + theme → emitted style + per-prop token & computed value
 vectors/tokens/<theme>.json every --we-* custom property's computed value, per theme (6 files)
 vectors/profiles.json       a world + an address + a capability-profile action → state before/after, events
+vectors/validate.json       a document → valid, and each error's path as segments
+vectors/safety.json         a template + its grants + events → tree, actions and confirmations, per step
+vectors/panels.json         panel declarations + an address → panels present; three rungs → a placement
 ```
+
+`validate.json` and `panels.json` are recorded by `tsx src/record.ts`; `safety.json` mounts real
+Solid like `render.json` and is written by `tests/record-render.test.tsx`. The formats are in
+`docs/spec/template/conformance.md`.
 
 ## Formats
 

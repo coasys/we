@@ -46,7 +46,14 @@
  */
 import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
-import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
+import {
+  claimGesture,
+  isExpressionToken,
+  markReactive,
+  parseExpression,
+  referencedPaths,
+  REFUSED,
+} from '@we/schema-shared';
 
 import { admitsChosen, operationMemberSpec, operationSurfaceEntries } from './operationGroups';
 
@@ -1820,8 +1827,8 @@ export interface BuildBagOptions {
    *
    * Awaiting it makes a destructive action async from the template's point of view, which costs
    * nothing: `$invoke` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
-   * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
-   * resolves — so `onSuccess` does not fire on a cancel.
+   * of the returned promise. A refusal resolves `REFUSED`, which `$invoke` reads as the nothing a
+   * blocked action answers — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
   /**
@@ -2062,7 +2069,8 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (spec.destructive && options.onDestructive) {
         const guard = options.onDestructive;
         const bound = method;
-        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
+        // Declined, it answers as a refusal: `$invoke` runs no `onSuccess` for it.
+        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : REFUSED);
       }
 
       // Outermost, so the question is asked of the call as it arrives — before a destructive

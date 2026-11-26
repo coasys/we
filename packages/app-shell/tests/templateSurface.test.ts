@@ -280,7 +280,8 @@ describe('destructive actions', () => {
     spaceStore.createPost('x');
 
     // The guard is consulted for the destructive one and nothing else, and refusing means the
-    // method never runs — the template gets `undefined`, the same as any action it cannot reach.
+    // method never runs — the template gets `REFUSED`, which `$invoke` treats as the nothing any
+    // action it cannot reach answers.
     expect(asked).toEqual(['spaceStore.removeSpace']);
     expect(removed).toEqual(['post']);
   });

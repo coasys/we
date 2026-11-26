@@ -62,6 +62,8 @@ export interface RenderExpect {
   params?: Record<string, string>;
   /** Device storage under `we-local:`, when the case declares any or a field persists. */
   storage?: Record<string, string>;
+  /** The destructive actions the host asked the person about, when the case names its grants. */
+  confirmations?: { call: string; args: EncodedValue[] }[];
 }
 
 /** Layout components drawn as probes. Anything PascalCase not listed is an unknown component. */
@@ -254,11 +256,33 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
   const { routes, ...root } = template as SchemaNode & { routes?: RouteSchema[] };
   let navigate: ((to: string) => void) | undefined;
   let routeParams: () => Record<string, string> = () => ({});
+  // A case drawn through the host's bag may hand the router actions of its own; its params stay the router's.
+  const routerActions = c.grants ? (stores.routeStore as Record<string, unknown> | undefined) : undefined;
   stores.routeStore = {
+    ...routerActions,
     get params() {
       return routeParams();
     },
   };
+
+  /*
+    A case that names its grants is drawn through the host's real bag: what was not granted is
+    absent, a write nobody asked for is refused, and a destructive action asks first — answered by
+    the case's `confirm`, and recorded as `confirmations`.
+  */
+  let confirmations: RenderExpect['actions'] = [];
+  if (c.grants) {
+    const bag = buildTemplateBag(stores, {
+      grants: c.grants as CapabilityGroup[],
+      gesture: 'enforce',
+      onDestructive: (path, args) => {
+        confirmations.push({ call: path, args: args.map(encodeValue) });
+        return c.confirm ?? false;
+      },
+    });
+    for (const key of Object.keys(stores)) delete stores[key];
+    Object.assign(stores, bag);
+  }
 
   // The root publishes its scope; each panel body is a pass of its own that takes it, as a host's is.
   const [rootScope, setRootScope] = createSignal<PassScope>();
@@ -336,8 +360,10 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
     const entry: RenderExpect = { tree: describeChildren(container), actions: calls };
     if (tracksParams) entry.params = Object.fromEntries([...params].sort(([a], [b]) => a.localeCompare(b)));
     if (c.storage || Object.keys(storage).length) entry.storage = storage;
+    if (c.grants) entry.confirmations = confirmations;
     out.push(entry);
     calls = [];
+    confirmations = [];
   };
 
   try {

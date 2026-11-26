@@ -1,0 +1,453 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "panels.active.shell",
+      "note": "the interface's declarations are present, in order",
+      "op": "active",
+      "shell": [
+        {
+          "id": "a",
+          "node": {
+            "type": "Column"
+          }
+        },
+        {
+          "id": "b",
+          "module": "notes"
+        }
+      ],
+      "segments": [],
+      "present": [
+        {
+          "id": "a"
+        },
+        {
+          "id": "b"
+        }
+      ]
+    },
+    {
+      "id": "panels.active.shell-beats-view",
+      "note": "the interface's entry wins a collision of id over the section's; the section adds the rest",
+      "op": "active",
+      "shell": [
+        {
+          "id": "a",
+          "title": "shell"
+        }
+      ],
+      "view": [
+        {
+          "id": "a",
+          "title": "view"
+        },
+        {
+          "id": "v",
+          "title": "view only"
+        }
+      ],
+      "segments": [],
+      "present": [
+        {
+          "id": "v",
+          "title": "view only"
+        },
+        {
+          "id": "a",
+          "title": "shell"
+        }
+      ]
+    },
+    {
+      "id": "panels.active.shell-beats-app",
+      "note": "the app's panels ride under the interface's and lose a collision of id to it",
+      "op": "active",
+      "shell": [
+        {
+          "id": "chat",
+          "title": "shell"
+        }
+      ],
+      "app": [
+        {
+          "id": "chat",
+          "title": "app"
+        },
+        {
+          "id": "help",
+          "title": "app"
+        }
+      ],
+      "segments": [],
+      "present": [
+        {
+          "id": "help",
+          "title": "app"
+        },
+        {
+          "id": "chat",
+          "title": "shell"
+        }
+      ]
+    },
+    {
+      "id": "panels.active.route-one",
+      "note": "a panel with a route is present only while that segment is in the address",
+      "op": "active",
+      "shell": [
+        {
+          "id": "always"
+        },
+        {
+          "id": "board",
+          "route": "board"
+        }
+      ],
+      "segments": ["canvas"],
+      "present": [
+        {
+          "id": "always"
+        }
+      ]
+    },
+    {
+      "id": "panels.active.route-matches",
+      "note": "the same declarations on an address holding the segment",
+      "op": "active",
+      "shell": [
+        {
+          "id": "always"
+        },
+        {
+          "id": "board",
+          "route": "board"
+        }
+      ],
+      "segments": ["board", "card"],
+      "present": [
+        {
+          "id": "always"
+        },
+        {
+          "id": "board"
+        }
+      ]
+    },
+    {
+      "id": "panels.active.route-list",
+      "note": "a route may be a list of segments, any of which keeps the panel",
+      "op": "active",
+      "shell": [
+        {
+          "id": "inspector",
+          "route": ["board", "list"]
+        }
+      ],
+      "segments": ["list"],
+      "present": [
+        {
+          "id": "inspector"
+        }
+      ]
+    },
+    {
+      "id": "panels.placement.suggestion",
+      "note": "with no declaration and no disposition, the panel opens where its own bid asks",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 203,
+        "snap": "right",
+        "thicknessX": 440,
+        "displace": true
+      }
+    },
+    {
+      "id": "panels.placement.suggestion-float",
+      "note": "a bid to float opens as a card at the middle of the edge it names",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "bottom",
+        "size": "md",
+        "float": true
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 203,
+        "snap": "bottom",
+        "displace": false
+      }
+    },
+    {
+      "id": "panels.placement.declaration",
+      "note": "the template's declaration beats the bid",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "left",
+        "size": "lg",
+        "displace": true
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 612,
+        "h": 344,
+        "displace": true
+      }
+    },
+    {
+      "id": "panels.placement.declaration-corner-no-displace",
+      "note": "a declaration cannot displace from a corner, where pushing content aside means nothing",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "top-right",
+        "displace": true
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "top-right",
+        "x": 0,
+        "y": 0,
+        "w": 440,
+        "h": 248,
+        "displace": false
+      }
+    },
+    {
+      "id": "panels.placement.declaration-box",
+      "note": "a declared box in pixels is held to the room there is",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "right",
+        "box": {
+          "width": 5000,
+          "height": 120
+        }
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "right",
+        "x": 0,
+        "y": 0,
+        "w": 1344,
+        "h": 120,
+        "displace": false
+      }
+    },
+    {
+      "id": "panels.placement.disposition",
+      "note": "the reader's disposition beats the declaration",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "right",
+        "size": "sm"
+      },
+      "disposition": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 380,
+        "h": 600,
+        "displace": true
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 380,
+        "h": 600,
+        "displace": true
+      }
+    },
+    {
+      "id": "panels.placement.template-switch",
+      "note": "a change of template changes the declaration and leaves the disposition: it still wins",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "bottom",
+        "size": "md"
+      },
+      "disposition": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 380,
+        "h": 600,
+        "displace": true
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 380,
+        "h": 600,
+        "displace": true
+      }
+    },
+    {
+      "id": "panels.placement.home-declared",
+      "note": "a declared home starts the panel in the template",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "home": "inspector",
+        "snap": "right",
+        "order": 1
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "home",
+        "x": 0,
+        "y": 0,
+        "w": 440,
+        "h": 248,
+        "displace": false,
+        "order": 1,
+        "home": "inspector"
+      }
+    },
+    {
+      "id": "panels.placement.home-undeclared-refused",
+      "note": "a disposition into a home lane the declaration does not give the panel is not honoured",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "disposition": {
+        "snap": "home",
+        "x": 0,
+        "y": 0,
+        "w": 300,
+        "h": 300,
+        "displace": false
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "x": 0,
+        "y": 0,
+        "w": 360,
+        "h": 203,
+        "snap": "right",
+        "thicknessX": 440,
+        "displace": true
+      }
+    },
+    {
+      "id": "panels.placement.home-undeclared-falls-to-declaration",
+      "note": "and with a declaration that is not a home, the declaration answers instead",
+      "op": "placement",
+      "request": {
+        "id": "notes",
+        "edge": "right",
+        "size": "md",
+        "float": false
+      },
+      "declared": {
+        "snap": "left"
+      },
+      "disposition": {
+        "snap": "home",
+        "x": 0,
+        "y": 0,
+        "w": 300,
+        "h": 300,
+        "displace": false
+      },
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "placement": {
+        "snap": "left",
+        "x": 0,
+        "y": 0,
+        "w": 440,
+        "h": 248,
+        "displace": false
+      }
+    }
+  ]
+}

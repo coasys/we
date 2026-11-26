@@ -6,7 +6,7 @@
  * is what `tests/vectors.test.ts` compares against: a committed vector that drifted from the code
  * fails there with the case id.
  *
- * `navigation.json` and `render.json` are the exceptions: their cases mount real Solid on jsdom (a
+ * `navigation.json`, `render.json` and `safety.json` are the exceptions: their cases mount real Solid on jsdom (a
  * RouteStore over jsdom's history; the renderer itself), so in-memory recording only exists inside
  * the `solid` vitest project — `tests/navigation.test.tsx` and `tests/render.test.tsx` compare, and
  * the `tests/record-*.test.tsx` pair write.
@@ -18,9 +18,11 @@ import {
   recordExpressions,
   recordFunctions,
   recordHostFunctions,
+  recordPanels,
   recordPaths,
   recordQueryCompile,
   recordStyle,
+  recordValidate,
 } from './record';
 
 export const VECTOR_FILES = [
@@ -30,8 +32,11 @@ export const VECTOR_FILES = [
   'query-compile.json',
   'host-functions.json',
   'style.json',
+  'validate.json',
+  'panels.json',
   'navigation.json',
   'render.json',
+  'safety.json',
 ] as const;
 
 export const TOKEN_THEMES = ['light', 'dark', 'black', 'retro', 'cyberpunk', 'glow'] as const;
@@ -46,8 +51,11 @@ export interface Vectors {
   'query-compile': unknown;
   'host-functions': unknown;
   style: unknown;
+  validate: unknown;
+  panels: unknown;
   navigation: unknown;
   render: unknown;
+  safety: unknown;
 }
 
 /** Read one committed vector file (or a token table) relative to the vectors directory. */
@@ -59,8 +67,8 @@ export function loadTokenTable(vectorsDir: string, theme: TokenTheme): { theme: 
   return loadVectorFile(vectorsDir, join('tokens', `${theme}.json`)) as { theme: string; vars: Record<string, string> };
 }
 
-/** Everything except navigation and render — see the module note for why. */
-export function recordAll(): Omit<Vectors, 'navigation' | 'render'> {
+/** Everything except navigation, render and safety — see the module note for why. */
+export function recordAll(): Omit<Vectors, 'navigation' | 'render' | 'safety'> {
   return {
     expressions: recordExpressions(),
     functions: recordFunctions(),
@@ -68,6 +76,8 @@ export function recordAll(): Omit<Vectors, 'navigation' | 'render'> {
     'query-compile': recordQueryCompile(),
     'host-functions': recordHostFunctions(),
     style: recordStyle(),
+    validate: recordValidate(),
+    panels: recordPanels(),
   };
 }
 
@@ -76,7 +86,10 @@ export { FUNCTION_CASES } from './cases/functions';
 export { HOST_FUNCTION_CASES } from './cases/hostFunctions';
 export { NAVIGATION_CASES, type NavigationScriptCase } from './cases/navigation';
 export { PATH_CASES } from './cases/paths';
+export { PANEL_CASES, type PanelCase } from './cases/panels';
 export { RENDER_CASES, type RenderCase, type RenderStep } from './cases/render';
+export { SAFETY_CASES } from './cases/safety';
+export { VALIDATE_CASES, type ValidateCase } from './cases/validate';
 export { QUERY_CASES } from './cases/queryCompile';
 export { STYLE_CASES, THEME_NAMES } from './cases/style';
 export { decodeValue, encodeValue, type EncodedValue } from './encode';

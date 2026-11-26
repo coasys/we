@@ -7692,6 +7692,162 @@
           "actions": []
         }
       ]
+    },
+    {
+      "id": "render.safety.url-schemes",
+      "note": "vbscript: and a data: URL that is not media are refused; a data: image stays",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "a",
+            "props": {
+              "href": "VBScript:msgbox(1)"
+            },
+            "children": ["vbscript"]
+          },
+          {
+            "type": "a",
+            "props": {
+              "href": "data:text/html,<script>alert(1)</script>"
+            },
+            "children": ["data html"]
+          },
+          {
+            "type": "img",
+            "props": {
+              "src": "data:image/png;base64,iVBORw0KGgo=",
+              "alt": "kept"
+            }
+          },
+          {
+            "type": "form",
+            "props": {
+              "action": "javascript:alert(1)"
+            },
+            "children": ["form"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "a",
+                  "children": ["vbscript"]
+                },
+                {
+                  "type": "a",
+                  "children": ["data html"]
+                },
+                {
+                  "type": "img",
+                  "props": {
+                    "src": "data:image/png;base64,iVBORw0KGgo=",
+                    "alt": "kept"
+                  }
+                },
+                {
+                  "type": "form",
+                  "children": ["form"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.inline-handler-text",
+      "note": "an on… prop holding text on a native element is refused: it would be a script",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "div",
+            "props": {
+              "onclick": "alert(1)",
+              "title": "kept"
+            },
+            "children": ["x"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "div",
+                  "props": {
+                    "title": "kept"
+                  },
+                  "children": ["x"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.native-tags-more",
+      "note": "style, link, object and embed mount nothing either",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "style",
+            "children": ["body { display: none }"]
+          },
+          {
+            "type": "link",
+            "props": {
+              "rel": "stylesheet",
+              "href": "https://example.org/x.css"
+            }
+          },
+          {
+            "type": "object",
+            "props": {
+              "data": "https://example.org/"
+            }
+          },
+          {
+            "type": "embed",
+            "props": {
+              "src": "https://example.org/"
+            }
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
     }
   ]
 }

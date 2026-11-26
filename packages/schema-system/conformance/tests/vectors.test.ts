@@ -48,7 +48,7 @@ describe('committed vectors match the live implementation', () => {
 
   for (const name of VECTOR_FILES) {
     // Covered by navigation.test.tsx and render.test.tsx in the solid project: both mount real Solid.
-    if (name === 'navigation.json' || name === 'render.json') continue;
+    if (name === 'navigation.json' || name === 'render.json' || name === 'safety.json') continue;
     it(`${name} re-records to the committed content`, () => {
       const family = name.replace('.json', '') as keyof ReturnType<typeof recordAll>;
       const committed = load(name);
@@ -58,7 +58,7 @@ describe('committed vectors match the live implementation', () => {
   }
 
   for (const name of VECTOR_FILES) {
-    if (name === 'navigation.json' || name === 'render.json') continue;
+    if (name === 'navigation.json' || name === 'render.json' || name === 'safety.json') continue;
     it(`${name} is JSON-stable (no undefined members or non-JSON values)`, () => {
       const family = name.replace('.json', '') as keyof ReturnType<typeof recordAll>;
       const round = JSON.parse(JSON.stringify(recorded[family]));
@@ -81,6 +81,9 @@ describe('committed vectors match the live implementation', () => {
       ['query-compile.json', 40],
       ['host-functions.json', 45],
       ['style.json', 150],
+      ['validate.json', 30],
+      ['panels.json', 15],
+      ['safety.json', 10],
     ];
     for (const [name, min] of counts) {
       const cases = (load(name) as { cases: unknown[] }).cases;

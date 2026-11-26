@@ -679,6 +679,15 @@ function walkNode(
   if (typeof node !== 'object' || node === null) return;
   const n = node as Record<string, unknown>;
 
+  // Shapes are the root's: one anywhere else would be a second table a `$ref` could mean.
+  if (path !== '' && '$defs' in n) {
+    errors.push({
+      path: `${path}.$defs`,
+      message: "$defs is the root's alone: move these shapes to the template root, where every $ref finds them.",
+      severity: 'error',
+    });
+  }
+
   const type = n.type as string | undefined;
   if (!type || typeof type !== 'string') {
     /**

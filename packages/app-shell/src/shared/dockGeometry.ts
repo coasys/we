@@ -1295,6 +1295,32 @@ export function placementFromDeclaration(
   };
 }
 
+/**
+ * A panel's placement, in three rungs: what the reader last put it at (the disposition), then what
+ * the interface declared, then the panel's own opening bid (the suggestion).
+ *
+ * The middle rung is resolved live and never written, so switching template or view is
+ * non-destructive, switching back restores what was there, and an author improving a layout is not
+ * overruled forever by one stray drag. Pure, and the one place the order is decided, so a second
+ * host can be held to it by the panel vectors.
+ *
+ * One refusal: a home lane holds only the panels the interface declared for it. A disposition into a
+ * lane for a panel the declaration does not home there is not honoured — it came from stacking onto
+ * a section, and an undeclared panel's disposition outlives every template, so it would follow its
+ * owner into every space. Read as no disposition, the panel goes back to the rungs below.
+ */
+export function resolvePlacement(input: {
+  disposition?: FloatPlacement;
+  declared?: Parameters<typeof placementFromDeclaration>[0];
+  request: DockRequest;
+  viewport: Viewport;
+}): FloatPlacement {
+  const { disposition, declared, request, viewport } = input;
+  if (disposition && !(disposition.snap === 'home' && !declared?.home)) return disposition;
+  if (declared) return placementFromDeclaration(declared, viewport);
+  return seedPlacement(request, viewport);
+}
+
 /** How thick a displacing panel is, falling back to the card's matching dimension. */
 export function thicknessOf(placement: FloatPlacement, edge: Exclude<DockEdge, null>): number {
   const vertical = edge === 'left' || edge === 'right';

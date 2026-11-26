@@ -79,9 +79,13 @@ makes a module do anything (a call module's opener joins a call).
 ---
 
 Implemented by: [`templatePanels.ts`](../../../packages/app-shell/src/shared/registries/templatePanels.ts),
-[`dockGeometry.ts`](../../../packages/app-shell/src/shared/dockGeometry.ts),
+[`panelScope.ts`](../../../packages/app-shell/src/shared/panelScope.ts) (`activePanels`),
+[`dockGeometry.ts`](../../../packages/app-shell/src/shared/dockGeometry.ts) (`resolvePlacement`),
 [`ShellStore.ts`](../../../packages/app-shell/src/shared/stores/ShellStore.ts).
-Pinned by: [`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
+Pinned by: the panel vectors (`panels.json`: `panels.active.*`, `panels.placement.suggestion`,
+`panels.placement.declaration`, `panels.placement.disposition`, `panels.placement.template-switch`
+and the rest; [Conformance](conformance.md#running-each-family)),
+[`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
 dock layout's recorded vectors ([`dockLayout.json`](../../../packages/app-shell/src/shared/kernels/vectors/dockLayout.json),
 the functions named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
 
@@ -115,6 +119,3 @@ Implemented by: [`moduleParts.ts`](../../../packages/app-shell/src/shared/regist
 (`$panels`), [`PanelLane.tsx`](../../../packages/app-shell/src/frameworks/solid/components/PanelLane.tsx),
 [`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts).
 Pinned by: render vector `render.panels.outlet`.
-
-> **Planned.** Panel vectors: a declaration, a disposition and a change of template in, the resolved
-> placements out, so a host other than WE can test its resolution.
