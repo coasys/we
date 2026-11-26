@@ -684,7 +684,8 @@ const onSelect: SchemaProp = [
  */
 const header: SchemaNode = {
   type: 'Row',
-  props: { gap: '300', ay: 'center', px: INSET, pt: '400', pb: '300' },
+  // Wraps: in a narrow sidebar the two buttons drop under the name rather than leaving it a letter.
+  props: { gap: '300', ay: 'center', wrap: true, px: INSET, pt: '400', pb: '300' },
   children: [
     {
       type: 'we-avatar',
@@ -699,7 +700,7 @@ const header: SchemaNode = {
     },
     {
       type: 'Column',
-      props: { flex: '1', minWidth: '0' },
+      props: { flex: '1', minWidth: '5rem' },
       children: [
         {
           type: 'we-text',
