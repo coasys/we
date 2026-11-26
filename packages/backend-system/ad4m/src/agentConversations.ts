@@ -1,8 +1,9 @@
 import type { Ad4mClient } from '@coasys/ad4m';
 // The session types exist in the package but its `generated/api` barrel does not re-export them
-// yet — deep type imports until it does.
-import type { AISession } from '@coasys/ad4m/lib/src/generated/api/AISession';
-import type { AISessionMessage } from '@coasys/ad4m/lib/src/generated/api/AISessionMessage';
+// yet — deep type imports until it does. The package's `exports` map passes `./*` through unchanged,
+// so a deep path names its file with the extension.
+import type { AISession } from '@coasys/ad4m/lib/src/generated/api/AISession.js';
+import type { AISessionMessage } from '@coasys/ad4m/lib/src/generated/api/AISessionMessage.js';
 import {
   type AgentConversationMessage,
   type AgentConversationScope,

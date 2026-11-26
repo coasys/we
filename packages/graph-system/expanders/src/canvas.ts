@@ -141,7 +141,7 @@ export interface CanvasSeedOptions {
    * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
    * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
    * cards — the layout positions them — and the walk repeats down the tree until it stops producing
-   * new cards or `max` nodes is hit. Cycle-safe by the same set the canvas dedups with.
+   * new cards or it has pulled in `max` of them. Cycle-safe by the same set the canvas dedups with.
    *
    * Untyped relations are left alone: one without a declared target could point at anything, and
    * walking `children`-of-anything or `respondsTo` under every card is the tangle the entity
@@ -152,7 +152,14 @@ export interface CanvasSeedOptions {
     | {
         /** Pull in unplaced children — records that point at a drawn card — recursively. Default true. */
         children?: boolean;
-        /** The most nodes the graph may hold once the pull is done, placements included. Default 500. */
+        /**
+         * The most cards the pull may add, on top of what the canvas already draws. Default 500.
+         *
+         * Counted apart from the canvas's own cards, which have caps of their own. It used to bound the
+         * whole graph, which was the same thing while a canvas drew at most a few hundred cards; once
+         * one could draw thousands, a canvas past 500 never took a step of the walk and warned that it
+         * had stopped.
+         */
         max?: number;
       };
   /**
@@ -298,8 +305,16 @@ export interface CanvasSeedOptions {
    * without several real agents. See `Pretend` in `weighing.ts`. A production build never passes it.
    */
   simulate?: Pretend;
+  /**
+   * How many cards of each kind the canvas reads — 200 when unset. The placements are bounded at
+   * this times the kinds the canvas holds, the tray (cards owned but not yet placed) the same, and
+   * the lines at three per card drawn. The graph's own `expansion.maxNodes` still caps the total.
+   */
   limit?: number;
 }
+
+/** Lines a canvas reads per card it draws — a bound, not an estimate of how many there are. */
+const LINES_PER_CARD = 3;
 
 /**
  * Types checked for *owned but unplaced* records — the tray.
@@ -622,7 +637,7 @@ export function canvasSeed(): SeedSource {
       const includeFor = (entity: string) =>
         orNothing(Object.fromEntries((heldBy.get(entity) ?? []).map((relation) => [relation.name, true])));
       /*
-        Round one: everything this canvas says about itself, and everything it owns. Two reads, together.
+        Round one: everything this canvas says about itself, and everything it owns. Three reads, together.
 
         Every read here is a round trip to a peer-to-peer data layer, and each one is also a standing
         subscription, since the engine watches the reads its seeds make. So what decides how long a
@@ -630,15 +645,17 @@ export function canvasSeed(): SeedSource {
         while it is open is the number of reads. A canvas used to take three rounds and up to eleven
         reads: its placements, then the records they named one query per kind, then the connections.
 
-        The first read is the canvas's own furniture — its placements, colours and routes — in one
-        query over all three. Each placement brings the card it positions, with that card's counts:
+        The first read is the placements. Each brings the card it positions, with that card's counts:
         placement is what puts a record on a canvas, so the placements already name every card, and
         asking for the cards again by id was a whole round spent learning what the first one held.
+        The second is the canvas's colours and routes, in one query over both. They once shared the
+        placements' read, which saved a subscription and cost a shared bound: whichever filled it
+        crowded the others out.
 
-        The second is the tray: what the canvas owns and nobody has positioned, by containment, in
-        one query over every kind it can hold. It needs nothing the first one answers, so they go
-        together. Only the connections are left for a round of their own, since they cannot be asked
-        for until the ends are known.
+        The third is the tray: what the canvas owns and nobody has positioned, by containment, in
+        one query over every kind it can hold. None needs what another answers, so they go together.
+        Only the connections are left for a round of their own, since they cannot be asked for until
+        the ends are known.
       */
       const furniture = [...new Set([placementEntity, options.typeStyles, options.routes].filter(declared))];
       const trayTypes = [
@@ -664,52 +681,68 @@ export function canvasSeed(): SeedSource {
       */
       const pullInclude = (entity: string) =>
         orNothing({ ...cardFields(), ...includeFor(entity), ...origin, ...madeBy });
-      const [furnished, owned] = await Promise.all([
-        furniture.length
+      /*
+        The bound on the cards, the same for the placed and the unplaced: `limit` of each kind the
+        canvas holds. The placements get it to themselves. They used to share one read with the
+        colours and routes at `limit` × 3 — three because there were three entities in it, not
+        because a canvas holds three kinds — so a canvas stopped at ~600 cards whatever it held, and
+        a full read cut the colours and routes as readily as the cards.
+      */
+      const cardCap = limit * Math.max(1, trayTypes.length);
+      const decor = furniture.filter((entity) => entity !== placementEntity);
+      const [placements, decorated, owned] = await Promise.all([
+        furniture.includes(placementEntity)
           ? read(
-              furniture,
+              // A list of one, so the read takes the path it always took: over several kinds, where a
+              // count below an untyped `node` is asked of each card's own kind rather than refused.
+              [placementEntity],
               undefined,
               { node: { include: { ...cardFields(), ...relationInclude, ...origin, ...madeBy } } },
               scope,
-              limit * furniture.length,
+              cardCap,
             )
           : [],
+        // A colour per kind and a route per line — bounded by what can be drawn, not by the cards.
+        decor.length ? read(decor, undefined, undefined, scope, cardCap * LINES_PER_CARD) : [],
         trayTypes.length
           ? read(
               trayTypes,
               undefined,
               orNothing({ ...cardFields(), ...relationInclude, ...origin, ...madeBy }),
               membersScope,
-              limit * trayTypes.length,
+              cardCap,
             )
           : [],
       ]);
-      const placements = furnished.filter((row) => typeOfRow(row) === placementEntity);
-      const styles = furnished.filter((row) => typeOfRow(row) === options.typeStyles);
-      const routes = furnished.filter((row) => typeOfRow(row) === options.routes);
+      const styles = decorated.filter((row) => typeOfRow(row) === options.typeStyles);
+      const routes = decorated.filter((row) => typeOfRow(row) === options.routes);
 
       /*
-        The one cap worth saying out loud.
+        The caps worth saying out loud.
 
-        Every read here is bounded, and for most of them hitting the bound means some cards of that
-        kind are missing — visible, and obviously a truncation. The placements are not like the
-        others: they are the membership, so exceeding the bound does not drop the overflow cards, it
-        makes them *invisible to the rest of the load entirely*. Nothing else ever learns they exist.
-
-        What that looks like from the outside is a canvas that silently stops at some number of cards
-        and a person wondering where the rest of their work went. A warning cannot fetch them, but it
-        can say which of those two things happened — and the status strip already has somewhere to
-        put it. The placements share a read with the canvas's colours and routes, so the read coming
-        back full says the same thing: something in it was cut, and it may have been a placement.
+        The placements are the membership, so exceeding their bound does not drop the overflow
+        cards, it makes them *invisible to the rest of the load entirely*. Nothing else ever learns
+        they exist. The tray is the same for cards nobody has placed yet — which, on a space an
+        interpretation pass has been filling, is most of them. What that looks like from the outside
+        is a canvas that silently stops at some number of cards and a person wondering where the rest
+        of their work went. A warning cannot fetch them, but it can say so, and the status strip
+        already has somewhere to put it — with the number that actually cut, which once said 200
+        while the cut fell at 600.
 
         Compared with `>=` rather than `>`: a read that came back exactly at its limit is a read that
         was cut off, or one that happened to fill it exactly, and nothing here can tell those apart.
         Saying so on the boundary is the honest side to err on.
       */
-      if (placements.length >= limit || (furniture.length && furnished.length >= limit * furniture.length)) {
+      if (placements.length >= cardCap) {
         context.warn(
-          `canvas: stopped at ${limit} placed cards — anything beyond that is not on this canvas. ` +
-            `Raise the seed's \`limit\` to see the rest.`,
+          `canvas: stopped at ${cardCap} placed cards — anything beyond that is not on this canvas. ` +
+            `Raise the seed's \`limit\` (${limit} of each kind) to see the rest.`,
+        );
+      }
+      if (owned.length >= cardCap) {
+        context.warn(
+          `canvas: stopped at ${cardCap} cards not yet placed — the rest are not on this canvas. ` +
+            `Raise the seed's \`limit\` (${limit} of each kind) to see them.`,
         );
       }
 
@@ -976,7 +1009,9 @@ export function canvasSeed(): SeedSource {
           row: Record<string, unknown>;
         }
         const pending = new Map<string, Found>();
-        while (frontier.length && nodes.length + pending.size < maxNodes) {
+        // What the canvas holds before the walk adds anything, which `max` is counted on top of.
+        const budget = nodes.length + maxNodes;
+        while (frontier.length && nodes.length + pending.size < budget) {
           const next: { id: string; type: string }[] = [];
           const found: Found[] = [];
           const level: RelationLink[] = [];
@@ -1006,7 +1041,9 @@ export function canvasSeed(): SeedSource {
                   (relation) => relation.target === type && heldByChild(relation) && !hiddenTypes.has(relation.holder),
                 ),
                 include: pullInclude,
-                limit: maxNodes,
+                // One past what can be drawn, so the id order below picks the survivors rather than
+                // whichever rows the backend happened to return first, and a cut is seen as one.
+                limit: maxNodes + 1,
                 signal,
               }).then(({ rows, links }) => {
                 found.push(...rows);
@@ -1026,7 +1063,7 @@ export function canvasSeed(): SeedSource {
             five hundred.
           */
           for (const [id, { entity, row }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-            if (nodes.length >= maxNodes) break;
+            if (nodes.length >= budget) break;
             pending.delete(id);
             const node = rowToNode(
               row,
@@ -1053,9 +1090,13 @@ export function canvasSeed(): SeedSource {
           for (const link of level) addRelationEdge(link);
           frontier = next;
         }
-        if (nodes.length + pending.size >= maxNodes) {
+        /*
+          Only when something was left: a card found and not drawn, or a level not asked because the
+          budget ran out. A walk that ended on its own says nothing, however large the canvas.
+        */
+        if (pending.size || (frontier.length && nodes.length >= budget)) {
           context.warn(
-            `canvas: stopped at ${maxNodes} cards while pulling in what points at them — ` +
+            `canvas: stopped after pulling in ${maxNodes} cards that point at what is drawn — ` +
               `raise the seed's \`relations.max\` to see the rest.`,
           );
         }
@@ -1104,7 +1145,14 @@ export function canvasSeed(): SeedSource {
           relations.has(key.startsWith('$') ? (spec as { from: string }).from : key),
         );
         const include = counted.length ? Object.fromEntries(counted) : undefined;
-        for (const row of await read(connections, { source: ends }, include)) {
+        // Bounded by the cards drawn rather than by `limit`, which is per kind of card: at 200 a canvas
+        // of a thousand cards showed a fifth of its lines, and nothing said so.
+        const lineCap = Math.max(limit, ends.length * LINES_PER_CARD);
+        const lines = await read(connections, { source: ends }, include, scope, lineCap);
+        if (lines.length >= lineCap) {
+          context.warn(`canvas: stopped at ${lineCap} connections — some lines between these cards are not drawn.`);
+        }
+        for (const row of lines) {
           const source = typeof row.source === 'string' ? row.source : undefined;
           const target = typeof row.target === 'string' ? row.target : undefined;
           if (!source || !target || !onCanvas.has(source) || !onCanvas.has(target)) continue;

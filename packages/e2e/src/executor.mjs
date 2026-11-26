@@ -141,7 +141,8 @@ export async function startExecutor({
     const status = await admin.agent.status();
     if (!status.isInitialized) await within(admin.agent.generate(passphrase), 120_000, 'agent.generate');
     const mcpUrl = mcpPort ? `http://127.0.0.1:${mcpPort}/mcp` : undefined;
-    return { url, adminCredential, admin, mcpUrl, multiUser, dataPath, output, log, stop };
+    // `pid` lets a suite read the executor's own CPU and memory (`/proc/<pid>` on Linux).
+    return { url, adminCredential, admin, mcpUrl, multiUser, dataPath, pid: child.pid, output, log, stop };
   } catch (error) {
     await stop();
     throw new Error(`${error.message}\n--- executor output ---\n${log().slice(-8_000)}`);
