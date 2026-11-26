@@ -12,6 +12,7 @@ import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 import { slotRegistry } from '../src/shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
@@ -48,7 +49,7 @@ afterEach(() => {
 function mountLane(frame?: 'window' | 'flush' | 'none') {
   let store!: ShellStore;
   const { container } = render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     // Wrapped as the app wraps chrome's stores, so the frames read values rather than accessors.
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return (

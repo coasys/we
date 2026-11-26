@@ -6,7 +6,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { describeDestructive } from '../src/shared/destructiveWording';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import type { ScreenSource } from '../src/shared/platform/types';
+import type { ShellStoreDeps } from '../src/shared/stores/ShellStore';
 import { buildParts, reactivityPorts } from './support/shellPorts';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -17,8 +19,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     disposers.splice(0).forEach((dispose) => dispose());
     vi.useRealTimers();
   });
-  const build = (platform?: Parameters<typeof buildParts>[1]) => {
-    const parts = buildParts(makePort(), platform);
+  const build = (platform?: Pick<ShellStoreDeps['platform'], 'screenSources'>) => {
+    const parts = buildParts(makePort(), { ...createTestPlatform(), ...platform });
     disposers.push(parts.dispose);
     return parts.prompts.members;
   };

@@ -19,6 +19,7 @@ import { type ReactivityPort } from '@we/reactivity';
 import { type TemplatePanel } from '@we/schema-shared';
 
 import { distinctSignal } from '../../distinctSignal';
+import type { PlatformPort } from '../../platform/port';
 import { type ShellHostState, type ShellStore } from '../ShellStore';
 import {
   type LaneState,
@@ -38,9 +39,12 @@ import {
 
 export function createShellArrangement(deps: {
   reactivity: ReactivityPort;
+  /** Where the arrangement is kept: a preference about this device's window. */
+  platform: Pick<PlatformPort, 'storage'>;
   host: Pick<ShellHostState, 'publishPanelInstances'>;
 }) {
   const { reactivity } = deps;
+  const { storage } = deps.platform;
   const { signal, memo, effect, untrack, onCleanup } = reactivity;
   const { publishPanelInstances } = deps.host;
   /**
@@ -51,8 +55,8 @@ export function createShellArrangement(deps: {
    * clamped into the viewport on resolve, so one saved on a monitor cannot leave a panel off-screen
    * on a laptop.
    */
-  const [placements, setPlacements] = signal<Record<string, FloatPlacement>>(loadPlacements());
-  const [activation, setActivation] = signal<Record<string, number>>(loadActivation());
+  const [placements, setPlacements] = signal<Record<string, FloatPlacement>>(loadPlacements(storage));
+  const [activation, setActivation] = signal<Record<string, number>>(loadActivation(storage));
   // Seeded from what was stored, so the first raise after a reload lands above everything that was
   // raised before it rather than restarting the count underneath.
   let activationClock = Math.max(0, ...Object.values(untrack(activation)));
@@ -73,11 +77,11 @@ export function createShellArrangement(deps: {
     {
       const prev = untrack(activation);
       const next = { ...prev, [key]: ++activationClock };
-      saveActivation(next);
+      saveActivation(storage, next);
       setActivation(next);
     }
   };
-  const [layouts, setLayouts] = signal<SavedLayouts>(loadLayouts());
+  const [layouts, setLayouts] = signal<SavedLayouts>(loadLayouts(storage));
   /**
    * The named layout the arrangement on screen is, or `''` once it has been changed since.
    *
@@ -92,7 +96,7 @@ export function createShellArrangement(deps: {
     {
       const prev = untrack(placements);
       const merged = { ...prev, [placementKey(id)]: next };
-      savePlacements(merged);
+      savePlacements(storage, merged);
       setPlacements(merged);
     }
   };
@@ -181,7 +185,7 @@ export function createShellArrangement(deps: {
         ([, instance]) => typeof instance.inputs.datasetId !== 'string' || spaceGate()(instance.inputs.datasetId),
       ),
     );
-  const [allInstances, setAllInstances] = signal(loadInstances(untrack(agentDid)));
+  const [allInstances, setAllInstances] = signal(loadInstances(storage, untrack(agentDid)));
   /*
     A change of agent re-reads storage for the one now signed in. Only the agent: the instances on
     screen are published by the effect below, whatever changed them, so this one no longer publishes
@@ -192,7 +196,7 @@ export function createShellArrangement(deps: {
     const did = agentDid();
     if (did === instancesFor) return;
     instancesFor = did;
-    untrack(() => setAllInstances(loadInstances(did)));
+    untrack(() => setAllInstances(loadInstances(storage, did)));
   });
   // Following every announcement of a declaration, which is what says the interface on screen has
   // changed — the scope itself is a plain read, and the same declaration can arrive for another one.
@@ -210,14 +214,14 @@ export function createShellArrangement(deps: {
     const next = { ...all };
     if (Object.keys(here).length) next[scope] = here;
     else delete next[scope];
-    saveInstances(agentDid(), next);
+    saveInstances(storage, agentDid(), next);
     // Published as it is written, so a body drawn in the same breath reads its inputs.
     publishPanelInstances(visibleInstances(next));
     setAllInstances(next);
   };
 
   /** Home lanes' widths and folds, for every template — see `LaneState`. */
-  const [lanes, setLanes] = signal<Record<string, LaneState>>(loadLanes());
+  const [lanes, setLanes] = signal<Record<string, LaneState>>(loadLanes(storage));
   const laneKey = (lane: string) => `${templatePanelScope()}::${lane}`;
   const writeLane = (lane: string, change: Partial<LaneState>) => {
     const prev = untrack(lanes);
@@ -229,7 +233,7 @@ export function createShellArrangement(deps: {
     const next = { ...prev };
     if (Object.keys(cleaned).length) next[key] = cleaned;
     else delete next[key];
-    saveLanes(next);
+    saveLanes(storage, next);
     setLanes(next);
   };
   const [customisingLayout, setCustomisingLayout] = distinctSignal(reactivity, false);
@@ -351,7 +355,7 @@ export function createShellArrangement(deps: {
         if (!prev[key]) return;
         const next = { ...prev };
         delete next[key];
-        savePlacements(next);
+        savePlacements(storage, next);
         setPlacements(next);
       }
     },
@@ -375,7 +379,7 @@ export function createShellArrangement(deps: {
       if (placements()[key]) {
         const { [key]: _gone, ...rest } = placements();
         setPlacements(rest);
-        savePlacements(rest);
+        savePlacements(storage, rest);
       }
     },
 
@@ -416,7 +420,7 @@ export function createShellArrangement(deps: {
       {
         const prev = untrack(layouts);
         const next = { ...prev, [scope]: { ...(prev[scope] ?? {}), [label]: snapshot } };
-        saveLayouts(next);
+        saveLayouts(storage, next);
         setLayouts(next);
       }
       setActiveLayout(label);
@@ -434,13 +438,13 @@ export function createShellArrangement(deps: {
       {
         const prev = untrack(placements);
         const next = { ...without(prev), ...saved.placements };
-        savePlacements(next);
+        savePlacements(storage, next);
         setPlacements(next);
       }
       {
         const prev = untrack(activation);
         const next = { ...without(prev), ...saved.activation };
-        saveActivation(next);
+        saveActivation(storage, next);
         // The clock has to stay ahead of anything just restored, or the next raise lands underneath.
         activationClock = Math.max(activationClock, ...Object.values(next));
         setActivation(next);
@@ -449,7 +453,7 @@ export function createShellArrangement(deps: {
       {
         const prev = untrack(lanes);
         const next = { ...without(prev), ...(saved.lanes ?? {}) };
-        saveLanes(next);
+        saveLanes(storage, next);
         setLanes(next);
       }
       setActiveLayout(name);
@@ -462,7 +466,7 @@ export function createShellArrangement(deps: {
         const prev = untrack(layouts);
         const { [name]: _gone, ...rest } = prev[scope] ?? {};
         const next = { ...prev, [scope]: rest };
-        saveLayouts(next);
+        saveLayouts(storage, next);
         setLayouts(next);
       }
       if (activeLayout() === name) setActiveLayout('');
@@ -488,7 +492,7 @@ export function createShellArrangement(deps: {
         const prev = untrack(placements);
         const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
         if (Object.keys(next).length !== Object.keys(prev).length) {
-          savePlacements(next);
+          savePlacements(storage, next);
           setPlacements(next);
         }
       }
@@ -502,7 +506,7 @@ export function createShellArrangement(deps: {
         const prev = untrack(lanes);
         const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(prefix)));
         if (Object.keys(next).length !== Object.keys(prev).length) {
-          saveLanes(next);
+          saveLanes(storage, next);
           setLanes(next);
         }
       }

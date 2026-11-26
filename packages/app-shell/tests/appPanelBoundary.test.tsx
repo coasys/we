@@ -22,6 +22,7 @@ import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHo
 import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateSurface';
@@ -88,12 +89,16 @@ function mount() {
   /** The space tier's bag — what a synced template's calls go through. */
   let bag!: { shellStore: ShellStore };
   const { container } = render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     store.provideAgentDid(() => 'did:test:me');
     bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.
     release.push(provideTemplateBag(bag as never));
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore: store });
+    const chatStore = createChatStore({
+      reactivity: solidReactivity,
+      platform: createBrowserPlatform(),
+      shellStore: store,
+    });
     return (
       <StoreRegistryContext.Provider value={{ ...stores, shellStore: store, chatStore }}>
         {/* Every open instance's body, the way a frame's own PanelSlot draws it. */}

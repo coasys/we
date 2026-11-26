@@ -12,6 +12,7 @@ import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import { declareAppEdges, shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import {
   DOCK_FRAME_ATTR,
   dockFrame,
@@ -55,7 +56,7 @@ afterEach(() => {
 function mount() {
   let store!: ShellStore;
   render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return (
       <StoreRegistryContext.Provider value={{ shellStore: store }}>

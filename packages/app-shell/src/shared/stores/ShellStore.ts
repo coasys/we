@@ -28,6 +28,7 @@ import type {
   ResizeSide,
   SnapPoint,
 } from '../dockGeometry';
+import type { PlatformPort } from '../platform/port';
 import type { PlatformAdapter, ScreenSource } from '../platform/types';
 import type { AppFrameState } from '../registries/appFrame';
 import { registerHostDockStore, unregisterHostDockStore } from '../registries/dockRegistry';
@@ -62,11 +63,12 @@ export type ShellHostState = Pick<AppFrameState, 'appFrame' | 'appEdgeFrames'> &
 export interface ShellStoreDeps {
   reactivity: ReactivityPort;
   /**
-   * The platform is optional, because this store can work without one. The shell's layout is built
-   * on its own in tests, and a host that offers no screen picking is the ordinary case anyway (the
-   * web, and every desktop whose OS draws its own). So a missing platform reads as "no capability".
+   * The window the shell lays out against, where its arrangement is kept, and screen picking where
+   * the host offers it — which a host need not: the web, and every desktop whose OS draws its own
+   * picker, have none, and a missing `screenSources` reads as "no capability".
    */
-  platform?: Pick<PlatformAdapter, 'screenSources'>;
+  platform: Pick<PlatformAdapter, 'screenSources'> &
+    Pick<PlatformPort, 'storage' | 'location' | 'viewport' | 'listen' | 'frame' | 'document'>;
   host: ShellHostState;
 }
 
@@ -700,12 +702,12 @@ export interface ShellStore {
  * docks resolved from it, dragging them, and the panels an interface declares.
  */
 export function createShellStore(deps: ShellStoreDeps): ShellStore {
-  const { reactivity } = deps;
-  const views = createShellViews({ reactivity });
-  const prompts = createShellPrompts({ reactivity, platform: deps.platform });
-  const arrangement = createShellArrangement({ reactivity, host: deps.host });
-  const docks = createShellDocks({ reactivity, host: deps.host, views, arrangement });
-  const drag = createShellDockDrag({ reactivity, arrangement, docks });
+  const { reactivity, platform } = deps;
+  const views = createShellViews({ reactivity, platform });
+  const prompts = createShellPrompts({ reactivity, platform });
+  const arrangement = createShellArrangement({ reactivity, platform, host: deps.host });
+  const docks = createShellDocks({ reactivity, platform, host: deps.host, views, arrangement });
+  const drag = createShellDockDrag({ reactivity, platform, arrangement, docks });
   const templatePanels = createShellTemplatePanels({ reactivity, views, arrangement, docks });
 
   const store: ShellStore = {

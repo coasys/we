@@ -12,7 +12,10 @@ import { type PendingDestructive, type ShellStore, type ShellStoreDeps } from '.
 /** How long the host waits for what a delete takes with it before asking without it. */
 const FACTS_WAIT_MS = 500;
 
-export function createShellPrompts(deps: { reactivity: ReactivityPort; platform?: ShellStoreDeps['platform'] }) {
+export function createShellPrompts(deps: {
+  reactivity: ReactivityPort;
+  platform: Pick<ShellStoreDeps['platform'], 'screenSources'>;
+}) {
   const { reactivity } = deps;
   const { signal, onCleanup } = reactivity;
   /*
@@ -28,7 +31,7 @@ export function createShellPrompts(deps: { reactivity: ReactivityPort; platform?
     take. So an empty list here is the ordinary state, and the prompt is simply never raised.
   */
   const [pendingScreenSources, setPendingScreenSources] = signal<ScreenSource[]>([]);
-  const screens = deps.platform?.screenSources;
+  const screens = deps.platform.screenSources;
   if (screens) {
     const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
     onCleanup(stop);

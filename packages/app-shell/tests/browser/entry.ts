@@ -74,6 +74,7 @@ import { createComponent, createEffect, createSignal, type JSX } from 'solid-js'
 import { createStore } from 'solid-js/store';
 import { insert, render } from 'solid-js/web';
 
+import { createBrowserPlatform } from '../../src/shared/platform/browser';
 import { installLayoutCounter, profile } from './instrument';
 import { operationsHold, operationsInvoke, operationsLand, operationsProbe } from './operationsProbe';
 import { type Scenario, scenarios } from './scenarios';
@@ -1121,7 +1122,11 @@ function dockProbeOpen(id: string): void {
  * `useStore` as the app's components do.
  */
 function withShellStore(build: (shellStore: ShellStore) => JSX.Element): JSX.Element {
-  const shellStore = createShellStore({ reactivity: solidReactivity, host: shellHost });
+  const shellStore = createShellStore({
+    reactivity: solidReactivity,
+    platform: createBrowserPlatform(),
+    host: shellHost,
+  });
   return createComponent(StoreRegistryContext.Provider, {
     value: { shellStore },
     get children() {

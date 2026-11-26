@@ -43,16 +43,19 @@ import { type DockEdge } from '@we/module-shared';
 import { type ReactivityPort } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import type { PlatformPort } from '../../platform/port';
 import { type ShellStore } from '../ShellStore';
 import { type ShellArrangement } from './arrangement';
 import { type ShellDocks } from './docks';
 
 export function createShellDockDrag(deps: {
   reactivity: ReactivityPort;
+  /** The window a drag is followed on once its grip is gone, and the document's drag marks. */
+  platform: Pick<PlatformPort, 'listen' | 'document'>;
   arrangement: ShellArrangement;
   docks: ShellDocks;
 }) {
-  const { reactivity } = deps;
+  const { reactivity, platform } = deps;
   const { memo, effect } = reactivity;
   const { declarationFor, placementKey, placements, raise, writePlacement } = deps.arrangement;
   const {
@@ -190,19 +193,18 @@ export function createShellDockDrag(deps: {
   let pressBreaksOut = false;
   const carryPastTheGrip = (id: string, startX: number, startY: number) => {
     releaseCarry?.();
-    if (typeof window === 'undefined') return;
     const follow = (event: PointerEvent) => members.moveDock(id, event.clientX - startX, event.clientY - startY);
     const land = () => {
       releaseCarry?.();
       if (movingDock() === id) members.endDockMove(id);
     };
-    window.addEventListener('pointermove', follow);
-    window.addEventListener('pointerup', land);
-    window.addEventListener('pointercancel', land);
+    const removals = [
+      platform.listen('pointermove', follow),
+      platform.listen('pointerup', land),
+      platform.listen('pointercancel', land),
+    ];
     releaseCarry = () => {
-      window.removeEventListener('pointermove', follow);
-      window.removeEventListener('pointerup', land);
-      window.removeEventListener('pointercancel', land);
+      for (const remove of removals) remove();
       releaseCarry = null;
     };
   };
@@ -216,8 +218,7 @@ export function createShellDockDrag(deps: {
    * duration it can drop into its own `transition`.
    */
   effect(() => {
-    if (typeof document === 'undefined') return;
-    document.documentElement.style.setProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
+    platform.document.setRootProperty('--we-chrome-transition', dockResizing() ? '0s' : '300ms');
   });
   /**
    * Show where a **tab** would land, and move nothing.
@@ -560,7 +561,7 @@ export function createShellDockDrag(deps: {
         rects, not a record reference on a registered zone — but it is a drag, and the corner grips
         on home sections are hover chrome that must not flicker under a passing panel.
       */
-      if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
+      platform.document.setRootAttribute(DRAGGING_ATTR, '');
       setMovingDock(id);
       setDockResizing(true);
       carryPastTheGrip(id, pointerX, pointerY);
@@ -587,7 +588,7 @@ export function createShellDockDrag(deps: {
         // A tab drag takes exactly one panel out of the seat, so nothing rides along with it — the
         // whole difference between this gesture and the titlebar's.
         setMovingSeat([]);
-        if (typeof document !== 'undefined') document.documentElement.setAttribute(DRAGGING_ATTR, '');
+        platform.document.setRootAttribute(DRAGGING_ATTR, '');
         setMovingDock(id);
         setDockResizing(true);
       }
@@ -844,7 +845,7 @@ export function createShellDockDrag(deps: {
       dragPointer = null;
       releaseCarry?.();
       setDragCarry(null);
-      if (typeof document !== 'undefined') document.documentElement.removeAttribute(DRAGGING_ATTR);
+      platform.document.setRootAttribute(DRAGGING_ATTR, null);
       setMovingDock(null);
       setActiveSnap(null);
       setActiveInsert(null);
