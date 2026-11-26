@@ -205,9 +205,12 @@ export interface PolicyCheckDeps {
  */
 export function createPolicyCheck(deps: PolicyCheckDeps): EntityWriteCheck {
   return async (write: EntityWrite) => {
-    const space = await deps.space(write.dataset);
-    if (!space) return;
     const action = actionOf(write.entity, write.kind, write.relation);
+    // Rules that could not be read judge nothing, so the write waits until they can be.
+    const space = await deps.space(write.dataset).catch(() => {
+      throw new PolicyRefusal({ reason: 'unreadable', action });
+    });
+    if (!space) return;
     const person = await deps.me();
     const request: ActionRequest = { action };
     if (write.kind === 'create') {
