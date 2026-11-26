@@ -24,22 +24,22 @@ named and versioned on their own.
 
 ## Contents
 
-| File                                                        | What it specifies                                                                                                                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [This file](#the-document)                                  | The document, its root keys, conformance classes, terms.                                                                                               |
-| [Nodes](nodes.md)                                           | A node's keys, how its `type` is read, text and expression children, slots, ids, the canonical child positions, `$defs` and `$ref`.                    |
-| [Blocks](blocks.md)                                         | The `$`-types: `$each`, `$if`, `$single`, `$animate`, `$routes`, `$surface`, `$slot`, `$part`, `$panels`, `$agent`.                                    |
-| [Values](values.md)                                         | What a prop holds: literals, the expression token, the query token, handler tokens, how tokens nest; validation rules.                                 |
-| [Expressions](expressions.md)                               | The template expression language: the operations subset plus the template's names, namespaces, call-time roots and host functions.                     |
-| [Queries](query.md)                                         | `$query` and `$queries`: the where-object, `include`, projections, `scope`, `select`, `when`, order and limits, unresolved operands, the absent value. |
-| [Handlers and local state](handlers.md)                     | Event props, `$invoke` and its lifecycle, the local-state verbs, handler-position `$if`, `$localState` with `syncParam` and `persist`.                 |
-| [Routing](routing.md)                                       | `routes`, paths and params, the `$routes` outlet, relative paths.                                                                                      |
-| [Panels](panels.md)                                         | `meta.panels` as a suggestion, the three-rung resolution, home lanes.                                                                                  |
-| [Degradation and versioning](degradation-and-versioning.md) | The format version, how the format and its catalogs evolve, and what a host does with each thing it does not know.                                     |
-| [Safety](safety.md)                                         | Capability grants, gesture-only actions, protected pieces, host-drawn confirmation, element and URL allowlists, and the refusals that pin each.        |
-| [Catalogs](catalogs.md)                                     | The core catalog and extension catalogs, `meta.requires`.                                                                                              |
-| [Conformance](conformance.md)                               | The vector families: their files, how another renderer runs them, how outputs are compared, which are core.                                            |
-| [RDF reading](rdf.md)                                       | The `we:` vocabulary, the JSON-LD context, which triples a template denotes, and the way back.                                                         |
+| File                                                        | What it specifies                                                                                                                                        |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [This file](#the-document)                                  | The document, its root keys, conformance classes, terms.                                                                                                 |
+| [Nodes](nodes.md)                                           | A node's keys, how its `type` is read, text and expression children, slots, ids, the canonical child positions, `$defs` and `$ref`.                      |
+| [Blocks](blocks.md)                                         | The `$`-types: `$each`, `$if`, `$single`, `$animate`, `$routes`, `$surface`, `$slot`, `$part`, `$panels`, `$agent`.                                      |
+| [Values](values.md)                                         | What a prop holds: literals, the expression token, the query token, handler tokens, how tokens nest; validation rules.                                   |
+| [Expressions](expressions.md)                               | The template expression language: the operations subset plus the template's names, namespaces, call-time roots and host functions.                       |
+| [Queries](query.md)                                         | `$query` and `$queries`, and WE's copy of the query semantics by level (core, traversal, aggregates, live, provenance) until a shared query spec exists. |
+| [Handlers and local state](handlers.md)                     | Event props, `$invoke` and its lifecycle, the local-state verbs, handler-position `$if`, `$localState` with `syncParam` and `persist`.                   |
+| [Routing](routing.md)                                       | `routes`, paths and params, the `$routes` outlet, relative paths.                                                                                        |
+| [Panels](panels.md)                                         | `meta.panels` as a suggestion, the three-rung resolution, home lanes.                                                                                    |
+| [Degradation and versioning](degradation-and-versioning.md) | The format version, how the format and its catalogs evolve, and what a host does with each thing it does not know.                                       |
+| [Safety](safety.md)                                         | Capability grants, gesture-only actions, protected pieces, host-drawn confirmation, element and URL allowlists, and the refusals that pin each.          |
+| [Catalogs](catalogs.md)                                     | The core catalog and extension catalogs, `meta.requires`.                                                                                                |
+| [Conformance](conformance.md)                               | The vector families: their files, how another renderer runs them, how outputs are compared, which are core.                                              |
+| [RDF reading](rdf.md)                                       | The `we:` vocabulary, the JSON-LD context, which triples a template denotes, and the way back.                                                           |
 
 ## The document
 

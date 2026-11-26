@@ -27,6 +27,7 @@ never renamed or reused), and `note`, one line saying what it pins.
 | `style.json`          | style          | design-system props and a theme → the style emitted and each token's value                         | core catalog      |
 | `tokens/<theme>.json` | tokens         | a theme → every token's computed value                                                             | core catalog      |
 | `host-functions.json` | host-functions | a host function and its options → value                                                            | WE's host catalog |
+| `query/query.json`    | query          | entity schemas, a dataset and a query → the rows it answers with; after writes, for a live case    | backend           |
 
 ### Values
 
@@ -127,6 +128,21 @@ the style a component's props emit under a theme, and each prop's token and comp
 **host-functions.** `{ id, note, fn, options, result }`: WE's host functions, called with one
 options object. A host that provides WE's host catalog runs them; no other host has to.
 
+**query.** The backend's family, in [`@we/backend-conformance`](../../../packages/backend-system/conformance/src/queryVectors.ts)
+rather than beside the others, and written by hand rather than recorded: it is the
+[query semantics](query.md) as cases. The file is `{ version, invoker, entities, dataset, cases }`:
+self-contained entity schemas, the records to write (each created with its id, then its to-many
+relations set), and the agent that writes them, put wherever a query names it. A case is
+`{ id, level, note, query, expect, pending?, then? }`. `level` is one of `core`, `traversal`,
+`aggregates`, `live`, `provenance`, and the id starts `query.<level>.`; `pending` names an open
+question the case records WE's answer to. Ask `query` as a host asks a template's (with every
+expression already a value) and compare with `expect`: `{ refused: true }`, `{ notAsked: true }`
+(a falsy `when`), `{ count, contains? }`, or `{ rows, ordered?, inOrder? }`, the rows by `id`, as a
+set unless `ordered`, each naming only the fields it checks (`null` for no value; a nested object
+for an included record; a nested list as a set unless its key is in `inOrder`). A live case opens
+the query, compares its first snapshot (flagged initial) with `expect`, makes the writes in
+`then.writes`, and compares the latest snapshot (not initial) with `then.expect`.
+
 ## Render
 
 A case is `{ id, note, template, data?, actions?, gated?, params?, storage?, identities?, start?,
@@ -188,6 +204,7 @@ A **static renderer** compares only the first entry of each case's `expect`.
 | [Renderer](README.md#conformance-classes)        | The format families: `expressions`, `functions`, `paths`, `navigation`, `query-compile`, `render`.             |
 | [Host](README.md#conformance-classes)            | As a renderer, and `safety` and `panels`: the refusals and the panel resolution a host makes.                  |
 | A host providing the core catalog                | Also `style` and `tokens`.                                                                                     |
+| A backend                                        | `query`: the cases of the levels it implements, its known gaps listed and run inverted.                        |
 
 The render family has a case for every block type (`$each`, `$if`, `$single`, `$animate`, `$routes`,
 `$surface`, `$slot`, `$part`, `$panels`, `$agent`, `$ref`) and every handler (`$invoke`,
@@ -198,7 +215,8 @@ is held to a case for every refusal the format names (each version refusal, the 
 `$if` children, a template `$slot`, `$resetLocal`, a token in children, an unknown radius, a missing
 or cyclic `$ref`, `$defs` off the root); the safety family to cases refused and allowed for grants,
 gestures and confirmation, with the renderer's element and URL refusals in `render`; the panels
-family to both questions and every rung.
+family to both questions and every rung; the query family to a case for every key, operator,
+combinator and option [the query semantics](query.md) list.
 
 ## What the vectors do not yet carry
 
@@ -219,4 +237,7 @@ The vectors: [`vectors/`](../../../packages/schema-system/conformance/vectors/).
 Pinned by: [`vectors.test.ts`](../../../packages/schema-system/conformance/tests/vectors.test.ts) and
 [`render.test.tsx`](../../../packages/schema-system/conformance/tests/render.test.tsx) (re-recording
 in memory against the committed files),
-[`coverage.test.ts`](../../../packages/schema-system/conformance/tests/coverage.test.ts).
+[`coverage.test.ts`](../../../packages/schema-system/conformance/tests/coverage.test.ts); the query
+family by [`queryVectors.test.ts`](../../../packages/backend-system/inmemory/tests/queryVectors.test.ts)
+(every case from the file alone, and its coverage of `query.md`) and every backend's conformance
+suite.
