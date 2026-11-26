@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { followRead, type LiveRead } from '../src/shared/graphWatch';
+import { followRead, type LiveRead, readThroughWatch, wholeAnswer } from '../src/shared/graphWatch';
 
 type Row = { id: string };
 type Snapshot = { status: 'ready'; data: { results: Row[] }; initial: boolean };
@@ -120,5 +120,101 @@ describe('followRead', () => {
     await settle();
 
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'refused' }));
+  });
+});
+
+describe('handing the new answer over', () => {
+  it('passes the page a change brought', async () => {
+    const read = liveRead([{ id: 'a' }]);
+    const onChange = vi.fn();
+    followRead(read.subscription, { seen: () => ['a'], onChange, onError: vi.fn() });
+    await read.answer();
+
+    read.change([{ id: 'a' }, { id: 'b' }]);
+
+    expect(onChange).toHaveBeenCalledWith({ results: [{ id: 'a' }, { id: 'b' }] });
+  });
+
+  it('takes a page as the whole answer only when nothing is left out of it', () => {
+    const rows = [{ id: 'a' }, { id: 'b' }];
+    // Uncounted, or counted and all here.
+    expect(wholeAnswer({ results: rows }, undefined)).toBe(rows);
+    expect(wholeAnswer({ results: rows, totalCount: 2 }, undefined)).toBe(rows);
+    // Counted and short: a page of something larger.
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, undefined)).toBeUndefined();
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, 10)).toBeUndefined();
+    // Short of the count, but everything the read asked for.
+    expect(wholeAnswer({ results: rows, totalCount: 5 }, 2)).toBe(rows);
+  });
+});
+
+describe('readThroughWatch', () => {
+  /*
+    A graph used to read with `findAll` and then open a watch on the same question, whose first act
+    on the backend is to run that question again. Reading through the watch asks once.
+  */
+  const options = (overrides: Partial<Parameters<typeof readThroughWatch<Row>>[1]> = {}) => {
+    const reads: { rows: readonly Row[]; through: string }[] = [];
+    const changes: unknown[] = [];
+    const complete = vi.fn(async () => [{ id: 'from-findAll' }]);
+    return {
+      reads,
+      changes,
+      complete,
+      value: {
+        limit: undefined,
+        complete,
+        onRead: (rows: readonly Row[], through: 'watch' | 'read') => reads.push({ rows, through }),
+        seen: () => reads.at(-1)?.rows.map((row) => row.id),
+        onChange: (page: unknown) => changes.push(page),
+        onError: () => undefined,
+        ...overrides,
+      },
+    };
+  };
+
+  it('answers the read from the watch’s first page, without asking again', async () => {
+    const live = liveRead([{ id: 'a' }, { id: 'b' }]);
+    const opts = options();
+    const { rows } = readThroughWatch(live.subscription, opts.value);
+    await live.answer();
+
+    expect(await rows).toEqual([{ id: 'a' }, { id: 'b' }]);
+    expect(opts.complete).not.toHaveBeenCalled();
+    expect(opts.reads.map((read) => read.through)).toEqual(['watch']);
+    // The first page is the read itself, not a change to it.
+    expect(opts.changes).toEqual([]);
+  });
+
+  it('asks the ordinary way when the first page is only part of the answer', async () => {
+    const first = Promise.resolve({ results: [{ id: 'a' }], totalCount: 5 });
+    const subscription: LiveRead<Row> = { first, subscribe: () => () => undefined, dispose: vi.fn() };
+    const opts = options({ limit: 100 });
+
+    expect(await readThroughWatch(subscription, opts.value).rows).toEqual([{ id: 'from-findAll' }]);
+    expect(opts.reads.map((read) => read.through)).toEqual(['read']);
+  });
+
+  it('asks the ordinary way when the watch will not open', async () => {
+    const live = liveRead([]);
+    const opts = options();
+    const { rows } = readThroughWatch(live.subscription, opts.value);
+    live.fail(new Error('refused'));
+
+    expect(await rows).toEqual([{ id: 'from-findAll' }]);
+  });
+
+  it('reports a change after the first page, and stops when told', async () => {
+    const live = liveRead([{ id: 'a' }]);
+    const opts = options();
+    const { rows, stop } = readThroughWatch(live.subscription, opts.value);
+    await live.answer();
+    await rows;
+
+    live.change([{ id: 'a' }, { id: 'c' }]);
+    expect(opts.changes).toEqual([{ results: [{ id: 'a' }, { id: 'c' }] }]);
+
+    stop();
+    expect(live.subscription.dispose).toHaveBeenCalled();
   });
 });
