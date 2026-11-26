@@ -28,13 +28,15 @@
  *
  * These were arrived at four separate times in this repo — a board's arrangements, a card's state, a
  * canvas card's style, an involvement — and each implementation discovered a rule the ones before it
- * lacked. That is what this package is: the union, in one place, so the fifth consumer gets all five
- * instead of rediscovering the last one.
+ * lacked. They live here once, and one consumer applies them to every write: `@we/entities`'
+ * predictions, which hold a declared operation's speculative writes over every read until the real
+ * ones arrive. This package is the three steps (`hold`, `done`, `reconcile`) and nothing else.
  *
  * 1. **Release only on failure.** A write that succeeded is *not* released when its promise
  *    resolves, because that is earlier than the data arriving — the value would go back for the
  *    rest of the round trip, which is the flash again with extra steps. What retires a successful
- *    hold is the data moving, which only whatever *draws* can see.
+ *    hold is the data moving, which only whatever *draws* can see. A write that failed is the
+ *    caller's to withdraw: it drops the hold.
  *
  * 2. **Settle on the data moving, not on it agreeing.** "Hold until it reads as I wrote it" can hang
  *    forever: under a concurrent write the converged answer may never equal it, and a peer can take
@@ -90,8 +92,6 @@
  * read through `include`, while a subscription's trigger did not follow the include tree.
  * `upsertSignal` deleted and re-created a reaction for exactly that reason until it did.)
  */
-import type { ReactivityPort } from '@we/reactivity';
-
 /** One held write, and what the data read as when it was issued. */
 export interface Held<V> {
   /** What to draw until the data catches up. */
@@ -108,7 +108,7 @@ export interface Held<V> {
   writing: number;
 }
 
-/** Everything held, by key. A key is the caller's — see {@link keyOf}. */
+/** Everything held, by key. A key is the caller's: a record's id, an invocation's. */
 export type Holds<V> = Record<string, Held<V>>;
 
 /** How a kind of value is compared, and how long a hold may stand. */
@@ -130,22 +130,6 @@ export interface Rules<V> {
 export const DEFAULT_TTL_MS = 10_000;
 
 /**
- * A key from its parts.
- *
- * Joined on NUL, which cannot appear in an identifier, so a record whose id contains the separator
- * cannot collide with another key. The parts are the caller's business: a board uses record and
- * relation, an involvement uses node, agent and kind.
- */
-export const keyOf = (...parts: string[]): string => parts.join('\u0000');
-
-/** Two lists, compared element by element — the comparator for an ordered relation. */
-export const sameOrder = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((item, index) => item === b[index]);
-
-/** Two values, compared as values — the comparator for a status, a vote, a reaction. */
-export const sameValue = <V>(a: V, b: V): boolean => Object.is(a, b);
-
-/**
  * Note that this key should be drawn as `value` until the data catches up.
  *
  * Counts the write, so pressing the same control three times leaves one hold with three writes
@@ -154,22 +138,6 @@ export const sameValue = <V>(a: V, b: V): boolean => Object.is(a, b);
 export function hold<V>(holds: Holds<V>, key: string, value: V, now = Date.now()): Holds<V> {
   const writing = (holds[key]?.writing ?? 0) + 1;
   return { ...holds, [key]: { value, at: now, writing } };
-}
-
-/**
- * Show a value with no write behind it — a slider reporting while it is being dragged.
- *
- * The distinction rule 4 forces. A hold counts a write it is waiting to hear back from; a preview is
- * waiting for nothing, so counting one would leave the entry permanently exempt from judgement and
- * standing until the backstop. A drag emits continuously, so that is not a corner case: it is every
- * slider in the app holding its last frame for ten seconds after the real write had landed.
- *
- * Keeps whatever is in flight — a preview arriving over a real write does not cancel it — and clears
- * the baseline, since the value being stood in for has changed.
- */
-export function preview<V>(holds: Holds<V>, key: string, value: V, now = Date.now()): Holds<V> {
-  const entry = holds[key];
-  return { ...holds, [key]: { value, at: now, writing: entry?.writing ?? 0 } };
 }
 
 /**
@@ -184,49 +152,6 @@ export function done<V>(holds: Holds<V>, key: string): Holds<V> {
   if (!entry) return holds;
   const writing = Math.max(0, entry.writing - 1);
   return { ...holds, [key]: { ...entry, writing, before: writing ? entry.before : undefined } };
-}
-
-/**
- * A write for this key failed, so what is on screen is a lie.
- *
- * The hold goes with it — unless a later press is still on its way, which is the one it should now
- * be standing in for.
- */
-export function release<V>(holds: Holds<V>, key: string): Holds<V> {
-  const entry = holds[key];
-  if (!entry) return holds;
-  if (entry.writing > 1) return { ...holds, [key]: { ...entry, writing: entry.writing - 1 } };
-  const { [key]: _gone, ...rest } = holds;
-  return rest;
-}
-
-/** Forget one key whatever is in flight — for a caller that knows the hold is meaningless. */
-export function forget<V>(holds: Holds<V>, key: string): Holds<V> {
-  if (!holds[key]) return holds;
-  const { [key]: _gone, ...rest } = holds;
-  return rest;
-}
-
-/**
- * What to draw for this key: the held value, or nothing if the data has overtaken it.
- *
- * `undefined` means "nothing pending here, draw what you were given". The single place the reading
- * rule lives, so a drawer and whatever later drops the entry cannot disagree about whether it still
- * applies.
- */
-export function toDraw<V>(holds: Holds<V>, key: string, observed: V, rules: Rules<V>, now = Date.now()): V | undefined {
-  const entry = holds[key];
-  if (!entry) return undefined;
-  if (now - entry.at > (rules.ttlMs ?? DEFAULT_TTL_MS)) return undefined;
-  // A write is still going, so nothing the data says is about it yet — rule 4.
-  if (entry.writing > 0) return entry.value;
-  // No baseline yet: this is the draw that will set one, and nothing can have answered a write
-  // issued moments ago — rule 3.
-  if (entry.before === undefined) return entry.value;
-  // The data has moved since the write went out, so an answer later than it has arrived — by this
-  // write or by somebody else's. Either way the overlay is spent — rule 2.
-  if (!rules.same(observed, entry.before)) return undefined;
-  return entry.value;
 }
 
 /**
@@ -284,59 +209,4 @@ export function reconcile<V>(
     if (!rules.same(observed, entry.before)) change(key, null);
   }
   return next;
-}
-
-/** What {@link createOptimism} hands back — the holder, with the rules already bound. */
-export interface Optimism<V> {
-  /** Everything held right now. Reading it is what makes a drawer redraw on a press. */
-  holds: () => Holds<V>;
-  /** Note a write going out. */
-  hold: (key: string, value: V) => void;
-  /** Show a value with no write behind it — see {@link preview}. */
-  preview: (key: string, value: V) => void;
-  /** A write returned successfully — see {@link done}. */
-  done: (key: string) => void;
-  /** A write failed — see {@link release}. */
-  release: (key: string) => void;
-  /** Forget one key outright. */
-  forget: (key: string) => void;
-  /** What to draw for this key, given what the data says — see {@link toDraw}. */
-  toDraw: (key: string, observed: V) => V | undefined;
-  /** Report what a draw was made from — see {@link reconcile}. */
-  settle: (observedBy: (key: string, entry: Held<V>) => V | undefined) => void;
-  /** Whether anything is currently drawn ahead of the data. */
-  inFlight: () => boolean;
-  /**
-   * Forget everything.
-   *
-   * For a change of *subject* rather than a change of answer — moving to another space, where what
-   * is held is a promise about records nothing on screen is showing. `settle` cannot do this: it only
-   * releases an entry the data has overtaken, and data nobody is drawing overtakes nothing.
-   */
-  reset: () => void;
-}
-
-/**
- * A holder for one kind of value, over whatever reactivity the caller has.
- *
- * The signal is injected rather than imported so this works in both places it is needed: the host,
- * which has Solid, and a feature module, which is handed `deps.signal` and imports no framework at
- * all. The setter is called with a value, which is all the port's setter takes.
- */
-export function createOptimism<V>(signal: ReactivityPort['signal'], rules: Rules<V>): Optimism<V> {
-  const [holds, setHolds] = signal<Holds<V>>({});
-  const update = (next: (current: Holds<V>) => Holds<V>) => setHolds(next(holds()));
-
-  return {
-    holds,
-    hold: (key, value) => update((current) => hold(current, key, value)),
-    preview: (key, value) => update((current) => preview(current, key, value)),
-    done: (key) => update((current) => done(current, key)),
-    release: (key) => update((current) => release(current, key)),
-    forget: (key) => update((current) => forget(current, key)),
-    toDraw: (key, observed) => toDraw(holds(), key, observed, rules),
-    settle: (observedBy) => update((current) => reconcile(current, observedBy, rules)),
-    inFlight: () => Object.keys(holds()).length > 0,
-    reset: () => setHolds({}),
-  };
 }

@@ -92,7 +92,6 @@ import {
 } from './cull';
 import { createFocusFollow } from './focusFollow';
 import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
-import { patched } from './pending';
 import { isRecordAddress } from './recordAddress';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
@@ -1502,13 +1501,9 @@ export function GraphView(props: GraphViewProps) {
     const held = engine.heldCard();
     // Whether letting go of the held card would change anything — see `getArrangePreview`.
     const heldIdle = held ? engine.getArrangePreview()?.change === false : false;
-    return [...engine.store.nodes()].flatMap((rawNode) => {
-      const at = placed.get(rawNode.id);
+    return [...engine.store.nodes()].flatMap((node) => {
+      const at = placed.get(node.id);
       if (!at) return [];
-      // The overlay comes back out of the engine rather than being applied again here — see the
-      // effect below. Hit-testing and edge routing resolve from the same values, so a card cannot be
-      // drawn at one size and picked at another.
-      const node = patched(rawNode, engine.overlayFor(rawNode.id));
       return [
         {
           node,
@@ -1521,7 +1516,7 @@ export function GraphView(props: GraphViewProps) {
             blend has to happen where that invariant is kept. See `GraphEngine.visualOf`. It also means
             the renderer is no longer the only thing that knows how to read a style rule.
           */
-          visual: engine.visualOf(rawNode),
+          visual: engine.visualOf(node),
           selected: selected.has(node.id),
           // In the hand during a rearranging drag — read onto the row like `selected`, so it repaints.
           held: held === node.id,

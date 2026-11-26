@@ -14,4 +14,3 @@ export type {
   NodeControl,
 } from './GraphView.types';
 export { type Box, type Grip, HANDLES, resizeBox } from './resize';
-export { patched } from './pending';

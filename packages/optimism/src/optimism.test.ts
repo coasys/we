@@ -7,27 +7,19 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import {
-  createOptimism,
-  DEFAULT_TTL_MS,
-  done,
-  hold,
-  type Holds,
-  keyOf,
-  preview,
-  reconcile,
-  release,
-  type Rules,
-  sameOrder,
-  sameValue,
-  toDraw,
-} from './index';
+import { DEFAULT_TTL_MS, done, hold, type Holds, reconcile, type Rules } from './index';
 
-const order: Rules<string[]> = { same: sameOrder };
-const value: Rules<string> = { same: sameValue };
+const order: Rules<string[]> = {
+  same: (a, b) => a.length === b.length && a.every((item, index) => item === b[index]),
+};
+const value: Rules<string> = { same: Object.is };
 
 /** A draw that saw one key read as `observed`, and saw nothing else. */
 const sawOnly = (key: string, observed: unknown) => (k: string) => (k === key ? (observed as never) : undefined);
+
+/** What a draw that saw `observed` for `key` shows: the held value while the hold stands. */
+const drawn = <V>(holds: Holds<V>, key: string, observed: V, rules: Rules<V>) =>
+  reconcile(holds, sawOnly(key, observed), rules)[key]?.value;
 
 describe('rule 1 — a successful write is not released by its own promise', () => {
   it('keeps drawing the held value after the write returns', () => {
@@ -39,13 +31,7 @@ describe('rule 1 — a successful write is not released by its own promise', () 
     let holds = hold<string>({}, 'card', 'doing');
     holds = done(holds, 'card');
     expect(holds.card).toBeTruthy();
-    expect(toDraw(holds, 'card', 'todo', value)).toBe('doing');
-  });
-
-  it('a failed write takes the hold with it', () => {
-    let holds = hold<string>({}, 'card', 'doing');
-    holds = release(holds, 'card');
-    expect(holds.card).toBeUndefined();
+    expect(drawn(holds, 'card', 'todo', value)).toBe('doing');
   });
 });
 
@@ -80,7 +66,7 @@ describe('rule 3 — the baseline is taken at the first draw, never at hold time
     // trip — during which the thing sits unmoved, which is the flash this exists to remove.
     const holds = done(hold<string>({}, 'card', 'doing'), 'card');
     expect(holds.card.before).toBeUndefined();
-    expect(toDraw(holds, 'card', 'todo', value)).toBe('doing');
+    expect(drawn(holds, 'card', 'todo', value)).toBe('doing');
   });
 
   it('takes the baseline from the data the draw was made from', () => {
@@ -88,7 +74,7 @@ describe('rule 3 — the baseline is taken at the first draw, never at hold time
     holds = reconcile(holds, sawOnly('card', 'todo'), value);
     expect(holds.card.before).toBe('todo');
     // Still drawn — the data has not moved off that baseline yet.
-    expect(toDraw(holds, 'card', 'todo', value)).toBe('doing');
+    expect(drawn(holds, 'card', 'todo', value)).toBe('doing');
   });
 });
 
@@ -109,7 +95,7 @@ describe('rule 4 — nothing settles while a write is still going', () => {
     holds = reconcile(holds, sawOnly('tick', 'on'), value);
     // Two still in flight, so the rows say nothing about this hold yet — even rows agreeing with it.
     expect(holds.tick).toBeTruthy();
-    expect(toDraw(holds, 'tick', 'on', value)).toBe('on');
+    expect(drawn(holds, 'tick', 'on', value)).toBe('on');
   });
 
   it('takes a fresh baseline once the last write is back', () => {
@@ -124,14 +110,6 @@ describe('rule 4 — nothing settles while a write is still going', () => {
     holds = done(holds, 'tick');
     expect(holds.tick.before).toBeUndefined();
   });
-
-  it('a failure under a later press leaves the later one standing', () => {
-    let holds = hold<string>({}, 'tick', 'on');
-    holds = hold(holds, 'tick', 'off');
-    holds = release(holds, 'tick');
-    expect(holds.tick?.writing).toBe(1);
-    expect(holds.tick?.value).toBe('off');
-  });
 });
 
 describe('rule 5 — the backstop', () => {
@@ -140,7 +118,7 @@ describe('rule 5 — the backstop', () => {
     // indefinitely and with no error anywhere, is the worst failure available here.
     const at = Date.now() - DEFAULT_TTL_MS - 1;
     const holds: Holds<string> = { card: { value: 'doing', at, writing: 0 } };
-    expect(toDraw(holds, 'card', 'todo', value)).toBeUndefined();
+    expect(drawn(holds, 'card', 'todo', value)).toBeUndefined();
     expect(reconcile(holds, sawOnly('card', 'todo'), value).card).toBeUndefined();
   });
 
@@ -167,86 +145,10 @@ describe('a key that was not drawn', () => {
   });
 });
 
-describe('the comparators', () => {
-  it('compares an order element by element, not as a joined string', () => {
-    // Any separator can appear inside an id, and an AD4M id is a URI — a join is a comparison that
-    // is almost always right, failing only for ids nobody reproduces.
-    expect(sameOrder(['a,b', 'c'], ['a', 'b,c'])).toBe(false);
-    expect(sameOrder(['a', 'b'], ['a', 'b'])).toBe(true);
-    expect(sameOrder(['a'], ['a', 'b'])).toBe(false);
-  });
-
-  it('builds a key that cannot collide', () => {
-    // NUL cannot appear in an identifier, so two different part lists cannot spell one key.
-    expect(keyOf('a.b', 'c')).not.toBe(keyOf('a', 'b.c'));
-  });
-});
-
 describe('identity, so a draw does not re-render the world', () => {
   it('returns the same object when nothing changed', () => {
     const holds = done(hold<string>({}, 'card', 'doing'), 'card');
     const settled = reconcile(holds, () => undefined, value);
     expect(settled).toBe(holds);
-  });
-});
-
-describe('the holder over injected reactivity', () => {
-  it('works with a signal whose setter takes a value, which is what a module is given', () => {
-    // `deps.signal` in the module contract is `(initial) => [get, set]` with a value-only setter —
-    // no updater form — so the holder reads before it writes.
-    let stored: unknown;
-    const signal = (<T>(initial: T): [() => T, (next: T) => void] => {
-      stored = initial;
-      return [() => stored as T, (next: T) => void (stored = next)];
-    }) as <T>(initial: T) => [() => T, (next: T) => void];
-
-    const optimism = createOptimism<string>(signal, value);
-    optimism.hold('poll-1', 'coffee');
-    expect(optimism.inFlight()).toBe(true);
-    expect(optimism.toDraw('poll-1', 'tea')).toBe('coffee');
-
-    optimism.done('poll-1');
-    optimism.settle(sawOnly('poll-1', 'coffee'));
-    expect(optimism.inFlight()).toBe(false);
-    expect(optimism.toDraw('poll-1', 'tea')).toBeUndefined();
-  });
-
-  it('forgets everything on a change of subject', () => {
-    let stored: unknown;
-    const signal = (<T>(initial: T): [() => T, (next: T) => void] => {
-      stored = initial;
-      return [() => stored as T, (next: T) => void (stored = next)];
-    }) as <T>(initial: T) => [() => T, (next: T) => void];
-
-    const optimism = createOptimism<string>(signal, value);
-    optimism.hold('a', 'x');
-    optimism.reset();
-    expect(optimism.inFlight()).toBe(false);
-  });
-});
-
-describe('a preview, which has no write behind it', () => {
-  it('does not count as one, so it can still settle', () => {
-    /*
-      A slider emits continuously as it is dragged. Counted as writes, those holds would leave the
-      entry permanently exempt from judgement — nothing is coming back to decrement them — so every
-      slider in the app would stand on its last frame until the backstop expired, ten seconds after
-      the real write had landed and agreed.
-    */
-    let holds = preview<string>({}, 'card', 'red');
-    holds = preview(holds, 'card', 'amber');
-    expect(holds.card.writing).toBe(0);
-    expect(holds.card.value).toBe('amber');
-
-    holds = reconcile(holds, sawOnly('card', 'amber'), value);
-    expect(holds.card).toBeUndefined();
-  });
-
-  it('does not cancel a real write it arrives over', () => {
-    let holds = hold<string>({}, 'card', 'red');
-    holds = preview(holds, 'card', 'amber');
-    expect(holds.card.writing).toBe(1);
-    // And the baseline goes, because what is being stood in for has changed.
-    expect(holds.card.before).toBeUndefined();
   });
 });
