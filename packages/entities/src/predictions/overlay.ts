@@ -97,7 +97,8 @@ function placesAtTop(write: Extract<PredictedWrite, { kind: 'create' }>, shape: 
   }
 }
 
-function compareBy(order: Record<string, 'asc' | 'desc'>) {
+/** A comparator for rows in a read's `order`, absent values last. */
+export function compareBy(order: Record<string, 'asc' | 'desc'>) {
   return (a: Row, b: Row): number => {
     for (const [key, direction] of Object.entries(order)) {
       const x = a[key];

@@ -5,7 +5,7 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { Space, TaskState } from '@we/entities';
+import { clearPredictions, Space, TaskState } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -19,6 +19,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    // What one test predicted is drawn for a while after it lands; the next test's dataset has the same id.
+    clearPredictions();
   });
 
   interface Built {

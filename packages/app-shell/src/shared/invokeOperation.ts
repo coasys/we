@@ -16,6 +16,9 @@
  *
  * Speculations run one after another per dataset, so each reads the predictions of the ones before
  * it: a second press, made before the first has landed, is predicted from the first one's answer.
+ * Their reads are answered from the rows the host's live reads hold where those are enough
+ * (`@we/entities`' `predictions/held.ts`), so a gesture on something on screen is drawn without
+ * waiting on the backend at all.
  *
  * ## Queued where it says
  *
@@ -58,6 +61,11 @@ export interface InvokeOptions {
    * made (a form planning its blocks). Fresh otherwise.
    */
   invocationId?: string;
+  /**
+   * Work that must be done before the real run and need not be before the prediction is drawn — a
+   * staged suggestion settled so it cannot overwrite the write. Failing, it fails the invocation.
+   */
+  before?: () => Promise<unknown>;
 }
 
 /** The tail of each queue, by dataset and key. */
@@ -104,7 +112,10 @@ export async function invokeOperation(
     }
   });
 
-  const real = () => runOperation(name, args, invocation);
+  const real = async () => {
+    await options.before?.();
+    return runOperation(name, args, invocation);
+  };
   const key = serialKey(name, args);
   try {
     const result = await (key === undefined

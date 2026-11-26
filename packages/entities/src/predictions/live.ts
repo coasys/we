@@ -28,6 +28,7 @@
 import type { LivePage, LiveQuery } from '@we/backend-shared';
 import { DEFAULT_TTL_MS, done, hold, type Holds, reconcile } from '@we/optimism';
 
+import { holdRead } from './held';
 import { applyPrediction, predictionFingerprint, type ReadShape, readShapeOf } from './overlay';
 import { anyPredictions, datasetKey, onPredictionsChange, type Prediction, predictionsFor } from './registry';
 
@@ -37,12 +38,14 @@ const RULES = { same: (a: string, b: string) => a === b, ttlMs: DEFAULT_TTL_MS }
  * A live query with the dataset's predictions laid over its pages.
  *
  * The wrapped handle opens when the underlying one does and fails when it fails; disposing this one
- * disposes it.
+ * disposes it. While somebody follows it, what it shows is held (`held.ts`), so a speculative run
+ * reads it rather than asking the backend; `query` is the options it was asked with.
  */
 export function withPredictedPages<T>(
   live: LiveQuery<LivePage<T>>,
   dataset: unknown,
   shape: ReadShape,
+  query: Record<string, unknown> = {},
 ): LiveQuery<LivePage<T>> {
   const key = datasetKey(dataset);
   let holds: Holds<string> = {};
@@ -136,6 +139,15 @@ export function withPredictedPages<T>(
       onPredictionsChange((changed) => {
         if (changed === key) wake();
       }),
+      holdRead({
+        dataset: key,
+        shape,
+        query,
+        rows: () => {
+          const snapshot = snapshotOf(raw());
+          return snapshot.status === 'ready' ? snapshot.data?.results : undefined;
+        },
+      }),
     ];
   };
 
@@ -202,7 +214,10 @@ export function withPredictions<C extends object>(cls: C, entities: readonly str
         const read = Reflect.get(target, prop) as (this: unknown, ...args: unknown[]) => unknown;
         const answer = read.call(this ?? target, dataset, query, ...rest);
         const shape = () => readShapeOf(entities, query);
-        if (prop === 'query') return isLiveQuery(answer) ? withPredictedPages(answer, dataset, shape()) : answer;
+        if (prop === 'query')
+          return isLiveQuery(answer)
+            ? withPredictedPages(answer, dataset, shape(), (query ?? {}) as Record<string, unknown>)
+            : answer;
         // Nothing pending anywhere is the usual case, and costs one test.
         if (!anyPredictions()) return answer;
         return Promise.resolve(answer).then((found) => {

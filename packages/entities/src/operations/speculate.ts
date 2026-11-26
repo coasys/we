@@ -12,8 +12,14 @@
  * A step's reads see what the real run's would plus what is pending: the predictions of earlier
  * invocations still on their way. Not its own writes, as in the real run (see `run.ts`). So a second
  * press of a control, made before the first has landed, is predicted from the first one's answer.
+ *
+ * And they are answered, where they can be, from the rows this host's live reads already hold
+ * (`predictions/held.ts`) rather than from the backend: a read that waits on a round trip draws the
+ * prediction a round trip after the gesture, which is the delay drawing it exists to remove. Only a
+ * read nothing on screen holds goes to the backend, and then the prediction waits for it.
  */
 import { checkEntityWrite, getEntityForDataset } from '../entityRegistry';
+import { heldAnswer } from '../predictions/held';
 import { withPredictedRows } from '../predictions/live';
 import { readShapeOf } from '../predictions/overlay';
 import type { PredictedWrite } from '../predictions/registry';
@@ -81,8 +87,10 @@ export async function speculateOperation(
 
   const statics = (entity: string, real: Reads) => {
     const findAll = async (ds: unknown, query?: Record<string, unknown>) => {
-      const rows = await real.findAll(ds, query);
-      return withPredictedRows(rows, ds, readShapeOf([entity], query)).map((row) => instance(entity, row, false));
+      // What the screen holds first, predictions in it already; the backend only for what it does not.
+      const held = heldAnswer(entity, ds, query);
+      const rows = held ?? withPredictedRows(await real.findAll(ds, query), ds, readShapeOf([entity], query));
+      return rows.map((row) => instance(entity, row, false));
     };
     const relation = async (kind: 'add' | 'remove', id: string, relation: string) =>
       checkEntityWrite({ dataset, entity, kind, id, relation, record: () => null });

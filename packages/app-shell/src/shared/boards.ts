@@ -30,6 +30,7 @@
  */
 import { CollectionBlock, type DatasetProxy, getEntityForDataset, type TaskBlock } from '@we/entities';
 
+import { heldRecord } from './heldFirst';
 import { invokeOperation } from './invokeOperation';
 import { spliceSubsetOrder } from './shapes/subsetOrder';
 import { readSpaceLandmarks, readSpaceRoot } from './spaceLandmarks';
@@ -116,10 +117,15 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
    * Run one of the board operations as the signed-in agent, in the dataset given — the way the host
    * runs every operation, so what it writes is drawn before it lands.
    */
-  async function run<T>(name: string, args: Record<string, unknown>, p: DatasetProxy): Promise<T> {
+  async function run<T>(
+    name: string,
+    args: Record<string, unknown>,
+    p: DatasetProxy,
+    before?: () => Promise<unknown>,
+  ): Promise<T> {
     const invoker = deps.invoker();
     if (!invoker) throw new Error(`${name}: nobody is signed in`);
-    return (await invokeOperation(name, args, { dataset: p, invoker })) as T;
+    return (await invokeOperation(name, args, { dataset: p, invoker, ...(before ? { before } : {}) })) as T;
   }
 
   /** The states a new board gets a column for: the community's order, each slug once. */
@@ -300,6 +306,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         : shownIds;
     const dropped = Array.isArray(orderedIds) && orderedIds.includes(cardId) ? orderedIds : undefined;
     try {
+      // As the board on screen holds them where it does, so the drop is drawn on the drop.
       const [from, to] = await Promise.all([
         /*
           A `from` that resolves to nothing must not cost the move.
@@ -310,16 +317,24 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           is a hint the board already ignores.
         */
         fromColumnId
-          ? CollectionBlock.findOne(p, { where: { id: fromColumnId } }).catch(() => null)
+          ? heldRecord<CollectionBlock>('CollectionBlock', p, fromColumnId, () =>
+              CollectionBlock.findOne(p, { where: { id: fromColumnId } }).catch(() => null),
+            )
           : Promise.resolve(null),
-        CollectionBlock.findOne(p, { where: { id: toColumnId } }),
+        heldRecord<CollectionBlock>('CollectionBlock', p, toColumnId, () =>
+          CollectionBlock.findOne(p, { where: { id: toColumnId } }),
+        ),
       ]);
       if (!to) return;
-      const task = to.slug ? await taskEntity(p)?.findOne(p, { where: { id: cardId } }) : null;
+      const task = to.slug
+        ? await heldRecord<TaskBlock>('TaskBlock', p, cardId, async () =>
+            taskEntity(p)?.findOne(p, { where: { id: cardId } }),
+          )
+        : null;
       // The drag decides the state; a staged suggestion for it, if there is one, is superseded rather
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
-      // cannot race.
-      if (task && resolveSuggestion) await resolveSuggestion(cardId, 'status');
+      // cannot race — and after the drop is drawn, since nothing on screen waits for it.
+      const settle = task && resolveSuggestion ? () => resolveSuggestion(cardId, 'status') : undefined;
       /*
         Where the space's states run as a workflow, the drop asks rather than writes. Only a move that
         happened goes on to the write below — the arrangement, and `status` as the mirror every other
@@ -327,6 +342,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         Nothing was drawn ahead of it, so there is nothing to take back.
       */
       if (task && to.slug && workflow?.enabled()) {
+        if (settle) await settle();
         const status = (task as { status?: unknown }).status;
         const current = workflow.stateOf(cardId) ?? (typeof status === 'string' ? status : '');
         const outcome = await workflow.move(cardId, current, to.slug);
@@ -350,8 +366,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
           }
           return;
         }
+        await run('core.moveCard', { to: to.id, from: from?.id, card: cardId, ids: dropped }, p);
+        return;
       }
-      await run('core.moveCard', { to: to.id, from: from?.id, card: cardId, ids: dropped }, p);
+      await run('core.moveCard', { to: to.id, from: from?.id, card: cardId, ids: dropped }, p, settle);
     } catch (error) {
       console.error('SpaceStore: could not move that card', error);
       notify('Could not move that card');
