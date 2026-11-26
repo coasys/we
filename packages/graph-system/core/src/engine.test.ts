@@ -395,6 +395,44 @@ describe('refreshing keeps the graph the user is looking at', () => {
     // One in flight plus one pass for everything that arrived while it ran — not three.
     expect(runs).toBe(2);
   });
+
+  it('keeps every node on a refresh past half the budget', async () => {
+    // The nodes a refresh hands back are mostly the ones already held, and those cost no room.
+    const rows = Array.from({ length: 15 }, (_, i) => `seed-${i}`);
+    const seed = mutableSeed(rows);
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { maxNodes: 20 } },
+      registry,
+    );
+    await engine.start();
+    expect(engine.store.nodeCount).toBe(15);
+
+    await engine.refresh();
+    expect(engine.store.nodeCount).toBe(15);
+    expect(engine.getStatus().budgetReached).toBe(false);
+
+    await engine.refresh();
+    expect(engine.store.nodeCount).toBe(15);
+  });
+
+  it('spends what is left of the budget on new rows, and says so when it runs out', async () => {
+    const seed = mutableSeed(Array.from({ length: 15 }, (_, i) => `seed-${i}`));
+    const registry = new PluginRegistry({ seeds: [seed], layouts });
+    const engine = engineWith(
+      { seeds: { source: 'test' }, layout: { type: 'grid' }, expansion: { maxNodes: 20 } },
+      registry,
+    );
+    await engine.start();
+
+    seed.rows = Array.from({ length: 30 }, (_, i) => `seed-${i}`);
+    await engine.refresh();
+
+    expect(engine.store.nodeCount).toBe(20);
+    // The ones held before are still there; the cut fell on the newcomers.
+    for (let i = 0; i < 15; i += 1) expect(engine.store.hasNode(`seed-${i}`)).toBe(true);
+    expect(engine.getStatus().budgetReached).toBe(true);
+  });
 });
 
 /**
@@ -511,6 +549,140 @@ describe('following the data', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('answering from what a watch delivered', () => {
+    /**
+     * Two reads, `Post` and `Note`, each watched. `answers` is what the backend holds; `asked` counts
+     * the reads that reached it; `deliver` is a watch firing, with or without the new rows.
+     */
+    function twoReads() {
+      const answers: Record<string, Record<string, unknown>[]> = {
+        Post: [{ id: 'p1' }],
+        Note: [{ id: 'n1' }],
+      };
+      const asked: string[] = [];
+      const watches = new Map<string, (rows?: readonly Record<string, unknown>[]) => void>();
+      let delay = 0;
+      const context: ExpanderContext = {
+        query: async (request) => {
+          const entity = request.entity as string;
+          asked.push(entity);
+          const rows = [...answers[entity]];
+          if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+          return rows;
+        },
+        defaultDataset: () => 'ds',
+        models: () => [],
+        warn: () => undefined,
+        watch(request, onChange) {
+          watches.set(request.entity as string, onChange);
+          return () => watches.delete(request.entity as string);
+        },
+      };
+      const seed: SeedSource = {
+        id: 'test',
+        async seed(_options, ctx) {
+          const rows = [
+            ...(await ctx.query({ entity: 'Post', dataset: 'ds' })),
+            ...(await ctx.query({ entity: 'Note', dataset: 'ds' })),
+          ];
+          return {
+            nodes: rows.map((row) => ({ id: String(row.id), type: 'record', kind: 'entity' as const })),
+            edges: [],
+          };
+        },
+      };
+      const engine = new GraphEngine({
+        spec: { seeds: { source: 'test' }, layout: { type: 'grid' } },
+        registry: new PluginRegistry({ seeds: [seed], layouts }),
+        context,
+      });
+      const ids = () => [...engine.store.nodes()].map((node) => node.id).sort();
+      return {
+        engine,
+        answers,
+        asked,
+        ids,
+        deliver: (entity: string, rows?: Record<string, unknown>[]) => watches.get(entity)!(rows),
+        slow: (ms: number) => {
+          delay = ms;
+        },
+      };
+    }
+
+    it('draws the rows a watch brought, asking the backend nothing', async () => {
+      vi.useFakeTimers();
+      try {
+        const graph = twoReads();
+        await graph.engine.start();
+        graph.asked.length = 0;
+
+        graph.deliver('Post', [{ id: 'p1' }, { id: 'p2' }]);
+        await vi.advanceTimersByTimeAsync(500);
+
+        // The changed read came with its answer and the other is unchanged since it was fetched.
+        expect(graph.asked).toEqual([]);
+        expect(graph.ids()).toEqual(['n1', 'p1', 'p2']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('asks again for a read whose watch brought no rows', async () => {
+      vi.useFakeTimers();
+      try {
+        const graph = twoReads();
+        await graph.engine.start();
+        graph.asked.length = 0;
+
+        graph.answers.Post = [{ id: 'p1' }, { id: 'p3' }];
+        graph.deliver('Post');
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(graph.asked).toEqual(['Post']);
+        expect(graph.ids()).toEqual(['n1', 'p1', 'p3']);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('asks everything again on a refresh nobody’s watch set off', async () => {
+      const graph = twoReads();
+      await graph.engine.start();
+      graph.asked.length = 0;
+
+      // A host's revision bump says "look again": a watch's rows cannot stand in for that.
+      await graph.engine.refresh();
+
+      expect(graph.asked).toEqual(['Post', 'Note']);
+    });
+
+    it('keeps a newer delivery over a slower read that started before it', async () => {
+      vi.useFakeTimers();
+      try {
+        const graph = twoReads();
+        await graph.engine.start();
+
+        // A reload asks Post again, slowly; while it is out, the watch delivers a newer answer.
+        graph.slow(1000);
+        const reload = graph.engine.refresh();
+        await vi.advanceTimersByTimeAsync(10);
+        graph.deliver('Post', [{ id: 'p1' }, { id: 'p9' }]);
+        await vi.advanceTimersByTimeAsync(5000);
+        await reload;
+        graph.slow(0);
+        graph.asked.length = 0;
+
+        // The read that was out came back with the older answer. The next refresh a watch sets off
+        // must not draw that.
+        graph.deliver('Note', [{ id: 'n1' }]);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(graph.ids()).toContain('p9');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('watches nothing when the template asked for a graph that holds still', async () => {
