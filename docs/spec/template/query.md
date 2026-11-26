@@ -154,6 +154,9 @@ A projection that counts is under [Counts](#counts).
 An included relation is the **record**, not its id: `row.item == x` compares a record with an id
 and never matches. Compare `row.item.id`.
 
+An included to-many relation with no members is an empty list; an included to-one relation with no
+record, and a projection with `limit: 1` that matches none, is no value.
+
 A relation with no declared target (a collection's `children`) is read polymorphically: each member
 as the entity it is, carrying its entity name under `__subjectClass`. Below such a relation only a
 relation with a declared target may be nested.
