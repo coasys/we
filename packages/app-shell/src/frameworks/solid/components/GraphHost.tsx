@@ -37,7 +37,7 @@ import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
-import { followRead, idsOf, readKey } from '../../../shared/graphWatch';
+import { followRead, idsOf, readKey, wholeAnswer } from '../../../shared/graphWatch';
 import {
   actAs,
   actingAs,
@@ -505,6 +505,20 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    */
   const lastReads = new Map<string, string[]>();
 
+  /**
+   * How `query` answers a read: straight from one model, by a reverse lookup, or anchor by anchor.
+   *
+   * One answer for `query` and `watch` both, because `watch` hands its rows to the graph as the
+   * read's answer only on the first path — the other two assemble theirs, and a live query over the
+   * model is not what they return.
+   */
+  function readPath(request: { entity: string | string[]; scope?: ScopeRequest }): 'model' | 'reverse' | 'per-anchor' {
+    const { entity, scope } = request;
+    if (scope?.direction === 'in' && !inboundAsWhere(manifest(), entity, scope)) return 'reverse';
+    if (scope && scope.direction !== 'in' && Array.isArray(scope.anchorId)) return 'per-anchor';
+    return 'model';
+  }
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard, property: PropertyCard },
     // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
@@ -609,11 +623,18 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      * question and that question's answer really had changed — which is what made this look like a
      * board bug rather than a notification one.
      *
-     * So the engine hands over the read it made and this subscribes to exactly that. The rows are
-     * still thrown away; what they are for is the fingerprint, and it now covers the same records
-     * the seed drew. The one exception is the first answer, whose ids are compared with that read's
+     * So the engine hands over the read it made and this subscribes to exactly that, and the rows it
+     * covers are the same records the seed drew. The first answer's ids are compared with that read's
      * — see `followRead`. Cost is one subscription per distinct read — four for a board — each paging
      * exactly what the seed would have fetched anyway.
+     *
+     * ## Handing the new rows over
+     *
+     * The live query has just re-run the read to find it changed, so its rows go to the graph, which
+     * answers the same read from them on the refresh that follows rather than asking again. Only
+     * where they are exactly what `query` below returns: a read that goes straight to one model —
+     * not one `query` assembles by a reverse lookup or by asking anchor by anchor — and a page that is
+     * the whole answer. Otherwise the graph is told only that something changed.
      */
     watch(request, onChange) {
       const model = modelFor(request.entity, request.dataset);
@@ -636,11 +657,15 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
       const key = readKey(request.entity, request.dataset, options);
+      const direct = readPath(request) === 'model';
       return followRead(model.query(handle, options), {
         // The read the seed made just before this watch: a first answer that differs from it is a
         // write that landed between the two, and no callback will ever report it.
         seen: () => lastReads.get(key),
-        onChange,
+        onChange: (page) => {
+          const rows = direct ? wholeAnswer(page, request.limit) : undefined;
+          onChange(rows as readonly Record<string, unknown>[] | undefined);
+        },
         // A type this backend will not subscribe to leaves the graph as loaded rather than
         // taking it down — the same degradation every other read here makes.
         onError: (error) => {
@@ -682,7 +707,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       const handle = datasetStore.currentDataset()?.handle;
       if (!handle) return [];
 
-      if (scope?.direction === 'in' && !inboundAsWhere(manifest(), entity, scope)) {
+      const path = readPath({ entity, scope });
+      if (path === 'reverse' && scope) {
         // The graph collects warnings through its own context; throwing here would take down the
         // whole expansion for a lookup that is legitimately unavailable on some backends.
         const warn = (message: string) => console.warn(`[graph] ${message}`);
@@ -697,7 +723,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         and the answers merged. Nothing in the app asks this today — a forward relation is read with
         `include` — but the read type allows it and a silent empty answer would be the worst reply.
       */
-      if (scope && scope.direction !== 'in' && Array.isArray(scope.anchorId)) {
+      if (path === 'per-anchor' && scope && Array.isArray(scope.anchorId)) {
         const seen = new Set<string>();
         const answers = await Promise.all(
           scope.anchorId.map((anchorId) => host!.query({ ...request, scope: { ...scope, anchorId } })),

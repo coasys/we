@@ -43,6 +43,14 @@ marks — the transcribe pipeline, the notes module — produces a well-formed b
 - **Annotations** are open by `type` and carry data: `link { href }`, `mention { did }`,
   `nodeLink { node }`. A mention is also written as a `we://mention` relation on the root, which is
   where "who is named in this post" is answered — nothing queryable lives only in `marks`.
+- **Some marks are drawn, never stored.** Text another writer left unmarked is marked when it is
+  drawn, and nothing is written back — the stored marks are the writer's, and what the writer
+  marked always wins. Two places do it, both in `shared/`:
+  - `findUrls` / `withFoundLinks` (`links.ts`): bare URLs become links. The composer's typing and
+    paste rules ask the same `findUrls`, so a URL ends in the same place however it arrived.
+  - `markdownToBlocks` (`markdown.ts`): a typed chat line is drawn as the blocks its markdown makes,
+    with no flag saying so (a spoken one is drawn as said). Every stored mark is carried through the
+    parse on the words it was over, so the composer's bold and a bot's mentions both survive it.
 
 ### Where the truth is
 
