@@ -314,7 +314,9 @@ Pinned by: `query.live.*`; the backend conformance suite's live cases.
 _Level: provenance._
 
 Every record carries `author`, the agent that wrote it, and a condition on `author` is a condition
-like any other: `{ "author": { "not": [did] } }` leaves out what one agent wrote.
+like any other: `{ "author": { "not": [did] } }` leaves out what one agent wrote. `author` is the
+record's own, as `id` is, so an entity MUST NOT declare a field of either name: a relation called
+`author` would be read as the writer.
 
 > **Planned.** Conditions on who wrote each statement of a record, and on whether a record's
 > signature is verified, are not in this version.
