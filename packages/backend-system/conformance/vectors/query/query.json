@@ -1,0 +1,3114 @@
+{
+  "version": 1,
+  "invoker": "did:example:invoker",
+  "entities": {
+    "Book": {
+      "properties": {
+        "genre": {
+          "type": "string",
+          "default": ""
+        },
+        "keywords": {
+          "type": "json"
+        },
+        "pages": {
+          "type": "number"
+        },
+        "published": {
+          "type": "string",
+          "default": ""
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {
+        "writtenBy": {
+          "target": "Person",
+          "cardinality": "one"
+        },
+        "reviews": {
+          "target": "Review",
+          "cardinality": "many"
+        }
+      }
+    },
+    "Pamphlet": {
+      "properties": {
+        "pages": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {}
+    },
+    "Person": {
+      "properties": {
+        "age": {
+          "type": "number"
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {}
+    },
+    "Review": {
+      "properties": {
+        "stars": {
+          "type": "number"
+        },
+        "text": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {
+        "book": {
+          "target": "Book",
+          "cardinality": "one",
+          "reverseOf": "reviews"
+        }
+      }
+    },
+    "Section": {
+      "properties": {
+        "rank": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {
+        "parent": {
+          "target": "Section",
+          "cardinality": "one",
+          "reverseOf": "subsections"
+        },
+        "subsections": {
+          "target": "Section",
+          "cardinality": "many"
+        }
+      }
+    },
+    "Shelf": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "relations": {
+        "featured": {
+          "target": "Book",
+          "cardinality": "one"
+        },
+        "items": {
+          "target": "",
+          "cardinality": "many",
+          "ordered": true
+        }
+      }
+    }
+  },
+  "dataset": [
+    {
+      "entity": "Person",
+      "id": "urn:example:ann",
+      "fields": {
+        "name": "Ann",
+        "age": 34
+      }
+    },
+    {
+      "entity": "Person",
+      "id": "urn:example:bob",
+      "fields": {
+        "name": "Bob",
+        "age": 51
+      }
+    },
+    {
+      "entity": "Person",
+      "id": "urn:example:abe",
+      "fields": {
+        "name": "abe"
+      }
+    },
+    {
+      "entity": "Review",
+      "id": "urn:example:r1",
+      "fields": {
+        "stars": 5,
+        "text": "A classic"
+      }
+    },
+    {
+      "entity": "Review",
+      "id": "urn:example:r2",
+      "fields": {
+        "stars": 2,
+        "text": "Too long"
+      }
+    },
+    {
+      "entity": "Review",
+      "id": "urn:example:r3",
+      "fields": {
+        "stars": 4,
+        "text": "Great world"
+      }
+    },
+    {
+      "entity": "Review",
+      "id": "urn:example:r4",
+      "fields": {
+        "stars": 3,
+        "text": "Witty"
+      }
+    },
+    {
+      "entity": "Book",
+      "id": "urn:example:dune",
+      "fields": {
+        "title": "Dune",
+        "genre": "scifi",
+        "pages": 412,
+        "published": "1965-08-01",
+        "keywords": ["desert", "spice"],
+        "writtenBy": "urn:example:ann"
+      },
+      "relations": {
+        "reviews": ["urn:example:r1", "urn:example:r2", "urn:example:r3"]
+      }
+    },
+    {
+      "entity": "Book",
+      "id": "urn:example:emma",
+      "fields": {
+        "title": "Emma",
+        "genre": "classic",
+        "pages": 474,
+        "published": "1815-12-23",
+        "writtenBy": "urn:example:bob"
+      },
+      "relations": {
+        "reviews": ["urn:example:r4"]
+      }
+    },
+    {
+      "entity": "Book",
+      "id": "urn:example:found",
+      "fields": {
+        "title": "Foundation",
+        "genre": "scifi",
+        "pages": 255,
+        "published": "1951-06-01",
+        "writtenBy": "urn:example:abe"
+      }
+    },
+    {
+      "entity": "Book",
+      "id": "urn:example:zero",
+      "fields": {
+        "title": "Zero",
+        "genre": "poetry",
+        "pages": 0,
+        "published": "2001-01-01"
+      }
+    },
+    {
+      "entity": "Book",
+      "id": "urn:example:draft",
+      "fields": {
+        "title": "Untitled draft",
+        "genre": "",
+        "pages": 12
+      }
+    },
+    {
+      "entity": "Pamphlet",
+      "id": "urn:example:dune-notes",
+      "fields": {
+        "title": "Dune notes",
+        "pages": 8
+      }
+    },
+    {
+      "entity": "Pamphlet",
+      "id": "urn:example:tides",
+      "fields": {
+        "title": "Tide tables",
+        "pages": 30
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:a1x",
+      "fields": {
+        "title": "a1x",
+        "rank": 1
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:a2",
+      "fields": {
+        "title": "a2",
+        "rank": 2
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:a1",
+      "fields": {
+        "title": "a1",
+        "rank": 1
+      },
+      "relations": {
+        "subsections": ["urn:example:a1x"]
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:b1",
+      "fields": {
+        "title": "b1",
+        "rank": 1
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:c",
+      "fields": {
+        "title": "c",
+        "rank": 3
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:b",
+      "fields": {
+        "title": "b",
+        "rank": 2
+      },
+      "relations": {
+        "subsections": ["urn:example:b1"]
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:a",
+      "fields": {
+        "title": "a",
+        "rank": 1
+      },
+      "relations": {
+        "subsections": ["urn:example:a2", "urn:example:a1"]
+      }
+    },
+    {
+      "entity": "Section",
+      "id": "urn:example:root",
+      "fields": {
+        "title": "root",
+        "rank": 0
+      },
+      "relations": {
+        "subsections": ["urn:example:c", "urn:example:b", "urn:example:a"]
+      }
+    },
+    {
+      "entity": "Shelf",
+      "id": "urn:example:home",
+      "fields": {
+        "name": "Home",
+        "featured": "urn:example:dune"
+      },
+      "relations": {
+        "items": ["urn:example:emma", "urn:example:dune-notes", "urn:example:dune"]
+      }
+    },
+    {
+      "entity": "Shelf",
+      "id": "urn:example:work",
+      "fields": {
+        "name": "Work"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "query.core.where-equal",
+      "level": "core",
+      "note": "a scalar condition is strict equality",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-equal-number",
+      "level": "core",
+      "note": "a number condition matches the number",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": 412
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-zero-is-a-value",
+      "level": "core",
+      "note": "0 is a value, not the absent value",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": 0
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:zero"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-implicit-and",
+      "level": "core",
+      "note": "sibling keys must all hold",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi",
+          "pages": {
+            "lt": 300
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-list",
+      "level": "core",
+      "note": "a bare list matches any of its values",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": ["scifi", "classic"]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-list-empty",
+      "level": "core",
+      "note": "an empty list matches nothing",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": []
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.core.where-list-of-ids",
+      "level": "core",
+      "note": "a list of ids fetches a known set; an id no record has is no row",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": ["urn:example:dune", "urn:example:emma", "urn:example:missing"]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-not",
+      "level": "core",
+      "note": "not excludes a value and never matches a record with no value",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "age": {
+            "not": 34
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:bob"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-not-list",
+      "level": "core",
+      "note": "not with a list excludes every value in it",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": {
+            "not": ["scifi", "poetry"]
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-contains",
+      "level": "core",
+      "note": "contains ignores case",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "title": {
+            "contains": "DUN"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-contains-empty-text",
+      "level": "core",
+      "note": "an empty needle matches every value but never the absent value",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "published": {
+            "contains": ""
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:zero"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-starts-with",
+      "level": "core",
+      "note": "startsWith matches a prefix",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "title": {
+            "startsWith": "Em"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-starts-with-case",
+      "level": "core",
+      "note": "startsWith compares case-sensitively",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "title": {
+            "startsWith": "em"
+          }
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.core.where-ends-with",
+      "level": "core",
+      "note": "endsWith matches a suffix, case-sensitively",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "title": {
+            "endsWith": "tion"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-number",
+      "level": "core",
+      "note": "several bounds on one field are one range",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": {
+            "gte": 255,
+            "lt": 474
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-gt",
+      "level": "core",
+      "note": "gt is strict",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": {
+            "gt": 412
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-lte",
+      "level": "core",
+      "note": "lte includes the bound",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": {
+            "lte": 12
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:draft"
+          },
+          {
+            "id": "urn:example:zero"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-absent",
+      "level": "core",
+      "note": "a range never matches a record with no value",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "age": {
+            "lt": 100
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:ann"
+          },
+          {
+            "id": "urn:example:bob"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-text",
+      "level": "core",
+      "note": "text bounds compare text by code unit, so ISO dates order in time",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "published": {
+            "gte": "1900-01-01",
+            "lt": "1960"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-range-mixed",
+      "level": "core",
+      "note": "a text bound against a number field never matches",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": {
+            "gt": "100"
+          }
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.core.where-exists-false",
+      "level": "core",
+      "note": "exists false matches a field never written",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "age": {
+            "exists": false
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:abe"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-exists-true",
+      "level": "core",
+      "note": "exists true matches a field holding a value",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "age": {
+            "exists": true
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:ann"
+          },
+          {
+            "id": "urn:example:bob"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-absent-explicitly",
+      "level": "core",
+      "note": "the way to include the absent value is OR with exists false",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "OR": [
+            {
+              "age": {
+                "not": 34
+              }
+            },
+            {
+              "age": {
+                "exists": false
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:bob"
+          },
+          {
+            "id": "urn:example:abe"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-operator-order",
+      "level": "core",
+      "note": "a condition is read by its first operator: a range bound before not",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "pages": {
+            "not": 474,
+            "gt": 300
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-or",
+      "level": "core",
+      "note": "OR holds when one branch does",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "OR": [
+            {
+              "genre": "classic"
+            },
+            {
+              "pages": {
+                "lt": 20
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:draft"
+          },
+          {
+            "id": "urn:example:zero"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-and",
+      "level": "core",
+      "note": "AND holds when every branch does",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "AND": [
+            {
+              "genre": "scifi"
+            },
+            {
+              "pages": {
+                "gt": 300
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-not-combinator",
+      "level": "core",
+      "note": "NOT negates its clause, so it matches a record with no value",
+      "query": {
+        "entity": "Person",
+        "where": {
+          "NOT": {
+            "age": 34
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:bob"
+          },
+          {
+            "id": "urn:example:abe"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-and-empty",
+      "level": "core",
+      "note": "an empty AND always holds",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "AND": []
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-or-empty",
+      "level": "core",
+      "note": "an empty OR never holds",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "OR": []
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.core.where-some",
+      "level": "core",
+      "note": "some holds when a member matches",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "reviews": {
+            "some": {
+              "stars": {
+                "gte": 5
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-some-any",
+      "level": "core",
+      "note": "some with an empty clause is 'has at least one'",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "reviews": {
+            "some": {}
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-none",
+      "level": "core",
+      "note": "none holds when no member matches",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "reviews": {
+            "none": {
+              "stars": {
+                "lt": 3
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-none-any",
+      "level": "core",
+      "note": "none with an empty clause is 'has none at all'",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "reviews": {
+            "none": {}
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-some-to-one",
+      "level": "core",
+      "note": "a quantifier reads a to-one relation as a list of at most one",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "writtenBy": {
+            "some": {
+              "name": "Ann"
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-some-nested",
+      "level": "core",
+      "note": "quantifiers nest",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "featured": {
+            "some": {
+              "reviews": {
+                "some": {
+                  "stars": 5
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.where-cleared-equal-empty",
+      "level": "core",
+      "note": "a field cleared with '' is matched by no equality, '' included",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": ""
+        }
+      },
+      "expect": {
+        "rows": []
+      },
+      "pending": "clearing rule: whether '' and null are values or the absent value (WE reads both as absent)"
+    },
+    {
+      "id": "query.core.where-cleared-not",
+      "level": "core",
+      "note": "not never matches a field cleared with ''",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": {
+            "not": "scifi"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:zero"
+          }
+        ]
+      },
+      "pending": "clearing rule: whether '' and null are values or the absent value (WE reads both as absent)"
+    },
+    {
+      "id": "query.core.where-cleared-exists-false",
+      "level": "core",
+      "note": "a field cleared with '' has no value",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": {
+            "exists": false
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:draft"
+          }
+        ]
+      },
+      "pending": "clearing rule: whether '' and null are values or the absent value (WE reads both as absent)"
+    },
+    {
+      "id": "query.core.where-list-valued-equal",
+      "level": "core",
+      "note": "a list held in one field is one value: equality with a member does not match it",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "keywords": "desert"
+        }
+      },
+      "expect": {
+        "rows": []
+      },
+      "pending": "multi-valued scalars: whether a property may hold several values, and what a comparison means against one that does (WE holds one value, a list being one json value)"
+    },
+    {
+      "id": "query.core.order-number",
+      "level": "core",
+      "note": "a single key orders the whole result, with or without a limit",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "pages": "asc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.order-text-code-point",
+      "level": "core",
+      "note": "text orders by code unit: capitals before small letters",
+      "query": {
+        "entity": "Person",
+        "order": {
+          "name": "asc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:ann"
+          },
+          {
+            "id": "urn:example:bob"
+          },
+          {
+            "id": "urn:example:abe"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.order-absent-last-asc",
+      "level": "core",
+      "note": "a record with no value for the key comes last ascending",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "published": "asc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.order-absent-last-desc",
+      "level": "core",
+      "note": "a record with no value for the key comes last descending too",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "published": "desc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.order-related-field",
+      "level": "core",
+      "note": "a dotted key orders by a field of a related record, with a limit",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "writtenBy": {
+            "some": {}
+          }
+        },
+        "order": {
+          "writtenBy.name": "desc"
+        },
+        "limit": 10
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:dune"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.order-several-keys",
+      "level": "core",
+      "note": "several keys apply in the order written",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "genre": "asc",
+          "pages": "desc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.limit",
+      "level": "core",
+      "note": "limit keeps the first rows of the order",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "pages": "desc"
+        },
+        "limit": 2
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:dune"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.limit-offset",
+      "level": "core",
+      "note": "offset skips rows before the limit",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "pages": "asc"
+        },
+        "limit": 2,
+        "offset": 2
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:dune"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.limit-past-the-end",
+      "level": "core",
+      "note": "a limit larger than the result keeps every row",
+      "query": {
+        "entity": "Book",
+        "limit": 100
+      },
+      "expect": {
+        "count": 5
+      }
+    },
+    {
+      "id": "query.core.offset-without-limit",
+      "level": "core",
+      "note": "an offset without a limit is refused",
+      "query": {
+        "entity": "Book",
+        "order": {
+          "pages": "asc"
+        },
+        "offset": 1
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "id": "query.core.include-to-one",
+      "level": "core",
+      "note": "an included to-one relation is the record",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "writtenBy": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "writtenBy": {
+              "id": "urn:example:ann",
+              "name": "Ann"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-to-one-none",
+      "level": "core",
+      "note": "an included to-one relation with no record is no value",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:draft"
+        },
+        "include": {
+          "writtenBy": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:draft",
+            "writtenBy": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-to-many",
+      "level": "core",
+      "note": "an included to-many relation is the list of records",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "reviews": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "reviews": [
+              {
+                "id": "urn:example:r1",
+                "stars": 5
+              },
+              {
+                "id": "urn:example:r2",
+                "stars": 2
+              },
+              {
+                "id": "urn:example:r3",
+                "stars": 4
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-to-many-empty",
+      "level": "core",
+      "note": "an included to-many relation with no members is an empty list",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:found"
+        },
+        "include": {
+          "reviews": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:found",
+            "reviews": []
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-filtered-ordered",
+      "level": "core",
+      "note": "an included relation takes where and order",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "reviews": {
+            "where": {
+              "stars": {
+                "gte": 3
+              }
+            },
+            "order": {
+              "stars": "asc"
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "reviews": [
+              {
+                "id": "urn:example:r3"
+              },
+              {
+                "id": "urn:example:r1"
+              }
+            ]
+          }
+        ],
+        "inOrder": ["reviews"]
+      }
+    },
+    {
+      "id": "query.core.include-limited",
+      "level": "core",
+      "note": "an included relation takes a limit after its order",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "reviews": {
+            "order": {
+              "stars": "desc"
+            },
+            "limit": 1
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "reviews": [
+              {
+                "id": "urn:example:r1"
+              }
+            ]
+          }
+        ],
+        "inOrder": ["reviews"]
+      }
+    },
+    {
+      "id": "query.core.include-select",
+      "level": "core",
+      "note": "an included relation takes select",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "reviews": {
+            "select": ["stars"]
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "reviews": [
+              {
+                "id": "urn:example:r1",
+                "stars": 5,
+                "text": null
+              },
+              {
+                "id": "urn:example:r2",
+                "stars": 2,
+                "text": null
+              },
+              {
+                "id": "urn:example:r3",
+                "stars": 4,
+                "text": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-nested",
+      "level": "core",
+      "note": "includes nest",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "id": "urn:example:home"
+        },
+        "include": {
+          "featured": {
+            "include": {
+              "writtenBy": true
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home",
+            "featured": {
+              "id": "urn:example:dune",
+              "writtenBy": {
+                "id": "urn:example:ann",
+                "name": "Ann"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-reverse",
+      "level": "core",
+      "note": "a reverse relation includes the record pointing at this one",
+      "query": {
+        "entity": "Review",
+        "where": {
+          "id": "urn:example:r4"
+        },
+        "include": {
+          "book": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:r4",
+            "book": {
+              "id": "urn:example:emma"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.include-untyped",
+      "level": "core",
+      "note": "an untyped relation reads each member as its own entity, in stored order",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "id": "urn:example:home"
+        },
+        "include": {
+          "items": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home",
+            "items": [
+              {
+                "id": "urn:example:emma",
+                "__subjectClass": "Book",
+                "title": "Emma"
+              },
+              {
+                "id": "urn:example:dune-notes",
+                "__subjectClass": "Pamphlet",
+                "title": "Dune notes"
+              },
+              {
+                "id": "urn:example:dune",
+                "__subjectClass": "Book",
+                "title": "Dune"
+              }
+            ]
+          }
+        ],
+        "inOrder": ["items"]
+      }
+    },
+    {
+      "id": "query.core.include-below-untyped",
+      "level": "core",
+      "note": "below an untyped relation a typed one nests; a member without it has none",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "id": "urn:example:home"
+        },
+        "include": {
+          "items": {
+            "include": {
+              "writtenBy": true
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home",
+            "items": [
+              {
+                "id": "urn:example:emma",
+                "writtenBy": {
+                  "id": "urn:example:bob"
+                }
+              },
+              {
+                "id": "urn:example:dune-notes",
+                "writtenBy": null
+              },
+              {
+                "id": "urn:example:dune",
+                "writtenBy": {
+                  "id": "urn:example:ann"
+                }
+              }
+            ]
+          }
+        ],
+        "inOrder": ["items"]
+      }
+    },
+    {
+      "id": "query.core.projection-first",
+      "level": "core",
+      "note": "a projection with limit 1 is the first matching record or no value, and takes an order",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": ["urn:example:dune", "urn:example:found"]
+        },
+        "include": {
+          "$best": {
+            "from": "reviews",
+            "order": {
+              "stars": "desc"
+            },
+            "limit": 1
+          },
+          "$worst": {
+            "from": "reviews",
+            "order": {
+              "stars": "asc"
+            },
+            "limit": 1
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$best": {
+              "id": "urn:example:r1"
+            },
+            "$worst": {
+              "id": "urn:example:r2"
+            }
+          },
+          {
+            "id": "urn:example:found",
+            "$best": null,
+            "$worst": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.projection-list",
+      "level": "core",
+      "note": "a projection without limit 1 is the list of matching records",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": ["urn:example:dune", "urn:example:emma"]
+        },
+        "include": {
+          "$low": {
+            "from": "reviews",
+            "where": {
+              "stars": {
+                "lt": 4
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$low": [
+              {
+                "id": "urn:example:r2"
+              }
+            ]
+          },
+          {
+            "id": "urn:example:emma",
+            "$low": [
+              {
+                "id": "urn:example:r4"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.select",
+      "level": "core",
+      "note": "select names the fields a row carries; a field left out reads as no value",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "select": ["title"]
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "title": "Dune",
+            "genre": null,
+            "pages": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.select-relations",
+      "level": "core",
+      "note": "select carries relations as their members' ids",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "select": ["title", "writtenBy", "reviews"]
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "title": "Dune",
+            "writtenBy": "urn:example:ann",
+            "reviews": ["urn:example:r1", "urn:example:r2", "urn:example:r3"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.entities-list",
+      "level": "core",
+      "note": "a list of entities answers with one list, each row naming its entity",
+      "query": {
+        "entity": ["Book", "Pamphlet"],
+        "where": {
+          "title": {
+            "contains": "dune"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "__subjectClass": "Book"
+          },
+          {
+            "id": "urn:example:dune-notes",
+            "__subjectClass": "Pamphlet"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.core.entities-order-limit",
+      "level": "core",
+      "note": "order and limit apply to the whole list",
+      "query": {
+        "entity": ["Book", "Pamphlet"],
+        "order": {
+          "pages": "asc"
+        },
+        "limit": 3
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:dune-notes"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.core.entities-empty",
+      "level": "core",
+      "note": "an empty list of entities is an answer with no rows",
+      "query": {
+        "entity": []
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.core.entities-offset",
+      "level": "core",
+      "note": "an offset over several entities is refused",
+      "query": {
+        "entity": ["Book", "Pamphlet"],
+        "order": {
+          "pages": "asc"
+        },
+        "limit": 2,
+        "offset": 1
+      },
+      "expect": {
+        "refused": true
+      }
+    },
+    {
+      "id": "query.core.entities-listed-once",
+      "level": "core",
+      "note": "a record is listed once, under the first entity in the list that answers with it",
+      "query": {
+        "entity": ["Pamphlet", "Book"],
+        "where": {
+          "title": {
+            "contains": "dune"
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "__subjectClass": "Book"
+          },
+          {
+            "id": "urn:example:dune-notes",
+            "__subjectClass": "Pamphlet"
+          }
+        ]
+      },
+      "pending": "union de-duplication: which entity a record two entities both answer with is listed under (WE lists it once, under the first entity in the list). The file's schemas give no record two entities, so this checks only that each record is listed once"
+    },
+    {
+      "id": "query.core.when-false",
+      "level": "core",
+      "note": "a falsy when is a query not asked: no rows, not loaded",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        },
+        "when": false
+      },
+      "expect": {
+        "notAsked": true
+      }
+    },
+    {
+      "id": "query.core.when-true",
+      "level": "core",
+      "note": "a truthy when asks the query",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        },
+        "when": true
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope",
+      "level": "traversal",
+      "note": "a scope reads the records an anchor's relation holds, not the anchor",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          },
+          {
+            "id": "urn:example:c"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-anchor-list",
+      "level": "traversal",
+      "note": "a list of anchors asks the same question of each",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": ["urn:example:a", "urn:example:b"]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a1"
+          },
+          {
+            "id": "urn:example:a2"
+          },
+          {
+            "id": "urn:example:b1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-anchor-list-empty",
+      "level": "traversal",
+      "note": "an empty list of anchors is still anchored, and answers with nothing",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": []
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    },
+    {
+      "id": "query.traversal.scope-transitive",
+      "level": "traversal",
+      "note": "transitive reaches every record at any depth",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root",
+          "transitive": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          },
+          {
+            "id": "urn:example:c"
+          },
+          {
+            "id": "urn:example:a1"
+          },
+          {
+            "id": "urn:example:a2"
+          },
+          {
+            "id": "urn:example:a1x"
+          },
+          {
+            "id": "urn:example:b1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-levels",
+      "level": "traversal",
+      "note": "levels walks depth by depth and stops after the last",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root",
+          "levels": [10, 10]
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          },
+          {
+            "id": "urn:example:c"
+          },
+          {
+            "id": "urn:example:a1"
+          },
+          {
+            "id": "urn:example:a2"
+          },
+          {
+            "id": "urn:example:b1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-levels-bounded",
+      "level": "traversal",
+      "note": "levels keeps at most that many per record at each depth, order deciding",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root",
+          "levels": [2, 1]
+        },
+        "order": {
+          "rank": "asc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          },
+          {
+            "id": "urn:example:a1"
+          },
+          {
+            "id": "urn:example:b1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-levels-bounded-count",
+      "level": "traversal",
+      "note": "without an order a bounded walk keeps that many, whichever they are",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root",
+          "levels": [10, 1]
+        }
+      },
+      "expect": {
+        "count": 5,
+        "contains": ["urn:example:a", "urn:example:b", "urn:example:c", "urn:example:b1"]
+      }
+    },
+    {
+      "id": "query.traversal.scope-limit-per-anchor",
+      "level": "traversal",
+      "note": "limitPerAnchor keeps at most that many per anchor, order deciding",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": ["urn:example:root", "urn:example:a"],
+          "limitPerAnchor": 1
+        },
+        "order": {
+          "rank": "asc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:a1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-direction-in",
+      "level": "traversal",
+      "note": "direction in reads the records whose relation holds the anchor",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:a1",
+          "direction": "in"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-direction-in-list",
+      "level": "traversal",
+      "note": "direction in takes a list of anchors",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": ["urn:example:a1", "urn:example:b1"],
+          "direction": "in"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-where",
+      "level": "traversal",
+      "note": "where narrows a walked result",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:root",
+          "transitive": true
+        },
+        "where": {
+          "rank": {
+            "lte": 1
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:a1"
+          },
+          {
+            "id": "urn:example:a1x"
+          },
+          {
+            "id": "urn:example:b1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-flat-rebuild",
+      "level": "traversal",
+      "note": "a walked result is flat; including the inverse relation says where each row sits",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:a",
+          "transitive": true
+        },
+        "include": {
+          "parent": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a1",
+            "parent": {
+              "id": "urn:example:a"
+            }
+          },
+          {
+            "id": "urn:example:a2",
+            "parent": {
+              "id": "urn:example:a"
+            }
+          },
+          {
+            "id": "urn:example:a1x",
+            "parent": {
+              "id": "urn:example:a1"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-without-anchor",
+      "level": "traversal",
+      "note": "a scope that does not name the anchors' entity reads the relation of that name which holds this entity",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "via": "subsections",
+          "anchorId": "urn:example:root"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:a"
+          },
+          {
+            "id": "urn:example:b"
+          },
+          {
+            "id": "urn:example:c"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.traversal.scope-untyped",
+      "level": "traversal",
+      "note": "a scope along an untyped relation reads only the query's entity",
+      "query": {
+        "entity": "Book",
+        "scope": {
+          "anchor": "Shelf",
+          "via": "items",
+          "anchorId": "urn:example:home"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:dune"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.aggregates.count",
+      "level": "aggregates",
+      "note": "a count projection is how many records the relation holds",
+      "query": {
+        "entity": "Book",
+        "include": {
+          "$reviews": {
+            "from": "reviews",
+            "count": true
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$reviews": 3
+          },
+          {
+            "id": "urn:example:emma",
+            "$reviews": 1
+          },
+          {
+            "id": "urn:example:found",
+            "$reviews": 0
+          },
+          {
+            "id": "urn:example:zero",
+            "$reviews": 0
+          },
+          {
+            "id": "urn:example:draft",
+            "$reviews": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.aggregates.count-where",
+      "level": "aggregates",
+      "note": "a count takes a where",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": ["urn:example:dune", "urn:example:emma"]
+        },
+        "include": {
+          "$good": {
+            "from": "reviews",
+            "count": true,
+            "where": {
+              "stars": {
+                "gte": 4
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$good": 2
+          },
+          {
+            "id": "urn:example:emma",
+            "$good": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.aggregates.count-transitive",
+      "level": "aggregates",
+      "note": "a transitive count counts at any depth along the relation",
+      "query": {
+        "entity": "Section",
+        "where": {
+          "id": ["urn:example:root", "urn:example:a", "urn:example:c"]
+        },
+        "include": {
+          "$below": {
+            "from": "subsections",
+            "count": true,
+            "transitive": true
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:root",
+            "$below": 7
+          },
+          {
+            "id": "urn:example:a",
+            "$below": 3
+          },
+          {
+            "id": "urn:example:c",
+            "$below": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.aggregates.count-below-untyped",
+      "level": "aggregates",
+      "note": "below an untyped relation each member counts for its own entity; one without the relation carries none",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "id": "urn:example:home"
+        },
+        "include": {
+          "items": {
+            "include": {
+              "$reviews": {
+                "from": "reviews",
+                "count": true
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home",
+            "items": [
+              {
+                "id": "urn:example:emma",
+                "$reviews": 1
+              },
+              {
+                "id": "urn:example:dune-notes",
+                "$reviews": null
+              },
+              {
+                "id": "urn:example:dune",
+                "$reviews": 3
+              }
+            ]
+          }
+        ],
+        "inOrder": ["items"]
+      }
+    },
+    {
+      "id": "query.aggregates.order-by-count",
+      "level": "aggregates",
+      "note": "order may name a count projection, with a limit",
+      "query": {
+        "entity": "Book",
+        "include": {
+          "$reviews": {
+            "from": "reviews",
+            "count": true
+          }
+        },
+        "order": {
+          "$reviews": "desc"
+        },
+        "limit": 2
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$reviews": 3
+          },
+          {
+            "id": "urn:example:emma",
+            "$reviews": 1
+          }
+        ],
+        "ordered": true
+      }
+    },
+    {
+      "id": "query.aggregates.order-by-count-no-limit",
+      "level": "aggregates",
+      "note": "without a limit a host may ignore an order by a projection; the rows are the same",
+      "query": {
+        "entity": "Book",
+        "include": {
+          "$reviews": {
+            "from": "reviews",
+            "count": true
+          }
+        },
+        "order": {
+          "$reviews": "desc"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "$reviews": 3
+          },
+          {
+            "id": "urn:example:emma",
+            "$reviews": 1
+          },
+          {
+            "id": "urn:example:found",
+            "$reviews": 0
+          },
+          {
+            "id": "urn:example:zero",
+            "$reviews": 0
+          },
+          {
+            "id": "urn:example:draft",
+            "$reviews": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.aggregates.count-in-include",
+      "level": "aggregates",
+      "note": "a count rides on each included record",
+      "query": {
+        "entity": "Shelf",
+        "where": {
+          "id": "urn:example:home"
+        },
+        "include": {
+          "featured": {
+            "include": {
+              "$reviews": {
+                "from": "reviews",
+                "count": true
+              }
+            }
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:home",
+            "featured": {
+              "id": "urn:example:dune",
+              "$reviews": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.live.create-joins",
+      "level": "live",
+      "note": "opens on the first result, flagged initial; a record created to match joins it",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "create",
+            "entity": "Book",
+            "id": "urn:example:hyperion",
+            "fields": {
+              "title": "Hyperion",
+              "genre": "scifi",
+              "pages": 482
+            }
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:dune"
+            },
+            {
+              "id": "urn:example:found"
+            },
+            {
+              "id": "urn:example:hyperion"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.edit-leaves",
+      "level": "live",
+      "note": "a record edited so it no longer matches leaves the result",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "update",
+            "entity": "Book",
+            "id": "urn:example:found",
+            "fields": {
+              "genre": "classic"
+            }
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:dune"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.delete-leaves",
+      "level": "live",
+      "note": "a deleted record leaves the result",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "delete",
+            "entity": "Book",
+            "id": "urn:example:dune"
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:found"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.included-edit",
+      "level": "live",
+      "note": "an edit to an included record is pushed",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:dune"
+        },
+        "include": {
+          "reviews": true
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune",
+            "reviews": [
+              {
+                "id": "urn:example:r1",
+                "stars": 5
+              },
+              {
+                "id": "urn:example:r2",
+                "stars": 2
+              },
+              {
+                "id": "urn:example:r3",
+                "stars": 4
+              }
+            ]
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "update",
+            "entity": "Review",
+            "id": "urn:example:r2",
+            "fields": {
+              "stars": 1
+            }
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:dune",
+              "reviews": [
+                {
+                  "id": "urn:example:r1",
+                  "stars": 5
+                },
+                {
+                  "id": "urn:example:r2",
+                  "stars": 1
+                },
+                {
+                  "id": "urn:example:r3",
+                  "stars": 4
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.count-follows",
+      "level": "live",
+      "note": "a count follows a member added to the relation",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:emma"
+        },
+        "include": {
+          "$reviews": {
+            "from": "reviews",
+            "count": true
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma",
+            "$reviews": 1
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "create",
+            "entity": "Review",
+            "id": "urn:example:r5",
+            "fields": {
+              "stars": 1
+            }
+          },
+          {
+            "op": "add",
+            "entity": "Book",
+            "id": "urn:example:emma",
+            "relation": "reviews",
+            "target": "urn:example:r5"
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:emma",
+              "$reviews": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.scope-follows",
+      "level": "live",
+      "note": "a walked result follows a record added under the anchor",
+      "query": {
+        "entity": "Section",
+        "scope": {
+          "anchor": "Section",
+          "via": "subsections",
+          "anchorId": "urn:example:c"
+        }
+      },
+      "expect": {
+        "rows": []
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "create",
+            "entity": "Section",
+            "id": "urn:example:c1",
+            "fields": {
+              "title": "c1",
+              "rank": 1
+            }
+          },
+          {
+            "op": "add",
+            "entity": "Section",
+            "id": "urn:example:c",
+            "relation": "subsections",
+            "target": "urn:example:c1"
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:c1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.live.read-once",
+      "level": "live",
+      "note": "subscribe false reads once: the answer stays what it was",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "genre": "scifi"
+        },
+        "subscribe": false
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:found"
+          }
+        ]
+      },
+      "then": {
+        "writes": [
+          {
+            "op": "create",
+            "entity": "Book",
+            "id": "urn:example:hyperion",
+            "fields": {
+              "title": "Hyperion",
+              "genre": "scifi",
+              "pages": 482
+            }
+          }
+        ],
+        "expect": {
+          "rows": [
+            {
+              "id": "urn:example:dune"
+            },
+            {
+              "id": "urn:example:found"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "query.provenance.author",
+      "level": "provenance",
+      "note": "author is a condition like any field: the agent that wrote the record",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "author": "did:example:invoker"
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:dune"
+          },
+          {
+            "id": "urn:example:emma"
+          },
+          {
+            "id": "urn:example:found"
+          },
+          {
+            "id": "urn:example:zero"
+          },
+          {
+            "id": "urn:example:draft"
+          }
+        ]
+      }
+    },
+    {
+      "id": "query.provenance.author-not",
+      "level": "provenance",
+      "note": "not on author leaves out an agent's records",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "author": {
+            "not": ["did:example:invoker"]
+          }
+        }
+      },
+      "expect": {
+        "rows": []
+      }
+    }
+  ]
+}

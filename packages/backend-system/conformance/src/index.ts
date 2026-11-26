@@ -52,6 +52,21 @@ import {
   readOperationVectors,
   runVector,
 } from './operations';
+import {
+  describeQueryVectors,
+  expectRows,
+  QUERY_LEVELS,
+  QUERY_VECTORS_FILE,
+  type QueryLevel,
+  type QueryVector,
+  type QueryVectorEnv,
+  type QueryVectorFile,
+  queryVectorManifest,
+  queryVectorTitle,
+  readQueryVectors,
+  runQueryVector,
+  seedQueryDataset,
+} from './queryVectors';
 import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
 import { describeStagedChecks, STAGED_CHECK_CASES, type StagedCheckCase } from './stagedChecks';
 import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase } from './templateQueries';
@@ -68,9 +83,21 @@ export {
   type OperationConformanceCase,
   type OperationVector,
   type OperationVectorFile,
+  expectRows,
+  QUERY_LEVELS,
+  QUERY_VECTORS_FILE,
+  type QueryLevel,
+  type QueryVector,
+  type QueryVectorEnv,
+  type QueryVectorFile,
+  queryVectorManifest,
+  queryVectorTitle,
   readOperationVectors,
+  readQueryVectors,
+  runQueryVector,
   runVector,
   SAME_BATCH_CASES,
+  seedQueryDataset,
   type SameBatchCase,
   STAGED_CHECK_CASES,
   type StagedCheckCase,
@@ -212,7 +239,7 @@ export const CONFORMANCE_CASES = [
 /**
  * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
  * values, grouped and named writes, relation writes in the batch that created the record, write
- * checks that see the transaction's own writes, and the template queries.
+ * checks that see the transaction's own writes, the template queries, and the query vectors.
  */
 export type ConformanceCase =
   | (typeof CONFORMANCE_CASES)[number]
@@ -221,7 +248,11 @@ export type ConformanceCase =
   | WriteCase
   | SameBatchCase
   | StagedCheckCase
-  | TemplateQueryCase;
+  | TemplateQueryCase
+  | QueryVectorCase;
+
+/** A case of the query vectors, by its id in `vectors/query/query.json`. */
+export type QueryVectorCase = `query.${string}`;
 
 interface Row {
   id: string;
@@ -1339,4 +1370,5 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
   describeStagedChecks(name, harness, timeout);
   describeTemplateQueries(name, harness, timeout);
   describeOperations(name, harness, timeout);
+  describeQueryVectors(name, harness, timeout, settle);
 }
