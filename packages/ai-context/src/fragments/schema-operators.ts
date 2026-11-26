@@ -635,6 +635,10 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+Scope is where a node is WRITTEN, not where it is drawn: a route sees the $localState and $queries of
+the node that lists it and every node above it (the template root's included), and a panel's node in
+meta.panels sees the root's. A field written in a route or a panel is the same field the root reads.
+Nothing declared between a node and its { "type": "$routes" } outlet reaches the routes.
 Local values can be used in $invoke args: { "$invoke": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):

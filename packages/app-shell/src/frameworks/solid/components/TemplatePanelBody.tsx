@@ -21,6 +21,7 @@ import { resolveParts } from '@shared/registries/moduleParts';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { chromeComponentRegistry, componentRegistry } from '@solid/registries/componentRegistry';
+import { templateScope } from '@solid/registries/templateScope';
 import { EDIT_SURFACE_ATTR } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
@@ -97,7 +98,14 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     // Read here, so an instance opened again with new inputs draws them — the renderer takes its
     // context once.
     const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance()?.inputs ?? {} } };
-    return RenderSchema({ node: declared, stores: bag, registry: registryFor(), context });
+    /*
+      The template root's scope: a panel the template declares is a child of its root, so it reads
+      the root's local state and draws its shapes. The app's panels are the app's, not the
+      template's, and take none.
+    */
+    const appPanel = isAppPanel(panel()!);
+    const scope = appPanel ? undefined : templateScope();
+    return RenderSchema({ node: declared, stores: bag, registry: registryFor(), context, scope });
   });
 
   /*

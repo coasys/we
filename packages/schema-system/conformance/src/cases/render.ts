@@ -1257,4 +1257,96 @@ export const RENDER_CASES: RenderCase[] = [
       ],
     },
   ),
+
+  /* ── one scope across passes: routes and panels ────────────────────────────────────────── */
+  C(
+    'render.routes.root-local',
+    "a route body reads and writes the template root's $localState, and the root follows",
+    {
+      type: 'Column',
+      $localState: { count: { type: 'number', initial: 1 } },
+      children: [text({ $: "'root ' + local.count" }), { type: '$routes' }],
+      routes: [
+        {
+          path: '/',
+          type: 'Column',
+          children: [text({ $: "'route ' + local.count" }), button('more', { $setLocal: 'count', value: 2 })],
+        },
+      ],
+    },
+    { steps: [{ op: 'click', target: 'more' }] },
+  ),
+  C(
+    'render.routes.nested-local',
+    'a nested route sees the locals of the layout route that lists it, and of the root, the nearer shadowing',
+    {
+      type: 'Column',
+      $localState: { a: { type: 'string', initial: 'root a' }, b: { type: 'string', initial: 'root b' } },
+      children: [{ type: '$routes' }],
+      routes: [
+        {
+          path: '/board',
+          type: 'Column',
+          $localState: { b: { type: 'string', initial: 'board b' } },
+          children: [{ type: '$routes' }],
+          routes: [{ path: '/', type: 'Row', children: [text({ $: '`${local.a} / ${local.b}`' })] }],
+        },
+      ],
+    },
+    { start: '/board' },
+  ),
+  C(
+    'render.routes.outlet-scope-not-lexical',
+    'a route does not see locals declared between the root and its outlet: scope follows where a route is declared',
+    {
+      type: 'Column',
+      children: [
+        {
+          type: 'Column',
+          $localState: { near: { type: 'string', initial: 'near the outlet' } },
+          children: [{ type: '$routes' }],
+        },
+      ],
+      routes: [{ path: '/', type: 'Column', children: [text({ $: "local.near ?? 'not in scope'" })] }],
+    },
+  ),
+  C('render.routes.ref', "a $ref in a route body draws the root's shape", {
+    type: 'Column',
+    $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+    children: [{ type: '$ref', props: { def: 'd1' } }, { type: '$routes' }],
+    routes: [{ path: '/', type: 'Column', children: [{ type: '$ref', props: { def: 'd1' } }] }],
+  }),
+  C('render.routes.ref-missing', 'a $ref in a route body naming no shape draws the missing marker there', {
+    type: 'Column',
+    $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+    children: [{ type: '$routes' }],
+    routes: [{ path: '/', type: 'Column', children: [{ type: '$ref', props: { def: 'nope' } }] }],
+  }),
+  C(
+    'render.panels.root-scope',
+    "a panel body, drawn apart from the root, reads the root's locals and shapes, and writes its locals",
+    {
+      type: 'Column',
+      meta: {
+        name: 'Panels',
+        panels: [
+          {
+            id: 'side',
+            node: {
+              type: 'Column',
+              children: [
+                text({ $: "'panel ' + local.count + ' in ' + panel.id" }),
+                { type: '$ref', props: { def: 'd1' } },
+                button('bump', { $setLocal: 'count', value: 5 }),
+              ],
+            },
+          },
+        ],
+      },
+      $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+      $localState: { count: { type: 'number', initial: 1 } },
+      children: [text({ $: "'root ' + local.count" })],
+    } as SchemaNode,
+    { steps: [{ op: 'click', target: 'bump' }] },
+  ),
 ];

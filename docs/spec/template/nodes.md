@@ -216,10 +216,8 @@ Shapes are an encoding, not a commitment: whether two identical shapes are store
 invisible to everything that reads the template. A writer MAY hoist identical shapes into `$defs`,
 and MAY write a use back out as a copy.
 
-> **Planned.** A `$ref` inside a route body or a panel's node. Those are drawn as separate passes
-> ([Routing](routing.md#a-route-is-its-own-scope), [Panels](panels.md#the-entry)) and a reference there
-> does not yet reach the root's `$defs`. Until a later version requires it, a writer MUST NOT place a
-> `$ref` inside a route or a panel's node, and a renderer that meets one draws the missing marker.
+A `$ref` in a route body or a panel's node names the root's shapes like any other, though those are
+drawn as passes of their own ([Scope across passes](handlers.md#scope-across-passes)).
 
 > **Why inside the document.** A template that cited shapes kept elsewhere could not be read as the
 > thing it will be, and could not be judged before it runs. Kept in `$defs`, everything that will
@@ -234,4 +232,5 @@ Implemented by: [`definitions.ts`](../../../packages/schema-system/shared/src/de
 (`validateSchema`, which expands first).
 Pinned by: [`definitions.test.ts`](../../../packages/schema-system/shared/src/definitions.test.ts);
 render vectors `render.node.ref`, `render.node.ref-nested`, `render.node.ref-missing`,
-`render.node.ref-no-defs`, `render.node.ref-cycle`, `render.node.ref-cycle-through`.
+`render.node.ref-no-defs`, `render.node.ref-cycle`, `render.node.ref-cycle-through`, `render.routes.ref`,
+`render.routes.ref-missing`, `render.panels.root-scope`.

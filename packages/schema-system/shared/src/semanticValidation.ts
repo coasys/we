@@ -694,7 +694,7 @@ function walkNode(
      * There is nothing to check *about* the node itself (no component, so no props to resolve
      * against one); what matters is that the walk continues through it.
      */
-    checkRoutes(n, path, ctx, state, errors);
+    checkRoutes(n, path, ctx, updateLocalScope(n, state), errors);
     const childState = Array.isArray(n.routes) ? { ...state, hasRoutesAncestor: true } : state;
     walkChildren(n, path, ctx, childState, errors);
     return;
@@ -2660,32 +2660,25 @@ function checkRoutes(
   /*
     Walk route nodes. `isRouteEligible` so route entries may define sub-routes of their own.
 
-    **Local scope resets at a route boundary**, and that is the renderer's behaviour rather than a
-    conservative choice: `buildRoutes` renders each route through its own `RenderSchema` call, which
-    starts with no inherited context. So a `$localState` field or a `$queries` entry declared on the
-    template root is invisible to everything below a `$routes` outlet.
+    **A route sees the scope of the node that lists it**, lexically, as the renderer draws it: the
+    local state and hoisted queries declared on that node and on the nodes above it, the template's
+    root first. Not the names bound between that node and its outlet, and not those an `$each` or a
+    `$single` binds — a route is a child of the node carrying `routes`, not of where it is drawn.
 
-    Carrying the parent's scope across here made the validator disagree with the renderer in the
-    quietest possible direction — it *approved* reads that resolve to nothing at runtime. A feed
-    whose hoisted `signalTypes` query sat on the template root passed validation and then rendered
-    no signal controls at all, with a `field "signalTypes" not declared` line in the console as the
-    only evidence.
+    The validator once carried the scope across while the renderer started each route with none,
+    and approved reads that resolved to nothing. The renderer now carries it too; what matters is
+    that the two say the same thing.
   */
   const routeState = {
     ...state,
     hasRoutesAncestor: true,
     isRouteEligible: true,
     /*
-      An **empty** scope, not `null`. The two mean different things here: `null` is "unknown", which
-      is how a fragment validated on its own is treated so that reading a local its eventual parent
-      declares is not an error. Below a route there is nothing unknown — the renderer starts that
-      subtree with no context at all — so an empty set is the accurate statement, and it is what
-      makes the orphan check run rather than be skipped.
+      An empty scope where there was none, not `null`: `null` is "unknown", which is how a fragment
+      validated on its own is treated so that reading a local its eventual parent declares is not an
+      error. Below a template's route nothing is unknown, so the orphan check runs.
     */
-    localScope: new Set<string>(),
-    localTypes: new Map<string, string>(),
-    queryScope: new Set<string>(),
-    queryIncludes: new Map(),
+    localScope: new Set<string>(state.localScope ?? []),
     contextScope: new Set<string>(),
   };
   for (let i = 0; i < routes.length; i++) {
@@ -2919,6 +2912,8 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     }
   )?.meta?.panels;
   if (Array.isArray(panels)) {
+    const rootScope =
+      schema && typeof schema === 'object' ? updateLocalScope(schema as Record<string, unknown>, state) : state;
     panels.forEach((panel, index) => {
       if (!panel || typeof panel !== 'object') return;
 
@@ -2957,7 +2952,8 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
         panel.node,
         `meta.panels[${index}].node`,
         context,
-        { ...state, insidePanel: true, contextScope: new Set([...state.contextScope, 'panel']) },
+        // The root's scope: a panel is a child of the template's root, and sees its local state.
+        { ...rootScope, insidePanel: true, contextScope: new Set([...state.contextScope, 'panel']) },
         errors,
       );
     });

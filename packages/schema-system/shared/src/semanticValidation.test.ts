@@ -125,46 +125,53 @@ describe('undeclared local writes', () => {
 
 describe('local scope across a route boundary', () => {
   /**
-   * `buildRoutes` renders each route through its own `RenderSchema` call, so a route subtree
-   * inherits no context — `$localState` and `$queries` on the template root are invisible below a
-   * `$routes` outlet. The validator used to carry the parent scope across, which made it *approve*
-   * reads that resolve to nothing: the showcase Timeline template hoisted its `signalTypes` query
-   * onto the root, validated clean, and rendered no signal controls at all.
+   * A route sees the scope of the node that lists it, lexically: the template root's `$localState`
+   * and `$queries` are readable in every route, as the renderer draws them. Not what is declared
+   * between the root and its outlet, which a route is not inside.
    *
    * The reads are in `props` because that is where the real ones were (a `count()` guard and a
    * `find()` inside a query projection).
    */
-  const template = (routes: unknown): SchemaNode =>
+  const template = (routes: unknown, children: unknown[] = [{ type: '$routes' }]): SchemaNode =>
     ({
       meta: { name: 'T', description: 'd', icon: 'bug' },
       type: 'Column',
       $queries: { signalTypes: { entity: 'SignalType' } },
       $localState: { draft: { type: 'string', initial: '' } },
-      children: [{ type: '$routes' }],
+      children,
       routes,
     }) as SchemaNode;
 
   const readsSignalTypes = { type: 'we-text', props: { text: { $: 'local.signalTypes' } } };
 
-  it('rejects a route reading a $queries entry declared on the root', () => {
+  it('accepts a route reading a $queries entry declared on the root', () => {
     const node = template([{ path: '/', type: 'Column', children: [readsSignalTypes] }]);
-    expect(messages(node, 'error').join(' ')).toMatch(/signalTypes/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('rejects a route reading a $localState field declared on the root', () => {
+  it('accepts a route reading a $localState field declared on the root', () => {
     const node = template([
       { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.draft' } } }] },
     ]);
-    expect(messages(node, 'error').join(' ')).toMatch(/draft/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('accepts the same read when the route declares it itself', () => {
+  it('rejects a route reading a field declared between the root and its outlet', () => {
+    const node = template(
+      [{ path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }] }],
+      [{ type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] }],
+    );
+    expect(messages(node, 'error').join(' ')).toMatch(/near/);
+  });
+
+  it('lets a nested route read the layout route that lists it', () => {
     const node = template([
       {
-        path: '/',
+        path: '/board',
         type: 'Column',
-        $queries: { signalTypes: { entity: 'SignalType' } },
-        children: [readsSignalTypes],
+        $localState: { open: { type: 'boolean', initial: false } },
+        children: [{ type: '$routes' }],
+        routes: [{ path: '/', type: 'Row', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
     expect(messages(node, 'error')).toEqual([]);
@@ -179,6 +186,21 @@ describe('local scope across a route boundary', () => {
         children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('lets a panel read the root’s local state', () => {
+    const node = {
+      ...template([]),
+      routes: undefined,
+      children: [],
+      meta: {
+        name: 'T',
+        description: 'd',
+        icon: 'bug',
+        panels: [{ id: 'p', node: { type: 'we-text', props: { text: { $: 'local.draft' } } } }],
+      },
+    } as unknown as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
   });
 });

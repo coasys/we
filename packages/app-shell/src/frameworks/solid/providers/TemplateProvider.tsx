@@ -1480,15 +1480,24 @@ export default function TemplateProvider() {
 
   // TemplateLayout receives stores via closure — SolidJS Router requires `root` to be
   // a component type, so we wrap it to pass stores through.
-  const Layout = (props: { children?: unknown }) =>
-    TemplateLayout({
+  const Layout = (props: { children?: unknown }) => {
+    /*
+      Read once: the router's children build its route outlet on every read, so reading them again
+      would mount a second copy of the routes. And read late — where the template's root draws its
+      `$routes` outlet — so the routes are mounted inside the root's pass and see its local state and
+      shapes, as a route lexically inside the template does.
+    */
+    let outlet: { value: unknown } | undefined;
+    return TemplateLayout({
       stores: templateBag,
       chromeStores: chromeBag,
       hostStores: stores,
-      // Read once: the router's children build its route outlet on every read, so reading them again
-      // would mount a second copy of the routes.
-      children: untrack(() => props.children) as never,
+      get children() {
+        outlet ??= { value: untrack(() => props.children) };
+        return outlet.value as never;
+      },
     });
+  };
 
   // Visual editor context — lives here (above the Router) so context is available to all
   /**

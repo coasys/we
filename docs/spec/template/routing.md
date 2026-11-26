@@ -75,14 +75,25 @@ A route with `keepAlive` that has no `routes` and no `redirect` is mounted once 
 while its siblings are shown, so whatever it holds (a scene, a map) is not rebuilt on return. A
 `view` template's `meta.keepAlive` becomes its route's `keepAlive`.
 
-## A route is its own scope
+## A route's scope
 
-Each route body is drawn as a pass of its own. It does not see the `$localState`, `$queries` or names
-bound by the nodes above its outlet: a field a route reads is declared inside the route, or reached
-through the bag. What a route does receive from the host is the [surface](blocks.md#surface) it is
-drawn in and its own position in the address, for [relative paths](#relative-paths).
+A route body is drawn where its parent's `$routes` outlet is, but its scope is where it is written:
+it sees the `$localState` and `$queries` of the node that lists it and of every node above that one,
+the template's root first, and draws the root's shared shapes
+([Scope across passes](handlers.md#scope-across-passes)). It does not see what is declared or bound
+between that node and its outlet, which it is not inside. What a route receives from the host besides
+is the [surface](blocks.md#surface) it is drawn in and its own position in the address, for
+[relative paths](#relative-paths).
 
-> **Planned.** A `$ref` inside a route body ([Shared shapes](nodes.md#shared-shapes-defs-and-ref)).
+---
+
+Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
+(`RenderSchema`, `PassScope`), [`buildRoutes.tsx`](../../../packages/app-shell/src/frameworks/solid/utils/buildRoutes.tsx),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts) (`checkRoutes`).
+Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts)
+(local scope across a route boundary); render vectors `render.routes.root-local`,
+`render.routes.nested-local`, `render.routes.outlet-scope-not-lexical`, `render.routes.ref`,
+`render.routes.ref-missing`.
 
 ## The template's root
 

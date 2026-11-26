@@ -22,12 +22,15 @@
  *   `unknown-element` (a `we-*` element nobody defined), `missing-definition` and
  *   `cyclic-definition` (a `$ref` with no shape to stand for).
  * - A `$surface` boundary: `{ type: '$surface', children }` — the box, without its measuring element.
+ * - A panel body: `{ panel: id, children }`, after the root's tree, one per `meta.panels` entry that
+ *   carries a node, in order. Each is drawn as the host draws one — a pass of its own, mounted outside
+ *   the root's tree, given the root's scope and `panel` (`{ id, inputs: {} }`).
  *
  * The renderer's own wrappers (one box-less `div` around every node) are not part of the tree.
  */
 import { createMemoryHistory, MemoryRouter, useNavigate, useParams } from '@solidjs/router';
 import { render } from '@solidjs/testing-library';
-import type { JSX } from 'solid-js';
+import { createSignal, type JSX } from 'solid-js';
 import { createStore, type SetStoreFunction } from 'solid-js/store';
 
 import { buildRoutes } from '../../../../app-shell/src/frameworks/solid/utils/buildRoutes.tsx';
@@ -37,9 +40,10 @@ import {
   CAPABILITY_GROUPS,
   type CapabilityGroup,
 } from '../../../../app-shell/src/shared/registries/templateSurface.ts';
-import { RenderSchema } from '../../../frameworks/solid/src/index.ts';
+import { type PassScope, RenderSchema } from '../../../frameworks/solid/src/index.ts';
 import type { RouteSchema, SchemaNode } from '../../../shared/src/index.ts';
 import { installGestureTracking } from '../../../shared/src/index.ts';
+import { panelsOf } from '../../../shared/src/treeUtils.ts';
 import type { RenderCase, RenderStep } from '../../src/cases/render.ts';
 import { type EncodedValue, encodeValue } from '../../src/encode.ts';
 
@@ -47,6 +51,7 @@ export type RenderedNode =
   | string
   | { missing: string; reason: string }
   | { slot: string; children: RenderedNode[] }
+  | { panel: string; children: RenderedNode[] }
   | { type: string; props?: Record<string, EncodedValue>; slot?: string; children?: RenderedNode[] };
 
 export interface RenderExpect {
@@ -67,6 +72,7 @@ export interface RenderExpect {
 const PROBES = ['Column', 'Row', 'Card', 'Grid', 'PartFrame', 'PanelLane', 'FlipCard'] as const;
 const PROBE_TAG = 'x-probe';
 const SLOT_TAG = 'x-probe-slot';
+const PANEL_TAG = 'x-probe-panel';
 
 const probeProps = new WeakMap<Element, Record<string, unknown>>();
 
@@ -144,6 +150,9 @@ function describe(el: Element): RenderedNode {
   if (el.hasAttribute('data-we-surface')) {
     const tier = (n: Node) => n instanceof Element && n.hasAttribute('data-we-surface-tier');
     return { type: '$surface', children: describeChildren(el, tier) };
+  }
+  if (el.tagName === PANEL_TAG.toUpperCase()) {
+    return { panel: el.getAttribute('data-id') ?? '', children: describeChildren(el) };
   }
   if (el.tagName === SLOT_TAG.toUpperCase()) {
     return { slot: el.getAttribute('data-name') ?? '', children: describeChildren(el) };
@@ -251,8 +260,37 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
     },
   };
 
-  const mount = () => {
-    if (!routes?.length) return RenderSchema({ node: template, stores: stores as never, registry: registry as never });
+  // The root publishes its scope; each panel body is a pass of its own that takes it, as a host's is.
+  const [rootScope, setRootScope] = createSignal<PassScope>();
+  const panelBodies = (panelsOf(template) ?? []).filter((p) => p.node && typeof p.node === 'object');
+  const panels = () =>
+    panelBodies.map((p) => (
+      <x-probe-panel attr:data-id={String(p.id)}>
+        {
+          (() => {
+            const scope = rootScope();
+            return scope
+              ? RenderSchema({
+                  node: p.node as SchemaNode,
+                  stores: stores as never,
+                  registry: registry as never,
+                  scope,
+                  context: { panel: { id: String(p.id), inputs: {} } },
+                })
+              : null;
+          }) as unknown as JSX.Element
+        }
+      </x-probe-panel>
+    ));
+
+  const content = () => {
+    if (!routes?.length)
+      return RenderSchema({
+        node: template,
+        stores: stores as never,
+        registry: registry as never,
+        onScope: setRootScope,
+      });
     const history = createMemoryHistory();
     if (c.start && c.start !== '/') history.set({ value: c.start, replace: true });
     const Root = (props: { children?: JSX.Element }) => {
@@ -264,7 +302,10 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
         node: root,
         stores: stores as never,
         registry: registry as never,
-        children: props.children,
+        onScope: setRootScope,
+        get children() {
+          return props.children;
+        },
       });
     };
     return (
@@ -273,6 +314,12 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
       </MemoryRouter>
     );
   };
+  const mount = () => (
+    <>
+      {content()}
+      {panels()}
+    </>
+  );
 
   const warn = console.warn;
   const error = console.error;

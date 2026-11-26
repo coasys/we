@@ -114,7 +114,9 @@ The terms of [the specs' conventions](../README.md#conventions) apply. Also:
 - **The bag** is what a template's expressions and handlers can name: the stores, the module stores
   and the host values the host grants it ([Capability grants](safety.md#capability-grants)).
 - **The context** is the names the nodes above a position have bound: `$localState` fields,
-  `$each`'s item, `index` and `prev`, the event inside a handler.
+  `$each`'s item, `index` and `prev`, the event inside a handler. "Above" is lexical: a route's body
+  is below the node that lists it and a panel's node below the root, wherever each is drawn
+  ([Scope across passes](handlers.md#scope-across-passes)).
 - **No value** is the absence of a value, as in the expression language
   ([Values](../operations/expressions.md#values)). JSON has no spelling for it; a key that is left out
   is no value.
