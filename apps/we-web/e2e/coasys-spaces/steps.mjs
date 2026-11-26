@@ -13,7 +13,7 @@ import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHear
 import { openOnCanvas } from './canvas.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
-import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
+import { HEARD, LINES, roleOf, SCRIPT, V4_SCRIPT } from './stub-llm.mjs';
 
 /**
  * Why the Feed steps are todos. The Feed reads each of the space's interpretation targets through the
@@ -111,9 +111,12 @@ export async function closeSpaceSettings(page) {
   await about.waitFor({ state: 'hidden', timeout: 30_000 });
 }
 
-/** The records the stub's script makes from the film's lines, by the package's class and title field. */
-export function expectedRecords() {
-  return SCRIPT.flatMap((entry) => {
+/**
+ * The records a script makes, by the package's class and title field. The film (`SCRIPT`) when no
+ * script is given. V4 passes {@link V4_SCRIPT}, whose one question is not in the film.
+ */
+export function expectedRecords(script = SCRIPT) {
+  return script.flatMap((entry) => {
     const cls = classForRole(entry.role);
     const title = cls && entry.fields[cls.titleField];
     return cls && title ? [{ cls: cls.name, title, entry }] : [];
@@ -202,19 +205,44 @@ export async function joinByInvite(who, sharedUrl) {
  * silent), waits until every line has landed, stops transcribing (the fake microphone loops its
  * recording), and then waits for a titled record of each class in `needs` — the classes the
  * vertical goes on to use — or, with none named, for any record of the package.
+ *
+ * `spoken`, when set, is that call's own lines instead of the film: what to say (`lines`), the
+ * words that mean they landed (`heard`), and the script the stub answers from (`script`). V4 passes
+ * its question. The film is the default, and V2, V5 and V6 keep it.
  */
-export async function callThatFinds(who, perspective, needs = []) {
+export async function callThatFinds(who, perspective, needs = [], spoken) {
+  const lines = spoken?.lines ?? Object.values(LINES);
+  const heard = spoken?.heard ?? HEARD;
+  const script = spoken?.script ?? SCRIPT;
   const callId = await startCall(who.page);
+  // A watch runs after three new lines, or after two minutes when fewer arrive. The stub tier
+  // allows a call those same two minutes, so one or two lines would time out as the pass starts.
+  const pacing = lines.length < 3 ? { batchMin: 1 } : undefined;
   if (STUB) {
-    await watchCall(who, perspective, callId);
-    await typeIntoCall(who, perspective, callId, Object.values(LINES));
+    await watchCall(who, perspective, callId, pacing);
+    await typeIntoCall(who, perspective, callId, lines);
   } else {
-    await unmute(who.page);
-    await untilHeard(perspective, callId, HEARD, SLOW);
-    await stopTranscribing(who.page);
+    const { speech } = await world();
+    // A real speech server transcribes the film off the microphone. Say `spoken` by typing it, and
+    // register the watch the app registers only once a spoken line arrives.
+    if (spoken && !speech) {
+      await watchCall(who, perspective, callId, pacing);
+      await typeIntoCall(who, perspective, callId, lines);
+    } else {
+      // Stubbed transcription writes the film, one line per utterance. Pin replaces those lines for
+      // this call; clearing it afterwards leaves the film's place where the next call expects it.
+      if (spoken) speech.pinTranscript(lines);
+      try {
+        await unmute(who.page);
+        await untilHeard(perspective, callId, heard, SLOW);
+        await stopTranscribing(who.page);
+      } finally {
+        if (spoken) speech.pinTranscript(null);
+      }
+    }
   }
   const found = new Map();
-  await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null, needs);
+  await untilInterpreted(perspective, callId, found, STUB ? expectedRecords(script) : null, needs);
   await leaveCall(who.page);
   return { callId, found };
 }
@@ -299,8 +327,10 @@ async function interpretationFacts(perspective, callId) {
 export function recordOf(found, className) {
   const list = found.get(className) ?? [];
   if (!STUB) return list.find((r) => r.title);
-  const title = expectedRecords().find((r) => r.cls === className)?.title;
-  return list.find((r) => r.title === title);
+  const titles = [...expectedRecords(), ...expectedRecords(V4_SCRIPT)]
+    .filter((r) => r.cls === className)
+    .map((r) => r.title);
+  return list.find((r) => titles.includes(r.title));
 }
 
 export { openOnCanvas };

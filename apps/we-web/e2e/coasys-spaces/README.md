@@ -149,7 +149,17 @@ speech-to-text model reads it back word for word:
 3. "A rebuild could push back the v2.4 release."
 4. "Alice will rebuild the sync script by Friday." (the line that states a task, for V5)
 
+V4 does not speak this film. Its call says one question, `V4_LINE` in `stub-llm.mjs`: "Should we
+keep a second copy of shared edits?" Nothing in that line is a decision, a risk or a task, so a
+model is not asked to choose another class for it. The recording stays the film, for V2, V5 and V6.
+While transcription is stubbed, V4 pins the stub's next utterances to that question and stops once
+the line has landed; the film's place in the transcript does not move. With a real speech server the
+microphone would still read the film, so V4 types the question and registers the call's watch itself.
+A watch otherwise waits for three new lines or two minutes, and the stub tier's wait is those two
+minutes, so this one-line call asks the watch to run after the first line.
+
 Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names another recording.
+V4's line is separate (`V4_LINE`, `V4_HEARD`, `V4_SCRIPT`) and is not in the recording.
 
 - Chromium plays the recording in a loop. So the suite waits until the call's stored lines hold one
   word of each line (`HEARD`: edits, quarter, release, friday), and then presses the call bar's
@@ -188,8 +198,10 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 
 3. Look at the screenshot and the ARIA snapshot of the failed step. Make sure that the call bar shows
    "Transcribe this call" (transcription stopped) and that the transcript shows the lines.
-4. If it is model variance, run the vertical again (`COASYS_SPACES_ONLY=v4`) or use a stronger model.
-   The stub tier is the gate for product breaks.
+4. If V5 does not get a Task, the cause can be model variance: run that vertical again
+   (`COASYS_SPACES_ONLY=v5`) or use a stronger model. V4's call is the one question above, so a
+   missing TeamQuestion is not the film's ambiguity, and the suite does not retry V4 to get a
+   luckier sample. The stub tier is the gate for product breaks.
 
 ### Environment
 

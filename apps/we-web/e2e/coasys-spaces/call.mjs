@@ -136,8 +136,12 @@ export async function stopTranscribing(page) {
  * The app registers a call's watch only when the transcribe module first files a transcribed line
  * (`ensureCollection`), and with no transcription model the module never joins the call — so a call
  * of typed lines alone is never watched. That gap is the product's; see the README's backlog.
+ *
+ * `pacing.batchMin`, when set, is how many new lines this call waits for. The default is three, or
+ * two minutes if fewer arrive. A call that says one line, and a tier whose own wait is those two
+ * minutes, passes `{ batchMin: 1 }` so the pass runs on that line.
  */
-export async function watchCall(who, perspective, callId) {
+export async function watchCall(who, perspective, callId, pacing) {
   const targets = await until(
     async () => (await perspective.get(new LinkQuery({ source: callId, predicate: 'we://extraction_targets' })))[0],
     Boolean,
@@ -154,6 +158,7 @@ export async function watchCall(who, perspective, callId) {
     parent: { id: root || callId, relation: 'children', entity: 'CollectionBlock' },
     provenance: { id: callId, relation: 'extracted', entity: 'CollectionBlock' },
     recognised: { id: callId, relation: 'recognised', entity: 'CollectionBlock' },
+    ...(pacing?.batchMin != null ? { batchMin: pacing.batchMin } : {}),
   });
   return classes;
 }

@@ -26,21 +26,27 @@
  * {@link SCRIPT} maps what the suite says in a call to the records a model should find in it, by the
  * class's role rather than its exact name: a space whose classes are the social DNA package's
  * (`TeamQuestion`, `Tension`, `Decision`, `Task`) gets those, and the Coasys starter's `TaskBlock` gets
- * the task. Only classes the prompt offers are answered, only fields the prompt lists are filled, and
+ * the task. V4's call says {@link V4_LINE} instead of the film; {@link V4_SCRIPT} is what that line
+ * yields, and it is not part of {@link SCRIPT}. Only classes the prompt offers are answered, only
+ * fields the prompt lists are filled, and
  * a record whose title the prompt lists as existing is not proposed again — the same discipline a
  * real model is asked for, so the executor's dedup is not what makes the result converge.
  *
  * ## Speech to text
  *
  * The stub also serves `POST /v1/audio/transcriptions`, for a real-tier run that names no speech
- * server (`models.mjs`): each utterance gets the next line of {@link TRANSCRIPT}. The stub tier does
- * not use it, because it types its lines into the call (`call.mjs`).
+ * server (`models.mjs`): each utterance gets the next line of {@link TRANSCRIPT}, unless a call has
+ * pinned its own lines (`pinTranscript`). The stub tier does not use it, because it types its lines
+ * into the call (`call.mjs`).
  */
 import { createServer } from 'node:http';
 
 import { freePort } from '@we/e2e/executor';
 
-/** The film's lines, as the suite types them into the call and as `fixtures/call.wav` speaks them. */
+/**
+ * The film's lines, as V2, V5 and V6 type them into the call and as `fixtures/call.wav` speaks them.
+ * V4 does not speak these: it says {@link V4_LINE}.
+ */
 export const LINES = {
   sync: 'Sync dropped my edits again. Should we rebuild it?',
   mobile: 'Okay: mobile comes first this quarter.',
@@ -54,6 +60,24 @@ export const LINES = {
  * landed, whatever else the speech-to-text model wrote. Lower case; matched without case.
  */
 export const HEARD = ['edits', 'quarter', 'release', 'friday'];
+
+/**
+ * The one line V4's call speaks.
+ *
+ * The film (`LINES`) also states a decision, a risk and a task. On the real tier a model files
+ * those and can leave the question unwritten, so Decide never starts. This sentence is one open
+ * question to the group. It shares no phrase with the film's `when` clauses, so the stub does not
+ * also make a task of it.
+ */
+export const V4_LINE = 'Should we keep a second copy of shared edits?';
+
+/** A word of {@link V4_LINE} the film does not say. The real tier waits for it, then stops. */
+export const V4_HEARD = ['copy'];
+
+/** The text V4's call speaks. One question, nothing else. */
+export function v4CallScript() {
+  return V4_LINE;
+}
 
 /**
  * What each line yields, per role. `when` is matched against the transcript (lower-cased); `role`
@@ -80,6 +104,19 @@ export const SCRIPT = [
     when: 'push back the v2.4 release',
     role: 'tension',
     fields: { between: 'sync rebuild vs v2.4 release', why: 'A rebuild could push back the v2.4 release.' },
+  },
+];
+
+/**
+ * What {@link V4_LINE} yields. Kept off {@link SCRIPT}: the film's calls do not say it, and
+ * `expectedRecords()` would otherwise wait for a question those calls never produce. `asks` is the
+ * line itself, which is the class's title.
+ */
+export const V4_SCRIPT = [
+  {
+    when: 'second copy of shared edits',
+    role: 'question',
+    fields: { asks: V4_LINE, status: 'open' },
   },
 ];
 
@@ -120,7 +157,7 @@ export function answer(input) {
     if (!role) continue;
     const fields = new Set((cls.fields ?? []).map((f) => f.name));
     const existing = new Set((cls.existing ?? []).map((e) => String(e.title ?? '').toLowerCase()));
-    for (const entry of SCRIPT) {
+    for (const entry of [...SCRIPT, ...V4_SCRIPT]) {
       if (entry.role !== role || !said.includes(entry.when)) continue;
       const record = { class: cls.name };
       for (const [name, value] of Object.entries(entry.fields)) {
@@ -164,17 +201,18 @@ function reply(body) {
  * executor sends a multipart upload (`model`, `file`, and `stream=true` on its first try); a JSON
  * answer tells it this server does not stream, and it reads the text from it.
  */
-function transcribe(req, res, calls) {
+function transcribe(req, res, calls, nextLine) {
   if (!String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
     res.writeHead(400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ error: { message: 'Expected a multipart/form-data upload' } }));
     return;
   }
+  // Taken when the upload arrives, not when it finishes: V4 unpins once its line has landed, and an
+  // upload already on the wire must still be that line rather than the next line of the film.
+  const text = nextLine();
   let bytes = 0;
   req.on('data', (chunk) => (bytes += chunk.length));
   req.on('end', () => {
-    const heard = calls.filter((c) => c.kind === 'transcription').length;
-    const text = TRANSCRIPT[heard % TRANSCRIPT.length];
     calls.push({ at: Date.now(), kind: 'transcription', bytes, text });
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ text }));
@@ -195,6 +233,19 @@ export async function startStubLlm({
   transcriptionModel = 'coasys-spaces-transcriber',
 } = {}) {
   const calls = [];
+  // The film's place, and a line V4 can pin over it. Pinned utterances do not advance the film, so
+  // the next call (V5) still hears `TRANSCRIPT` in order.
+  const spoken = { pinned: null, filmAt: 0, pinnedAt: 0 };
+  const nextLine = () => {
+    if (spoken.pinned?.length) {
+      const text = spoken.pinned[spoken.pinnedAt % spoken.pinned.length];
+      spoken.pinnedAt += 1;
+      return text;
+    }
+    const text = TRANSCRIPT[spoken.filmAt % TRANSCRIPT.length];
+    spoken.filmAt += 1;
+    return text;
+  };
   const server = createServer((req, res) => {
     const path = new URL(req.url, 'http://x').pathname.replace(/\/+$/, '');
     if (req.method === 'GET' && (path === '/v1/models' || path === '/models')) {
@@ -208,7 +259,7 @@ export async function startStubLlm({
       return;
     }
     if (req.method === 'POST' && (path === '/v1/audio/transcriptions' || path === '/audio/transcriptions')) {
-      transcribe(req, res, calls);
+      transcribe(req, res, calls, nextLine);
       return;
     }
     if (req.method !== 'POST' || !(path === '/v1/chat/completions' || path === '/chat/completions')) {
@@ -268,6 +319,14 @@ export async function startStubLlm({
     calls,
     /** The interpretation passes answered so far. */
     passes: () => calls.filter((c) => c.kind === 'interpretation'),
+    /**
+     * The next utterances are `lines`, repeated, instead of the film. `null` resumes the film where
+     * it was. V4 pins its question for the call, then clears it.
+     */
+    pinTranscript(lines) {
+      spoken.pinned = lines?.length ? [...lines] : null;
+      spoken.pinnedAt = 0;
+    },
     close: () =>
       new Promise((done) => {
         // The executor's HTTP client keeps connections alive; without this, close waits on them.
