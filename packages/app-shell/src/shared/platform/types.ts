@@ -1,5 +1,7 @@
 import type { HostFileSaver } from '@we/design-utils';
 
+import type { PlatformPort } from './port';
+
 export type { HostFileSaver };
 
 export interface AppConfig {
@@ -177,13 +179,18 @@ export interface ExecutorHost {
 /**
  * Where the host is running, and what that implies for locating things.
  *
+ * It is a {@link PlatformPort} too: the environment the stores run in (storage, the address, the
+ * window, the drawn document) is part of where the app is running, so the app that says it supplies
+ * it, and the stores take this one object as `platform`. A browser renderer spreads
+ * `createBrowserPlatform()` into its adapter; a host that is not a browser supplies its own.
+ *
  * Deliberately knows nothing about the data layer — obtaining a client is `BackendConnector`'s job
  * (`shared/backend/types.ts`). The two were one interface until they proved to vary independently:
  * `resolveAppUrl` differs per platform, `connect()` differs per data layer, and a host picks each
  * without reference to the other. The practical symptom was that this file imported `@coasys/ad4m`
  * purely for a return type, so every host that wanted `isDesktop` also named the data layer.
  */
-export interface PlatformAdapter {
+export interface PlatformAdapter extends PlatformPort {
   // Resolve app URL for iframes (platform-specific)
   // - Dev mode: Returns devServer URL (http://localhost:PORT)
   // - Production: Platform-specific resolution

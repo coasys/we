@@ -7,6 +7,7 @@
  * is generated. That transport is what each app supplies; everything else
  * lives here once.
  */
+import { createBrowserPlatform } from './browser';
 import type { AccountHost, AppConfig, ExecutorHost, HostFileSaver, PlatformAdapter, ScreenSourceHost } from './types';
 
 export interface DesktopPlatformOptions {
@@ -25,6 +26,7 @@ export interface DesktopPlatformOptions {
 
 export function createDesktopPlatform(options: DesktopPlatformOptions): PlatformAdapter {
   return {
+    ...createBrowserPlatform(),
     resolveAppUrl(app: AppConfig, isDevelopment: boolean): string {
       // Development mode: use the devServer configuration from the seed.
       if (isDevelopment && app.paths.devServer) {
