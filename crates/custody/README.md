@@ -38,6 +38,17 @@ sealed text on (`identity.inboxSealed`). A key lost from the store cannot be mad
 then lists one this computer does not have, and `publicState` says `encMismatch`: revoke this
 computer from a device that holds the master key, and link it again.
 
+**What the enc key guards, and what it does not.** It keeps a master key in transit out of the
+executor's reach: the executor, and anyone who reads its RPC, sees only sealed text. It does not
+guard against another process running as the same OS user. In the folder store the key is raw
+bytes in a 0600 file, and an unlocked Secret Service collection gives it to any client in the
+user's session. Such a process (the executor itself, and the language code it runs, included) can
+read the key and open a master key sealed to this computer while one waits in the inbox, and the
+record key wrapped to it. The macOS keychain narrows this to builds with the same
+`keychain-access-groups` entitlement. A master key at rest is guarded apart from the enc key: by
+the keychain's unlock, or by the passphrase of its sealed file. Holding the enc key behind an
+unlock too would close the gap, but the main window's state reads it on every call (above).
+
 The crate runs the identity client's flows — make the identity, add a device, unlink one, revoke
 one — and reaches the executor only over its RPC with the custody credential. It is its own crate so
 nothing of it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps
