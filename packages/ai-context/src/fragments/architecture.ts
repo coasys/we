@@ -117,7 +117,9 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 
 Apps (\`apps/we-web\`, \`apps/we-electron\`, \`apps/we-tauri\`) are thin hosts over \`@we/app-shell\`.
 Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`BackendConnector\`
-(how do I reach the data layer).
+(how do I reach the data layer). The adapter is also the stores' \`PlatformPort\` — storage, the
+address, the window and the document they reach through \`platform\` rather than the browser's
+globals; a browser host spreads \`createBrowserPlatform()\` into it.
 
 **Dependency direction:** \`templates → shell → backend-shared ← backend-ad4m\`, and
 \`modules → shell → backend-shared\`. Dependencies point inward toward the contract packages; there are
@@ -167,7 +169,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - Add/adjust a primitive → \`packages/design-system/3-primitives/src/\` (Lit).
 - Add/adjust a layout/composite component → \`packages/design-system/4-components/src/\` (Solid).
 - DS-props → CSS logic (shared) → \`packages/design-system/utils/src/index.ts\`; Solid binding → \`.../src/solid/index.ts\`.
-- Stores → \`packages/app-shell/src/shared/stores/\`, all on the reactivity port; SpaceStore, ShellStore and
+- Stores → \`packages/app-shell/src/shared/stores/\`, all on the reactivity and platform ports; SpaceStore, ShellStore and
   RecordStore are compositions over one part per job in \`stores/space/\`, \`stores/shell/\`, \`stores/records/\`.
   Composed once in \`BootController\`; components reach them with \`useStore\` (the Solid binding,
   \`frameworks/solid/stores/\`).

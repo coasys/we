@@ -264,8 +264,22 @@ The host lends its implementation — `@we/reactivity-solid` under Solid — and
 only in its imports. A store may rely on the port's three timing guarantees and nothing else; they
 are in that package's README.
 
+**Its environment comes from one `PlatformPort` in the same way** (`app-shell/src/shared/platform/`):
+storage and session storage, the address and its history, a reload, the window's size, media
+queries, the window's input events, animation frames, and the document (custom properties and
+attributes on its root, style sheets, an element by id, a drawn box measured, the title and icon).
+A store reads `platform.storage`, never `localStorage`. The port is the environment half of
+`PlatformAdapter`, which extends it, so the adapter an app supplies is the `platform` every store
+takes; a browser renderer spreads `createBrowserPlatform()` into its adapter, and a host that is not
+a browser implements the port itself. `createTestPlatform()` is the test implementation: storage in
+maps, an address and history in memory, a window a test resizes, events a test sends, frames a test
+runs (`flushFrames`), and a document that records what was written to its root (`drawn`). Timers and
+`performance.now()` are not on it: every JavaScript runtime has them, and a test's fake clock
+controls them. A measured input that changes the answer rides on the argument (the app's chrome
+frame is `Viewport.frame`), never on module state.
+
 Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
-checks) holds them to it:
+checks) holds them to it — and the stores and kernels to reading no browser global:
 
 - **`packages/app-shell/src/shared/`**, where every store and the modules they use live. Any
   import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
@@ -277,14 +291,21 @@ checks) holds them to it:
   `@we/module-shared`, …). Its `src/` is held to the same import rule, and it may
   not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
   when you add it.
+- **`shared/stores/` and `shared/kernels/`** read no browser global: `window`, `document`, storage,
+  `navigator`, the address and history, media queries, animation frames, DOM constructors, in a value
+  position (`typeof window` and `globalThis.<name>` included; a type annotation is not a read, and a
+  name the file declares is its own). The rest of `shared/` may: its browser modules (safe mode, the
+  boot snapshot) are the platform's side of the seam.
 
 **How a neutral store is written and composed.** `RouteStore` (`app-shell/src/shared/stores/`) is
 the first, and the shape the rest copy:
 
-- The factory takes one object: `reactivity` (the port) and the stores it reads, by the registry's
-  names — `createXStore({ reactivity, sessionStore, datasetStore })`. Nothing is looked up.
+- The factory takes one object: `reactivity` (the port), `platform` when it touches the
+  environment (typed as the `Pick<PlatformPort, …>` it uses), and the stores it reads, by the
+  registry's names — `createXStore({ reactivity, platform, sessionStore, datasetStore })`. Nothing is
+  looked up.
 - `BootController` is the composition point. It builds every store once, in dependency order,
-  passing `solidReactivity` and the stores already built; a store needing a later one is lent it
+  passing `solidReactivity`, the app's platform and the stores already built; a store needing a later one is lent it
   through a method afterwards (`provideSpaceLookup`), never by reordering.
 - The composed set is typed twice, both in `shared/stores/`: `StoreRegistry` (`storeRegistry.ts`),
   what components ask of by name, and `Stores` (`storeBag.ts`), the bag a template renders against.
@@ -305,7 +326,10 @@ the first, and the shape the rest copy:
   subdirectory so the AI-context extractor, which reads `stores/*.ts` for store interfaces, never
   takes one for a store.
 - Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
-  `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
+  `createTestReactivity()`, each store built inside `port.root` and disposed after, given
+  `createTestPlatform()`. They run in app-shell's `stores` test project: no DOM, the browser build of
+  solid-js, so a store reaching past the platform port fails there rather than passing on jsdom's
+  globals. A store test goes in jsdom's project only for a reason it names. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
   store: an equal write is skipped by comparing first, a function is stored as the value.
 - A backend read is followed through `followLive` (`app-shell/src/shared/followLive.ts`), called in
