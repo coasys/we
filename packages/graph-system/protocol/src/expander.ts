@@ -114,6 +114,26 @@ export interface ExpanderContext {
    * `query` assembles some other way — calls `onChange()` with none, and the read is asked again.
    */
   watch?(request: WatchQuery, onChange: (rows?: readonly Record<string, unknown>[]) => void): () => void;
+  /**
+   * Read, and keep watching what was read: `query` and `watch` for one request, in one.
+   *
+   * A graph reads its seeds and then opens a watch on each read, and a live query's first act is
+   * to run its read. So opening a graph asked every read twice: once to draw it, and again a moment
+   * later as each watch opened, which on a large canvas is seconds of the backend's time while the
+   * person is looking at it. A host that can answer the read from the subscription's first result
+   * asks once.
+   *
+   * `rows` is exactly what `query` would return. `onChange` is as for `watch`, from the read on:
+   * a change that lands after the read is reported, however soon. `stop` ends the watch and is
+   * safe to call before `rows` settles.
+   *
+   * Optional, beside `watch` rather than instead of it: the engine calls it only for a read that is
+   * about to need a watch, and keeps `query` for one that has a watch already.
+   */
+  watchRead?(
+    request: WatchQuery,
+    onChange: (rows?: readonly Record<string, unknown>[]) => void,
+  ): { rows: Promise<readonly Record<string, unknown>[]>; stop: () => void };
   /** Structured, non-fatal reporting. An expander that cannot answer says so; it does not throw. */
   warn(message: string): void;
   /**
