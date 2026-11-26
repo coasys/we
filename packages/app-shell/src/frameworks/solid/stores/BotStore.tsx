@@ -8,6 +8,7 @@
  * offer (`create`): the backend answers the match code the identity window asks the person to check,
  * and the bot's credential. The credential is shown once and let go: when the person dismisses it
  * (`dismissCreated`) or leaves the page it was shown on. It is never kept beyond that, nor logged.
+ * Letting it go only forgets it on this side: it does not revoke or expire it on the backend.
  *
  * The grant is replaced whole and names the version it replaces. When another change came first
  * the save is refused, the grant is read again and shown as it is now, with a line that says so.
@@ -46,7 +47,6 @@ import {
   createSignal,
   on,
   type ParentProps,
-  untrack,
   useContext,
 } from 'solid-js';
 
@@ -150,8 +150,16 @@ export interface BotStore {
   saveGrant: () => Promise<boolean>;
   pause: () => Promise<boolean>;
   resume: () => Promise<boolean>;
-  /** For good: a revoked grant never changes again. */
+  /**
+   * Removes the bot for good: ends its grant (a revoked grant never changes again) and revokes its
+   * key in the person's key log. True only when both are done. When the grant is ended but the key
+   * could not be revoked, it is false, `keyRevokeError` says so and calling it again retries the key.
+   */
   revoke: () => Promise<boolean>;
+  /** Why the bot's key could not be revoked, when its grant is already ended: the key is still valid. Empty otherwise. */
+  keyRevokeError: Accessor<string>;
+  /** Removing is running. */
+  revoking: Accessor<boolean>;
   loadOlder: () => Promise<void>;
 }
 
@@ -178,6 +186,8 @@ export function BotStoreProvider(props: ParentProps) {
   const [draft, setDraft] = createSignal<GrantDraft | null>(null);
   const [conflict, setConflict] = createSignal('');
   const [saving, setSaving] = createSignal(false);
+  const [revoking, setRevoking] = createSignal(false);
+  const [keyRevokeError, setKeyRevokeError] = createSignal('');
   const [entries, setEntries] = createSignal<BotActivityView[]>([]);
   const [activityLoaded, setActivityLoaded] = createSignal(false);
   const [hasOlder, setHasOlder] = createSignal(false);
@@ -196,6 +206,7 @@ export function BotStoreProvider(props: ParentProps) {
       setDraft(null);
       setEntries([]);
       setActivityLoaded(false);
+      setKeyRevokeError('');
     }),
   );
 
@@ -220,12 +231,15 @@ export function BotStoreProvider(props: ParentProps) {
     template can read this store, so it is not left here after that page is gone: leaving the page
     (another settings page, or the overlay closed) lets it go, as dismissing it does.
   */
-  let createdOn: string | null = null;
+  let navigations = 0;
   createEffect(
     on(
       () => shell.shellPage(),
-      (page) => {
-        if (created() && page !== createdOn) setCreated(null);
+      () => {
+        // Any navigation ends every create still in flight (its reply is dropped, below) and lets go
+        // of a credential on show. Away and back counts: it is not the page the reply was asked on.
+        navigations++;
+        setCreated(null);
       },
       { defer: true },
     ),
@@ -297,6 +311,7 @@ export function BotStoreProvider(props: ParentProps) {
     if (!p) return;
     setSelectedDid(did);
     setConflict('');
+    setKeyRevokeError('');
     setEntries([]);
     setActivityLoaded(false);
     setHasOlder(false);
@@ -371,6 +386,41 @@ export function BotStoreProvider(props: ParentProps) {
     return ok;
   }
 
+  /**
+    Removing a bot ends two things, and either can be left undone. The grant is held by the backend
+    that runs the bot; the key is in the person's key log, which every other computer reads, and
+    ends only by an identity change signed where the master key is kept. So the grant is ended
+    first, and then the key through the identity store's own `revoke` change, the one a device's key
+    goes through. A key left valid is said so and retried by calling this again: the grant is
+    already ended then, and is not sent twice.
+  */
+  async function remove(): Promise<boolean> {
+    const did = selectedDid();
+    if (!did || revoking()) return false;
+    setRevoking(true);
+    setKeyRevokeError('');
+    try {
+      let bot = selectedBot();
+      if (bot?.grant.state !== 'revoked') {
+        if (!(await setState('revoked'))) return false;
+        bot = selectedBot();
+      }
+      const key = bot?.key;
+      // No key in the log (never confirmed), or one the log already ends: nothing left to revoke.
+      if (!key || key.verdict !== 'valid') return true;
+      const outcome = await identity.open({ kind: 'revoke', keyId: key.keyId });
+      await refresh();
+      if (outcome === 'done') return true;
+      const why = outcome === 'cancelled' ? 'It was cancelled.' : identity.error() || 'It did not go through.';
+      setKeyRevokeError(
+        `The bot's permissions are ended, but its key is still valid on your other computers. ${why} Try again to revoke the key.`,
+      );
+      return false;
+    } finally {
+      setRevoking(false);
+    }
+  }
+
   const store: BotStore = {
     available,
     canAdd: () => available() && identity.canChange() && !!identity.did() && !!identity.custody()?.holdsMaster,
@@ -407,9 +457,18 @@ export function BotStoreProvider(props: ParentProps) {
       }
       setCreating(true);
       setCreateError('');
+      const askedAt = navigations;
       try {
         const made = await p.create(offer, name);
-        createdOn = untrack(shell.shellPage);
+        if (askedAt !== navigations || port() !== p) {
+          // The person left the page while this was pending. The bot exists, so it is listed, but its
+          // credential is not shown where it was never asked for; it is simply not kept.
+          setCreateError(
+            'The bot was made, but you left the page before its credential could be shown, so it was not kept. The bot is in your list: remove it and make a new one to get a credential.',
+          );
+          await refresh();
+          return false;
+        }
         setCreated({
           name: name.trim() || 'Unnamed bot',
           matchCode: made.matchCode,
@@ -431,6 +490,7 @@ export function BotStoreProvider(props: ParentProps) {
     dismissCreated: () => setCreated(null),
     select,
     close: () => {
+      setKeyRevokeError('');
       setSelectedDid(null);
       setDraft(null);
       setConflict('');
@@ -454,7 +514,9 @@ export function BotStoreProvider(props: ParentProps) {
     },
     pause: () => setState('paused'),
     resume: () => setState('active'),
-    revoke: () => setState('revoked'),
+    revoke: remove,
+    keyRevokeError,
+    revoking,
     loadOlder: async () => {
       const did = selectedDid();
       const list = entries();

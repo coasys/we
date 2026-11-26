@@ -65,6 +65,8 @@ export interface BotRow {
   revoked: boolean;
   /** Its key is in the key log and valid: a grant can let it act. */
   keyValid: boolean;
+  /** Removed, but its key is still valid in the key log: the person has more to do. */
+  keyStillValid: boolean;
 }
 
 /** What a bot whose key is not in the key log yet waits for. */
@@ -121,6 +123,7 @@ export function botRow(bot: BotView): BotRow {
     created: `Added ${dateOf(bot.createdAt)}`,
     paused: state === 'paused',
     revoked: state === 'revoked',
+    keyStillValid: state === 'revoked' && keyValid,
     keyValid,
   };
 }
