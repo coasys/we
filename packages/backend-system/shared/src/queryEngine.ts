@@ -326,6 +326,7 @@ function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDa
         rows = rows.slice(offset, offset + spec.page.limit);
       }
       if (spec.include) rows = rows.map((r) => hydrate(r, classOf(r), spec.include!, data));
+      if (spec.select) rows = rows.map((r) => selected(r, spec.select!, spec.aggregate, spec.include));
     }
     const asObject = resolved.rel.cardinality === 'one' || (spec !== true && spec.first === true);
     out[key] = asObject ? (rows[0] ?? null) : rows;
@@ -359,19 +360,24 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
   // Scalar projection: keep only `id`, the selected props, and derived fields (aggregate aliases +
   // included relations, which `select` never strips). Cursor paging (`page.after`) is intentionally
   // not handled here — a stable cursor is adapter-specific and can't be minted in JS.
-  if (query.select) {
-    const keep = new Set<string>([
-      'id',
-      ...query.select,
-      ...(query.aggregate ?? []).map((a) => a.as),
-      ...Object.keys(query.include ?? {}),
-    ]);
-    rows = rows.map((r) => {
-      const out = {} as Row;
-      for (const k of Object.keys(r)) if (keep.has(k)) out[k] = r[k];
-      return out;
-    });
-  }
+  if (query.select) rows = rows.map((r) => selected(r, query.select!, query.aggregate, query.include));
 
   return rows;
+}
+
+/**
+ * A row narrowed to `id`, the selected fields and what the query derived on it (count aliases and
+ * included relations, which `select` never strips), and the entity a polymorphic read named.
+ */
+function selected(row: Row, select: string[], aggregate?: Aggregation[], include?: IncludeMap): Row {
+  const keep = new Set<string>([
+    'id',
+    RECORD_TYPE_KEY,
+    ...select,
+    ...(aggregate ?? []).map((a) => a.as),
+    ...Object.keys(include ?? {}),
+  ]);
+  const out = {} as Row;
+  for (const k of Object.keys(row)) if (keep.has(k)) out[k] = row[k];
+  return out;
 }
