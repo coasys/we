@@ -1,7 +1,6 @@
 package org.coasys.app.devicekey
 
 import android.content.Intent
-import android.webkit.WebView
 import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AlertDialog
 import com.getcapacitor.JSArray
@@ -9,7 +8,7 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
-import com.getcapacitor.WebViewListener
+import androidx.webkit.WebViewFeature
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.File
@@ -72,11 +71,18 @@ import uniffi.we_phone_custody.StoreConfig
  *   linkCancel({link})              → {}
  *   scanCode({prefix, title?})      → {text}                                   (the camera; rejects `Cancelled` or `CameraDenied`)
  *
- * Who may call: [CallerDocument] tracks which document real page loads brought in (never the
- * history address, which a script can rewrite), and everything that links, sends the
- * master key, renames, revokes or answers is the identity page's alone, and is checked again after every wait; reads of public state and the
- * sign-in are open to the app's other pages, and the sign-in is confirmed by the person each time.
- * The page cannot supply a scanned code or say the match codes agree.
+ * Who may call: only over Capacitor's web-message transport ([viaWebMessageListener]; every call is
+ * refused on its silent `addJavascriptInterface` fallback). [CallerDocument] tracks which document
+ * real navigations brought in, from the `url` of [CallerWebViewClient]'s callbacks (never the history
+ * address, which a script can rewrite). Everything that links, sends the master key, renames,
+ * revokes or answers is the identity page's alone; reads of public state and the sign-in are open to
+ * the app's other pages, and the sign-in is confirmed by the person each time. The document is
+ * checked when the worker starts, after each prompt, dialog or camera wait the plugin controls, before
+ * a link thread starts and before each `linkNext` poll, and when the call ends. A native operation
+ * already running (the biometric unlock in `takeMaster`, `answer` and `revoke`; a `linkNext` poll
+ * waiting for the other device) is not cancelled by a navigation: only its result is refused, which
+ * is acceptable because the identity page made the call and the person unlocked it. The page cannot
+ * supply a scanned code or say the match codes agree.
  *
  * The TypeScript side of this surface is `apps/we-web/src/platform/deviceKey.ts`. Every call runs
  * off the main thread, on a pool of the plugin's own (a link's `linkNext` waits minutes for the
@@ -95,22 +101,17 @@ class DeviceKeyPlugin : Plugin() {
   private val document = CallerDocument()
   /** The ticket a camera call was admitted under, by its callback id, until the scan returns. */
   private val scanTickets = ConcurrentHashMap<String, CallerDocument.Ticket>()
-  private val loads = object : WebViewListener() {
-    // Raised on the main thread for a navigation that creates a document; not for pushState,
-    // replaceState or a fragment change. The address is the entry being navigated to, read once
-    // here, never when a call arrives.
-    override fun onPageStarted(webView: WebView) {
-      document.started(webView.url)
-    }
 
-    // Only the load `started` named finishes it; the address is compared, not trusted.
-    override fun onPageLoaded(webView: WebView) {
-      document.finished(webView.url)
-    }
-  }
-
-  override fun load() {
-    bridge?.addWebViewListener(loads)
+  /**
+   * Feeds [document] from the WebView's own navigation callbacks ([CallerWebViewClient]). Called by
+   * `MainActivity` right after the bridge is built: `Bridge` installs its own client at the end of
+   * its constructor, after plugins load, so a client installed in [load] would be replaced. The
+   * first navigation's callbacks arrive after `onCreate` returns. Until this has run no document is
+   * known and every call is refused.
+   */
+  fun installPageGate() {
+    val bridge = bridge ?: return
+    bridge.webViewClient = CallerWebViewClient(bridge, document)
   }
   /** Link ids a call is inside a method on: [sweepLinks] must not close one under the call. */
   private val inUse = ConcurrentHashMap.newKeySet<String>()
@@ -314,6 +315,9 @@ class DeviceKeyPlugin : Plugin() {
     pool.execute {
       sweepLinks()
       try {
+        // Before the link's thread is started: a page that navigated while the camera was open
+        // (checked in takeScanTicket) or since gets no link.
+        if (!document.holds(ticket)) throw Refusal("NotAllowed", "The page changed. Start again.")
         val id = UUID.randomUUID().toString()
         val link = identity().scanDevice(text)
         if (!document.holds(ticket)) {
@@ -329,10 +333,11 @@ class DeviceKeyPlugin : Plugin() {
     }
   }
 
-  @PluginMethod
-  fun linkNext(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+  fun linkNext(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) { ticket ->
     withLink(call) { id, held ->
       try {
+        // Before each poll, which may send the ticket on to the store.
+        stillHolds(ticket)
         val step = held.link.next()
         if (step is LinkStep.Claimed) held.claim = step
         if (step is LinkStep.Linked && links.remove(id, held)) held.link.close()
@@ -419,7 +424,6 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   override fun handleOnDestroy() {
-    bridge?.removeWebViewListener(loads)
     links.keys.toList().forEach { id -> links.remove(id)?.let { it.link.cancel(); it.link.close() } }
     super.handleOnDestroy()
   }
@@ -500,6 +504,8 @@ class DeviceKeyPlugin : Plugin() {
     }
     pool.execute {
       try {
+        // Between the admission on the bridge's thread and here the page may have navigated.
+        stillHolds(ticket)
         sweepLinks()
         val out = body(ticket)
         stillHolds(ticket)
@@ -538,9 +544,27 @@ class DeviceKeyPlugin : Plugin() {
    * check and is refused here.
    */
   private fun requireCaller(access: Caller): CallerDocument.Ticket {
-    if (bridge?.config?.isUsingLegacyBridge != false) throw Refusal("NotAllowed", "This page can't use the device key.")
+    if (!viaWebMessageListener()) throw Refusal("NotAllowed", "This page can't use the device key.")
     return document.admit(identityOnly = access == Caller.IDENTITY_PAGE)
       ?: throw Refusal("NotAllowed", "This page can't use the device key.")
+  }
+
+  /**
+   * True only when Capacitor really installed its web-message listener (see [BridgeTransport]):
+   * the config does not ask for the legacy bridge, the WebView supports `WEB_MESSAGE_LISTENER`, and
+   * [TransportWebView] never saw `androidBridge` given to `addJavascriptInterface` (Capacitor's
+   * silent fallback when `addWebMessageListener` throws). Every call is refused otherwise, not only
+   * the identity page's: on the fallback every frame of the page can post a call and none can be
+   * told from the main frame, and the plugin cannot make that distinction for a read either.
+   */
+  private fun viaWebMessageListener(): Boolean {
+    val bridge = bridge ?: return false
+    val view = bridge.webView as? TransportWebView
+    return BridgeTransport.isWebMessageListener(
+      legacyConfigured = bridge.config?.isUsingLegacyBridge,
+      featureSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER),
+      interfaceInstalled = view?.bridgeInterfaceInstalled,
+    )
   }
 
   /** Refuses when a new document has loaded since the call was admitted: nothing is mutated or signed for it. */

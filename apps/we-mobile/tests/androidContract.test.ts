@@ -5,11 +5,19 @@
 import { describe, expect, it } from 'vitest';
 
 import { IDENTITY_PAGE } from '../../we-web/src/platform/phoneCustody';
+import appBuild from '../android/app/build.gradle?raw';
 import manifest from '../android/app/src/main/AndroidManifest.xml?raw';
 import callerPage from '../android/app/src/main/java/org/coasys/app/devicekey/CallerPage.kt?raw';
+import clientSource from '../android/app/src/main/java/org/coasys/app/devicekey/CallerWebViewClient.kt?raw';
 import plugin from '../android/app/src/main/java/org/coasys/app/devicekey/DeviceKeyPlugin.kt?raw';
+import transportWebView from '../android/app/src/main/java/org/coasys/app/devicekey/TransportWebView.kt?raw';
 import mainActivity from '../android/app/src/main/java/org/coasys/app/MainActivity.java?raw';
+import layout from '../android/app/src/main/res/layout/capacitor_bridge_layout_main.xml?raw';
 import config from '../capacitor.config';
+import capacitorLayout from '../node_modules/@capacitor/android/capacitor/src/main/res/layout/capacitor_bridge_layout_main.xml?raw';
+
+/** The load adapter's code, its comments left out. */
+const client = clientSource.replace(/\/\*[\s\S]*?\*\//g, '');
 
 /** The `android:name` of every element of one kind, comments left out. */
 function declared(element: 'uses-permission' | 'uses-feature'): Map<string, string> {
@@ -106,14 +114,47 @@ describe('who may call the identity plugin', () => {
 
   it('binds the caller to the loaded document, never to the history address a script can rewrite', () => {
     // WebView.url is the current history entry: pushState changes it with no document load.
-    const reads = [...plugin.matchAll(/\.url\b/g)];
-    // onPageStarted, onPageLoaded and the sign-in request's own `url`; never in a call's path.
-    expect(reads.length).toBe(3);
-    expect(plugin).toMatch(/override fun onPageStarted\(webView: WebView\) \{\s+document\.started\(webView\.url\)/);
-    expect(plugin).toMatch(/override fun onPageLoaded\(webView: WebView\) \{\s+document\.finished\(webView\.url\)/);
-    expect(plugin).toContain('isUsingLegacyBridge');
-    expect(plugin).toContain('bridge?.addWebViewListener(loads)');
+    // The plugin's only `.url` is the sign-in request's own; the load adapter reads none.
+    expect([...plugin.matchAll(/\.url\b/g)].length).toBe(1);
+    expect(plugin).not.toContain('WebViewListener');
+    expect(client).not.toMatch(/\.url\b/);
+    expect(client).not.toContain('WebViewListener');
+    expect(client).toContain('BridgeWebViewClient(bridge)');
+    expect(client).toMatch(/super\.onPageStarted\(view, url, favicon\)\s+document\.started\(url\)/);
+    expect(client).toMatch(/super\.onPageCommitVisible\(view, url\)\s+document\.committed\(url\)/);
+    expect(client).toMatch(/super\.onPageFinished\(view, url\)\s+document\.finished\(url\)/);
+    expect(plugin).toContain('bridge.webViewClient = CallerWebViewClient(bridge, document)');
+    expect(mainActivity).toContain('installPageGate()');
     expect(plugin).not.toContain('CallerPage.isIdentityPage');
+  });
+
+  it('refuses every call unless Capacitor really installed the web-message listener', () => {
+    // 8.6.3's MessageHandler falls back to addJavascriptInterface, unsaid, when the feature is
+    // unsupported or addWebMessageListener throws; the config alone does not show it.
+    expect(plugin).toMatch(/fun requireCaller[\s\S]*?if \(!viaWebMessageListener\(\)\) throw Refusal\("NotAllowed"/);
+    expect(plugin).toContain('WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)');
+    expect(plugin).toContain('bridge.config?.isUsingLegacyBridge');
+    expect(plugin).toContain('bridge.webView as? TransportWebView');
+    expect(transportWebView).toMatch(/override fun addJavascriptInterface[\s\S]*?bridgeInterfaceInstalled = true/);
+    // The layout is Capacitor's, with only its WebView class replaced.
+    const normalise = (xml: string) =>
+      xml
+        .replace(/<!--[\s\S]*?-->/g, '')
+        .replace(/com\.getcapacitor\.CapacitorWebView|org\.coasys\.app\.devicekey\.TransportWebView/g, 'WEBVIEW')
+        .replace(/\s+/g, ' ');
+    expect(layout).toContain('<org.coasys.app.devicekey.TransportWebView');
+    expect(normalise(layout)).toBe(normalise(capacitorLayout));
+    expect(appBuild).toMatch(/implementation "androidx\.webkit:webkit:\$androidxWebkitVersion"/);
+  });
+
+  it('checks the document when the worker starts, before the body', () => {
+    expect(plugin).toMatch(
+      /pool\.execute \{\s+try \{[^}]*?stillHolds\(ticket\)\s+sweepLinks\(\)\s+val out = body\(ticket\)/,
+    );
+    expect(plugin).toMatch(/fun linkNext[\s\S]*?stillHolds\(ticket\)\s+val step = held\.link\.next\(\)/);
+    expect(plugin).toMatch(
+      /fun deviceScanned[\s\S]*?pool\.execute[\s\S]*?document\.holds\(ticket\)\) throw[\s\S]*?identity\(\)\.scanDevice/,
+    );
   });
 
   it('checks again after a prompt, a scan or a wait, before it signs or mutates', () => {

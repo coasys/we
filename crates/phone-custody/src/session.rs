@@ -126,6 +126,34 @@ fn is_challenge(text: &str) -> bool {
     text.len() == 43 && URL_SAFE_NO_PAD.decode(text).is_ok_and(|b| b.len() == 32)
 }
 
+/// The longest host DNS allows.
+const MAX_HOST: usize = 253;
+
+/// `a-z`, digits, `.`, `-` and `_` (a name or an IPv4 address), or a bracketed IPv6 address. The
+/// host is already lowercase.
+fn is_plain_host(host: &str) -> bool {
+    match host.strip_prefix('[') {
+        Some(inner) => inner.strip_suffix(']').is_some_and(|v6| {
+            !v6.is_empty()
+                && v6
+                    .bytes()
+                    .all(|b| b.is_ascii_hexdigit() || b == b':' || b == b'.')
+        }),
+        None => host.bytes().all(|b| {
+            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_')
+        }),
+    }
+}
+
+/// 1 to 5 digits, no leading zero, at most 65535: one spelling per port.
+fn is_canonical_port(port: &str) -> bool {
+    !port.is_empty()
+        && port.len() <= 5
+        && !port.starts_with('0')
+        && port.bytes().all(|b| b.is_ascii_digit())
+        && port.parse::<u32>().is_ok_and(|p| p <= 65535)
+}
+
 /// `scheme://host[:port]` of `url`: `ws`/`wss` as `http`/`https`, the host lowercase, a default
 /// port left out. The executor normalises the same way (`key_login::normalise_origin`).
 pub fn origin_of(url: &str) -> Result<String, PhoneKeyError> {
@@ -146,6 +174,13 @@ pub fn origin_of(url: &str) -> Result<String, PhoneKeyError> {
     if authority.contains('@') {
         return Err(not("credentials in the URL"));
     }
+    // One spelling per host, so what a prompt shows is what is signed: a non-ASCII host is refused
+    // (an internationalised name is given in its punycode form), as is anything that is not a plain
+    // DNS name, an IPv4 address or a bracketed IPv6 address. The Kotlin `PromptText.originOf` applies
+    // the same rules; `tests/origin_vectors.json` holds both to the same answers.
+    if !authority.is_ascii() {
+        return Err(not("the host is not ASCII; use its punycode (xn--) form"));
+    }
     let authority = authority.to_ascii_lowercase();
     // An IPv6 host is bracketed, so the port is what follows `]:`.
     let (host, port) = match authority.rfind(':') {
@@ -155,10 +190,11 @@ pub fn origin_of(url: &str) -> Result<String, PhoneKeyError> {
     if host.is_empty() {
         return Err(not("no host"));
     }
+    if host.len() > MAX_HOST || !is_plain_host(host) {
+        return Err(not("the host is not a plain name or address"));
+    }
     match port {
-        Some(p) if p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit()) => {
-            Err(not("the port is not a number"))
-        }
+        Some(p) if !is_canonical_port(p) => Err(not("the port is not a number")),
         Some(p) if p != default_port => Ok(format!("{scheme}://{host}:{p}")),
         _ => Ok(format!("{scheme}://{host}")),
     }
