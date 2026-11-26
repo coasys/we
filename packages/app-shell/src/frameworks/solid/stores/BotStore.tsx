@@ -187,7 +187,9 @@ export function BotStoreProvider(props: ParentProps) {
   const [conflict, setConflict] = createSignal('');
   const [saving, setSaving] = createSignal(false);
   const [revoking, setRevoking] = createSignal(false);
-  const [keyRevokeError, setKeyRevokeError] = createSignal('');
+  // Tied to the bot it concerns: removing goes on if the person opens another bot, and the notice must not follow them.
+  const [keyFailure, setKeyFailure] = createSignal<{ did: string; message: string } | null>(null);
+  const keyRevokeError = () => (keyFailure()?.did === selectedDid() ? (keyFailure()?.message ?? '') : '');
   const [entries, setEntries] = createSignal<BotActivityView[]>([]);
   const [activityLoaded, setActivityLoaded] = createSignal(false);
   const [hasOlder, setHasOlder] = createSignal(false);
@@ -206,7 +208,7 @@ export function BotStoreProvider(props: ParentProps) {
       setDraft(null);
       setEntries([]);
       setActivityLoaded(false);
-      setKeyRevokeError('');
+      setKeyFailure(null);
     }),
   );
 
@@ -311,7 +313,6 @@ export function BotStoreProvider(props: ParentProps) {
     if (!p) return;
     setSelectedDid(did);
     setConflict('');
-    setKeyRevokeError('');
     setEntries([]);
     setActivityLoaded(false);
     setHasOlder(false);
@@ -334,16 +335,21 @@ export function BotStoreProvider(props: ParentProps) {
     setSaving(true);
     setConflict('');
     try {
-      const bot = selectedBot() ?? (await p.grant(did));
+      // The bot is the one asked for, not whichever is open now: the selection can move between steps.
+      const bot = raw().find((b) => b.did === did) ?? (await p.grant(did));
+      if (port() !== p) return false;
       const saved = await p.setGrant(did, grantInput(next(bot), now()));
+      if (port() !== p) return false;
       take(saved, true);
       setError('');
       return true;
     } catch (e) {
+      if (port() !== p) return false;
       if (isBotGrantConflict(e)) {
-        setConflict(e.message);
+        if (selectedDid() === did) setConflict(e.message);
         try {
-          take(await p.grant(did), true);
+          const latest = await p.grant(did);
+          if (port() === p) take(latest, true);
         } catch (again) {
           setError(message(again));
         }
@@ -358,20 +364,22 @@ export function BotStoreProvider(props: ParentProps) {
   }
 
   /** A change of state only: the rest of the grant as read, so an unsaved edit is not sent with it. */
-  async function setState(state: BotGrantState): Promise<boolean> {
-    const did = selectedDid();
+  async function setState(state: BotGrantState, target?: string): Promise<boolean> {
+    const did = target ?? selectedDid();
     const p = port();
     if (!did || !p) return false;
     let fresh: BotView;
     try {
       // Read first: a pause must not undo a grant change made elsewhere since this page read it.
       fresh = await p.grant(did);
+      if (port() !== p) return false;
       take(fresh, false);
     } catch (e) {
       setError(message(e));
       return false;
     }
-    const kept = draft();
+    // The editor's draft is only this bot's while it is the one open.
+    const kept = selectedDid() === did ? draft() : null;
     // The edit in progress started from the grant at `kept.version`. The same version now means
     // nothing changed elsewhere, so the edit may go on over the pause; a newer one means it did,
     // and giving the old draft the new version would let a Save restore what was removed, with
@@ -379,8 +387,9 @@ export function BotStoreProvider(props: ParentProps) {
     const unchanged = !!kept && fresh.grant.version === kept.version;
     const ok = await send(did, (bot) => ({ ...draftOf(bot), state }));
     // A pause keeps an edit in progress; a revoke ends every edit.
-    if (ok && kept && state !== 'revoked') {
-      if (unchanged) setDraft({ ...kept, state, version: selectedBot()?.grant.version ?? kept.version });
+    if (ok && kept && state !== 'revoked' && selectedDid() === did) {
+      if (unchanged)
+        setDraft({ ...kept, state, version: raw().find((b) => b.did === did)?.grant.version ?? kept.version });
       else setConflict('These permissions changed while you were editing. Showing the latest.');
     }
     return ok;
@@ -397,24 +406,32 @@ export function BotStoreProvider(props: ParentProps) {
   async function remove(): Promise<boolean> {
     const did = selectedDid();
     if (!did || revoking()) return false;
+    const p = port();
+    if (!p) return false;
     setRevoking(true);
-    setKeyRevokeError('');
+    setKeyFailure(null);
+    // Both steps are bound to this bot and this port: the person may open another bot, or close this
+    // one, while the grant is being ended, and the key that goes is still this bot's.
+    const find = () => raw().find((b) => b.did === did);
     try {
-      let bot = selectedBot();
+      let bot = find();
       if (bot?.grant.state !== 'revoked') {
-        if (!(await setState('revoked'))) return false;
-        bot = selectedBot();
+        if (!(await setState('revoked', did))) return false;
+        if (port() !== p) return false;
+        bot = find();
       }
       const key = bot?.key;
       // No key in the log (never confirmed), or one the log already ends: nothing left to revoke.
       if (!key || key.verdict !== 'valid') return true;
       const outcome = await identity.open({ kind: 'revoke', keyId: key.keyId });
       await refresh();
+      if (port() !== p) return false;
       if (outcome === 'done') return true;
       const why = outcome === 'cancelled' ? 'It was cancelled.' : identity.error() || 'It did not go through.';
-      setKeyRevokeError(
-        `The bot's permissions are ended, but its key is still valid on your other computers. ${why} Try again to revoke the key.`,
-      );
+      setKeyFailure({
+        did,
+        message: `The bot's permissions are ended, but its key is still valid on your other computers. ${why} Try again to revoke the key.`,
+      });
       return false;
     } finally {
       setRevoking(false);
@@ -490,7 +507,6 @@ export function BotStoreProvider(props: ParentProps) {
     dismissCreated: () => setCreated(null),
     select,
     close: () => {
-      setKeyRevokeError('');
       setSelectedDid(null);
       setDraft(null);
       setConflict('');
