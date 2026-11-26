@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+
+import { operationWrites } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
 import { admitsChosen, ENTITY_GROUPS, entityGroup, operationSurface } from '../src/shared/registries/operationGroups';
@@ -53,4 +56,28 @@ describe('the capability group an operation needs', () => {
   it('maps only to groups that exist', () => {
     for (const group of Object.values(ENTITY_GROUPS)) expect(CAPABILITY_GROUPS).toHaveProperty(group);
   });
+});
+
+/*
+  The effect-summary vectors carry WE's permission table, so another host can check its reading of the
+  rule against the reference. This holds the table here to the one in the file, and this host's
+  reading to every case's.
+*/
+describe('the effect vectors, read by this host', () => {
+  const file = JSON.parse(
+    readFileSync(new URL('../../backend-system/conformance/vectors/operations/effects.json', import.meta.url), 'utf8'),
+  ) as {
+    groups: { default: string; entities: Record<string, string> };
+    cases: { id: string; summary: Parameters<typeof operationSurface>[0]; permission: Record<string, unknown> }[];
+  };
+
+  it('carry this host’s table', () => {
+    expect(file.groups.entities).toEqual({ ...ENTITY_GROUPS });
+    expect(entityGroup('SomethingNobodyListed')).toBe(file.groups.default);
+  });
+
+  for (const c of file.cases)
+    it(`${c.id}: the group, what is chosen at call time, and whether it is destructive`, () => {
+      expect({ ...operationSurface(c.summary), writes: operationWrites(c.summary) }).toEqual(c.permission);
+    });
 });

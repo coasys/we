@@ -1,0 +1,616 @@
+{
+  "version": 1,
+  "namespace": "conformance",
+  "protectedEntities": ["Policy", "Role", "RoleGrant"],
+  "entities": {
+    "Board": {
+      "properties": {
+        "title": { "type": "string", "required": true },
+        "note": { "type": "string" },
+        "done": { "type": "boolean" }
+      },
+      "relations": {
+        "columns": { "target": "Column", "cardinality": "many", "ordered": true },
+        "lead": { "target": "Column", "cardinality": "one" }
+      }
+    },
+    "Column": {
+      "properties": { "title": { "type": "string", "default": "" } },
+      "relations": { "cards": { "target": "Card", "cardinality": "many" } }
+    },
+    "Card": { "properties": { "text": { "type": "string" } }, "relations": {} },
+    "Shelf": { "abstract": true, "properties": {}, "relations": {} },
+    "Note": {
+      "blockable": true,
+      "properties": { "version": { "type": "number", "default": 0 }, "text": { "type": "string" } },
+      "relations": {}
+    },
+    "Policy": { "properties": { "document": { "type": "json" } }, "relations": {} },
+    "Role": { "properties": { "slug": { "type": "string" }, "name": { "type": "string" } }, "relations": {} },
+    "RoleGrant": { "properties": { "role": { "type": "string" } }, "relations": {} }
+  },
+  "cases": [
+    {
+      "id": "static.well-formed",
+      "check": 0,
+      "note": "a board, a column per item in a loop, a link, a call and a returns: nothing to refuse",
+      "operations": {
+        "makeBoard": {
+          "description": "A case.",
+          "steps": [
+            { "create": { "as": "board", "entity": "Board", "fields": { "title": { "$": "title" } } } },
+            {
+              "forEach": {
+                "in": { "$": "columns" },
+                "as": "col",
+                "steps": [
+                  { "create": { "as": "column", "entity": "Column", "fields": { "title": { "$": "col.title" } } } },
+                  {
+                    "link": {
+                      "entity": "Board",
+                      "id": { "$": "board.id" },
+                      "relation": "columns",
+                      "target": { "$": "column" }
+                    }
+                  }
+                ]
+              }
+            },
+            { "call": { "operation": "conformance.note", "args": { "text": { "$": "title" } } } }
+          ],
+          "params": { "title": { "type": "string", "required": true }, "columns": { "type": "list" } },
+          "returns": { "$": "board.id" },
+          "serial": { "$": "title" }
+        },
+        "note": {
+          "description": "A case.",
+          "steps": [{ "create": { "entity": "Card", "fields": { "text": { "$": "text" } } } }],
+          "params": { "text": { "type": "string", "required": true } }
+        }
+      },
+      "refused": false,
+      "paths": []
+    },
+    {
+      "id": "static.structure-unknown-verb",
+      "check": 1,
+      "note": "a step whose key is not one of the closed set of verbs",
+      "operations": { "t": { "description": "A case.", "steps": [{ "frobnicate": { "entity": "Board" } }] } },
+      "refused": true,
+      "paths": ["operations.t.steps.0"]
+    },
+    {
+      "id": "static.structure-unknown-key",
+      "check": 1,
+      "note": "a misspelt key on a step body is refused, not ignored",
+      "operations": {
+        "t": { "description": "A case.", "steps": [{ "create": { "entity": "Card", "fields": {}, "whn": true } }] }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create"]
+    },
+    {
+      "id": "static.structure-levels-and-transitive",
+      "check": 1,
+      "note": "a scope with both levels and transitive",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "find": {
+                "as": "f",
+                "entity": "Column",
+                "scope": { "anchor": "Board", "via": "columns", "anchorId": "b", "levels": [5], "transitive": true }
+              }
+            }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.find.scope"]
+    },
+    {
+      "id": "static.structure-missing-required",
+      "check": 1,
+      "note": "a create without fields, and an operation without a description",
+      "operations": {
+        "t": { "description": "A case.", "steps": [{ "create": { "entity": "Card" } }] },
+        "u": { "steps": [] }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0", "operations.u.description"]
+    },
+    {
+      "id": "static.unbound-before",
+      "check": 2,
+      "note": "a name read before the step that binds it, and a name only a template has",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            { "update": { "entity": "Board", "id": { "$": "later.id" }, "fields": { "note": { "$": "me.did" } } } },
+            { "find": { "as": "later", "entity": "Board" } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.update.fields.note", "operations.t.steps.0.update.id"]
+    },
+    {
+      "id": "static.unbound-loop-name",
+      "check": 2,
+      "note": "a name bound inside a loop is not visible after it",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "forEach": {
+                "in": [{ "id": "a" }],
+                "as": "x",
+                "steps": [{ "find": { "as": "inner", "entity": "Board" } }]
+              }
+            },
+            { "delete": { "entity": "Board", "id": { "$": "inner" } } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.1.delete.id"]
+    },
+    {
+      "id": "static.rebinds-name",
+      "check": 3,
+      "note": "an as reusing an earlier as, and one reusing a param",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "find": { "as": "x", "entity": "Board" } }, { "find": { "as": "x", "entity": "Board" } }]
+        },
+        "u": {
+          "description": "A case.",
+          "steps": [{ "find": { "as": "title", "entity": "Board" } }],
+          "params": { "title": { "type": "string" } }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.1.find.as", "operations.u.steps.0.find.as"]
+    },
+    {
+      "id": "static.reserved-param",
+      "check": 3,
+      "note": "a param named invoker, and one named in, which an expression reads as an operator",
+      "operations": {
+        "t": { "description": "A case.", "steps": [], "params": { "invoker": { "type": "string" } } },
+        "u": { "description": "A case.", "steps": [], "params": { "in": { "type": "list" } } }
+      },
+      "refused": true,
+      "paths": ["operations.t.params.invoker", "operations.u.params.in"]
+    },
+    {
+      "id": "static.keyword-as",
+      "check": 3,
+      "note": "an as named null, which an expression reads as a literal",
+      "operations": { "t": { "description": "A case.", "steps": [{ "find": { "as": "null", "entity": "Board" } }] } },
+      "refused": true,
+      "paths": ["operations.t.steps.0.find.as"]
+    },
+    {
+      "id": "static.expression-does-not-parse",
+      "check": 4,
+      "note": "an expression that does not parse",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "create": { "entity": "Card", "fields": { "text": { "$": "trim(" } } } }]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.fields.text"]
+    },
+    {
+      "id": "static.host-function",
+      "check": 4,
+      "note": "a call to a function one host provides, which is not core",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "check": { "condition": { "$": "calendarMonth({})" }, "error": "no" } }],
+          "errors": { "no": "No." }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.check.condition"]
+    },
+    {
+      "id": "static.function-arity",
+      "check": 4,
+      "note": "a core function called with more arguments than its signature takes",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "create": { "entity": "Card", "fields": { "text": { "$": "trim('a', 'b')" } } } }]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.fields.text"]
+    },
+    {
+      "id": "static.unknown-entity",
+      "check": 5,
+      "note": "a create of an entity nothing declares",
+      "operations": { "t": { "description": "A case.", "steps": [{ "create": { "entity": "Lamp", "fields": {} } }] } },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.entity"]
+    },
+    {
+      "id": "static.unknown-one-of",
+      "check": 5,
+      "note": "a oneOf naming an entity nothing declares",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "create": { "entity": { "$": "kind" }, "oneOf": ["Column", "Lamp"], "fields": {} } }],
+          "params": { "kind": { "type": "string" } }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.oneOf.1"]
+    },
+    {
+      "id": "static.unknown-category",
+      "check": 5,
+      "note": "a oneOf naming a category that does not exist",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "delete": { "entity": { "$": "kind" }, "oneOf": [{ "category": "pinnable" }], "id": "x" } }],
+          "params": { "kind": { "type": "string" } }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0"]
+    },
+    {
+      "id": "static.chosen-without-one-of",
+      "check": 5,
+      "note": "an entity chosen by expression with no oneOf, and a named entity that carries one",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "create": { "entity": { "$": "kind" }, "fields": {} } }],
+          "params": { "kind": { "type": "string" } }
+        },
+        "u": { "description": "A case.", "steps": [{ "delete": { "entity": "Board", "oneOf": ["Board"], "id": "x" } }] }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.oneOf", "operations.u.steps.0.delete.oneOf"]
+    },
+    {
+      "id": "static.protected-entity",
+      "check": 6,
+      "note": "a write of each access-control entity; reading one is allowed",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            { "find": { "as": "p", "entity": "Policy" } },
+            { "delete": { "entity": "Policy", "id": "x" } },
+            { "update": { "entity": "Role", "id": "x", "fields": { "name": "Admin" } } },
+            { "create": { "entity": "RoleGrant", "fields": { "role": "admin" } } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": [
+        "operations.t.steps.1.delete.entity",
+        "operations.t.steps.2.update.entity",
+        "operations.t.steps.3.create.entity"
+      ]
+    },
+    {
+      "id": "static.create-abstract",
+      "check": 7,
+      "note": "a create of an abstract entity",
+      "operations": { "t": { "description": "A case.", "steps": [{ "create": { "entity": "Shelf", "fields": {} } }] } },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.entity"]
+    },
+    {
+      "id": "static.create-missing-required",
+      "check": 7,
+      "note": "a create that does not give a required property with no default",
+      "operations": {
+        "t": { "description": "A case.", "steps": [{ "create": { "entity": "Board", "fields": { "note": "x" } } }] }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.fields"]
+    },
+    {
+      "id": "static.fields-name-id",
+      "check": 7,
+      "note": "a create and an update naming id in their fields",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            { "create": { "entity": "Card", "fields": { "id": "urn:example:x", "text": "x" } } },
+            { "update": { "entity": "Card", "id": "urn:example:x", "fields": { "id": "urn:example:y" } } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.create.fields.id", "operations.t.steps.1.update.fields.id"]
+    },
+    {
+      "id": "static.unknown-field",
+      "check": 8,
+      "note": "a field no entity declares, in fields, in a where and in an order",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            { "create": { "entity": "Board", "fields": { "title": "x", "colour": "red" } } },
+            { "find": { "as": "f", "entity": "Board", "where": { "colour": "red" }, "order": { "size": "asc" } } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": [
+        "operations.t.steps.0.create.fields.colour",
+        "operations.t.steps.1.find.order.size",
+        "operations.t.steps.1.find.where.colour"
+      ]
+    },
+    {
+      "id": "static.where-metadata-and-some",
+      "check": 8,
+      "note": "record metadata is readable in a where and an order; a some clause is checked against the relation’s target",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "find": {
+                "as": "f",
+                "entity": "Board",
+                "where": { "author": { "$": "invoker" }, "columns": { "some": { "title": "Done", "colour": "red" } } },
+                "order": { "createdAt": "desc" }
+              }
+            }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.find.where.columns.some.colour"]
+    },
+    {
+      "id": "static.unset",
+      "check": 9,
+      "note": "an unset of a property nobody declares, and of a required one",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "update": { "entity": "Board", "id": "b", "unset": ["colour", "title"] } }]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.update.unset.0", "operations.t.steps.0.update.unset.1"]
+    },
+    {
+      "id": "static.relations",
+      "check": 10,
+      "note": "a link through an unknown relation, a link of a to-one, and a scope via a relation its anchor lacks",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            { "link": { "entity": "Board", "id": "b", "relation": "cards", "target": "c" } },
+            { "link": { "entity": "Board", "id": "b", "relation": "lead", "target": "c" } },
+            { "find": { "as": "f", "entity": "Card", "scope": { "anchor": "Board", "via": "cards", "anchorId": "b" } } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": [
+        "operations.t.steps.0.link.relation",
+        "operations.t.steps.1.link.relation",
+        "operations.t.steps.2.find.scope.via"
+      ]
+    },
+    {
+      "id": "static.chosen-relation",
+      "check": 10,
+      "note": "a relation checked against every entity its oneOf names; one given by expression is the run’s to judge",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "link": {
+                "entity": { "$": "kind" },
+                "oneOf": ["Board", "Column"],
+                "id": "b",
+                "relation": "columns",
+                "target": "c"
+              }
+            },
+            { "link": { "entity": "Board", "id": "b", "relation": { "$": "kind" }, "target": "c" } }
+          ],
+          "params": { "kind": { "type": "string" } }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.link.relation"]
+    },
+    {
+      "id": "static.undeclared-error",
+      "check": 11,
+      "note": "a check naming an error the operation does not declare",
+      "operations": {
+        "t": { "description": "A case.", "steps": [{ "check": { "condition": true, "error": "nope" } }] }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.check.error"]
+    },
+    {
+      "id": "static.calls",
+      "check": 12,
+      "note": "a call passing a param the callee lacks and missing one it requires, a call to nothing, and a cycle",
+      "operations": {
+        "a": { "description": "A case.", "steps": [{ "call": { "operation": "conformance.b", "args": { "n": 1 } } }] },
+        "b": {
+          "description": "A case.",
+          "steps": [{ "call": { "operation": "conformance.a" } }],
+          "params": { "n": { "type": "number", "required": true } }
+        },
+        "c": {
+          "description": "A case.",
+          "steps": [
+            { "call": { "operation": "conformance.b", "args": { "m": 1 } } },
+            { "call": { "operation": "other.x" } }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": [
+        "operations.a",
+        "operations.b",
+        "operations.c.steps.0.call.args",
+        "operations.c.steps.0.call.args.m",
+        "operations.c.steps.1.call.operation"
+      ]
+    },
+    {
+      "id": "static.forEach-depth",
+      "check": 13,
+      "note": "forEach nested four deep",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "forEach": {
+                "in": [],
+                "as": "a",
+                "key": { "$": "invoker" },
+                "steps": [
+                  {
+                    "forEach": {
+                      "in": [],
+                      "as": "b",
+                      "key": { "$": "invoker" },
+                      "steps": [
+                        {
+                          "forEach": {
+                            "in": [],
+                            "as": "c",
+                            "key": { "$": "invoker" },
+                            "steps": [{ "forEach": { "in": [], "as": "d", "key": { "$": "invoker" }, "steps": [] } }]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.forEach.steps.0.forEach.steps.0.forEach.steps.0.forEach"]
+    },
+    {
+      "id": "static.forEach-literal-key",
+      "check": 13,
+      "note": "a literal list item with no id and no key, in a forEach with no key expression",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "forEach": { "in": [{ "title": "a" }], "as": "x", "steps": [] } }]
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.steps.0.forEach.in.0"]
+    },
+    {
+      "id": "static.identity-ok",
+      "check": 14,
+      "note": "an identity over a property and a to-one, both given: nothing to refuse",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "create": {
+                "entity": "Board",
+                "identity": ["title", "lead"],
+                "fields": { "title": "Plan", "lead": "c1" }
+              }
+            }
+          ]
+        }
+      },
+      "refused": false,
+      "paths": []
+    },
+    {
+      "id": "static.identity",
+      "check": 14,
+      "note": "an identity on a chosen entity, over a to-many and an unknown field, naming a field twice, and not given",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [
+            {
+              "create": {
+                "entity": { "$": "kind" },
+                "oneOf": ["Board"],
+                "identity": ["title"],
+                "fields": { "title": "x" }
+              }
+            },
+            { "create": { "entity": "Board", "identity": ["columns", "nope"], "fields": { "title": "x" } } },
+            { "create": { "entity": "Board", "identity": ["title", "title"], "fields": { "title": "x" } } },
+            { "create": { "entity": "Board", "identity": ["note"], "fields": { "title": "x" } } }
+          ],
+          "params": { "kind": { "type": "string" } }
+        }
+      },
+      "refused": true,
+      "paths": [
+        "operations.t.steps.0.create.identity",
+        "operations.t.steps.1.create.identity.0",
+        "operations.t.steps.1.create.identity.1",
+        "operations.t.steps.2.create.identity",
+        "operations.t.steps.3.create.identity.0"
+      ]
+    },
+    {
+      "id": "static.serial-literal",
+      "check": 15,
+      "note": "a serial that is not an expression",
+      "operations": {
+        "t": { "description": "A case.", "steps": [], "serial": "board", "params": { "board": { "type": "string" } } }
+      },
+      "refused": true,
+      "paths": ["operations.t.serial"]
+    },
+    {
+      "id": "static.serial-reads-step",
+      "check": 15,
+      "note": "a serial reading a name a step binds, which is not a param",
+      "operations": {
+        "t": {
+          "description": "A case.",
+          "steps": [{ "find": { "as": "found", "entity": "Board" } }],
+          "serial": { "$": "found" }
+        }
+      },
+      "refused": true,
+      "paths": ["operations.t.serial"]
+    }
+  ]
+}

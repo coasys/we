@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "ids.invocation-first-step",
+      "note": "the board in create-and-link",
+      "kind": "invocation",
+      "invocationId": "00000000-0000-4000-8000-000000000001",
+      "path": ["0"],
+      "framed": "36:00000000-0000-4000-8000-0000000000011:0",
+      "result": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975"
+    },
+    {
+      "id": "ids.invocation-loop-key",
+      "note": "the first column in create-and-link: a forEach contributes its key, never its position",
+      "kind": "invocation",
+      "invocationId": "00000000-0000-4000-8000-000000000001",
+      "path": ["1", "k=todo", "0"],
+      "framed": "36:00000000-0000-4000-8000-0000000000011:16:k=todo1:0",
+      "result": "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d"
+    },
+    {
+      "id": "ids.invocation-other",
+      "note": "another invocation id, the same path shape: another id",
+      "kind": "invocation",
+      "invocationId": "3f2b8c1e-0000-4000-8000-000000000001",
+      "path": ["0", "k=todo", "0"],
+      "framed": "36:3f2b8c1e-0000-4000-8000-0000000000011:06:k=todo1:0",
+      "result": "urn:uuid:2ddc1399-ea85-86eb-add9-4f8c93c81318"
+    },
+    {
+      "id": "ids.invocation-utf8",
+      "note": "a key with a character of two UTF-8 bytes is framed by its byte length",
+      "kind": "invocation",
+      "invocationId": "inv",
+      "path": ["0", "k=café", "1"],
+      "framed": "3:inv1:07:k=café1:1",
+      "result": "urn:uuid:a0a65afc-1e06-80ad-806a-67780c230bba"
+    },
+    {
+      "id": "ids.invocation-astral",
+      "note": "a key outside the Basic Multilingual Plane: four bytes, framed by its byte length",
+      "kind": "invocation",
+      "invocationId": "inv",
+      "path": ["0", "k=😀"],
+      "framed": "3:inv1:06:k=😀",
+      "result": "urn:uuid:1844c234-0c89-8338-8b0f-313b7a218dc6"
+    },
+    {
+      "id": "ids.invocation-call",
+      "note": "a record made inside a call: the call contributes c= and the callee’s qualified name",
+      "kind": "invocation",
+      "invocationId": "00000000-0000-4000-8000-000000000001",
+      "path": ["0", "c=conformance.note", "0"],
+      "framed": "36:00000000-0000-4000-8000-0000000000011:018:c=conformance.note1:0",
+      "result": "urn:uuid:db2f29e5-0748-8fa1-b575-84fe6315f8a0"
+    },
+    {
+      "id": "ids.invocation-framing-in-key",
+      "note": "a key holding the framing’s own characters cannot make two paths read alike",
+      "kind": "invocation",
+      "invocationId": "inv",
+      "path": ["0", "k=a1:0"],
+      "framed": "3:inv1:06:k=a1:0",
+      "result": "urn:uuid:3f189069-4658-8ce2-b96c-22539acebf8b"
+    },
+    {
+      "id": "ids.invocation-split-key",
+      "note": "the same characters split into two segments: framed differently, another id",
+      "kind": "invocation",
+      "invocationId": "inv",
+      "path": ["0", "k=a", "0"],
+      "framed": "3:inv1:03:k=a1:0",
+      "result": "urn:uuid:d3413f65-8c78-8ff7-8f5d-94965dc494f1"
+    },
+    {
+      "id": "ids.invocation-empty-path",
+      "note": "an empty path is the invocation id alone",
+      "kind": "invocation",
+      "invocationId": "inv",
+      "path": [],
+      "framed": "3:inv",
+      "result": "urn:uuid:ab403497-924f-8301-8471-78daad05d95f"
+    },
+    {
+      "id": "ids.identity-slug",
+      "note": "the state in identity-id: a task state by its slug, in a dataset with no shared id",
+      "kind": "identity",
+      "entity": "TaskState",
+      "identity": [["slug", "blocked"]],
+      "framed": "0:9:TaskState4:slug7:blocked",
+      "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
+    },
+    {
+      "id": "ids.identity-shared",
+      "note": "the state in identity-id-shared: the same identity within a dataset’s shared id",
+      "kind": "identity",
+      "entity": "TaskState",
+      "identity": [["slug", "blocked"]],
+      "sharedId": "QmSpaceA",
+      "framed": "0:10:d=QmSpaceA9:TaskState4:slug7:blocked",
+      "result": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d"
+    },
+    {
+      "id": "ids.identity-other-dataset",
+      "note": "the same identity in another shared dataset: another record",
+      "kind": "identity",
+      "entity": "TaskState",
+      "identity": [["slug", "blocked"]],
+      "sharedId": "QmSpaceB",
+      "framed": "0:10:d=QmSpaceB9:TaskState4:slug7:blocked",
+      "result": "urn:uuid:ae7c15a7-c97c-8bac-adfb-5569983e5eda"
+    },
+    {
+      "id": "ids.identity-role",
+      "note": "a role by its slug",
+      "kind": "identity",
+      "entity": "Role",
+      "identity": [["slug", "admin"]],
+      "framed": "0:4:Role4:slug5:admin",
+      "result": "urn:uuid:86c6ab81-f4a4-8f85-997b-e64cde1d859e"
+    },
+    {
+      "id": "ids.identity-two-fields",
+      "note": "an identity of two fields, in the order the identity lists them",
+      "kind": "identity",
+      "entity": "Vote",
+      "identity": [
+        ["poll", "urn:example:p"],
+        ["voter", "did:example:ann"]
+      ],
+      "framed": "0:4:Vote4:poll13:urn:example:p5:voter15:did:example:ann",
+      "result": "urn:uuid:6ce7df0a-6f09-8bff-a03e-b41f62804a81"
+    },
+    {
+      "id": "ids.identity-two-fields-reversed",
+      "note": "the same fields listed the other way round: another id, since the order is part of the identity",
+      "kind": "identity",
+      "entity": "Vote",
+      "identity": [
+        ["voter", "did:example:ann"],
+        ["poll", "urn:example:p"]
+      ],
+      "framed": "0:4:Vote5:voter15:did:example:ann4:poll13:urn:example:p",
+      "result": "urn:uuid:b017a388-410b-809b-9e5e-b628ca4db43b"
+    },
+    {
+      "id": "ids.identity-number-utf8",
+      "note": "a number as its shortest decimal, and a value with a two-byte character",
+      "kind": "identity",
+      "entity": "Seat",
+      "identity": [
+        ["row", "café"],
+        ["n", "1.5"]
+      ],
+      "framed": "0:4:Seat3:row5:café1:n3:1.5",
+      "result": "urn:uuid:88084a04-6308-804b-8623-9ce69f883852"
+    },
+    {
+      "id": "ids.identity-boolean",
+      "note": "a boolean as true or false",
+      "kind": "identity",
+      "entity": "Flag",
+      "identity": [["on", "true"]],
+      "framed": "0:4:Flag2:on4:true",
+      "result": "urn:uuid:0f06c1a7-57e6-89a5-b124-1580af9e0ac8"
+    },
+    {
+      "id": "ids.identity-spells-invocation",
+      "note": "an identity whose segments spell an invocation’s: the empty domain keeps the two apart",
+      "kind": "identity",
+      "entity": "inv",
+      "identity": [["0", "k=a"]],
+      "framed": "0:3:inv1:03:k=a",
+      "result": "urn:uuid:8c4b9323-20d3-8fcd-9111-c03c2afff26c"
+    }
+  ]
+}
