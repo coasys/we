@@ -1,8 +1,4 @@
 import type { Ad4mClient } from '@coasys/ad4m';
-// The session types exist in the package but its `generated/api` barrel does not re-export them
-// yet — deep type imports until it does.
-import type { AISession } from '@coasys/ad4m/lib/src/generated/api/AISession';
-import type { AISessionMessage } from '@coasys/ad4m/lib/src/generated/api/AISessionMessage';
 import {
   type AgentConversationMessage,
   type AgentConversationScope,
@@ -14,6 +10,11 @@ import {
 } from '@we/backend-shared';
 
 import { recordMissingMethod } from './missingMethods';
+
+// The package's root barrel does not re-export the session types, and its `exports` and
+// `typesVersions` resolve no deep path, so they come from the client's own signatures.
+type AISession = Awaited<ReturnType<Ad4mClient['ai']['sessionList']>>[number];
+type AISessionMessage = Awaited<ReturnType<Ad4mClient['ai']['sessionMessages']>>[number];
 
 /**
  * Conversations the executor keeps and runs, as the neutral conversations port.
