@@ -3,9 +3,10 @@
  * every question that applies to it, and targeted cases for the branches an arrangement does not
  * reach. `recordKernelVectors.ts` runs each through the kernel and writes the answer beside it.
  *
- * A case is `{ name, fn, args, frame? }`: the function, its arguments in order, and the app frame it
- * is asked under (the default one when absent). Arguments are plain JSON, so an optional argument in
- * the middle is never left out — every case passes what it means.
+ * A case is `{ name, fn, args }`: the function and its arguments in order. The app frame a case is
+ * asked under rides on its viewport (`Viewport.frame`), or is `edgeLaneBox`'s last argument; absent,
+ * it is the default one. Arguments are plain JSON, so an optional argument in the middle is never
+ * left out — every case passes what it means.
  */
 import {
   type AppFrame,
@@ -28,7 +29,6 @@ export interface DockLayoutCase {
   name: string;
   fn: string;
   args: unknown[];
-  frame?: AppFrame;
   /** Argument positions passed as absent (`undefined`), which JSON cannot hold: each is `null` in `args`. */
   absent?: number[];
 }
@@ -177,13 +177,12 @@ const SNAPS: SnapPoint[] = ['top-left', 'top', 'top-right', 'right', 'bottom-rig
 
 export function dockLayoutCases(): DockLayoutCase[] {
   const cases: DockLayoutCase[] = [];
-  const add = (name: string, fn: string, args: unknown[], frame?: AppFrame) => {
+  const add = (name: string, fn: string, args: unknown[]) => {
     const absent = args.flatMap((arg, index) => (arg === ABSENT ? [index] : []));
     cases.push({
       name: `${fn}: ${name}`,
       fn,
       args: args.map((arg) => (arg === ABSENT ? null : arg)),
-      ...(frame ? { frame } : {}),
       ...(absent.length ? { absent } : {}),
     });
   };
@@ -335,7 +334,7 @@ export function dockLayoutCases(): DockLayoutCase[] {
     add(`${edge}, from the card`, 'thicknessOf', [card(), edge]);
     add(edge, 'stripBox', [edge, desktop, { ...NONE, left: 200 }]);
     add(edge, 'edgeLaneBox', [edge, { left: 300, right: 200, top: 100, bottom: 50 }]);
-    add(`${edge} under a top bar`, 'edgeLaneBox', [edge, NONE], topBar);
+    add(`${edge} under a top bar`, 'edgeLaneBox', [edge, NONE, topBar]);
     add(edge, 'edgeZone', [edge, desktop, 0]);
     add(`${edge}, a lane already there`, 'edgeZone', [edge, desktop, 320]);
     add(`${edge}, far`, 'nearEdge', [{ x: 600, y: 300, w: 200, h: 200 }, edge, desktop, 0]);
@@ -347,7 +346,7 @@ export function dockLayoutCases(): DockLayoutCase[] {
     add(`${snap}, beside a left sidebar`, 'snapOrigin', [snap, 360, 420, desktop, { ...NONE, left: 300 }, chrome]);
   }
   add('a card larger than the room', 'snapOrigin', ['bottom-right', 2000, 2000, narrow, NONE, chrome]);
-  add('a card under a top bar', 'snapOrigin', ['top-left', 300, 300, desktop, NONE, chrome], topBar);
+  add('a card under a top bar', 'snapOrigin', ['top-left', 300, 300, { ...desktop, frame: topBar }, NONE, chrome]);
   for (const [label, request, occupied, seat] of [
     ['a card at its snap', dock('p', card({ snap: 'top-right' })), NONE, undefined],
     ['a free card dragged off screen', dock('p', card({ snap: null, x: -400, y: 2000 })), NONE, undefined],
@@ -758,7 +757,7 @@ export function dockLayoutCases(): DockLayoutCase[] {
   add('nothing at the top', 'railBand', [desktop, NONE, { height: 0, width: 0 }]);
   add('a call bar under the rail', 'railBand', [desktop, NONE, { height: 120, width: 1400 }]);
   add('a call bar clear of the rail', 'railBand', [desktop, { ...NONE, right: 400 }, { height: 120, width: 200 }]);
-  add('an app with no rail', 'railBand', [desktop, NONE, { height: 120, width: 1400 }], noRail);
+  add('an app with no rail', 'railBand', [{ ...desktop, frame: noRail }, NONE, { height: 120, width: 1400 }]);
   add('the call bar covering the bottom', 'withChromeCovered', [
     { ...NONE, right: 300 },
     { top: 0, bottom: 74 },

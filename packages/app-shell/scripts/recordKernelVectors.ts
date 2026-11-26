@@ -9,7 +9,6 @@
  */
 import { writeFileSync } from 'node:fs';
 
-import { DEFAULT_APP_FRAME, setGeometryFrame } from '../src/shared/dockGeometry';
 import { arrangeBoard, type BoardArrangementInput } from '../src/shared/kernels/boardArrangement';
 import { connectionKey } from '../src/shared/kernels/connectionKey';
 import * as dockLayout from '../src/shared/kernels/dockLayout';
@@ -212,11 +211,8 @@ writeFileSync(
 
 const kernel = dockLayout as unknown as Record<string, (...args: unknown[]) => unknown>;
 const dockVectors = dockLayoutCases().map((c) => {
-  // Each case asks under its own frame, and the next one starts from the default again.
-  setGeometryFrame(c.frame ?? DEFAULT_APP_FRAME);
   const args = c.args.map((arg, index) => (c.absent?.includes(index) ? undefined : arg));
   const answer = kernel[c.fn](...args);
-  setGeometryFrame(DEFAULT_APP_FRAME);
   // JSON has no undefined: an answer of nothing is recorded as null.
   return { ...c, output: answer === undefined ? null : asJson(answer) };
 });

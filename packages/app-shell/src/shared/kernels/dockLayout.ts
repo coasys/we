@@ -6,9 +6,9 @@
  *
  * The functions live in `../dockGeometry.ts`, beside the reasoning for each; this file is the list of
  * which of them are the contract. The rest of that file is helpers these call, constants, and types.
- * Everything here measures against the app's frame (the bands its chrome holds), which the shell sets
- * with `setGeometryFrame` when the app template changes — so each vector names the frame it was
- * recorded under, and a host replaying one sets it first.
+ * Everything here measures against the app's frame (the bands its chrome holds), which rides on the
+ * viewport each function is given (`Viewport.frame`; `edgeLaneBox` takes it as its last argument),
+ * so an answer depends on its arguments alone and a vector names its frame among them.
  *
  * What is not here is what a host reads from its own screen: which panels are registered and what
  * each asks for, how recently each was touched, where a lane's section or a template's outlet is

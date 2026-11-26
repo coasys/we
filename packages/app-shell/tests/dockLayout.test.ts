@@ -7,16 +7,14 @@
  */
 import { readFileSync } from 'node:fs';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import { type AppFrame, DEFAULT_APP_FRAME, setGeometryFrame } from '../src/shared/dockGeometry';
 import * as dockLayout from '../src/shared/kernels/dockLayout';
 
 interface Vector {
   name: string;
   fn: string;
   args: unknown[];
-  frame?: AppFrame;
   absent?: number[];
   output: unknown;
 }
@@ -25,8 +23,6 @@ const vectors = JSON.parse(
   readFileSync(new URL('../src/shared/kernels/vectors/dockLayout.json', import.meta.url), 'utf8'),
 ) as Vector[];
 const kernel = dockLayout as unknown as Record<string, (...args: unknown[]) => unknown>;
-
-afterEach(() => setGeometryFrame(DEFAULT_APP_FRAME));
 
 describe('the dock layout kernel', () => {
   it('has vectors for every function it names, and names every function a vector asks', () => {
@@ -43,7 +39,6 @@ describe('the dock layout kernel', () => {
 
 describe('the recorded vectors', () => {
   it.each(vectors.map((vector) => [vector.name, vector] as const))('%s', (_name, vector) => {
-    setGeometryFrame(vector.frame ?? DEFAULT_APP_FRAME);
     const args = vector.args.map((arg, index) => (vector.absent?.includes(index) ? undefined : arg));
     const answer = kernel[vector.fn](...args);
     expect(answer === undefined ? null : JSON.parse(JSON.stringify(answer))).toEqual(vector.output);

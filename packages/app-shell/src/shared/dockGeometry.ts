@@ -98,16 +98,8 @@ export interface AppFrame {
 
 export const DEFAULT_APP_FRAME: AppFrame = { left: SIDEBAR_PX, right: CHROME_RAIL_PX, top: 0, bottom: 0 };
 
-/**
- * The frame every function here measures against. Set by the shell when the app template changes —
- * which is rare, so it is configuration rather than a parameter threaded through every function in
- * this file, as `SIDEBAR_PX` was configuration before it.
- */
-let frame: AppFrame = DEFAULT_APP_FRAME;
-
-export function setGeometryFrame(next: AppFrame): void {
-  frame = next;
-}
+/** The frame a viewport is measured within: its own, or the built-in furniture. */
+const frameOf = (viewport: Viewport): AppFrame => viewport.frame ?? DEFAULT_APP_FRAME;
 
 /**
  * How far down the module rail sits when it has nothing to clear — `ChromeRail`'s own `16px`.
@@ -205,6 +197,13 @@ export interface ContentInset {
 export interface Viewport {
   width: number;
   height: number;
+  /**
+   * The bands the app's chrome holds within it (`AppFrame`), which every position here clears. It
+   * rides on the viewport rather than being set beside the functions, so each answer depends only on
+   * what it is given: the shell's viewport carries the app template's frame, and a vector names its
+   * own. Absent, the built-in app's furniture.
+   */
+  frame?: AppFrame;
 }
 
 /**
@@ -1117,8 +1116,9 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
 export function edgeLaneBox(
   edge: Exclude<DockEdge, null>,
   inset: ContentInset,
+  frame: AppFrame = DEFAULT_APP_FRAME,
 ): { top?: number; right?: number; bottom?: number; left?: number } {
-  const region = contentRegion({ width: 0, height: 0 });
+  const region = contentRegion({ width: 0, height: 0, frame });
   if (edge === 'left') return { left: region.left, top: region.top, bottom: region.bottom };
   if (edge === 'right') return { right: region.right, top: region.top, bottom: region.bottom };
   const sides = { left: region.left + inset.left, right: region.right + inset.right };
@@ -1126,6 +1126,7 @@ export function edgeLaneBox(
 }
 
 function contentRegion(viewport: Viewport, occupied: ContentInset = NO_INSET) {
+  const frame = frameOf(viewport);
   const left = frame.left + occupied.left;
   const right = RAIL_PX + occupied.right;
   const top = frame.top + occupied.top;
@@ -2965,6 +2966,7 @@ export function displacingLanes(requests: DockRequest[], viewport: Viewport): Di
  */
 export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
   if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
+  const frame = frameOf(viewport);
   // An app with no rail has nothing for the rail to dodge.
   if (frame.right <= 0) return 0;
 
@@ -3592,7 +3594,7 @@ export function edgeLaneLayout(
   return {
     lanes,
     covers,
-    boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes,
+    boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all, frameOf(viewport))])) as EdgeLaneBoxes,
   };
 }
 
