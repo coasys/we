@@ -25,6 +25,7 @@
     "dist"
   ],
   "dependencies": {
+    "@we/block-shared": "workspace:*",
     "@we/messages": "workspace:*",
     "@we/schema-kit": "workspace:*"
   },

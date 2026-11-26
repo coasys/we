@@ -17,13 +17,13 @@ function seed() {
 }
 
 describe('diagnostics', () => {
-  it('A: backend query().subscribe delivers rows (pure, no renderer)', async () => {
+  it('A: backend query() opens on the rows (pure, no renderer)', async () => {
     const backend = seed();
     const model = backend.stores.$getEntity('Post');
-    let got: unknown[] = [];
-    model.query({ id: 'ds' }, {}).subscribe((rows) => (got = rows));
-    await tick();
-    expect(got.length).toBe(1); // backend works in this env
+    const live = model.query({ id: 'ds' }, {});
+    const page = await live.first;
+    live.dispose();
+    expect(page.results.length).toBe(1); // backend works in this env
   });
 
   it('B: $each over a LITERAL array renders via real renderer + registry', async () => {
