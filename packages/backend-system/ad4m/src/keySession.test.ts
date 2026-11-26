@@ -435,6 +435,65 @@ describe('a key session on a server', () => {
     expect(server.loggedOut).toHaveLength(1);
   });
 
+  it('waits for a probe in flight even when the session already ended on its own', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    let held = false;
+    let land!: () => void;
+    const connect: typeof server.connect = (address, token) => {
+      const remote = server.connect(address, token);
+      if (token) {
+        // The server says the grant is gone when the session renews: the session ends itself.
+        remote.agent.renewSession = () => Promise.reject(new FakeRpcError(403, 'grant'));
+        return remote;
+      }
+      if (!held) return remote;
+      const login = remote.agent.loginWithKey;
+      remote.agent.loginWithKey = (proof, app) =>
+        new Promise((resolve, reject) => (land = () => login(proof, app).then(resolve, reject)));
+      return remote;
+    };
+    const session = await openKeySession(fakeSigner(), ADDRESS, { connect, now: server.now, ...timers });
+    const ended = vi.fn();
+    session.onEnded(ended);
+    held = true;
+
+    server.endGrants();
+    await vi.waitFor(() => expect(land).toBeDefined());
+    await timers.fire();
+    expect(ended).toHaveBeenCalledWith('ended');
+
+    let closed = false;
+    const closing = session.close().then(() => (closed = true));
+    await flush();
+    expect(closed).toBe(false);
+
+    land();
+    await closing;
+    expect(server.grants.size).toBe(0);
+    expect(server.loggedOut).toHaveLength(1);
+  });
+
+  it('gives up waiting for a server that does not answer the logout, so a switch is not held up', async () => {
+    const server = fakeServer();
+    const timers = fakeTimers();
+    const connect: typeof server.connect = (address, token) => {
+      const remote = server.connect(address, token);
+      if (token) remote.agent.logout = () => new Promise(() => {});
+      return remote;
+    };
+    const session = await openKeySession(fakeSigner(), ADDRESS, { connect, now: server.now, ...timers });
+
+    let closed = false;
+    const closing = session.close().then(() => (closed = true));
+    await flush();
+    expect(closed).toBe(false);
+
+    expect(await timers.fire()).toBe(5000);
+    await closing;
+    expect(server.clients[1].closed).toBe(true);
+  });
+
   it('tells every listener, and closes its client, even when one listener throws', async () => {
     const server = fakeServer();
     const session = await open(server);

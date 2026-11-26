@@ -190,6 +190,9 @@ export function describeRefusal(reason: string, origin?: string): string {
   }
 }
 
+/** How long closing a session waits for the server, per step: its own logout, and a probe's. */
+const CLOSE_WAIT_MS = 5000;
+
 /** The app as a key login names it, asking for everything: the server decides what the role gets. */
 export const WE_KEY_SESSION_APP: KeySessionApp = {
   appName: 'WE',
@@ -334,6 +337,18 @@ export async function openKeySession(
   // the two clocks are within that skew, and the renewal margin is several times larger.
   const client = connect(origin, () => token);
 
+  // close() waits for the server at most this long per step, so a switch away from a server that
+  // stopped answering is not held up by it.
+  const bounded = (work: Promise<unknown> | null): Promise<void> =>
+    new Promise((resolve) => {
+      if (!work) return resolve();
+      const timeout = setTimer(resolve, CLOSE_WAIT_MS);
+      void work.finally(() => {
+        clearTimer(timeout);
+        resolve();
+      });
+    });
+
   const listeners = new Set<(reason: 'revoked' | 'ended') => void>();
   let timer: unknown = null;
   let finished = false;
@@ -450,14 +465,17 @@ export async function openKeySession(
       return () => listeners.delete(listener);
     },
     async close() {
-      if (finished) return;
-      finished = true;
-      if (timer !== null) clearTimer(timer);
-      timer = null;
-      listeners.clear();
-      await client.agent.logout().catch(() => false);
-      client.close();
-      await probing;
+      if (!finished) {
+        finished = true;
+        if (timer !== null) clearTimer(timer);
+        timer = null;
+        listeners.clear();
+        await bounded(client.agent.logout().catch(() => false));
+        client.close();
+      }
+      // A probe can still be in flight after the session ended on its own (a refused renewal ends it
+      // while the probe logs in): its grant is logged out before the caller goes on.
+      await bounded(probing);
     },
   };
 }
