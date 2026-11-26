@@ -113,23 +113,12 @@ export function serverOrigin(address) {
   return url.origin;
 }
 
-/**
- * Whether a server address may be dialled: https, or http to this computer (localhost, 127.0.0.0/8,
- * ::1). An entry stored before this rule existed is kept, so it can be removed, but never served from.
- */
+/** Whether a server address may be dialled: https, or http to this computer (localhost, 127.0.0.0/8, ::1). */
 export function isEncryptedOrLocal(url) {
   if (url.protocol === 'https:') return true;
   if (url.protocol !== 'http:') return false;
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   return host === 'localhost' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
-}
-
-function diallable(address) {
-  try {
-    return isEncryptedOrLocal(new URL(String(address)));
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -502,9 +491,6 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           return rest;
         }
         if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error("Can't find that host.");
-        if (!diallable(address)) {
-          throw new Error("That host uses http://, which isn't encrypted. Add its https:// address.");
-        }
         return { ...entry, serving: address };
       });
     },

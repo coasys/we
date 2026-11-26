@@ -1086,11 +1086,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
     // host, which would restart this computer's executor instead.
     if (onServer()) {
       const done = await run('restartExecutor', () => port?.restartExecutor?.());
-      if (done.ok) setExecutorRestartPending(false);
-      else if (/local-only/.test(done.error)) {
+      if (!done.ok) return;
+      if (done.value?.refused === 'off-machine') {
         setRestartRefused(true);
         setError("You can't restart the host from here. Changes apply at its next start.");
+        return;
       }
+      setExecutorRestartPending(false);
       return;
     }
     const host = executorHost();

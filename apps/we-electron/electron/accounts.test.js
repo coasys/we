@@ -546,24 +546,6 @@ describe('servers — which device serves the account', () => {
     ]);
   });
 
-  it('never serves from a stored plain-http entry, and lets it be removed while chosen', () => {
-    const old = 'http://192.168.1.20:12000';
-    registry.addServer({ address: HOME });
-    registry.chooseServer(HOME);
-    // An entry written before the rule, as an older build stored it.
-    const file = join(defaultPath, 'we-accounts', 'registry.json');
-    const state = JSON.parse(readFileSync(file, 'utf8'));
-    state.accounts = state.accounts.map((a) => ({ ...a, servers: [{ address: old, name: 'old' }], serving: old }));
-    writeFileSync(file, JSON.stringify(state), 'utf8');
-    registry = createAccountRegistry({ configDir, defaultPath });
-
-    // Still listed and still chosen, so the renderer can say why it is not dialled.
-    expect(registry.servers()).toEqual({ servers: [{ address: old, name: 'old' }], serving: old });
-    expect(() => registry.chooseServer(old)).toThrow(/https:\/\//);
-    registry.removeServer(old);
-    expect(registry.servers()).toEqual({ servers: [], serving: null });
-  });
-
   it('keeps the account’s name and picture when its servers change', () => {
     registry.setDisplay(defaultPath, { name: 'Ada' });
     registry.addServer({ address: HOME });

@@ -10,8 +10,14 @@ import { Ad4mClient, type AgentStatus } from '@coasys/ad4m';
 import type { BackendPortsContext } from '@we/backend-shared';
 
 import { createAd4mBackendPorts } from './backendPortsAdapter';
-import type { Ad4mCustodyHost, Ad4mServerHost, Ad4mServing } from './identityPort';
-import { type ConnectRemote, type KeySession, type KeySessionSigner, openKeySession } from './keySession';
+import { type Ad4mCustodyHost, type Ad4mServerHost, type Ad4mServing, CANT_LOAD_HOSTS } from './identityPort';
+import {
+  type ConnectRemote,
+  type KeySession,
+  KeySessionError,
+  type KeySessionSigner,
+  openKeySession,
+} from './keySession';
 import type { Ad4mLifecycleOptions } from './lifecycleAdapter';
 
 /** Poll the executor until it answers — it is spawned alongside the window and needs a moment. */
@@ -127,7 +133,11 @@ export function createLocalAd4mConnector(
         }),
         connection: {
           port: Number(remote.port) || (remote.protocol === 'https:' ? 443 : 80),
-          token: session.token(),
+          // A getter, because the session renews its token about hourly: whoever reads this later
+          // (the embed bridge, handing it to a hosted app) gets the current one.
+          get token() {
+            return session.token();
+          },
           url: session.address,
         },
         host: { id: session.address, name, url: session.address },
@@ -146,14 +156,8 @@ async function serveFromChosen(signer: unknown, host: Ad4mServerHost, connect?: 
   try {
     const { servers, serving } = await host.list();
     chosen = serving ? servers.find((server) => server.address === serving) : undefined;
-  } catch (error) {
-    return {
-      host,
-      signer: keySigner,
-      current: null,
-      problem: `Can't load your hosts. ${String(error)}`,
-      connect,
-    };
+  } catch {
+    return { host, signer: keySigner, current: null, problem: CANT_LOAD_HOSTS, connect };
   }
   if (!chosen) return { host, signer: keySigner, current: null, problem: null, connect };
 
@@ -161,7 +165,8 @@ async function serveFromChosen(signer: unknown, host: Ad4mServerHost, connect?: 
   try {
     session = await openKeySession(keySigner, chosen.address, connect ? { connect } : {});
   } catch (error) {
-    const why = error instanceof Error ? error.message : String(error);
+    // A refusal's message is written for the person (`describeRefusal`); anything else is not.
+    const why = error instanceof KeySessionError ? error.message : "The host didn't let you sign in.";
     return {
       host,
       signer: keySigner,

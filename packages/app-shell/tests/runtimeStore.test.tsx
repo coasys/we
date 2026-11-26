@@ -519,7 +519,8 @@ describe('a backend that keeps its own config file', () => {
         },
         async restartExecutor() {
           backend.calls.push('runtime.restart');
-          if (restart === 'refused') throw new Error('RPC error 403: local-only');
+          // The port's own word for a refusal: the shell never reads a backend's error text.
+          if (restart === 'refused') return { refused: 'off-machine' as const };
         },
       };
       return { ...backend, runtime };
@@ -556,7 +557,7 @@ describe('a backend that keeps its own config file', () => {
       expect(calls.some((call) => call.includes('hc_admin_port'))).toBe(false);
     });
 
-    it('hides Restart once the server refuses it as local-only, and never restarts this computer', async () => {
+    it('hides Restart once the server refuses it from off its machine, and never restarts this computer', async () => {
       const { runtime, host, calls } = serverBackend('refused');
       // Even with a host present: it starts this computer's executor, not the server's.
       executorHost = host;

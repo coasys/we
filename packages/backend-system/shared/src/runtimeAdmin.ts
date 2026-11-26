@@ -127,6 +127,14 @@ export interface ExecutorConfigWrite {
   refused: { key: string; reason: string; detail?: string }[];
 }
 
+/**
+ * A restart the backend declined, as opposed to one that failed. `off-machine`: it restarts only for
+ * a caller on its own machine, so asking again from here will not change the answer.
+ */
+export interface ExecutorRestartRefused {
+  refused: 'off-machine';
+}
+
 export interface RuntimeAdminPort {
   // ── Languages ───────────────────────────────────────────────────────────────
   languages?(): Promise<InstalledLanguage[]>;
@@ -182,9 +190,10 @@ export interface RuntimeAdminPort {
   /**
    * Ask the backend to stop and be started again with the same arguments by whatever supervises it.
    * Only meaningful where something does: a caller offers it only where the host says it starts
-   * the backend (`ExecutorHost`).
+   * the backend (`ExecutorHost`). A backend that declines for this caller answers with why
+   * ({@link ExecutorRestartRefused}) rather than failing, so the caller can stop offering it.
    */
-  restartExecutor?(): Promise<void>;
+  restartExecutor?(): Promise<void | ExecutorRestartRefused>;
   /** The newest `lines` lines of this run's log, oldest first. */
   executorLogTail?(lines: number): Promise<string[]>;
 

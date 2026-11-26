@@ -200,6 +200,7 @@ export type {
   ExecutorConfig,
   ExecutorConfigEntry,
   ExecutorConfigWrite,
+  ExecutorRestartRefused,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,
