@@ -581,11 +581,12 @@ function applyInlineStyles(el: HTMLElement, styles?: Record<string, string | num
 /**
  * The shrink factor a `flex` shorthand sets: 0 for `none`, its second number, else 1. Reads the
  * grow-first literals the templates write (`'none'`, `'0 0 auto'`, `'1 1 0'`, `'auto'`, `'1'`); a
- * basis-first form (`'100px 1 0'`) or a `var(...)` reads as 1.
+ * basis-first form (`'100px 1 0'`) or a `var(...)` reads as 1. A template written as JSON can give
+ * `flex` as a number (`"flex": 1`), which the style itself has always accepted, so it reads as text.
  */
-export function flexShrinkOf(flex: string | undefined): string | undefined {
-  if (!flex) return undefined;
-  const [first, second] = flex.trim().split(/\s+/);
+export function flexShrinkOf(flex: string | number | undefined): string | undefined {
+  if (flex === undefined || flex === null || flex === '') return undefined;
+  const [first, second] = String(flex).trim().split(/\s+/);
   if (first === 'none') return '0';
   const factor = (token: string | undefined) => token !== undefined && /^\d*\.?\d+$/.test(token);
   return factor(first) && factor(second) ? second : '1';

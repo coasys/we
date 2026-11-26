@@ -27,6 +27,12 @@ describe('flexShrinkOf', () => {
     expect(flexShrinkOf('100px 0')).toBe('1');
   });
 
+  it('reads a number as the one-number shorthand', () => {
+    // `flex: 1` is `1 1 0%` and `flex: 0` is `0 1 0%`: both leave the shrink at 1.
+    expect(flexShrinkOf(1)).toBe('1');
+    expect(flexShrinkOf(0)).toBe('1');
+  });
+
   it('sets nothing without a flex', () => {
     expect(flexShrinkOf(undefined)).toBeUndefined();
     expect(flexShrinkOf('')).toBeUndefined();
