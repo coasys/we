@@ -56,8 +56,8 @@ inverted, so a gap that closes is noticed and a new failure is not hidden among 
 
 ## Running each family
 
-**expressions.** A case is `{ id, note, source, env?, result, print }`, or
-`{ id, note, source, env?, error: "syntax", message, span }` for a source that must not parse. `env`
+**expressions.** A case is `{ id, note, core, source, env?, result, print }`, or
+`{ id, note, core, source, env?, error: "syntax", message, span }` for a source that must not parse. `env`
 names an entry of the file's `envs`, an object of root name to value: a root is bound when it is a
 key, and unbound otherwise. Parse `source` and evaluate it in that environment, where a call goes to
 the core library and the form readers first, and then to the environment's host functions, called
@@ -65,8 +65,16 @@ with their first argument as the options object. Compare the value with `result`
 form of the parse with `print` (printing what was parsed reproduces it). For an error case, compare
 only that the source is refused; `message` and `span` are informative.
 
-**functions.** `{ id, note, fn, args, context?, result }`: call `fn` with the decoded `args` and
-compare with `result`. `context` supplies the local-state scope the form readers read. An
+`core` says whether the case is in the core subset an operation's expressions are written in
+([Operations: Expressions](../operations/expressions.md)): `true` for a case of the grammar, of
+evaluation or of the printer over no env or plain names, calling only core functions. A host that
+runs operations and no templates runs the `core` cases only, as the operations suite says
+([The core-subset expression vectors](../operations/conformance.md#the-core-subset-expression-vectors));
+a template host runs every case.
+
+**functions.** `{ id, note, core, fn, args, context?, result }`: call `fn` with the decoded `args`
+and compare with `result`. `core` is `true` for a core function called with no `context`, the cases
+an operations-only host runs. `context` supplies the local-state scope the form readers read. An
 implementation that throws records `{ "$error": "<message>" }`, which only a reference
 implementation should ever produce.
 
