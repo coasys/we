@@ -112,8 +112,9 @@ conformance suite's empty-value cases.
 
 _Level: core._
 
-`order` is an object of field to direction; its keys apply in the order written. A key may also be a
-**dotted path** `relation.field`, ordering by a field of a to-one or to-many related record. Such a
+`order` is an object of field to direction; its keys apply in the order written. Every backend MUST
+run an order of one key; a backend MAY not support several, and a query ordered by more than one is
+then [refused](#refusal), never ordered by the first alone. A key may also be a **dotted path** `relation.field`, ordering by a field of a to-one or to-many related record. Such a
 key MUST be the only key of `order`, and the query MUST have a `limit`; without one a host MAY ignore
 the order.
 
