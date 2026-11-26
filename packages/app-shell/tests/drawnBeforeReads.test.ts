@@ -13,15 +13,21 @@ import {
   clearPredictions,
   getEntity,
   getEntityForDataset,
+  predictionsFor,
   registerOperations,
   unregisterOperations,
   withPredictions,
 } from '@we/entities';
 import { POLLS_MANIFEST } from '@we/module-polls';
+import { createTestReactivity } from '@we/reactivity/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createBoardActions } from '../src/shared/boards';
 import { invokeOperation } from '../src/shared/invokeOperation';
+import { createRecordCanvas } from '../src/shared/stores/records/canvas';
+import { createRecordConnections } from '../src/shared/stores/records/connections';
+import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
+import { createRecordKinds } from '../src/shared/stores/records/kinds';
 
 const ME = 'did:test:me';
 
@@ -221,6 +227,57 @@ describe('drawn before any read answers', () => {
     expect(reads.answered()).toBe(0);
     reads.open();
     await voting;
+    reads.restore();
+  });
+
+  it('a card recoloured on a canvas, and a line drawn between two cards', async () => {
+    const CANVAS = 'canvas-1';
+    await backend('CollectionBlock').create(handle, { kind: 'canvas' }, { id: CANVAS });
+    const one = await backend('TaskBlock').create(handle, { title: 'One' });
+    const two = await backend('TaskBlock').create(handle, { title: 'Two' });
+    const reactivity = createTestReactivity();
+    const sessionStore = { me: () => ({ did: ME }) } as never;
+    const context = {
+      reactivity,
+      toasts: { info: () => 0, success: () => 0, warning: () => 0, error: () => 0 },
+      sessionStore,
+      datasetStore: {
+        currentDataset: () => ({ id: 'ds-drawn', handle, name: 'Drawn' }),
+        currentDatasetEntities: () => [],
+        datasets: () => [],
+      } as never,
+      runOp: operationRunner(sessionStore),
+    };
+    const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
+    const connections = createRecordConnections({ ...context, kinds });
+    const canvas = createRecordCanvas({ ...context, connections, contentHome: (c) => c });
+    await canvas.placeOnCanvas(CANVAS, one.id, 'TaskBlock', 10, 10);
+
+    // The canvas's reads: its placements with their cards, and the lines from the cards it draws.
+    const placements = await follow('Placement', {
+      parent: canvasChildren(CANVAS),
+      include: { node: true },
+      limit: 200,
+    });
+    const lines = await follow('Relationship', { where: { source: [one.id, two.id] }, limit: 200 });
+    await follow('TaskBlock', {});
+    const reads = holdReads(['Placement', 'Relationship', 'TaskBlock']);
+
+    const styling = canvas.setCardStyle(CANVAS, one.id, 'color', 'danger-100');
+    expect(await until(() => placements()[0]?.color === 'danger-100')).toBe(true);
+    expect(reads.answered()).toBe(0);
+
+    const drawing = connections.connect(
+      handle,
+      { source: one.id, sourceType: 'TaskBlock', target: two.id, targetType: 'TaskBlock' },
+      { key: await connections.keyFor(handle, { id: one.id, type: 'TaskBlock' }, { id: two.id, type: 'TaskBlock' }) },
+    );
+    expect(await until(() => lines().some((row) => row.target === two.id))).toBe(true);
+    expect(reads.answered()).toBe(0);
+    expect(predictionsFor(handle).length).toBeGreaterThan(0);
+
+    reads.open();
+    await Promise.all([styling, drawing]);
     reads.restore();
   });
 });

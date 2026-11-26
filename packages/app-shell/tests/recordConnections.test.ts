@@ -1,11 +1,17 @@
 /**
- * The record store's connections part: a line held from the moment it is drawn until the graph draws
- * it, let go of when its write fails, and keyed by its ends' titles as they read now.
+ * The record store's connections part: a line drawn from the moment it is drawn and never when its
+ * write will be refused, and keyed by its ends' titles as they read now.
  *
  * Run once under each reactivity port, against the in-memory backend holding the connections.
  */
-import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity, registerEntityWriteCheck } from '@we/entities';
+import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
+import {
+  clearPredictions,
+  getEntity,
+  predictionsFor,
+  registerEntityWriteCheck,
+  registerTransactionRunner,
+} from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -14,6 +20,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createRecordConnections, type RecordConnections } from '../src/shared/stores/records/connections';
 import { operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
+
+/** Hold every write until `land`, as a round trip would; put back after each test. */
+function holdWrites(): () => void {
+  let land!: () => void;
+  const landed = new Promise<void>((resolve) => (land = resolve));
+  registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
+  return land;
+}
 
 const reactivityPorts: [string, () => ReactivityPort][] = [
   ['Solid', () => solidReactivity],
@@ -69,6 +83,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   afterEach(() => {
     registerEntityWriteCheck(null);
+    registerTransactionRunner(runInMemoryTransaction);
+    clearPredictions();
     for (const dispose of disposers.splice(0)) dispose();
   });
 
@@ -89,28 +105,25 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     );
   });
 
-  it('draws a line until the graph draws it, then lets it go', async () => {
+  it('draws a line from the gesture, with the id the write then gives it', async () => {
     const connections = build();
-    const writing = connections.withHold({ kind: 'added', source: 't1', target: 't2' }, () =>
-      connections.connect(handle, ends),
-    );
-    expect(connections.pendingConnections().added).toEqual([expect.objectContaining({ source: 't1', target: 't2' })]);
-    const id = await writing;
-    expect(id).toBeTruthy();
-    connections.observeConnections([{ id, source: 't1', target: 't2' }]);
-    expect(connections.pendingConnections().added).toEqual([]);
+    const land = holdWrites();
+    const writing = connections.connect(handle, ends);
+    for (let i = 0; i < 40 && !predictionsFor(handle).length; i++) await new Promise((r) => setTimeout(r, 0));
+    const [drawn] = predictionsFor(handle).flatMap((p) => p.writes);
+    expect(drawn).toMatchObject({ kind: 'create', entity: 'Relationship', fields: { source: 't1', target: 't2' } });
+    land();
+    expect(await writing).toBe((drawn as { id: string }).id);
   });
 
-  it('lets go of a line whose write failed, and says so to the caller', async () => {
+  it('never draws a line whose write is refused, and says so to the caller', async () => {
     const connections = build();
     registerEntityWriteCheck((write) => {
       if (write.entity === 'Relationship' && write.kind === 'create')
         throw Object.assign(new Error('refused'), { name: 'PolicyRefusal' });
     });
-    await expect(
-      connections.withHold({ kind: 'added', source: 't1', target: 't2' }, () => connections.connect(handle, ends)),
-    ).rejects.toThrow();
-    expect(connections.pendingConnections().added).toEqual([]);
+    await expect(connections.connect(handle, ends)).rejects.toThrow();
+    expect(predictionsFor(handle)).toEqual([]);
   });
 
   it('rekeys a connection after a record it joins is renamed', async () => {

@@ -15,6 +15,7 @@ import { heldByChild } from '@we/graph-protocol';
 import { drawnAmong, type PlacementRow } from '../../canvas/placements';
 import { endsOf, ranksOf, spineIndex, type SpineLink } from '../../canvas/treeDrops';
 import { toEntityShape } from '../../graphEntityShape';
+import { heldFirst } from '../../heldFirst';
 import { isUnder, rowFor, seatInRow } from '../../kernels/treeRanks';
 import { modelManifestEntries, parseSpine, type Spine } from '../../sources/treeSpines';
 import type { RecordStore } from '../RecordStore';
@@ -28,20 +29,24 @@ export interface RecordTreeDeps extends RecordContext {
   /** The space's own models, whose relations a tree may follow. */
   shapeStore: Pick<ShapeStore, 'spaceShapes'>;
   kinds: Pick<RecordKinds, 'entityClass'>;
-  connections: Pick<RecordConnections, 'withHold' | 'connect' | 'keyFor'>;
-  canvas: Pick<RecordCanvas, 'history' | 'stylePlacement' | 'retargetOnCanvas' | 'hold' | 'done' | 'drop'>;
+  connections: Pick<RecordConnections, 'connect' | 'keyFor'>;
+  canvas: Pick<RecordCanvas, 'history' | 'stylePlacement' | 'retargetOnCanvas'>;
 }
 
 export type RecordTree = Pick<RecordStore, 'arrangeOnTree'>;
 
 export function createRecordTree(deps: RecordTreeDeps): RecordTree {
   const { toasts, datasetStore, shapeStore, runOp, kinds, connections } = deps;
-  const { history, stylePlacement, retargetOnCanvas, hold, done, drop } = deps.canvas;
+  const { history, stylePlacement, retargetOnCanvas } = deps.canvas;
   const { entityClass } = kinds;
 
-  /** The placements on a canvas, as read for a drop. */
-  const placementsOn = async (handle: unknown, canvas: string) =>
-    (await Placement.findAll(handle, { parent: canvasChildren(canvas) })) as unknown as PlacementRow[];
+  /** The placements on a canvas, as read for a drop — as the canvas holds them where it does. */
+  const placementsOn = async (handle: unknown, canvas: string) => {
+    const query = { parent: canvasChildren(canvas) };
+    return (await heldFirst('Placement', handle, query, () =>
+      Placement.findAll(handle, query),
+    )) as unknown as PlacementRow[];
+  };
 
   /**
    * Every connection of one community-named kind.
@@ -84,9 +89,7 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
       return false;
     }
     try {
-      await connections.withHold({ kind: 'removed', id: linkId }, () =>
-        runOp('core.detachConnection', { connection: linkId }, handle),
-      );
+      await runOp('core.detachConnection', { connection: linkId }, handle);
     } catch (error) {
       // Discussed between the read above and the write: the operation's own check, said the same way.
       if (isOperationError(error) && error.code === 'discussed') {
@@ -111,28 +114,13 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
     relationshipTypeId: string,
     parent: { id: string; type: string },
     card: { id: string; type: string },
-    /*
-      Whether to draw the new line ahead of the write. Not for a drop: the graph is already drawing that
-      one from the card it is holding, and a second promise between the same two cards would be drawn
-      beside it. An undo or a redo has nobody holding anything, so it holds its own.
-    */
-    hold = true,
   ): Promise<string> {
-    const write = async () =>
-      connections.connect(
-        handle,
-        { source: parent.id, sourceType: parent.type, target: card.id, targetType: card.type },
-        { key: await connections.keyFor(handle, parent, card), kind: relationshipTypeId || undefined },
-      );
-    if (!hold) return write();
-    return connections.withHold(
-      {
-        kind: 'added',
-        source: parent.id,
-        target: card.id,
-        ...(relationshipTypeId ? { data: { relationshipTypeId } } : {}),
-      },
-      write,
+    // Drawn from the moment it is asked for, as every declared operation is. A drop's own held card
+    // gives way to it as it would to the stored line, only sooner.
+    return connections.connect(
+      handle,
+      { source: parent.id, sourceType: parent.type, target: card.id, targetType: card.type },
+      { key: await connections.keyFor(handle, parent, card), kind: relationshipTypeId || undefined },
     );
   }
 
@@ -350,8 +338,8 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
   /**
    * Write a tree row's new ranks, all in one transaction (`core.rankCards`).
    *
-   * Every rank is held before any is written and written together, so the tree reads the whole new
-   * order at once: written one by one, a row being renumbered would pass through each half-written
+   * Written together, and drawn together from the moment of the drop as every declared operation is,
+   * so the tree reads the whole new order at once: written one by one, a row being renumbered would pass through each half-written
    * order on its way, and take a round trip per card to get there. Each lands on the placement the
    * canvas draws for its card, picked from the rows the drop has already read.
    */
@@ -369,13 +357,9 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
     }
     if (unplaced) toasts.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
     if (!ranks.length) return;
-    const held = [...writes].filter(([nodeId]) => drawnAmong(placements, nodeId).drawn);
-    for (const [nodeId, rank] of held) hold(nodeId, { rank });
     try {
       await runOp('core.rankCards', { ranks }, handle);
-      for (const [nodeId, rank] of held) done(nodeId, { rank });
     } catch (error) {
-      for (const [nodeId, rank] of held) drop(nodeId, { rank });
       console.error('RecordStore: ordering cards in a tree failed', error);
       toasts.error('Could not save that.');
     }
@@ -688,7 +672,7 @@ export function createRecordTree(deps: RecordTreeDeps): RecordTree {
           step = { kind: 'moved', link: held.id, from, to: parent };
         }
       } else {
-        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card, false), parent };
+        step = { kind: 'created', link: await createSpine(handle, relationshipTypeId, parent, card), parent };
       }
 
       const placements = await placementsOn(handle, canvas);

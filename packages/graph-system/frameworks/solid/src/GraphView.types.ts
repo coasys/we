@@ -928,27 +928,6 @@ export type NodeControl = (props: {
 }) => JSX.Element;
 
 /** What the host lends the graph so its expanders can read data without knowing the backend. */
-/** A connection as the host thinks of it — records at both ends. */
-export interface ObservedConnection {
-  /** The record the line stands for. */
-  id: string;
-  source: string;
-  target: string;
-}
-
-/**
- * What a host has written about connections and not yet seen come back. Everything is a record id.
- *
- * `added` are lines to draw between two records before the connection exists, each with a key of the
- * host's own; `moved` re-attach one end of an existing connection to another record; `removed` stop
- * drawing a connection that is being deleted.
- */
-export interface PendingConnections {
-  added: { key: string; source: string; target: string; data?: Record<string, GraphValue> }[];
-  moved: { id: string; end: 'source' | 'target'; to: string }[];
-  removed: string[];
-}
-
 export interface GraphHostBindings {
   /**
    * Components a style rule may name with `content`, keyed by name.
@@ -969,7 +948,7 @@ export interface GraphHostBindings {
   /**
    * Marks to draw on the canvas at world points — see {@link GraphDecoration}.
    *
-   * A reactive accessor, read inside the render, exactly as `pendingData` is: the set changes as
+   * A reactive accessor, read inside the render: the set changes as
    * peers move, and the alternative is the host pushing a prop down a component that re-runs its
    * whole style pass when its props change.
    *
@@ -985,23 +964,6 @@ export interface GraphHostBindings {
    * the canvas's gestures, which it sits outside.
    */
   overlay?: () => JSX.Element;
-  /**
-   * Fields to lay over a node's own data, keyed by the record id the node stands for.
-   *
-   * The seam for **optimistic edits**, and it is here rather than in the engine because it is not
-   * the graph's business how long a write takes to come back. A canvas's own gestures — resize a
-   * card, colour it, change its shape — are answered by a record the host writes, and the answer
-   * arrives via a subscription and a re-seed. Even a fast backend is a round trip away, and a slider
-   * that lags a round trip behind the finger reads as broken rather than as slow.
-   *
-   * So the host says what it has just written and has not yet seen come back; the graph draws it as
-   * though it had. Applied before the style rules run, so `{ from: 'data.x' }` reads it exactly as it
-   * reads a seeded value and nothing else has to know the difference. The host clears an entry when
-   * a read confirms it, at which point this and the seeded data agree and the change is invisible.
-   *
-   * Reactive: read inside the render, so a host signal here re-draws the nodes it names.
-   */
-  pendingData?: () => Record<string, Record<string, GraphValue>>;
   /**
    * The parts of the graph's own box something else is drawn over, in screen pixels per edge.
    *
@@ -1019,31 +981,6 @@ export interface GraphHostBindings {
    * host with nothing over its graph, which is every host but an app shell.
    */
   obscured?: () => { top: number; right: number; bottom: number; left: number };
-  /**
-   * These records' pending fields are now carried by the graph's own data, so the host can forget
-   * them.
-   *
-   * Reported from the drawn node rather than judged by the host, because the host reads rows and the
-   * graph draws nodes, and there is a whole seed between the two. Clearing on the read is half a
-   * second early: the edit flashes to its new value, snaps back for the rest of the seed, and
-   * arrives again — which is exactly the flicker optimism was added to remove.
-   */
-  confirmPending?: (recordIds: string[]) => void;
-  /**
-   * Connections the host has written and not yet seen come back, in records rather than nodes — see
-   * {@link PendingConnections}. Drawn at once: a line somebody just drew, one they just deleted, an end
-   * they just moved. The graph translates them to its own nodes and edges, and draws nothing for a
-   * record it is not showing.
-   *
-   * Reactive: read inside an effect, so a host signal here redraws the lines it names.
-   */
-  pendingConnections?: () => PendingConnections;
-  /**
-   * The connections the graph is now drawing from its own data, in records — for the host to judge
-   * which of its pending ones the data has overtaken. The counterpart of {@link confirmPending}, and
-   * reported from what is drawn for the same reason. Only called while something is pending.
-   */
-  observeConnections?: (connections: ObservedConnection[]) => void;
   query: (request: Record<string, unknown>) => Promise<Record<string, unknown>[]>;
   /**
    * Report changes to the answer of one read, and return a function that stops reporting.

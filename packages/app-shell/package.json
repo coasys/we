@@ -74,7 +74,6 @@
     "@we/module-polls": "workspace:*",
     "@we/module-shared": "workspace:*",
     "@we/module-transcribe": "workspace:*",
-    "@we/optimism": "workspace:*",
     "@we/primitives": "workspace:*",
     "@we/reactivity": "workspace:*",
     "@we/reactivity-solid": "workspace:*",

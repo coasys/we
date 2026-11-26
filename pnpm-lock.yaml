@@ -687,9 +687,6 @@ importers:
       '@we/module-transcribe':
         specifier: workspace:*
         version: link:../module-system/transcribe
-      '@we/optimism':
-        specifier: workspace:*
-        version: link:../optimism
       '@we/primitives':
         specifier: workspace:*
         version: link:../design-system/3-primitives
@@ -2039,9 +2036,6 @@ importers:
       '@we/backend-shared':
         specifier: workspace:*
         version: link:../../backend-system/shared
-      '@we/optimism':
-        specifier: workspace:*
-        version: link:../../optimism
     devDependencies:
       '@we/cli':
         specifier: workspace:*

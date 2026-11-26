@@ -1,12 +1,20 @@
 /**
- * The record store's canvas part on its own: a card's look drawn before its write lands and let go of
- * when the write fails, a move undone, a route made and taken away, and a type's colour cleared without
+ * The record store's canvas part on its own: a card's look drawn before its write lands and never
+ * when the write will fail, a look previewed with nothing written, a move undone, a route made and taken away, and a type's colour cleared without
  * making a style for nothing.
  *
  * Run once under each reactivity port, against the in-memory backend holding the canvas.
  */
-import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity, registerEntityWriteCheck } from '@we/entities';
+import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
+import type { LivePage, LiveQuery } from '@we/backend-shared';
+import {
+  clearPredictions,
+  getEntity,
+  Placement,
+  predictionsFor,
+  registerEntityWriteCheck,
+  registerTransactionRunner,
+} from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
@@ -61,6 +69,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   }
 
   const placements = () => model('Placement').findAll(handle, { parent: canvasChildren(CANVAS) });
+  const predicted = () => predictionsFor(handle).flatMap((prediction) => prediction.writes);
 
   beforeEach(async () => {
     reactivity = makePort();
@@ -75,16 +84,52 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   afterEach(() => {
     registerEntityWriteCheck(null);
+    clearPredictions();
     for (const dispose of disposers.splice(0)) dispose();
   });
 
   it('draws a colour from the gesture, before the write lands', async () => {
     const canvas = build();
     await canvas.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    // The write lands when told, as one does after a round trip.
+    let land!: () => void;
+    const landed = new Promise<void>((resolve) => (land = resolve));
+    registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
+    disposers.push(() => registerTransactionRunner(runInMemoryTransaction));
     const writing = canvas.setCardStyle(CANVAS, 'n1', 'color', 'red');
-    expect(canvas.pendingCardStyle().n1).toMatchObject({ color: 'red' });
+    const recoloured = () => predicted().some((write) => write.kind === 'edit');
+    for (let i = 0; i < 40 && !recoloured(); i++) await new Promise((r) => setTimeout(r, 0));
+    expect(predicted()).toContainEqual(expect.objectContaining({ kind: 'edit', fields: { color: 'red' } }));
+    land();
     await writing;
     expect((await placements())[0].color).toBe('red');
+  });
+
+  it('previews a colour on the placements on screen, writing nothing', async () => {
+    const canvas = build();
+    await canvas.placeOnCanvas(CANVAS, 'n1', 'TaskBlock', 10, 10);
+    const live = (Placement as unknown as { query: (d: unknown, q: object) => LiveQuery<LivePage<Row>> }).query(
+      handle,
+      {
+        parent: canvasChildren(CANVAS),
+      },
+    );
+    let shown: Row[] = [];
+    const stop = live.subscribe((s) => void (s.data && (shown = s.data.results)));
+    disposers.push(() => {
+      stop();
+      live.dispose();
+    });
+    await live.first;
+    canvas.previewCardStyle('n1', 'color', 'blue');
+    canvas.previewCardStyle('n1', 'rotation', 15);
+    canvas.previewCardStyle('n1', 'color', 'green');
+    // Each field its own preview, and the newest of one field replacing the last.
+    expect(shown[0]).toMatchObject({ color: 'green', rotation: 15 });
+    expect((await placements())[0].color).not.toBe('green');
+    // Written, the colour is the data's, and its preview has nothing left to stand in for.
+    await canvas.setCardStyle(CANVAS, 'n1', 'color', 'green');
+    expect((await placements())[0].color).toBe('green');
   });
 
   it('lets go of a look whose write failed, and says so', async () => {
@@ -95,7 +140,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         throw Object.assign(new Error('refused'), { name: 'PolicyRefusal' });
     });
     await canvas.setCardStyle(CANVAS, 'n1', 'color', 'red');
-    expect(canvas.pendingCardStyle().n1?.color).toBeUndefined();
+    expect(predicted().filter((write) => write.kind === 'edit')).toEqual([]);
     expect(errors).toEqual(['Could not save that.']);
     expect(canvas.canvasHistory().canUndo).toBe(true); // the placement, not the failed colour
   });

@@ -40,8 +40,6 @@ import {
   FOLD_BUNDLE,
   GraphEngine,
   matches,
-  PENDING_EDGE_PREFIX,
-  PENDING_EDGE_TYPE,
   PluginRegistry,
   polyline,
   readField,
@@ -61,7 +59,6 @@ import type {
   ControlContext,
   EdgeGeometry,
   EdgeSide,
-  GraphEdge,
   GraphNode,
   GraphValue,
   NodeVisual,
@@ -95,7 +92,7 @@ import {
 } from './cull';
 import { createFocusFollow } from './focusFollow';
 import type { GraphBackdrop, GraphViewProps, NodeBadge, NodeContent } from './GraphView.types';
-import { isSettled, patched } from './pending';
+import { patched } from './pending';
 import { isRecordAddress } from './recordAddress';
 import { type Grip, HANDLES, resizeBox } from './resize';
 
@@ -1741,115 +1738,6 @@ export function GraphView(props: GraphViewProps) {
     // fold should not hand out a chip on its way past.
     nodeRows().filter((row) => row.entry.foldedCount > 0 && !row.entry.selected && row.entry.foldScale === 1),
   );
-
-  /*
-    The host's optimistic fields, handed to the engine keyed by node.
-
-    Translated here because the host thinks in records and the engine thinks in nodes — and given to
-    the engine rather than applied at paint time because drawing is only one of three things resolved
-    from a node's data. Hit-testing and edge routing are the others, and a card drawn at its new size
-    but picked and pointed at at its old one is a graph disagreeing with itself.
-  */
-  createEffect(() => {
-    const pending = props.host?.pendingData?.();
-    const overlay = new Map<string, Record<string, GraphValue>>();
-    if (pending && Object.keys(pending).length) {
-      for (const node of engine.store.nodes()) {
-        const at = parseAddress(node.id);
-        const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
-        if (patch) overlay.set(node.id, patch);
-      }
-    }
-    // Untracked so this reads the store without re-running on every graph change — the effect is
-    // about the host's map, and `version()` below is what redraws when the graph itself moves.
-    if (overlay.size || engine.hasDataOverlay()) engine.setDataOverlay(overlay);
-  });
-
-  /*
-    Tell the host which optimistic fields the data has caught up with.
-
-    Here rather than where the host read the rows, because this is the only place that can see both
-    at once — and the difference is visible: clearing when the *read* landed put the old value back
-    for the rest of the seed, so an edit flashed to its new size, snapped back, and arrived again a
-    moment later. A node whose own data already says what the patch says can lose the patch with
-    nothing moving on screen.
-
-    An effect rather than part of the memo: telling somebody something is not deriving a value, and a
-    store write inside a memo would run during render.
-  */
-  createEffect(() => {
-    const pending = props.host?.pendingData?.();
-    if (!pending || !Object.keys(pending).length) return;
-    const settled = nodes().flatMap((entry) => {
-      const at = parseAddress(entry.node.id);
-      const patch = at?.kind === 'entity' && at.id ? pending[at.id] : undefined;
-      // The *raw* node, not `entry.node` — that one already carries the overlay, so asking it
-      // would report every patch settled the instant it was applied.
-      const raw = engine.store.node(entry.node.id);
-      return patch && raw && at?.id && isSettled(raw, patch) ? [at.id] : [];
-    });
-    if (settled.length) props.host?.confirmPending?.(settled);
-  });
-
-  /*
-    The host's pending connections, turned from records into this graph's nodes and edges.
-
-    Records the graph is not showing are skipped rather than guessed at: a line to a card that is not
-    on the canvas has nowhere to be drawn, and a connection the canvas does not show has nothing to
-    hide. Tracks `version()` so a card arriving after the hold went up is picked up when it does.
-  */
-  createEffect(() => {
-    version();
-    const pending = props.host?.pendingConnections?.();
-    if (!pending) return;
-    const nodeOf = new Map<string, string>();
-    const edgeOf = new Map<string, string>();
-    untrack(() => {
-      for (const node of engine.store.nodes()) {
-        const at = parseAddress(node.id);
-        if (at?.kind === 'entity' && at.id) nodeOf.set(at.id, node.id);
-      }
-      for (const edge of engine.store.edges()) {
-        const at = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
-        if (at?.kind === 'entity' && at.id) edgeOf.set(at.id, edge.id);
-      }
-    });
-    const added: GraphEdge[] = pending.added.flatMap((line) => {
-      const [source, target] = [nodeOf.get(line.source), nodeOf.get(line.target)];
-      return source && target
-        ? [{ id: `${PENDING_EDGE_PREFIX}${line.key}`, source, target, type: PENDING_EDGE_TYPE, data: line.data ?? {} }]
-        : [];
-    });
-    const patches = new Map<string, Record<string, GraphValue>>();
-    for (const move of pending.moved) {
-      const [edge, to] = [edgeOf.get(move.id), nodeOf.get(move.to)];
-      if (edge && to) patches.set(edge, { ...patches.get(edge), [move.end]: to });
-    }
-    const removed = new Set(pending.removed.flatMap((id) => (edgeOf.has(id) ? [edgeOf.get(id)!] : [])));
-    engine.setPendingEdges({ added, patches, removed });
-  });
-
-  /*
-    What the graph is drawing from its own data, in records, for the host to judge its pending
-    connections against. Only while something is pending, and from the store rather than the drawn
-    list — the drawn list already carries the promises, and asking it would call every one kept.
-  */
-  createEffect(() => {
-    version();
-    const pending = props.host?.pendingConnections?.();
-    const report = props.host?.observeConnections;
-    if (!report || !pending || !(pending.added.length + pending.moved.length + pending.removed.length)) return;
-    const observed = untrack(() =>
-      [...engine.store.edges()].flatMap((edge) => {
-        const record = edge.reifiedAs ? parseAddress(edge.reifiedAs) : null;
-        const [source, target] = [parseAddress(edge.source), parseAddress(edge.target)];
-        return record?.kind === 'entity' && record.id && source?.id && target?.id
-          ? [{ id: record.id, source: source.id, target: target.id }]
-          : [];
-      }),
-    );
-    report(observed);
-  });
 
   /*
     The anchor draft, handed to the engine so the line follows it, and dropped once it is redundant.
