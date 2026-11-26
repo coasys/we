@@ -7,12 +7,13 @@
  * class of the same name stay apart.
  */
 import { Ad4mModel } from '@coasys/ad4m';
+import { createLiveQuery } from '@we/backend-shared';
 import { getEntityTargetClass, registerDynamicEntities, registerEntity, unregisterEntity } from '@we/entities';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { toRendererEntity, toRendererUnion } from '../src/ad4mAdapter';
 import { EventBlock, TaskBlock, Topic, WeNode } from '../src/entities';
-import { entityNameOfClass, nameRecordTypes, namingBuilder } from '../src/recordTypes';
+import { entityNameOfClass, nameRecordTypes, namingLive } from '../src/recordTypes';
 
 const MODELS = { TaskBlock, EventBlock, Topic };
 const iri = (model: unknown) => getEntityTargetClass(model as never) as string;
@@ -89,51 +90,26 @@ describe('nameRecordTypes', () => {
   });
 });
 
-describe('namingBuilder', () => {
-  /** A builder as the SDK's answers: chained methods return it, terminal ones answer rows. */
-  function builder() {
-    const subscribers: ((rows: unknown) => void)[] = [];
-    const b = {
-      where: vi.fn(() => b),
-      get: vi.fn(async () => [{ __subjectClass: TASK }]),
-      first: vi.fn(async () => ({ __subjectClass: EVENT })),
-      subscribe: vi.fn(async (cb: (rows: unknown) => void) => {
-        subscribers.push(cb);
-        return [{ __subjectClass: TASK }];
-      }),
-      paginate: vi.fn(async () => ({ results: [{ __subjectClass: TOPIC }], totalCount: 1 })),
-      dispose: vi.fn(),
-    };
-    return { b, push: (rows: unknown) => subscribers.forEach((cb) => cb(rows)) };
-  }
+describe('namingLive', () => {
+  it('names the rows of the first page and of every change after it', async () => {
+    let page = [{ __subjectClass: TASK }];
+    let changed!: () => void;
+    const live = createLiveQuery({
+      read: () => ({ results: page }),
+      watch: (onChange) => {
+        changed = onChange;
+        return () => undefined;
+      },
+    });
+    const named = namingLive(live, dataset);
+    expect((await named.first).results).toEqual([{ __subjectClass: 'TaskBlock' }]);
+    expect(named.getSnapshot().initial).toBe(true);
 
-  it('names the rows of a read, a first row, and a page', async () => {
-    const { b } = builder();
-    const named = namingBuilder(b, dataset);
-
-    expect(await named.get()).toEqual([{ __subjectClass: 'TaskBlock' }]);
-    expect(await named.first()).toEqual({ __subjectClass: 'EventBlock' });
-    expect((await named.paginate()).results).toEqual([{ __subjectClass: 'Topic' }]);
-  });
-
-  it('names the first answer of a subscription and every later one', async () => {
-    const { b, push } = builder();
-    const seen: unknown[] = [];
-
-    const first = await namingBuilder(b, dataset).subscribe((rows) => seen.push(rows));
-    push([{ __subjectClass: 'flux://Topic' }]);
-
-    expect(first).toEqual([{ __subjectClass: 'TaskBlock' }]);
-    expect(seen).toEqual([[{ __subjectClass: 'flux://Topic' }]]);
-  });
-
-  it('answers itself from a chained method, and passes every other call through', () => {
-    const { b } = builder();
-    const named = namingBuilder(b, dataset);
-
-    expect(named.where()).toBe(named);
+    page = [{ __subjectClass: 'flux://Topic' }];
+    changed();
+    await vi.waitFor(() => expect(named.getSnapshot().data?.results).toEqual([{ __subjectClass: 'flux://Topic' }]));
+    expect(named.getSnapshot().initial).toBe(false);
     named.dispose();
-    expect(b.dispose).toHaveBeenCalledOnce();
   });
 });
 
@@ -198,15 +174,14 @@ describe('toRendererEntity over an abstract class', () => {
   });
 
   it('names each row of a live read', async () => {
-    const builder = {
-      get: vi.fn(async () => [{ id: 'a', __subjectClass: TOPIC }]),
-    };
-    vi.spyOn(WeNode as unknown as typeof Ad4mModel, 'query').mockReturnValue(builder as never);
+    const source = createLiveQuery({
+      read: () => ({ results: [{ id: 'a', __subjectClass: TOPIC }] }),
+      watch: () => () => undefined,
+    });
+    vi.spyOn(WeNode as unknown as typeof Ad4mModel, 'query').mockReturnValue(source as never);
 
-    const live = toRendererEntity(WeNode as never).query(dataset as never, {} as never) as unknown as {
-      get(): Promise<unknown[]>;
-    };
+    const live = toRendererEntity(WeNode as never).query(dataset as never, {} as never);
 
-    expect(await live.get()).toEqual([{ id: 'a', __subjectClass: 'Topic' }]);
+    expect((await live.first).results).toEqual([{ id: 'a', __subjectClass: 'Topic' }]);
   });
 });
