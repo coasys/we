@@ -26,6 +26,8 @@ export const REFUSED_QUERY_VECTORS: Record<string, string> = {
   'query.core.where-absent-explicitly': NO_EXISTS,
   'query.core.where-cleared-exists-false': NO_EXISTS,
   'query.core.order-several-keys': ONE_SORT_KEY,
+  'query.core.projection-select':
+    "a projection's records cannot be narrowed to a field list, so a projection with a select is refused rather than answered with every field",
   'query.traversal.scope-without-anchor':
     "the adapter reads `via` off the anchor's entity to find its predicate, so a scope naming no anchor entity is refused",
 };

@@ -1905,6 +1905,42 @@
       }
     },
     {
+      "id": "query.core.projection-select",
+      "level": "core",
+      "note": "a projection takes select",
+      "query": {
+        "entity": "Book",
+        "where": {
+          "id": "urn:example:emma"
+        },
+        "include": {
+          "$low": {
+            "from": "reviews",
+            "where": {
+              "stars": {
+                "lt": 4
+              }
+            },
+            "select": ["stars"]
+          }
+        }
+      },
+      "expect": {
+        "rows": [
+          {
+            "id": "urn:example:emma",
+            "$low": [
+              {
+                "id": "urn:example:r4",
+                "stars": 3,
+                "text": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "id": "query.core.select",
       "level": "core",
       "note": "select names the fields a row carries; a field left out reads as no value",
