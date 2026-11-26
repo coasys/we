@@ -5142,6 +5142,73 @@
       }
     },
     {
+      "id": "identity-id-shared",
+      "note": "in a dataset with a shared id, the same identity derives another id, within that shared id",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "nameState": {
+            "description": "A task state, keyed by its slug.",
+            "params": {
+              "slug": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "as": "made",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": {
+                    "name": {
+                      "$": "slug"
+                    },
+                    "slug": {
+                      "$": "slug"
+                    }
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "made.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "nameState",
+      "args": {
+        "slug": "blocked"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000041",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "sharedId": "QmSpaceA",
+      "observe": [
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "result": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d"
+      },
+      "records": {
+        "TaskState": [
+          {
+            "id": "urn:uuid:0851ade0-3e21-89af-ad98-8868fc0bc15d",
+            "name": "blocked",
+            "slug": "blocked"
+          }
+        ]
+      }
+    },
+    {
       "id": "identity-twice",
       "note": "a second create of the same identity is refused as recordExists, and nothing the operation made lands",
       "manifest": {
@@ -5558,6 +5625,1056 @@
             "id": "urn:example:k3",
             "kind": "card",
             "title": "k3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "update-missing",
+      "note": "an update naming a record that is not there fails as notFound",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "retitle": {
+            "description": "Retitles one note.",
+            "params": {
+              "id": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "update": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "id"
+                  },
+                  "fields": {
+                    "title": "retitled"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "retitle",
+      "args": {
+        "id": "urn:example:gone"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000048",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "notFound"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "find-one-ambiguous",
+      "note": "a find with one that matches two records fails as ambiguous",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "theTag": {
+            "description": "The one tag there is, or a failure.",
+            "steps": [
+              {
+                "find": {
+                  "as": "tag",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag"
+                  },
+                  "one": true
+                }
+              }
+            ],
+            "returns": {
+              "$": "tag.id"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-weeds",
+          "fields": {
+            "kind": "tag",
+            "slug": "weeds"
+          }
+        }
+      ],
+      "operation": "theTag",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000049",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "ambiguous"
+        }
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "slug": "garden"
+          },
+          {
+            "id": "urn:example:tag-weeds",
+            "kind": "tag",
+            "slug": "weeds"
+          }
+        ]
+      }
+    },
+    {
+      "id": "strict-unlink",
+      "note": "a strict unlink of a record that is not a member fails as notLinked and changes nothing",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "unlinkStrictly": {
+            "description": "Takes a record out of a holder, asserting it was in it.",
+            "params": {
+              "holder": {
+                "type": "string",
+                "required": true
+              },
+              "target": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "unlink": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "holder"
+                  },
+                  "relation": "children",
+                  "target": {
+                    "$": "target"
+                  },
+                  "strict": true
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:parent",
+          "fields": {
+            "kind": "board",
+            "title": "parent"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:stranger",
+          "fields": {
+            "kind": "note",
+            "title": "stranger"
+          }
+        }
+      ],
+      "operation": "unlinkStrictly",
+      "args": {
+        "holder": "urn:example:parent",
+        "target": "urn:example:stranger"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000050",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "precondition",
+          "code": "notLinked"
+        }
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:parent",
+            "kind": "board",
+            "title": "parent"
+          },
+          {
+            "id": "urn:example:stranger",
+            "kind": "note",
+            "title": "stranger"
+          }
+        ]
+      }
+    },
+    {
+      "id": "bad-args",
+      "note": "args missing a required param fail as badArgs before anything runs",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "retitle": {
+            "description": "Retitles one note.",
+            "params": {
+              "id": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "update": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "id"
+                  },
+                  "fields": {
+                    "title": "retitled"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "retitle",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000051",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "badArgs"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "unbound-name",
+      "note": "an expression reading a name nothing binds fails as unboundName",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "readsNobody": {
+            "description": "Titles a note from a name nothing binds.",
+            "steps": [
+              {
+                "create": {
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": {
+                      "$": "nobody"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "readsNobody",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000052",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "unboundName"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "unknown-entity",
+      "note": "a create of an entity the dataset has no type for fails as unknownEntity",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "makesNowhere": {
+            "description": "Creates a record of an entity the dataset has no type for.",
+            "steps": [
+              {
+                "create": {
+                  "entity": "Nowhere",
+                  "fields": {
+                    "title": "x"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "makesNowhere",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000053",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "unknownEntity"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "outside-one-of",
+      "note": "a chosen entity its oneOf does not admit fails as outsideOneOf, and nothing lands",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "makesChosen": {
+            "description": "Creates a record of the entity the caller names, among collections only.",
+            "params": {
+              "kind": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "entity": {
+                    "$": "kind"
+                  },
+                  "oneOf": ["CollectionBlock"],
+                  "fields": {
+                    "$": "{ kind: \"note\" }"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "makesChosen",
+      "args": {
+        "kind": "TaskState"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000054",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        },
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "outsideOneOf"
+        }
+      },
+      "records": {
+        "CollectionBlock": [],
+        "TaskState": []
+      }
+    },
+    {
+      "id": "not-granted",
+      "note": "a chosen entity the host refuses this caller fails as notGranted, and nothing lands",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "makesAny": {
+            "description": "Creates a record of whatever entity the caller names, with the fields given.",
+            "params": {
+              "kind": {
+                "type": "string",
+                "required": true
+              },
+              "fields": {
+                "type": "object",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "create": {
+                  "entity": {
+                    "$": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "category": "any"
+                    }
+                  ],
+                  "fields": {
+                    "$": "fields"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "makesAny",
+      "args": {
+        "kind": "TaskState",
+        "fields": {
+          "name": "Blocked",
+          "slug": "blocked"
+        }
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000055",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "deniedChosen": ["TaskState"],
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        },
+        {
+          "entity": "TaskState",
+          "fields": ["name", "slug"],
+          "relations": []
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "notGranted"
+        }
+      },
+      "records": {
+        "CollectionBlock": [],
+        "TaskState": []
+      }
+    },
+    {
+      "id": "forEach-no-key",
+      "note": "a forEach item with no id, no key and no key expression fails as forEachKey, and nothing lands",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "notesFor": {
+            "description": "A note per item given.",
+            "params": {
+              "items": {
+                "type": "json",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "forEach": {
+                  "in": {
+                    "$": "items"
+                  },
+                  "as": "item",
+                  "steps": [
+                    {
+                      "create": {
+                        "entity": "CollectionBlock",
+                        "fields": {
+                          "kind": "note",
+                          "title": {
+                            "$": "item.title"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "notesFor",
+      "args": {
+        "items": [
+          {
+            "title": "one"
+          }
+        ]
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000056",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "forEachKey"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "not-a-list",
+      "note": "a forEach over something that is not a list fails as notAList",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "notesFor": {
+            "description": "A note per item given.",
+            "params": {
+              "items": {
+                "type": "json",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "forEach": {
+                  "in": {
+                    "$": "items"
+                  },
+                  "as": "item",
+                  "steps": [
+                    {
+                      "create": {
+                        "entity": "CollectionBlock",
+                        "fields": {
+                          "kind": "note",
+                          "title": {
+                            "$": "item.title"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "notesFor",
+      "args": {
+        "items": "one"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000057",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "notAList"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "call-depth",
+      "note": "calls nested seventeen deep fail as callDepth, and the record at the bottom does not land",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "deep0": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep1"
+                }
+              }
+            ]
+          },
+          "deep1": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep2"
+                }
+              }
+            ]
+          },
+          "deep2": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep3"
+                }
+              }
+            ]
+          },
+          "deep3": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep4"
+                }
+              }
+            ]
+          },
+          "deep4": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep5"
+                }
+              }
+            ]
+          },
+          "deep5": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep6"
+                }
+              }
+            ]
+          },
+          "deep6": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep7"
+                }
+              }
+            ]
+          },
+          "deep7": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep8"
+                }
+              }
+            ]
+          },
+          "deep8": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep9"
+                }
+              }
+            ]
+          },
+          "deep9": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep10"
+                }
+              }
+            ]
+          },
+          "deep10": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep11"
+                }
+              }
+            ]
+          },
+          "deep11": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep12"
+                }
+              }
+            ]
+          },
+          "deep12": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep13"
+                }
+              }
+            ]
+          },
+          "deep13": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep14"
+                }
+              }
+            ]
+          },
+          "deep14": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep15"
+                }
+              }
+            ]
+          },
+          "deep15": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep16"
+                }
+              }
+            ]
+          },
+          "deep16": {
+            "description": "One call of a chain seventeen deep.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.deep17"
+                }
+              }
+            ]
+          },
+          "deep17": {
+            "description": "The bottom of a chain of calls seventeen deep.",
+            "steps": [
+              {
+                "create": {
+                  "entity": "CollectionBlock",
+                  "fields": {
+                    "kind": "note",
+                    "title": "bottom"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "deep0",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000058",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "callDepth"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "malformed-limit",
+      "note": "a limit that is not a whole number fails as malformed",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "firstTags": {
+            "description": "The first tags, as many as asked for.",
+            "params": {
+              "n": {
+                "type": "number",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "find": {
+                  "as": "tags",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag"
+                  },
+                  "limit": {
+                    "$": "n"
+                  }
+                }
+              }
+            ],
+            "returns": {
+              "$": "count(tags)"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        }
+      ],
+      "operation": "firstTags",
+      "args": {
+        "n": 1.5
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000059",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "malformed"
+        }
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "slug": "garden"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unknown-operation",
+      "note": "a call to an operation nobody registered fails as unknownOperation",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "callsNowhere": {
+            "description": "Calls an operation nobody registered.",
+            "steps": [
+              {
+                "call": {
+                  "operation": "conformance.nowhere"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [],
+      "operation": "callsNowhere",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000060",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "unknownOperation"
+        }
+      },
+      "records": {
+        "CollectionBlock": []
+      }
+    },
+    {
+      "id": "version-mismatch",
+      "note": "an invocation for a version of the namespace other than the registered one fails as versionMismatch",
+      "manifest": {
+        "version": "1",
+        "operations": {
+          "retitle": {
+            "description": "Retitles one note.",
+            "params": {
+              "id": {
+                "type": "string",
+                "required": true
+              }
+            },
+            "steps": [
+              {
+                "update": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "id"
+                  },
+                  "fields": {
+                    "title": "retitled"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        }
+      ],
+      "operation": "retitle",
+      "args": {
+        "id": "urn:example:tag-garden"
+      },
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000061",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "version": "2",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "error": {
+          "class": "static",
+          "code": "versionMismatch"
+        }
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "slug": "garden"
           }
         ]
       }

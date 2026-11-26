@@ -113,6 +113,12 @@ export interface OperationCase {
    * and before the operation ends. What an `expect` exists to notice.
    */
   concurrent?: SeedRecord[];
+  /** The dataset's shared id, for a case about a dataset several agents hold as one. Absent: none. */
+  sharedId?: string;
+  /** The manifest version the caller wrote against, for a case about calling the wrong one. Absent: none given. */
+  version?: string;
+  /** Entities the host refuses this caller when a step chooses them at call time. Absent: none. */
+  deniedChosen?: string[];
   observe: Observation[];
 }
 
@@ -162,6 +168,9 @@ export interface OperationVector {
   invocationId: string;
   invokedAt: string;
   concurrent?: SeedRecord[];
+  sharedId?: string;
+  version?: string;
+  deniedChosen?: string[];
   observe: Observation[];
   outcome: { result: unknown } | { error: { class: string; code: string } };
   records: Record<string, ObservedRecord[]>;
@@ -425,6 +434,144 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'slug' } } } },
     ],
     returns: { $: '[state.id, note.id]' },
+  },
+  retitle: {
+    description: 'Retitles one note.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ update: { entity: 'CollectionBlock', id: { $: 'id' }, fields: { title: 'retitled' } } }],
+  },
+  theTag: {
+    description: 'The one tag there is, or a failure.',
+    steps: [{ find: { as: 'tag', entity: 'CollectionBlock', where: { kind: 'tag' }, one: true } }],
+    returns: { $: 'tag.id' },
+  },
+  unlinkStrictly: {
+    description: 'Takes a record out of a holder, asserting it was in it.',
+    params: { holder: { type: 'string', required: true }, target: { type: 'string', required: true } },
+    steps: [
+      {
+        unlink: {
+          entity: 'CollectionBlock',
+          id: { $: 'holder' },
+          relation: 'children',
+          target: { $: 'target' },
+          strict: true,
+        },
+      },
+    ],
+  },
+  readsNobody: {
+    description: 'Titles a note from a name nothing binds.',
+    steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'nobody' } } } }],
+  },
+  makesNowhere: {
+    description: 'Creates a record of an entity the dataset has no type for.',
+    steps: [{ create: { entity: 'Nowhere', fields: { title: 'x' } } }],
+  },
+  makesChosen: {
+    description: 'Creates a record of the entity the caller names, among collections only.',
+    params: { kind: { type: 'string', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: ['CollectionBlock'], fields: { $: '{ kind: "note" }' } } }],
+  },
+  makesAny: {
+    description: 'Creates a record of whatever entity the caller names, with the fields given.',
+    params: { kind: { type: 'string', required: true }, fields: { type: 'object', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: [{ category: 'any' }], fields: { $: 'fields' } } }],
+  },
+  notesFor: {
+    description: 'A note per item given.',
+    params: { items: { type: 'json', required: true } },
+    steps: [
+      {
+        forEach: {
+          in: { $: 'items' },
+          as: 'item',
+          steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'item.title' } } } }],
+        },
+      },
+    ],
+  },
+  firstTags: {
+    description: 'The first tags, as many as asked for.',
+    params: { n: { type: 'number', required: true } },
+    steps: [{ find: { as: 'tags', entity: 'CollectionBlock', where: { kind: 'tag' }, limit: { $: 'n' } } }],
+    returns: { $: 'count(tags)' },
+  },
+  callsNowhere: {
+    description: 'Calls an operation nobody registered.',
+    steps: [{ call: { operation: 'conformance.nowhere' } }],
+  },
+  deep0: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep1' } }],
+  },
+  deep1: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep2' } }],
+  },
+  deep2: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep3' } }],
+  },
+  deep3: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep4' } }],
+  },
+  deep4: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep5' } }],
+  },
+  deep5: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep6' } }],
+  },
+  deep6: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep7' } }],
+  },
+  deep7: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep8' } }],
+  },
+  deep8: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep9' } }],
+  },
+  deep9: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep10' } }],
+  },
+  deep10: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep11' } }],
+  },
+  deep11: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep12' } }],
+  },
+  deep12: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep13' } }],
+  },
+  deep13: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep14' } }],
+  },
+  deep14: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep15' } }],
+  },
+  deep15: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep16' } }],
+  },
+  deep16: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep17' } }],
+  },
+  deep17: {
+    description: 'The bottom of a chain of calls seventeen deep.',
+    steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'bottom' } } }],
   },
   linkTwo: {
     description: 'Links two records under a holder, in the order given, through an ordered and an unordered relation.',
@@ -1029,6 +1176,18 @@ const CASES: OperationCase[] = [
     observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
   },
   {
+    id: 'identity-id-shared',
+    note: 'in a dataset with a shared id, the same identity derives another id, within that shared id',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    sharedId: 'QmSpaceA',
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
     id: 'identity-twice',
     note: 'a second create of the same identity is refused as recordExists, and nothing the operation made lands',
     operations: OPERATIONS,
@@ -1092,6 +1251,166 @@ const CASES: OperationCase[] = [
     args: { parent: 'urn:example:holder', ids: ['urn:example:k3', 'urn:example:k1'] },
     invocationId: '00000000-0000-4000-8000-000000000047',
     invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+
+  {
+    id: 'update-missing',
+    note: 'an update naming a record that is not there fails as notFound',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: { id: 'urn:example:gone' },
+    invocationId: '00000000-0000-4000-8000-000000000048',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'find-one-ambiguous',
+    note: 'a find with one that matches two records fails as ambiguous',
+    operations: OPERATIONS,
+    dataset: [TAG, { entity: 'CollectionBlock', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    operation: 'theTag',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000049',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'strict-unlink',
+    note: 'a strict unlink of a record that is not a member fails as notLinked and changes nothing',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:parent', fields: { kind: 'board', title: 'parent' } },
+      { entity: 'CollectionBlock', id: 'urn:example:stranger', fields: { kind: 'note', title: 'stranger' } },
+    ],
+    operation: 'unlinkStrictly',
+    args: { holder: 'urn:example:parent', target: 'urn:example:stranger' },
+    invocationId: '00000000-0000-4000-8000-000000000050',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'bad-args',
+    note: 'args missing a required param fail as badArgs before anything runs',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000051',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unbound-name',
+    note: 'an expression reading a name nothing binds fails as unboundName',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'readsNobody',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000052',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unknown-entity',
+    note: 'a create of an entity the dataset has no type for fails as unknownEntity',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000053',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'outside-one-of',
+    note: 'a chosen entity its oneOf does not admit fails as outsideOneOf, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesChosen',
+    args: { kind: 'TaskState' },
+    invocationId: '00000000-0000-4000-8000-000000000054',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'not-granted',
+    note: 'a chosen entity the host refuses this caller fails as notGranted, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesAny',
+    args: { kind: 'TaskState', fields: { name: 'Blocked', slug: 'blocked' } },
+    invocationId: '00000000-0000-4000-8000-000000000055',
+    invokedAt: AT,
+    deniedChosen: ['TaskState'],
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'forEach-no-key',
+    note: 'a forEach item with no id, no key and no key expression fails as forEachKey, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: [{ title: 'one' }] },
+    invocationId: '00000000-0000-4000-8000-000000000056',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'not-a-list',
+    note: 'a forEach over something that is not a list fails as notAList',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: 'one' },
+    invocationId: '00000000-0000-4000-8000-000000000057',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'call-depth',
+    note: 'calls nested seventeen deep fail as callDepth, and the record at the bottom does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'deep0',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000058',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'malformed-limit',
+    note: 'a limit that is not a whole number fails as malformed',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'firstTags',
+    args: { n: 1.5 },
+    invocationId: '00000000-0000-4000-8000-000000000059',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unknown-operation',
+    note: 'a call to an operation nobody registered fails as unknownOperation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'callsNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000060',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'version-mismatch',
+    note: 'an invocation for a version of the namespace other than the registered one fails as versionMismatch',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'retitle',
+    args: { id: 'urn:example:tag-garden' },
+    invocationId: '00000000-0000-4000-8000-000000000061',
+    invokedAt: AT,
+    version: '2',
     observe: [COLLECTIONS],
   },
 ];
@@ -1170,6 +1489,9 @@ function* bodiesOf(steps: unknown[] | undefined): Generator<[string, StepBody]> 
  * names in a step (its own operations' and the ones they call), every entity a relation of those
  * targets, and the access-control entities — each with only what changes what an operation does.
  */
+/** Entities a case names so that the dataset has no type for them: never in the file's entities. */
+const UNDECLARED_ENTITIES = new Set(['Nowhere']);
+
 export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES): Record<string, VectorEntity> {
   const named = new Set<string>(PROTECTED_ENTITIES);
   for (const c of cases) {
@@ -1183,6 +1505,7 @@ export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES
   const out: Record<string, VectorEntity> = {};
   const add = (name: string) => {
     if (name in out) return;
+    if (UNDECLARED_ENTITIES.has(name)) return;
     const schema = CORE_MANIFEST.entities[name];
     if (!schema) throw new Error(`A case names "${name}", which WE's core manifest does not declare`);
     out[name] = neutralEntity(schema);
@@ -1371,6 +1694,7 @@ export async function runVector(
   }
   registerOperations(VECTOR_NAMESPACE, vector.manifest.operations, {
     entities: context.entities,
+    version: vector.manifest.version,
   });
   const undo = interleave(subject.dataset, vector, inbound(vector.concurrent ?? []));
   registerEntityWriteCheck(policyCheck(context.policy, agent));
@@ -1381,6 +1705,10 @@ export async function runVector(
       invoker,
       invocationId: vector.invocationId,
       invokedAt: vector.invokedAt,
+      // The case's, never the host's: a dataset in a vector has the shared id the file gives it.
+      sharedId: vector.sharedId ?? null,
+      ...(vector.version ? { version: vector.version } : {}),
+      ...(vector.deniedChosen ? { admitChosen: (entity: string) => !vector.deniedChosen!.includes(entity) } : {}),
     });
     outcome = { result: result === undefined ? null : swap(result, agent, VECTOR_INVOKER) };
   } catch (error) {
@@ -1409,6 +1737,9 @@ export function vectorInput(c: OperationCase): VectorInput {
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
     ...(c.concurrent ? { concurrent: c.concurrent } : {}),
+    ...(c.sharedId ? { sharedId: c.sharedId } : {}),
+    ...(c.version ? { version: c.version } : {}),
+    ...(c.deniedChosen ? { deniedChosen: c.deniedChosen } : {}),
     observe: c.observe,
   };
 }
