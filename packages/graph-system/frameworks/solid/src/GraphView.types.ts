@@ -141,10 +141,10 @@ export interface GraphViewProps {
    * Something to press, under that sentence — the control that resolves the emptiness, where the
    * caller has one.
    *
-   * A slot rather than a prop pair (`emptyActionLabel` + `emptyAction`), because what the control
-   * *is* differs: a button, a pair of them, a link, a file drop. The renderer spreads a schema
-   * node's `slots` onto a component's props, so a template writes
-   * `slots: { emptyAction: … }` and the node arrives here already rendered.
+   * A node rather than a prop pair (`emptyActionLabel` + `emptyAction`), because what the control
+   * *is* differs: a button, a pair of them, a link, a file drop. Typed as an element, which makes it
+   * a node prop: a template writes `props: { emptyAction: … }` with a node, and the renderer draws
+   * it and hands it over drawn.
    *
    * Inside the placeholder rather than beside the graph, which is the whole reason this exists.
    * A caller that floats its own button over the canvas has to position it against a box whose size

@@ -60,6 +60,10 @@ A schema is a tree of nodes. Each node can have:
 - props: An object of props for the component
 - children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
+- Node props: a component prop the Component Registry types as JSX.Element (FlipCard's front and back,
+  GraphView's emptyAction) takes a NODE. Write { "props": { "front": { "type": "Card", … } } } and the
+  node is drawn, reading the same locals and names as the component around it. Any other prop holding
+  a node-shaped value is data, handed to the component as it is.
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)

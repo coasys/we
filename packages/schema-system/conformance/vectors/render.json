@@ -6896,6 +6896,230 @@
           "actions": []
         }
       ]
+    },
+    {
+      "id": "render.node.component-node-prop",
+      "note": "a component's declared node props are drawn as nodes and handed over drawn; its other props stay data",
+      "template": {
+        "type": "FlipCard",
+        "props": {
+          "width": "200px",
+          "front": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["front face"]
+              }
+            ]
+          },
+          "back": {
+            "type": "we-text",
+            "children": ["back face"]
+          },
+          "items": [
+            {
+              "type": "Row",
+              "children": ["data"]
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "props": {
+                "width": "200px",
+                "items": [
+                  {
+                    "type": "Row",
+                    "children": ["data"]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["front face"]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "slot": "back",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["back face"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.component-node-prop-scope",
+      "note": "a node in a declared node prop reads the scope of the node holding it, and follows it",
+      "template": {
+        "type": "FlipCard",
+        "$localState": {
+          "side": {
+            "type": "string",
+            "initial": "one"
+          }
+        },
+        "props": {
+          "front": {
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`${local.side} ${app.title}`"
+                  }
+                ]
+              },
+              {
+                "type": "we-button",
+                "props": {
+                  "data-case": "flip",
+                  "onClick": {
+                    "$setLocal": "side",
+                    "value": "two"
+                  }
+                },
+                "children": ["flip"]
+              }
+            ]
+          }
+        }
+      },
+      "data": {
+        "app": {
+          "title": "Card"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "flip"
+        },
+        {
+          "op": "data",
+          "store": "app",
+          "member": "title",
+          "value": "Board"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["one Card"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two Card"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two Board"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
     }
   ]
 }

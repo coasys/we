@@ -1221,4 +1221,40 @@ export const RENDER_CASES: RenderCase[] = [
       ],
     },
   ),
+
+  /* ── node props a component declares ───────────────────────────────────────────────────── */
+  C(
+    'render.node.component-node-prop',
+    "a component's declared node props are drawn as nodes and handed over drawn; its other props stay data",
+    {
+      type: 'FlipCard',
+      props: {
+        width: '200px',
+        front: { type: 'Card', children: [text('front face')] },
+        back: text('back face'),
+        items: [{ type: 'Row', children: ['data'] }],
+      },
+    },
+  ),
+  C(
+    'render.node.component-node-prop-scope',
+    'a node in a declared node prop reads the scope of the node holding it, and follows it',
+    {
+      type: 'FlipCard',
+      $localState: { side: { type: 'string', initial: 'one' } },
+      props: {
+        front: {
+          type: 'Column',
+          children: [text({ $: '`${local.side} ${app.title}`' }), button('flip', { $setLocal: 'side', value: 'two' })],
+        },
+      },
+    },
+    {
+      data: { app: { title: 'Card' } },
+      steps: [
+        { op: 'click', target: 'flip' },
+        { op: 'data', store: 'app', member: 'title', value: 'Board' },
+      ],
+    },
+  ),
 ];

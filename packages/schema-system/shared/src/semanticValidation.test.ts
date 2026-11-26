@@ -790,13 +790,22 @@ describe('tokens inside the data a prop holds', () => {
     ).toEqual([]);
   });
 
-  it('does not judge a subtree a prop holds against the scope outside it', () => {
-    // A node held in a prop is rendered by its component, which may bind names the scope outside
-    // it has never heard of. Data is opened; a subtree is left to whatever renders it.
+  it('does not judge a node-shaped value in an undeclared prop against the scope outside it', () => {
+    // A prop the component does not declare as holding a node is data, handed over as it is, so
+    // the names in it are the component's business.
+    const node = template([{ type: 'GraphView', props: { tooltip: { type: 'Row', children: [{ $: 'row.title' }] } } }]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('judges a declared node prop as a node, in the scope of the node holding it', () => {
+    // `emptyAction` is element-typed in GraphView's declaration: the renderer draws it where the
+    // graph is, so it reads what the graph reads and nothing the graph binds.
     const node = template([
       { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
     ]);
-    expect(messages(node, 'error')).toEqual([]);
+    expect(messages(node, 'error').some((m) => m.includes('row'))).toBe(true);
+    const fine = template([{ type: 'GraphView', props: { emptyAction: { type: 'Row', children: ['Start'] } } }]);
+    expect(messages(fine, 'error')).toEqual([]);
   });
 });
 

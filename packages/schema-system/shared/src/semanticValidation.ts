@@ -25,7 +25,7 @@ import { describeHostOnly, hostOnlyUses } from './profiles';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
-import { type ChildPositionKind, childrenOf } from './treeUtils';
+import { type ChildPositionKind, childrenOf, nodePropsOf } from './treeUtils';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
@@ -1712,6 +1712,12 @@ function checkProps(
     if (propName === '$localState') continue;
 
     const propPath = `${path}.props.${propName}`;
+    // A prop the component declares as holding a node is a child, judged as a node in this node's
+    // scope — the renderer draws it there — and never as a value.
+    if (nodePropsOf(componentType).includes(propName)) {
+      checkBranchSlot(propValue, propPath, ctx, state, errors);
+      continue;
+    }
     if (propName === 'href') {
       checkIdInPath(propValue, propPath, errors);
       checkRelativeTarget(propValue, propPath, state, errors);

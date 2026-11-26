@@ -60,7 +60,11 @@ export interface RenderExpect {
 }
 
 /** Layout components drawn as probes. Anything PascalCase not listed is an unknown component. */
-const PROBES = ['Column', 'Row', 'Card', 'Grid', 'PartFrame', 'PanelLane'] as const;
+/**
+ * `FlipCard` stands for a component that declares node props (its `front` and `back` are element-typed
+ * in its declaration): what it is handed there is drawn, and arrives like a slot.
+ */
+const PROBES = ['Column', 'Row', 'Card', 'Grid', 'PartFrame', 'PanelLane', 'FlipCard'] as const;
 const PROBE_TAG = 'x-probe';
 const SLOT_TAG = 'x-probe-slot';
 

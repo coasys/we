@@ -69,15 +69,19 @@ function everyPosition(): SchemaNode {
       },
       {
         type: 'FlipCard',
-        // Only a declared node prop holds a child: a node-shaped value in any other prop, alone or
-        // in a list, is data the component is handed as it is.
+        // A component's declared node props hold children: `front` and `back` are element-typed in
+        // its declaration. A node-shaped value in any other prop, alone or in a list, is data the
+        // component is handed as it is.
         props: {
-          front: leaf('NotANodeInUndeclaredProp'),
+          front: leaf('InComponentNodeProp'),
+          back: { type: 'Column', children: [leaf('InComponentNodePropBack')] },
           items: [leaf('NotANodeInPropList'), { label: 'an option', value: 'a' }],
           hoverProps: { bg: 'surface' },
           onClick: { $invoke: 'x.y', args: [{ type: 'NotANodeInHandlerArgs' }] },
         },
       },
+      // The same prop name on a component that does not declare it is data.
+      { type: 'Card', props: { front: leaf('NotANodeInUndeclaredProp') } },
       { type: 'Tabs', slots: { header: { type: 'Row', children: [leaf('InSlot')] } } },
       { type: '$ref', props: { def: 'd1' } },
       { type: '$routes' },
@@ -104,6 +108,8 @@ const ALL_TYPES = [
   'InThen',
   'InElse',
   'FlipCard',
+  'InComponentNodeProp',
+  'InComponentNodePropBack',
   'Tabs',
   'Row',
   'InSlot',
@@ -160,8 +166,12 @@ describe('every walk reaches every node', () => {
     const flip = schema.children!.find(
       (c) => typeof c === 'object' && (c as SchemaNode).type === 'FlipCard',
     ) as SchemaNode;
-    expect((flip.props!.front as SchemaNode).id).toBeUndefined();
+    expect((flip.props!.front as SchemaNode).id).toBeDefined();
     expect(((flip.props!.items as SchemaNode[])[0] as SchemaNode).id).toBeUndefined();
+    const card = schema.children!.find(
+      (c) => typeof c === 'object' && (c as SchemaNode).type === 'Card' && !!(c as SchemaNode).props?.front,
+    ) as SchemaNode;
+    expect((card.props!.front as SchemaNode).id).toBeUndefined();
   });
 
   it('deriveNodeIds numbers every node but the root', () => {
@@ -185,6 +195,7 @@ describe('every walk reaches every node', () => {
     expect(keyOf('InChildren')).toBe('children');
     expect(keyOf('InThen')).toBe('children');
     expect(keyOf('InElse')).toBe('props.else');
+    expect(keyOf('InComponentNodeProp')).toBe('props.front');
     expect(keyOf('InSlot')).toBe('children');
     expect(keyOf('Tabs')).toBe('children');
     expect(keyOf('InRoute')).toBe('children');

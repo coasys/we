@@ -6,6 +6,7 @@
  * node — so index traversal and scope traversal disagreed about what the tree
  * contained. One definition each, here.
  */
+import { COMPONENT_NODE_PROPS } from './generated/componentNodeProps';
 import type { SchemaNode } from './types';
 
 /**
@@ -53,10 +54,13 @@ export const panelsOf = (node: SchemaNode): PanelEntry[] | undefined => {
  * edits reaching it, the validator judging it as a node. Guessing from the value's shape had exactly
  * that failure — a graph's behaviour list (`{ type: 'drag-node' }`) read as three custom elements.
  *
- * In this format version only `$if` declares node props. A component prop joins the table when the
- * renderer draws it as a node.
+ * Two sources fill it, and nothing else may: `$if` declares `then` and `else`, and each component
+ * declares the props its own types give as an element (`FlipCard`'s `front` and `back`), generated
+ * from the component catalog into `COMPONENT_NODE_PROPS`. A component prop is a node prop because
+ * the component says it draws one there, never because of what a template put in it.
  */
 export const NODE_PROPS: Readonly<Record<string, readonly string[]>> = {
+  ...COMPONENT_NODE_PROPS,
   $if: ['then', 'else'],
 };
 
@@ -77,7 +81,8 @@ export function nodePropsOf(type: unknown): readonly string[] {
  * - `routes` — each entry of `routes`. A route is always a node, whatever else it carries.
  * - `slots` — the node under each name in `slots`.
  * - `props` — the value of each node prop its type declares (`NODE_PROPS`): `$if`'s `then` and
- *   `else`. Every other prop holds data, a node-shaped value included.
+ *   `else`, and a component's element-typed props. Every other prop holds data, a node-shaped value
+ *   included.
  * - `panels` — the `node` of each `meta.panels` entry. The entry is configuration; its node is
  *   the interface.
  * - `$defs` — each shape in `$defs`. Root only. A walk over the tree *as rendered* leaves these

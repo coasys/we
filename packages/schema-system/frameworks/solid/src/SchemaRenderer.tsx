@@ -8,6 +8,7 @@ import {
   expandDefinitions,
   hasToken,
   isRelativePath,
+  isSchemaChild,
   isTemplateElement,
   isUndefinedWeElement,
   localPersistKey,
@@ -15,6 +16,7 @@ import {
   localWriteMirror,
   markReactive,
   newGestureOwner,
+  nodePropsOf,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
@@ -1351,6 +1353,28 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     }
   });
 
+  /*
+    The props this node's type declares as holding a node (`NODE_PROPS`: a FlipCard's faces, a
+    graph's empty-state action), each drawn as a node here and handed over drawn, as a slot is.
+    Never resolved as a value: every walk counts what is in them as a child, so they are drawn where
+    the walks put them — in this node's scope, with ids an editor can address.
+
+    A memo per prop, keyed on the value it holds, so a change inside the node it holds updates that
+    node in place, and only a different node in the prop draws afresh.
+  */
+  const nodePropNames = nodePropsOf(node.type);
+  const nodePropElements: Record<string, JSX.Element> = {};
+  for (const name of nodePropNames) {
+    const held = createMemo(() => (node.props as Record<string, unknown> | undefined)?.[name]);
+    const drawn = createMemo(() => {
+      const value = held();
+      if (isSchemaChild(value)) return untrack(() => renderNode(value));
+      return typeof value === 'string' ? value : undefined;
+    });
+    Object.defineProperty(nodePropElements, name, { get: drawn, enumerable: true });
+  }
+  const isNodeProp = (key: string) => nodePropNames.includes(key);
+
   // --- Per-prop resolution (fine-grained reactivity) ---
   // Create per-prop memos — each prop resolves independently,
   // isolating its reactive dependencies. Static props still read from
@@ -1367,6 +1391,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // are tracked as the memo's signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
+    if (isNodeProp(key)) continue;
     if (isStaticValue(rawValue)) {
       // Read from the store node so Solid tracks changes from updateSchema.
       // If the value transitions from static to token (e.g. via AI patching),
@@ -1564,7 +1589,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       const currentDynamicKeys = new Set<string>();
       if (currentProps) {
         for (const key of Object.keys(currentProps)) {
-          if (!(key in propMemos) && !isEventProp(key)) {
+          if (!(key in propMemos) && !isEventProp(key) && !isNodeProp(key)) {
             const resolved = resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo);
             assignToHost(hostRef, key, permitted(key, deepUnwrap(resolved), false));
             currentDynamicKeys.add(key);
@@ -1590,7 +1615,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     });
 
     const wcElement = (
-      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotElements}>
+      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotElements} {...nodePropElements}>
         {childrenEl()}
       </Dynamic>
     );
@@ -1621,7 +1646,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     const currentProps = node.props as Record<string, unknown> | undefined;
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
-        if (!(key in propMemos)) {
+        if (!(key in propMemos) && !isNodeProp(key)) {
           const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo));
           attrs[key] = isEventProp(key) ? asThisNode(resolved) : permitted(key, resolved, native);
         }
@@ -1631,7 +1656,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   });
 
   const solidElement = (
-    <Dynamic component={component()} {...reactiveAttrs()} {...slotElements}>
+    <Dynamic component={component()} {...reactiveAttrs()} {...slotElements} {...nodePropElements}>
       {childrenEl()}
     </Dynamic>
   );
