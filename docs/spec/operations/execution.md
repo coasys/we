@@ -147,6 +147,8 @@ the read widened. So the runner rewrites the evaluated where first:
 1. The entity is resolved, and `id` is evaluated to an id.
 2. If the record exists (made or read by this operation, or committed), it is deleted in the
    operation's transaction. If it does not, the step does nothing: the state asked for already holds.
+   With `own`, a record that exists, that this operation did not create, and whose `author` is not
+   `invoker` fails with precondition `notOwn` instead.
 3. Result: no value.
 
 ### `link` and `unlink`
@@ -173,7 +175,9 @@ relation, is refused by the backend.
 1. As `link` step 1, with `targets` evaluated to a list of ids. No value is the empty list; anything
    that is not a list of records or ids fails with static `notAList`.
 2. The relation's membership becomes exactly that list, in that order, in the operation's
-   transaction.
+   transaction. With `keep`, the list is first extended by the members the relation holds (as this
+   operation has left them, read from committed state the first time) that it does not name, in the
+   order they held.
 3. Result: no value.
 
 ### `forEach`
@@ -354,6 +358,74 @@ operation that needs a guarantee across agents cannot get it from this version o
 > button needs; agreement across replicas is a property of the network beneath, not of the
 > operation.
 
+## Serial
+
+An invocation whose operation declares [`serial`](format.md#serial) has a queue key: the expression
+evaluated over the checked args, with only the params bound. A host that starts runs SHOULD start an
+invocation only once every earlier invocation it started with the same key in the same dataset has
+finished, whether that one succeeded or failed. Invocations with different keys, or none, are not
+ordered by this. An invocation whose args fail the [args check](#args) has no key; its run fails
+anyway.
+
+The key orders the runs one host starts. It says nothing about another agent's runs, which
+[Atomicity](#atomicity)'s rule on preconditions still covers.
+
+Implemented by: [`run.ts`](../../../packages/entities/src/operations/run.ts) (`serialKey`),
+[`invokeOperation.ts`](../../../packages/app-shell/src/shared/invokeOperation.ts) (the queue).
+Pinned by: [`entities/tests/operations.test.ts`](../../../packages/entities/tests/operations.test.ts)
+("a serial key"), [`app-shell/tests/invokeOperation.test.ts`](../../../packages/app-shell/tests/invokeOperation.test.ts),
+[`app-shell/tests/involvements.test.ts`](../../../packages/app-shell/tests/involvements.test.ts)
+("writes quick presses in order").
+
+## Running speculatively
+
+_This section is informative: it says what a host MAY do, and nothing here changes what an
+operation means._
+
+A person who presses something watches for it to happen, and the write behind the press comes back
+through the backend's own notifications a round trip later. A host MAY draw an operation's writes
+before they land by running it twice with **one invocation**: first speculatively, then for real.
+
+- **The speculative run** is the same runner over a view of the dataset that answers each `find`
+  from what the host currently sees — the committed records, with the host's own pending predictions
+  laid over them — and records each write instead of making it. It asks the [write check](#the-write-check)
+  as the real run will. What it recorded is the **prediction**.
+- **The real run** is the invocation as this spec describes it, with the same `invocationId` and
+  `invokedAt`.
+
+Because a created record's id derives from the invocation and the step ([Ids](#ids)), and an
+identity id from the entity and the identity, the records the prediction draws have exactly the ids
+the real run gives them. Reconciling is therefore a matter of ids, not of resemblance:
+
+1. A speculative run that fails, statically or on a precondition (a refusal included), predicts
+   nothing, and nothing is drawn.
+2. While the real run is going, every read the host draws MAY show the prediction laid over what it
+   read: a predicted create where the read asks for its entity and its parent, a delete taken out,
+   an edit or a relation change applied to the record of that id.
+3. When the real run fails, the prediction is withdrawn.
+4. When it succeeds, each read keeps the prediction until that read's answer has moved: its records
+   now say what was predicted (the real rows have arrived), or say something else than they did
+   when the run returned (another agent's write landed, and the real rows win). A backstop retires
+   a prediction no read ever answers.
+5. Predictions are about a dataset, and a host drops them when it stops showing that dataset.
+
+A speculative run's reads see the predictions still pending from earlier invocations, but not its
+own writes, as the real run's reads do not: a second press made before the first has landed is
+predicted from the first one's answer. Invocations sharing a [serial](#serial) key are predicted
+in the order they were made.
+
+Nothing here is part of an operation's result. A host that never runs speculatively conforms, and a
+backend that delivers writes at once makes a prediction retire on its first read.
+
+Implemented by: [`speculate.ts`](../../../packages/entities/src/operations/speculate.ts)
+(`speculateOperation`), [`predictions/`](../../../packages/entities/src/predictions/index.ts) (what is
+drawn, and when it stops),
+[`invokeOperation.ts`](../../../packages/app-shell/src/shared/invokeOperation.ts) (the host's one way
+to run an operation).
+Pinned by: [`backend-inmemory/tests/speculativeRun.test.ts`](../../../packages/backend-system/inmemory/tests/speculativeRun.test.ts),
+[`entities/tests/predictions.test.ts`](../../../packages/entities/tests/predictions.test.ts),
+[`app-shell/tests/invokeOperation.test.ts`](../../../packages/app-shell/tests/invokeOperation.test.ts).
+
 ## The write check
 
 Every primitive write an operation makes (each create, edit, delete, relation add and remove) MUST
@@ -421,6 +493,7 @@ way; the fault is in the definition or the call.
 | `ambiguous`       | A `find` with `one` matched more than one record.                                                      |
 | `alreadyLinked`   | A strict `link`'s target is already a member.                                                          |
 | `notLinked`       | A strict `unlink`'s target is not a member.                                                            |
+| `notOwn`          | A `delete` with `own` named a record somebody other than the invoker made.                             |
 | `recordExists`    | A `create`'s derived id is already held: most often a replay, or the same identity made again.         |
 | `expectChanged`   | An `expect` find's answer changed before commit.                                                       |
 | `refused`         | The write check refused a write.                                                                       |
@@ -428,6 +501,11 @@ way; the fault is in the definition or the call.
 
 A failure that is neither (the backend unreachable, storage failing) is not an operation error and
 MAY be reported however the implementation reports such faults; the atomicity rules still apply.
+
+A declared name's `message` is the operation's own, written for the person who asked; a host MAY
+show it to them as it is. Every other code's message is for whoever wrote the definition or the
+call, and a host SHOULD say the failure in its own words instead. A `refused` error is the write
+check's to explain, and a host that already said so SHOULD NOT say it again.
 
 `step` SHOULD be a path naming the step: `<namespace>.<name>/steps.<index>.<verb>`, with
 `[<key>].steps.<index>.<verb>` for each `forEach` level and `/steps.<index>.<verb>` after a `call`,
@@ -456,10 +534,10 @@ not what one run will. Record, per entity:
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `create`                           | `create` on its entity; with a `parent`, `add:<parent.relation>` on `parent.entity`, or on `*` when the parent names no entity. |
 | `update`                           | `edit`                                                                                                                          |
-| `delete`                           | `delete`                                                                                                                        |
+| `delete`                           | `delete`; `deleteOwn` with `own`                                                                                                |
 | `link`                             | `add:<relation>`                                                                                                                |
 | `unlink`                           | `remove:<relation>`                                                                                                             |
-| `setRelation`                      | `add:<relation>` and `remove:<relation>`                                                                                        |
+| `setRelation`                      | `add:<relation>` and `remove:<relation>`; `add:<relation>` alone with `keep`                                                    |
 | `find`, `check`, `forEach`, `call` | nothing themselves                                                                                                              |
 
 - A literal `entity` records under its name. A chosen entity records under each name in its `oneOf`,
@@ -467,8 +545,9 @@ not what one run will. Record, per entity:
   members.
 - A `relation` given as an expression is recorded as `*` (`add:*`, `remove:*`).
 - `bulk` is true when any write sits inside a `forEach`, directly or through a call made from one.
-- `destructive` is true when any `delete` or `remove:` verb is recorded (so every `unlink` and
-  `setRelation`).
+- `destructive` is true when any `delete` or `remove:` verb is recorded (so every `unlink`, and every
+  `setRelation` without `keep`). `deleteOwn` is not destructive: the run cannot reach beyond the
+  invoker's own records with it, and taking back what one gave destroys nothing of anybody else's.
 - Entity and category keys, and each list of verbs, are sorted by code point.
 
 An operation **writes** when `entities` or `categories` is non-empty. One that writes nothing (only

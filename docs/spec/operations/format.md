@@ -79,6 +79,7 @@ declarer's namespace. A namespace MUST match `[a-z][a-z0-9-]*`.
 | `errors`      | no       | An object of error name to a person-readable message: the precondition errors its `check` steps raise. Each name MUST match `[A-Za-z_][A-Za-z0-9_]*`. |
 | `steps`       | yes      | A list of [steps](#steps), run in the order written.                                                                                                  |
 | `returns`     | no       | A [value](#values) evaluated after the last step and handed to the caller.                                                                            |
+| `serial`      | no       | An [expression](#values) over the params naming the queue an invocation joins: see [Serial](#serial).                                                 |
 
 **Objects are strict.** An operation definition, a param and every step body MUST NOT carry a key
 this spec does not define. An implementation MUST refuse a definition that does (as a static
@@ -86,6 +87,26 @@ this spec does not define. An implementation MUST refuse a definition that does 
 
 > **Why.** An implementation that dropped an unknown key would run a different operation from the
 > one written: a misspelt `when` would make a guarded step unconditional.
+
+## Serial
+
+```json
+{ "serial": { "$": "'signal ' + node + ' ' + signalType" } }
+```
+
+`serial` is an expression token whose expression reads only the operation's params. Its value for an
+invocation, when it is a non-empty string or a finite number (as text), is the invocation's **queue
+key**; any other value means the invocation joins no queue. Two operations whose keys come out as the
+same text share the queue: a give and a take-back of one reaction declare the same key.
+
+What a host does with the key is in [Execution](execution.md#serial): invocations with the same key in
+the same dataset run one after another.
+
+> **Why.** An operation that reads before it writes cannot defend itself against a second invocation
+> reading at the same moment: both find the same stored reaction, and each makes a replacement. A
+> transaction does not help — each run is atomic and both are correct on their own. The order has to
+> be kept by whoever starts the runs, and the definition is the place that knows which runs touch the
+> same thing.
 
 ## Params
 
@@ -234,6 +255,11 @@ Edits one record's fields.
 | `entity` | yes                         | An entity.                               |
 | `oneOf`  | with an expression `entity` | See [Chosen entities](#chosen-entities). |
 | `id`     | yes                         | A value giving the record or its id.     |
+| `own`    | no                          | `true`: only a record the invoker made.  |
+
+`own` is what taking back one's own contribution says (a reaction withdrawn, an answer replaced): the
+run refuses to delete a record somebody else made, and the [effect summary](execution.md#the-effect-summary)
+does not count the step as destructive.
 
 ### `link` and `unlink`
 
@@ -262,6 +288,11 @@ Replaces a to-many relation's whole membership, in order.
 | `id`       | yes                         | A value giving the holding record or its id.                       |
 | `relation` | yes                         | A literal relation name, or an expression giving one.              |
 | `targets`  | yes                         | A value giving a list of records or ids: the whole new membership. |
+| `keep`     | no                          | `true`: members `targets` leaves out stay, after it.               |
+
+With `keep`, `targets` is the order wanted for the members it names, and every member it leaves out
+follows them in the order it held: the step orders and adds, and never removes, which is what a drag
+reordering a column or a board says. The effect summary records it as an addition only.
 
 ### `forEach`
 
@@ -358,6 +389,7 @@ SHOULD report each problem with a path to it (`operations.vote.steps.2.forEach.s
     an `id` or a `key` on every item.
 14. A `create` with `identity` names a literal entity, and each identity field once, each a property
     or a to-one relation of the entity and, where `fields` is a literal map, given in it.
+15. `serial` is an expression token, and every name it reads is a param.
 
 Checks 5 and 8 to 10 do not apply to the members of `{ "category": "any" }`, which nothing in view
 stands for, nor to a `relation` given as an expression: those are judged by the backend when the
@@ -371,4 +403,4 @@ Implemented by: [`manifest.ts`](../../../packages/backend-system/shared/src/mani
 [`validate.ts`](../../../packages/entities/src/operations/validate.ts) (`validateOperations`),
 [`registry.ts`](../../../packages/entities/src/operations/registry.ts) (namespaces).
 Pinned by: [`entities/tests/operations.test.ts`](../../../packages/entities/tests/operations.test.ts)
-("static checks", "the core operations").
+("static checks", "a serial key", "the core operations").

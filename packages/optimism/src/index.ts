@@ -65,9 +65,12 @@
  * ## What this is not
  *
  * **Not a cache, and not a query-result patcher.** It holds a value that a *drawer* overlays; it
- * never answers a read, and it knows nothing about queries. Anything that tried to say "what would
- * this write do to that `$query`" would be re-implementing filters, includes and projections on the
- * client, which is work that belongs in the backend — see the note below.
+ * never answers a read, and it knows nothing about queries. Guessing "what would this write do to
+ * that `$query`" is not its business. Where that is answered, it is answered exactly: a declared
+ * operation run speculatively says which records it writes, by the ids the real run will give them,
+ * and `@we/entities`' predictions lay those writes over each read — judging, per read, when to stop
+ * with the rules here. That is the one place a write meets a query result; this package is the
+ * lifecycle it uses.
  *
  * **Not part of the backend contract.** `@we/backend-shared` describes what is true; this describes
  * what is being shown while the truth is in transit. Filed apart on purpose: in the contract it
