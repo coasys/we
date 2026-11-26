@@ -54,7 +54,7 @@ import uniffi.we_phone_custody.StoreConfig
  *   create()                        → {sign, enc, didKey, protection}
  *   join({link, hint?})             → {did, matchCode, progress}
  *   waitJoined({seconds?})          → {progress}
- *   signSession({purpose, executor, url, challenge, grant?}) → {statement, sig}
+ *   signSession({purpose, executor, url, challenge, grant?}) → {statement, sig}   (one prompt, naming the address)
  *
  * The identity through the store (every call needs a joined phone):
  *
@@ -64,11 +64,11 @@ import uniffi.we_phone_custody.StoreConfig
  *   requests()                      → {requests: [{id, kind, by, device, fingerprint, code, targets, rotate, expires, problem}]}
  *   answer({id})                    → {kind, device, note}                     (one prompt)
  *   devices()                       → {devices: [{keyId, fingerprint, name, kind, addedSeq, revokedSeq, thisDevice, holdsMaster, masterIndex, mayKeepMaster, bot}]}
- *   rename({keyId, name})           → {}
+ *   rename({keyId, name})           → {}                                       (one prompt, naming the device and the new name)
  *   revoke({keyIds})                → {note}                                   (one prompt)
- *   scanDevice({code})              → {link}                                   (one prompt, for the ticket)
+ *   scanDevice()                    → {link}                                   (opens the camera; one prompt, for the ticket)
  *   linkNext({link})                → {step: "ticket-sent", expires} | {step: "claimed", code, hint, canKeepMaster} | {step: "linked", keyId, seq, masterSent, note}
- *   linkConfirm({link, name?, keepMaster}) → {}                                (no prompt; the scan's one unlock covers the add)
+ *   linkConfirm({link, name?, keepMaster}) → {}                                (the person types the other device's code; a biometric of its own to send the master key)
  *   linkCancel({link})              → {}
  *   scanCode({prefix, title?})      → {text}                                   (the camera; rejects `Cancelled` or `CameraDenied`)
  *
@@ -88,7 +88,14 @@ import uniffi.we_phone_custody.StoreConfig
  * A start refuses `NoKeys`, `AlreadyJoined` (make, restore), `NoIdentity` (rotate) and
  * `NoBiometrics`, and asks the weak-protection question before any word exists when the Keystore
  * is not secure hardware (`WeakProtection` when declined). The master key is kept behind one
- * biometric prompt, at the step that keeps it.
+ * biometric prompt, at the step that keeps it, and it names what the key is about to do.
+ *
+ * Who may call: [CallerPage] reads the WebView's own address, and everything that links, sends the
+ * master key, renames, revokes or answers is the identity page's alone; reads of public state and the
+ * sign-in are open to the app's other pages, and the sign-in is confirmed by the person each time.
+ * The page cannot supply a scanned code or say the match codes agree. Making, restoring and
+ * replacing, everything that touches the 12 words, and publishing what was made are the identity
+ * page's alone; `pendingIdentity` only reads.
  *
  * The TypeScript side of this surface is `apps/we-web/src/platform/deviceKey.ts`. Every call runs
  * off the main thread, on a pool of the plugin's own (a link's `linkNext` waits minutes for the
@@ -101,7 +108,8 @@ class DeviceKeyPlugin : Plugin() {
   private var opened: DeviceKeys? = null
   private var identity: PhoneIdentity? = null
   private val master by lazy { BiometricMasterSealer(context.applicationContext) { activity } }
-  private val links = ConcurrentHashMap<String, HolderLink>()
+  private val prompt by lazy { ActionPrompt(context.applicationContext) { activity } }
+  private val links = ConcurrentHashMap<String, Held>()
   /** The identity flows the page is in, by the id [startFlow] gave it. */
   private val flows = ConcurrentHashMap<String, IdentitySteps>()
   /** Link ids a call is inside a method on: [sweepLinks] must not close one under the call. */
@@ -135,17 +143,17 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
-  fun status(call: PluginCall) = run(call) {
+  fun status(call: PluginCall) = run(call, Caller.APP) {
     statusJson(keys().status())
   }
 
   @PluginMethod
-  fun create(call: PluginCall) = run(call) {
+  fun create(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     publicJson(keys().create()).put("protection", protection())
   }
 
   @PluginMethod
-  fun join(call: PluginCall) = run(call) {
+  fun join(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val link = call.getString("link") ?: throw Refusal("Invalid", "join needs the offer link")
     val keys = keys()
     val prepared = keys.prepareClaim(link, call.getString("hint"))
@@ -163,7 +171,7 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
-  fun waitJoined(call: PluginCall) = run(call) {
+  fun waitJoined(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val seconds = (call.getInt("seconds") ?: 60).coerceIn(0, 600)
     val keys = keys()
     val deadline = System.nanoTime() + seconds * 1_000_000_000L
@@ -182,8 +190,13 @@ class DeviceKeyPlugin : Plugin() {
     JSObject().put("progress", progressJson(progress))
   }
 
+  /**
+   * Signs a session for one address, after the person has confirmed it in a prompt that names the
+   * address. A page of the app's own origin may ask (WE signs in at boot), but it is the person who
+   * allows each signing: a script on the page cannot sign for an address behind their back.
+   */
   @PluginMethod
-  fun signSession(call: PluginCall) = run(call) {
+  fun signSession(call: PluginCall) = run(call, Caller.APP) {
     val purpose = when (call.getString("purpose")) {
       "login" -> SessionPurpose.LOGIN
       "renew" -> SessionPurpose.RENEW
@@ -196,11 +209,14 @@ class DeviceKeyPlugin : Plugin() {
       challenge = call.getString("challenge") ?: throw Refusal("Invalid", "challenge is missing"),
       grant = call.getString("grant"),
     )
+    val origin = PromptText.originOf(request.url) ?: throw Refusal("Invalid", "url is not a web address")
+    val words = PromptText.signIn(purpose == SessionPurpose.RENEW, origin)
+    approve(words)
     JSObject(keys().signSession(request))
   }
 
   @PluginMethod
-  fun identityStatus(call: PluginCall) = run(call) {
+  fun identityStatus(call: PluginCall) = run(call, Caller.APP) {
     identityJson(identity().status()).put("biometrics", master.canAuthenticate())
   }
 
@@ -211,7 +227,7 @@ class DeviceKeyPlugin : Plugin() {
    * leaves the key in the inbox, untaken.
    */
   @PluginMethod
-  fun takeMaster(call: PluginCall) = run(call) {
+  fun takeMaster(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     if (!master.canAuthenticate()) {
       throw Refusal("NoBiometrics", "Set up fingerprint or face unlock to keep the master key on this phone.")
     }
@@ -228,104 +244,154 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
-  fun askForMaster(call: PluginCall) = run(call) {
+  fun askForMaster(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     askedJson(identity().askForMaster())
   }
 
   @PluginMethod
-  fun masterWaiting(call: PluginCall) = run(call) {
+  fun masterWaiting(call: PluginCall) = run(call, Caller.APP) {
     JSObject().put("waiting", identity().masterWaiting())
   }
 
   @PluginMethod
-  fun requests(call: PluginCall) = run(call) {
+  fun requests(call: PluginCall) = run(call, Caller.APP) {
     JSObject().put("requests", JSArray(identity().requests().map(::requestJson)))
   }
 
   @PluginMethod
-  fun answer(call: PluginCall) = run(call) {
+  fun answer(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val id = call.getString("id") ?: throw Refusal("Invalid", "answer needs the request's id")
     answerJson(identity().answer(id))
   }
 
   @PluginMethod
-  fun devices(call: PluginCall) = run(call) {
+  fun devices(call: PluginCall) = run(call, Caller.APP) {
     JSObject().put("devices", JSArray(identity().devices().map(::deviceJson)))
   }
 
   @PluginMethod
-  fun rename(call: PluginCall) = run(call) {
+  fun rename(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val keyId = call.getString("keyId") ?: throw Refusal("Invalid", "rename needs the device's keyId")
     val name = call.getString("name")?.trim()?.takeIf { it.isNotEmpty() }
       ?: throw Refusal("Invalid", "Enter a name for the device.")
+    val current = identity().devices().firstOrNull { it.keyId == keyId }?.name?.takeIf { it.isNotBlank() } ?: keyId
+    approve(PromptText.rename(current, name))
     identity().rename(keyId, name)
     JSObject()
   }
 
   @PluginMethod
-  fun revoke(call: PluginCall) = run(call) {
+  fun revoke(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val keyIds = call.getArray("keyIds")?.toList<String>()?.takeIf { it.isNotEmpty() }
       ?: throw Refusal("Invalid", "revoke needs the keyIds of the devices")
     JSObject().put("note", identity().revoke(keyIds) ?: JSONObject.NULL)
   }
 
+  /**
+   * Reads the code of the device to add from the camera, and starts linking it. The code never comes
+   * from the page: a script that could hand one in could enrol a device of its own.
+   */
   @PluginMethod
-  fun scanDevice(call: PluginCall) = run(call) {
-    val code = call.getString("code") ?: throw Refusal("Invalid", "scanDevice needs the device's code")
-    val link = identity().scanDevice(code)
-    val id = UUID.randomUUID().toString()
-    links[id] = link
-    JSObject().put("link", id)
+  fun scanDevice(call: PluginCall) {
+    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
+    val intent = Intent(context, ScanActivity::class.java)
+      .putExtra(ScanActivity.EXTRA_PREFIX, DEVICE_CODE_PREFIX)
+      .putExtra(ScanActivity.EXTRA_TITLE, "Scan the code on the new device")
+    startActivityForResult(call, intent, "deviceScanned")
+  }
+
+  @ActivityCallback
+  private fun deviceScanned(call: PluginCall?, result: ActivityResult) {
+    call ?: return
+    val text = result.data?.getStringExtra(ScanActivity.EXTRA_TEXT)
+    if (text == null) {
+      rejectScan(call, result)
+      return
+    }
+    // Not run on the main thread: the ticket asks the store, and the master key asks the person.
+    pool.execute {
+      sweepLinks()
+      try {
+        val id = UUID.randomUUID().toString()
+        links[id] = Held(identity().scanDevice(text))
+        call.resolve(JSObject().put("link", id))
+      } catch (e: Exception) {
+        rejectCall(call, e)
+      }
+    }
   }
 
   @PluginMethod
-  fun linkNext(call: PluginCall) = run(call) {
-    withLink(call) { id, link ->
+  fun linkNext(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    withLink(call) { id, held ->
       try {
-        val step = link.next()
-        if (step is LinkStep.Linked && links.remove(id, link)) link.close()
+        val step = held.link.next()
+        if (step is LinkStep.Claimed) held.claim = step
+        if (step is LinkStep.Linked && links.remove(id, held)) held.link.close()
         stepJson(step)
       } catch (e: Exception) {
-        if (links.remove(id, link)) link.close()
+        drop(id, held)
+        throw e
+      }
+    }
+  }
+
+  /**
+   * Adds the device. Two things are asked of the person here, in prompts the page cannot answer: the
+   * code the other device shows, typed in and compared with the one this plugin derived from the
+   * claim ([MatchCode]); and, when the master key goes with it, a biometric of its own that names the
+   * device. Anything but both yes ends the link and adds nothing.
+   */
+  @PluginMethod
+  fun linkConfirm(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
+    withLink(call) { id, held ->
+      try {
+        val claim = held.claim ?: throw Refusal("NotClaimed", "The other device hasn't answered yet.")
+        val name = call.getString("name")?.trim()?.takeIf { it.isNotEmpty() }
+        val keepMaster = call.getBoolean("keepMaster") ?: false
+        val typed = askForMatchCode(claim.hint ?: name)
+          ?: throw Refusal("Cancelled", "Nothing was added.")
+        if (!MatchCode.matches(claim.code, typed)) {
+          throw Refusal("Mismatch", "The codes didn't match, so nothing was added. Start again.")
+        }
+        if (keepMaster) {
+          approve(PromptText.sendMaster(name ?: claim.hint ?: "the new device"), strongBiometricOnly = true)
+        }
+        held.link.confirm(name, keepMaster)
+        JSObject()
+      } catch (e: Exception) {
+        drop(id, held)
         throw e
       }
     }
   }
 
   @PluginMethod
-  fun linkConfirm(call: PluginCall) = run(call) {
-    withLink(call) { _, link ->
-      link.confirm(call.getString("name"), call.getBoolean("keepMaster") ?: false)
-      JSObject()
-    }
-  }
-
-  @PluginMethod
-  fun linkCancel(call: PluginCall) = run(call) {
+  fun linkCancel(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val id = call.getString("link") ?: throw Refusal("Invalid", "linkCancel needs the link")
     // Removed and closed here: the entry does not wait for a linkNext that may never come.
     // A `next` in flight on it keeps the native link alive through its own Arc.
-    links.remove(id)?.let { it.cancel(); it.close() }
+    links.remove(id)?.let { it.link.cancel(); it.link.close() }
     JSObject()
   }
 
   @PluginMethod
-  fun startMake(call: PluginCall) = run(call) {
+  fun startMake(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     startFlow(IdentityFlow.MAKE)
   }
 
   @PluginMethod
-  fun startRestore(call: PluginCall) = run(call) {
+  fun startRestore(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     startFlow(IdentityFlow.RESTORE)
   }
 
   @PluginMethod
-  fun startRotate(call: PluginCall) = run(call) {
+  fun startRotate(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     startFlow(IdentityFlow.ROTATE)
   }
 
   @PluginMethod
-  fun identityStep(call: PluginCall) = run(call) {
+  fun identityStep(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val input = try {
       IdentityStepsJson.inputOf(call.getObject("input"))
     } catch (e: IllegalArgumentException) {
@@ -345,24 +411,24 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
-  fun identityCancel(call: PluginCall) = run(call) {
+  fun identityCancel(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     val id = call.getString("flow") ?: throw Refusal("Invalid", "identityCancel needs the flow")
     flows[id]?.let { endFlow(id, it) }
     JSObject()
   }
 
   @PluginMethod
-  fun pendingIdentity(call: PluginCall) = run(call) {
+  fun pendingIdentity(call: PluginCall) = run(call, Caller.APP) {
     JSObject().put("did", identity().pendingIdentity() ?: JSONObject.NULL)
   }
 
   @PluginMethod
-  fun finishPending(call: PluginCall) = run(call) {
+  fun finishPending(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     JSObject().put("did", identity().finishPending() ?: JSONObject.NULL)
   }
 
   @PluginMethod
-  fun retryMasterPushes(call: PluginCall) = run(call) {
+  fun retryMasterPushes(call: PluginCall) = run(call, Caller.IDENTITY_PAGE) {
     JSObject().put("note", identity().retryMasterPushes() ?: JSONObject.NULL)
   }
 
@@ -373,6 +439,7 @@ class DeviceKeyPlugin : Plugin() {
    */
   @PluginMethod
   fun setSecure(call: PluginCall) {
+    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
     val on = call.getBoolean("on")
     if (on == null) {
       call.reject("setSecure needs on: true or false", "Invalid")
@@ -396,6 +463,7 @@ class DeviceKeyPlugin : Plugin() {
   /** Opens the camera on a QR code whose text starts with `prefix`; the text, uninterpreted. */
   @PluginMethod
   fun scanCode(call: PluginCall) {
+    if (!callerAllowed(call, Caller.IDENTITY_PAGE)) return
     val prefix = call.getString("prefix")
     if (prefix.isNullOrEmpty() || !prefix.startsWith("coasys:")) {
       call.reject("scanCode needs the prefix of the code it reads", "Invalid")
@@ -411,18 +479,19 @@ class DeviceKeyPlugin : Plugin() {
   private fun scanned(call: PluginCall?, result: ActivityResult) {
     call ?: return
     val text = result.data?.getStringExtra(ScanActivity.EXTRA_TEXT)
-    when {
-      text != null -> call.resolve(JSObject().put("text", text))
-      result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "denied" ->
-        call.reject("Allow camera access to scan, or paste the code.", "CameraDenied")
-      result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "no-camera" ->
-        call.reject("Can't start the camera. Paste the code instead.", "NoCamera")
+    if (text != null) call.resolve(JSObject().put("text", text)) else rejectScan(call, result)
+  }
+
+  private fun rejectScan(call: PluginCall, result: ActivityResult) {
+    when (result.data?.getStringExtra(ScanActivity.EXTRA_REASON)) {
+      "denied" -> call.reject("Allow camera access to scan, or paste the code.", "CameraDenied")
+      "no-camera" -> call.reject("Can't start the camera. Paste the code instead.", "NoCamera")
       else -> call.reject("the scan was cancelled", "Cancelled")
     }
   }
 
   override fun handleOnDestroy() {
-    links.keys.toList().forEach { id -> links.remove(id)?.let { it.cancel(); it.close() } }
+    links.keys.toList().forEach { id -> links.remove(id)?.let { it.link.cancel(); it.link.close() } }
     flows.keys.toList().forEach { id -> flows[id]?.let { endFlow(id, it) } }
     super.handleOnDestroy()
   }
@@ -482,14 +551,22 @@ class DeviceKeyPlugin : Plugin() {
    * Runs [block] with the call's link, the id marked in use so [sweepLinks] — which runs on
    * every plugin call — cannot close the link under it.
    */
-  private fun <T> withLink(call: PluginCall, block: (String, HolderLink) -> T): T {
+  private fun <T> withLink(call: PluginCall, block: (String, Held) -> T): T {
     val id = call.getString("link") ?: throw Refusal("Invalid", "the call needs the link")
     inUse.add(id)
     try {
-      val link = links[id] ?: throw Refusal("Ended", "This link has ended. Start again.")
-      return block(id, link)
+      val held = links[id] ?: throw Refusal("Ended", "This link has ended. Start again.")
+      return block(id, held)
     } finally {
       inUse.remove(id)
+    }
+  }
+
+  /** Ends a link that is not going on: out of the map, cancelled and closed. */
+  private fun drop(id: String, held: Held) {
+    if (links.remove(id, held)) {
+      held.link.cancel()
+      held.link.close()
     }
   }
 
@@ -499,9 +576,9 @@ class DeviceKeyPlugin : Plugin() {
    * plugin call keeps the map to links that are live.
    */
   private fun sweepLinks() {
-    for ((id, link) in links) {
-      if (link.ended() && !inUse.contains(id) && links.remove(id, link)) {
-        link.close()
+    for ((id, held) in links) {
+      if (held.link.ended() && !inUse.contains(id) && links.remove(id, held)) {
+        held.link.close()
       }
     }
   }
@@ -531,22 +608,118 @@ class DeviceKeyPlugin : Plugin() {
     return agreed.get()
   }
 
-  /** Runs [body] off the main thread and answers [call] with what it returned, or why not. */
-  private fun run(call: PluginCall, body: () -> JSObject) {
+  /**
+   * Runs [body] off the main thread and answers [call] with what it returned, or why not. The page
+   * the call comes from is checked first, against what [access] allows.
+   */
+  private fun run(call: PluginCall, access: Caller, body: () -> JSObject) {
     pool.execute {
-      sweepLinks()
       try {
+        requireCaller(access)
+        sweepLinks()
         call.resolve(body())
-      } catch (e: Refusal) {
-        call.reject(e.message, e.code)
-      } catch (e: PhoneKeyException) {
-        call.reject(e.message ?: e.javaClass.simpleName, e.javaClass.simpleName)
-      } catch (e: SealException) {
-        call.reject(e.message ?: "the Keystore refused", "Sealer")
       } catch (e: Exception) {
-        call.reject(e.message ?: e.javaClass.simpleName, "Failed", e)
+        rejectCall(call, e)
       }
     }
+  }
+
+  /** Rejects [call] with the code its failure carries. */
+  private fun rejectCall(call: PluginCall, e: Exception) {
+    when (e) {
+      is Refusal -> call.reject(e.message, e.code)
+      is PromptUnavailable -> call.reject(e.message, "NoBiometrics")
+      is PhoneKeyException -> call.reject(e.message ?: e.javaClass.simpleName, e.javaClass.simpleName)
+      is SealException -> call.reject(e.message ?: "the Keystore refused", "Sealer")
+      else -> call.reject(e.message ?: e.javaClass.simpleName, "Failed", e)
+    }
+  }
+
+  /** Which pages a method answers. */
+  private enum class Caller {
+    /** The identity page alone: everything that signs for the person's identity, links, sends the master key or changes a device. */
+    IDENTITY_PAGE,
+
+    /** Any page of the app: reads of public state, and the sign-in, which the person confirms. */
+    APP,
+  }
+
+  /** The address of the page showing in the WebView, read on the main thread; null if it cannot be. */
+  private fun callerUrl(): String? {
+    val web = bridge?.webView ?: return null
+    val host = activity ?: return null
+    val read = CountDownLatch(1)
+    val url = java.util.concurrent.atomic.AtomicReference<String?>(null)
+    host.runOnUiThread {
+      url.set(web.url)
+      read.countDown()
+    }
+    if (!read.await(5, java.util.concurrent.TimeUnit.SECONDS)) return null
+    return url.get()
+  }
+
+  private fun requireCaller(access: Caller) {
+    val url = callerUrl()
+    val allowed = when (access) {
+      Caller.IDENTITY_PAGE -> CallerPage.isIdentityPage(url)
+      Caller.APP -> CallerPage.isApp(url)
+    }
+    if (!allowed) throw Refusal("NotAllowed", "This page can't use the device key.")
+  }
+
+  /** For a method that answers later (the camera): false, with the call rejected, when the page is not allowed. */
+  private fun callerAllowed(call: PluginCall, access: Caller): Boolean {
+    // `callerUrl` waits for the main thread, so it is asked from a worker.
+    val allowed = java.util.concurrent.atomic.AtomicBoolean(false)
+    val answered = CountDownLatch(1)
+    pool.execute {
+      try {
+        requireCaller(access)
+        allowed.set(true)
+      } catch (_: Refusal) {
+        // Left false.
+      } finally {
+        answered.countDown()
+      }
+    }
+    answered.await()
+    if (!allowed.get()) call.reject("This page can't use the device key.", "NotAllowed")
+    return allowed.get()
+  }
+
+  /** The person's yes to [words], in a prompt that shows them; a no ends the call as `Cancelled`. */
+  private fun approve(words: PromptText.Words, strongBiometricOnly: Boolean = false) {
+    if (!prompt.confirm(words.title, words.description, strongBiometricOnly)) {
+      throw Refusal("Cancelled", "Cancelled.")
+    }
+  }
+
+  /**
+   * Asks for the code the other device shows, in a dialog of the app's own; null when closed without
+   * one. What is typed is compared with [MatchCode], not by the page.
+   */
+  private fun askForMatchCode(device: String?): String? {
+    val host = activity ?: throw Refusal("Unavailable", "The app isn't on screen to ask.")
+    val typed = java.util.concurrent.atomic.AtomicReference<String?>(null)
+    val answered = CountDownLatch(1)
+    host.runOnUiThread {
+      val field = android.widget.EditText(host).apply {
+        hint = "Code"
+        inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        isSingleLine = true
+      }
+      val who = device?.let { PromptText.plain(it) }?.takeIf { it.isNotEmpty() } ?: "the other device"
+      AlertDialog.Builder(host)
+        .setTitle("Type the code from $who")
+        .setMessage("Type the code it shows. They must be the same.")
+        .setView(field)
+        .setPositiveButton("Check") { _, _ -> typed.set(field.text.toString()) }
+        .setNegativeButton("Cancel", null)
+        .setOnDismissListener { answered.countDown() }
+        .show()
+    }
+    answered.await()
+    return typed.get()
   }
 
   private fun protection(): String =
@@ -577,9 +750,17 @@ class DeviceKeyPlugin : Plugin() {
 
   private class Refusal(val code: String, message: String) : Exception(message)
 
+  /** A link this phone runs, with the claim the other device made on it, once it has. */
+  private class Held(val link: HolderLink) {
+    @Volatile var claim: LinkStep.Claimed? = null
+  }
+
   companion object {
     /** The store holds a `state` answer at most 8 seconds. */
     private const val STATE_WAIT_SECONDS = 8L
+
+    /** What the code of a device to add starts with. */
+    private const val DEVICE_CODE_PREFIX = "coasys:device:1:"
 
     /** The store the app is built for (`BuildConfig`, from the build's environment). */
     fun storeConfig(): StoreConfig = StoreConfig(

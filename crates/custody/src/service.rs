@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use ad4m_client::ws_rpc::WsRpcClient;
 use ad4m_identity_client::executor::IdentityStatus;
-use ad4m_identity_client::flows::create::{resume, Created};
+use ad4m_identity_client::flows::create::Created;
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::master::{
     complete_pending_mark, refresh_master, remove_master, retry_pushes, take_master, Refreshed,
@@ -60,7 +60,8 @@ use crate::vault::{DesktopVault, Unlocking};
 pub use we_identity_steps::RestoreDevice;
 use we_identity_steps::{
     enrol_again, finish_restore, joined, listed, lock_out_of, record_note, revoke_again,
-    rotate_with_words as rotate_words, words_refused, MakeWords, NOT_THESE_WORDS, WRONG_CONFIRM,
+    rotate_with_words as rotate_words, words_refused, MakeWords, PublishError, NOT_THESE_WORDS,
+    WRONG_CONFIRM,
 };
 
 static CLOCK: SystemClock = SystemClock;
@@ -1143,39 +1144,13 @@ async fn idle(
 async fn finish_pending<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &Arc<DesktopVault>,
-) -> Result<Option<Created>, ClientError> {
-    let _one = FINISHING.lock().await;
-    finish_pending_locked(executor, vault).await
-}
-
-/// One publish of a kept incept at a time: a state read left running beside a step and the step
-/// (Create, a restore) can both finish it, and two publishes of the same incept would make the
-/// store answer the second with a conflict. The later caller finds nothing pending.
-static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-
-async fn finish_pending_locked<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    vault: &Arc<DesktopVault>,
-) -> Result<Option<Created>, ClientError> {
-    if vault.pending_incepts()?.is_empty() {
-        return Ok(None);
-    }
-    log::info!("custody: finishing an identity whose publish was not confirmed");
-    match resume(executor, &vault.unlocking(None)).await {
-        Err(ClientError::HasIdentity(held)) => {
-            let status = executor.status().await?;
-            if let Some(incept) = own_pending(vault, &status.device_key)? {
-                log::warn!(
-                    "custody: this computer speaks for {held}; forgetting the incept of {} it can \
-                     never publish",
-                    ad4m_identity_core::did_of(&incept.scid)
-                );
-                vault.forget_pending(&incept.scid)?;
-            }
-            Ok(None)
-        }
-        other => other,
-    }
+) -> Result<Option<Created>, PublishError> {
+    // One publish of the incept at a time, and none again once the store has refused it for good:
+    // both are the shared publish driver's, held by the vault.
+    vault
+        .publishing()
+        .finish(executor, &vault.unlocking(None))
+        .await
 }
 
 /// The kept incept that lists `device_key` — this executor's, when it is the executor's own key.
@@ -1185,50 +1160,16 @@ fn own_pending(vault: &Arc<DesktopVault>, device_key: &str) -> Result<Option<Eve
     }))
 }
 
-/// How a refused publish of a kept incept stands: `None` when trying again may work (the store or
-/// the executor did not answer, a rate limit, a head signed by a key this build does not trust);
-/// else the sentence that says why it never will, and whether this computer's key is the reason.
-fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
-    match e {
-        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("key-taken") => Some((
-            format!(
-                "The identity store refused {did}: this computer's key is already in a key log, \
-                 so publishing it again cannot work."
-            ),
-            true,
-        )),
-        ClientError::Rpc(e) if e.code == 409 && e.message.starts_with("conflict") => Some((
-            format!(
-                "The identity store holds a different log for {did}, so publishing this one \
-                 cannot work."
-            ),
-            false,
-        )),
-        ClientError::Rpc(e) if e.code == 400 || e.code == 403 => Some((
-            format!("The identity store refused {did}: {}", e.message),
-            false,
-        )),
-        ClientError::Fold(why) => Some((
-            format!("The identity kept here for {did} does not check out ({why})."),
-            false,
-        )),
-        ClientError::Protocol(why) => Some((format!("{did} cannot be published: {why}"), false)),
-        _ => None,
-    }
-}
-
 /// [`finish_pending`] for a state read: skipped while a step is finishing the incept itself, so the
 /// read never waits on the step.
 async fn finish_pending_quietly<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &Arc<DesktopVault>,
 ) {
-    let Ok(_one) = FINISHING.try_lock() else {
-        return;
-    };
-    if let Err(e) = finish_pending_locked(executor, vault).await {
-        log::warn!("custody: the pending identity is not finished yet: {e}");
-    }
+    vault
+        .publishing()
+        .finish_quietly(executor, &vault.unlocking(None))
+        .await;
 }
 
 async fn public_state(vault: &Arc<DesktopVault>, address: &ExecutorAddress) -> CustodyPublic {
@@ -1851,7 +1792,7 @@ async fn offer_discard<R: ExecutorRpc>(
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
-    e: &ClientError,
+    e: &PublishError,
 ) -> bool {
     let incept = match executor.status().await {
         Ok(status) => own_pending(vault, &status.device_key).ok().flatten(),
@@ -1860,19 +1801,31 @@ async fn offer_discard<R: ExecutorRpc>(
     // Nothing of this executor's is pending (another account's incept, or no answer): say what
     // failed, and claim no identity made here.
     let Some(incept) = incept else {
-        answer(reply, Ok(failed(e)));
+        answer(
+            reply,
+            Ok(match e {
+                PublishError::Failed(e) => failed(e),
+                PublishError::Refused(refused) => Screen::Failed {
+                    message: refused.message.clone(),
+                },
+            }),
+        );
         return false;
     };
     let did = ad4m_identity_core::did_of(&incept.scid);
-    let Some((message, key_taken)) = refused_for_good(e, &did) else {
-        answer(reply, Ok(unfinished(e)));
-        return false;
+    let refused = match e {
+        PublishError::Refused(refused) => refused,
+        PublishError::Failed(e) => {
+            answer(reply, Ok(unfinished(e)));
+            return false;
+        }
     };
+    let key_taken = refused.key_taken;
     answer(
         reply,
         Ok(Screen::PendingRefused {
             did: did.clone(),
-            message,
+            message: refused.message.clone(),
         }),
     );
     loop {
@@ -1887,6 +1840,7 @@ async fn offer_discard<R: ExecutorRpc>(
             answer(reply, Ok(failed(&ClientError::Vault(e))));
             return false;
         }
+        vault.publishing().forget(&incept.scid);
         if key_taken {
             // New words would list the same key, and be refused the same way.
             answer(
@@ -5414,6 +5368,8 @@ mod tests {
         refuse_publish: Cell<bool>,
         /// A refusal every publish answers with, as a store that never takes this incept.
         refuse_for_good: RefCell<Option<(u16, String)>>,
+        /// Every `identity.publish` the executor was asked for, taken or refused.
+        publish_attempts: Cell<u32>,
         /// A refusal every publish after the first `n` answers with, as a store that takes a
         /// rotation and refuses the revoke on top of it.
         refuse_after: RefCell<Option<(u32, u16, String)>>,
@@ -5457,6 +5413,7 @@ mod tests {
                 held: RefCell::new(None),
                 refuse_publish: Cell::new(false),
                 refuse_for_good: RefCell::new(None),
+                publish_attempts: Cell::new(0),
                 refuse_after: RefCell::new(None),
                 log_from: RefCell::new(None),
                 refuse_cosign: Cell::new(false),
@@ -5616,6 +5573,7 @@ mod tests {
                     Ok(json!({ "version": sealed.version }))
                 }
                 "identity.publish" => {
+                    self.publish_attempts.set(self.publish_attempts.get() + 1);
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
                         return Err(RpcError { code, message });
                     }
@@ -6312,8 +6270,7 @@ mod tests {
         assert_eq!(unknown.pending, None);
 
         // Once the store takes it, the state asking finishes it: published, nothing pending. A read
-        // that finds `FINISHING` held skips the publish and the main window's next read makes it;
-        // the lock is the process's, so a test running beside this one can hold it: ask again.
+        // that finds a publish running skips it and the main window's next read makes it: ask again.
         let mut public = public_state_on(Some(&executor), &vault).await;
         for _ in 0..100 {
             if public.did.is_some() {
@@ -6795,7 +6752,7 @@ mod tests {
         assert_eq!(failed(&refusal), expected);
         assert_eq!(unfinished(&refusal), expected);
         // Not a refusal for good: a build with a key finishes the same identity.
-        assert!(refused_for_good(&refusal, "did:scid:coasys:1:Qm").is_none());
+        assert!(we_identity_steps::refused_for_good(&refusal, "did:scid:coasys:1:Qm").is_none());
     }
 
     #[test]
@@ -6813,17 +6770,26 @@ mod tests {
             rpc(502, "bad-head-signature: the store's head is not signed"),
             ClientError::Vault(VaultError::Unavailable("locked".into())),
         ] {
-            assert!(refused_for_good(&transient, did).is_none(), "{transient:?}");
+            assert!(
+                we_identity_steps::refused_for_good(&transient, did).is_none(),
+                "{transient:?}"
+            );
         }
-        let (_, key) = refused_for_good(&rpc(409, "key-taken: z6Mk sits in a log"), did).unwrap();
-        assert!(key);
+        let key =
+            we_identity_steps::refused_for_good(&rpc(409, "key-taken: z6Mk sits in a log"), did)
+                .unwrap();
+        assert!(key.key_taken);
         for permanent in [
             rpc(409, "conflict: the store's head is seq 3 (h)"),
             rpc(400, "invalid: bad proof"),
             rpc(403, "forbidden: \"pow\""),
         ] {
-            let (message, key) = refused_for_good(&permanent, did).unwrap();
-            assert!(!key && message.contains(did), "{message}");
+            let refused = we_identity_steps::refused_for_good(&permanent, did).unwrap();
+            assert!(
+                !refused.key_taken && refused.message.contains(did),
+                "{}",
+                refused.message
+            );
         }
     }
 
@@ -6930,6 +6896,47 @@ mod tests {
             "{message}"
         );
         assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_incept_the_store_refused_for_good_is_not_published_again_by_each_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = open_vault(dir.path());
+        executor.rpc().refuse_publish.set(true);
+        let _ = confirmed(34)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
+                &CLOCK,
+                &RANDOM,
+            )
+            .await;
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+        *executor.rpc().refuse_for_good.borrow_mut() =
+            Some((409, "conflict: the store's head is seq 2 (h)".into()));
+        let before = executor.rpc().publish_attempts.get();
+
+        // The first finish asks the store and is refused for good.
+        let first = finish_pending(&executor, &vault).await;
+        assert!(matches!(first, Err(PublishError::Refused(_))), "{first:?}");
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
+
+        // Neither a step nor any number of state reads publish it again.
+        let again = finish_pending(&executor, &vault).await;
+        assert!(matches!(again, Err(PublishError::Refused(_))), "{again:?}");
+        for _ in 0..3 {
+            let public = public_state_on(Some(&executor), &vault).await;
+            assert_eq!(public.pending.as_deref(), Some(did_of(&scid).as_str()));
+        }
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
+
+        // Discarded, it is forgotten: nothing is pending and the executor is asked nothing.
+        vault.forget_pending(&scid).unwrap();
+        vault.publishing().forget(&scid);
+        assert!(finish_pending(&executor, &vault).await.unwrap().is_none());
+        assert_eq!(executor.rpc().publish_attempts.get(), before + 1);
     }
 
     /// A co-signed-shape incept of fixed words listing another executor's device key: what another

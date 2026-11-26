@@ -960,6 +960,7 @@ export const storeEntries: StoreEntry[] = [
           'paused',
           'revoked',
           'keyValid',
+          'keyStillValid',
         ],
       },
       loaded: { type: 'boolean' },
@@ -982,6 +983,7 @@ export const storeEntries: StoreEntry[] = [
           'paused',
           'revoked',
           'keyValid',
+          'keyStillValid',
         ],
       },
       editor: { type: 'object', properties: ['spaces', 'actions', 'days', 'ends', 'problem', 'changed'] },
@@ -991,6 +993,8 @@ export const storeEntries: StoreEntry[] = [
       activityLoaded: { type: 'boolean' },
       hasOlder: { type: 'boolean' },
       loadingOlder: { type: 'boolean' },
+      keyRevokeError: { type: 'string' },
+      revoking: { type: 'boolean' },
     },
     actions: [
       'refresh',
@@ -2528,11 +2532,11 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       available: 'boolean — the backend runs bots. Gate the Bots page on it',
       canAdd:
         'boolean — "Add a bot" can be offered: this computer keeps the master key, which signs the bot’s key into the key log',
-      bots: "{ did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now",
+      bots: "{ did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid, keyStillValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now; `keyStillValid` is true for a removed bot whose key the key log still holds valid (offer to revoke it again)",
       loaded: 'boolean — the list has been read once',
       error: 'string — why the last read or change failed, or empty',
       created:
-        '{ name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Gone after dismissCreated, or once the person leaves the page it was shown on',
+        '{ name, matchCode, confirmBy } | null — the bot just made: the match code the identity window also shows, and until when to confirm it there. Forgotten on this side after dismissCreated, or once the person leaves the page it was shown on (this does not revoke the credential on the backend)',
       createError: 'string — why making the bot failed, or empty',
       creating: 'boolean — making the bot is under way',
       selected: 'the row of the bot open in the editor (as in `bots`), or null for the list',
@@ -2546,14 +2550,17 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       activityLoaded: 'boolean — the activity has been read once',
       hasOlder: 'boolean — the last read filled a page: offer "Load older"',
       loadingOlder: 'boolean — loadOlder is under way',
+      keyRevokeError:
+        "string — the selected bot's grant is ended but its key could not be revoked, so the key is still valid on the person's other computers: why, and that revoke tries again. Empty otherwise",
+      revoking: 'boolean — revoke is under way',
     },
     actions: {
       refresh: '(): reads the bots again',
       addBot:
         '(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome',
       create:
-        '(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made',
-      dismissCreated: '(): lets the bot just made go',
+        '(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made and shown; false if the person navigated away while it was pending (the bot is still listed, but its credential is not shown or kept)',
+      dismissCreated: '(): forgets the bot just made on this side (does not revoke its credential)',
       select: '(did: string): opens that bot in the grant editor and reads its activity',
       close: '(): back to the list',
       toggleSpace: '(id: string): adds that space to the draft grant, or takes it out',
@@ -2564,7 +2571,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): saves the draft grant with the version it replaces. Resolves false on a conflict, with the grant read again',
       pause: '(): pauses the selected bot: it may do nothing until resumed',
       resume: '(): resumes the selected bot',
-      revoke: '(): revokes the selected bot for good — confirm first: a revoked grant never changes again',
+      revoke:
+        '(): removes the selected bot for good — confirm first: ends its grant (a revoked grant never changes again) and revokes its key in the key log, signed where the master key is kept. Resolves false with keyRevokeError set when the key is still valid; calling it again retries only the key',
       loadOlder: '(): reads the next page of older activity',
     },
   },

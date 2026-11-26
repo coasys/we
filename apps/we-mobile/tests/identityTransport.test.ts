@@ -18,6 +18,7 @@ import {
   ANSWER_ON_A_COMPUTER,
   backPath,
   executorUrl,
+  NO_HARDWARE_PROTECTION,
   NOT_SECURE,
   ON_A_COMPUTER,
   pageStart,
@@ -160,6 +161,56 @@ describe('joining an identity on the phone', () => {
     expect(outcomes).toEqual(['done']);
   });
 
+  it('tells the person when the phone keeps the key without hardware protection', async () => {
+    for (const protection of ['software', 'unknown'] as const) {
+      const transport = phoneTransport(
+        { kind: 'join' },
+        {
+          plugin: plugin({
+            status: emptyStatus,
+            create: { sign: 'a', enc: 'b', didKey: 'c', protection },
+            join: {
+              did: 'did:scid:coasys:1:abc',
+              matchCode: 'R7K Q2M',
+              progress: { state: 'waiting', detail: 'open' },
+            },
+          }),
+          leave: () => {},
+        },
+      );
+      await transport.start();
+      const match = await transport.step({ kind: 'offer', link: 'coasys:offer:1:x' });
+      expect(match).toMatchObject({ screen: 'device-match', notice: NO_HARDWARE_PROTECTION });
+    }
+    // A pending claim on a phone whose key is in software says so too; hardware says nothing.
+    const pending = {
+      did: 'did:scid:coasys:1:abc',
+      offerId: 'o',
+      store: 's',
+      matchCode: 'R7K Q2M',
+    };
+    const soft = phoneTransport(
+      { kind: 'join' },
+      {
+        plugin: plugin({
+          status: { ...emptyStatus, keys: { sign: 'a', enc: 'b', didKey: 'c' }, pending, protection: 'software' },
+        }),
+        leave: () => {},
+      },
+    );
+    expect(await soft.start()).toMatchObject({ notice: NO_HARDWARE_PROTECTION });
+    const hard = phoneTransport(
+      { kind: 'join' },
+      {
+        plugin: plugin({
+          status: { ...emptyStatus, keys: { sign: 'a', enc: 'b', didKey: 'c' }, pending, protection: 'strongbox' },
+        }),
+        leave: () => {},
+      },
+    );
+    expect(await hard.start()).not.toHaveProperty('notice');
+  });
+
   it('shows a refused offer on the offer screen, and keeps no executor for it', async () => {
     const kept: string[] = [];
     const transport = phoneTransport(
@@ -255,10 +306,13 @@ describe('adding a device by the code it shows', () => {
       },
     );
     expect(await transport.start()).toEqual({ screen: 'enter-code', error: null });
-    expect(await transport.step({ kind: 'code', code: 'coasys:device:1:x' })).toEqual({
+    // The camera reads the code inside the plugin, which starts the link: the page gets no text.
+    expect(await transport.scan!('coasys:device:1:')).toBe('scanned');
+    expect(await transport.step({ kind: 'code', code: 'scanned' })).toEqual({
       screen: 'code-sent',
       expires: 1_900_000_000,
     });
+    expect(calls.find(([m]) => m === 'scanDevice')?.[1]).toBeUndefined();
     expect(await transport.step({ kind: 'wait-claim' })).toEqual({
       screen: 'match',
       code: 'Q2M R7K',
@@ -284,10 +338,7 @@ describe('adding a device by the code it shows', () => {
       { plugin: plugin({ scanDevice: refusal('Refused', 'that code is for another store') }), leave: () => {} },
     );
     await refused.start();
-    expect(await refused.step({ kind: 'code', code: 'coasys:device:1:x' })).toEqual({
-      screen: 'enter-code',
-      error: 'that code is for another store',
-    });
+    await expect(refused.scan!('coasys:device:1:')).rejects.toThrow('that code is for another store');
 
     const { outcomes, leave } = left();
     const running = phoneTransport(
@@ -301,19 +352,62 @@ describe('adding a device by the code it shows', () => {
       },
     );
     await running.start();
-    await running.step({ kind: 'code', code: 'coasys:device:1:x' });
+    await running.scan!('coasys:device:1:');
+    await running.step({ kind: 'code', code: 'scanned' });
     await running.cancel();
     expect(calls.find(([m]) => m === 'linkCancel')?.[1]).toEqual({ link: 'L2' });
     expect(outcomes).toEqual(['cancelled']);
   });
 
+  it('starts no link from a code the page types or pastes', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'scan-device' },
+      { plugin: plugin({ scanDevice: { link: 'L9' } }, calls), leave: () => {} },
+    );
+    await transport.start();
+    const refused = await transport.step({ kind: 'code', code: 'coasys:device:1:pasted' });
+    expect(refused).toMatchObject({ screen: 'enter-code' });
+    expect((refused as { error: string }).error).toContain('camera');
+    expect(calls.map(([m]) => m)).not.toContain('scanDevice');
+    expect(calls.map(([m]) => m)).not.toContain('linkNext');
+  });
+
+  it('ends the link when the phone refuses the match or the master key, so the page cannot retry past it', async () => {
+    const calls: Calls = [];
+    const transport = phoneTransport(
+      { kind: 'scan-device' },
+      {
+        plugin: plugin(
+          {
+            scanDevice: { link: 'L3' },
+            linkNext: { step: 'claimed', code: 'Q2M R7K', hint: null, canKeepMaster: true },
+            linkConfirm: refusal('Mismatch', 'The codes didn’t match, so nothing was added. Start again.'),
+          },
+          calls,
+        ),
+        leave: () => {},
+      },
+    );
+    await transport.start();
+    await transport.scan!('coasys:device:1:');
+    await transport.step({ kind: 'wait-claim' });
+    expect(await transport.step({ kind: 'confirm', keepMaster: true })).toEqual({
+      screen: 'failed',
+      message: 'The codes didn’t match, so nothing was added. Start again.',
+    });
+    // The link is gone on this side too: a second confirm does not reach the plugin.
+    expect(await transport.step({ kind: 'confirm', keepMaster: true })).toMatchObject({ screen: 'failed' });
+    expect(calls.filter(([m]) => m === 'linkConfirm')).toHaveLength(1);
+  });
+
   it('reads a QR code through the camera, and treats closing it as no code', async () => {
     const scanning = phoneTransport(
-      { kind: 'scan-device' },
+      { kind: 'join' },
       {
         plugin: plugin({
           scanCode: [
-            { text: 'coasys:device:1:x' },
+            { text: 'coasys:offer:1:x' },
             refusal('Cancelled', 'the scan was cancelled'),
             refusal('CameraDenied', 'Allow camera access to scan, or paste the code.'),
           ],
@@ -321,9 +415,18 @@ describe('adding a device by the code it shows', () => {
         leave: () => {},
       },
     );
-    expect(await scanning.scan!('coasys:device:1:')).toBe('coasys:device:1:x');
+    expect(await scanning.scan!('coasys:offer:1:')).toBe('coasys:offer:1:x');
+    expect(await scanning.scan!('coasys:offer:1:')).toBeNull();
+    await expect(scanning.scan!('coasys:offer:1:')).rejects.toThrow('paste the code');
+  });
+
+  it('treats closing the camera on a device code as no code, and starts no link', async () => {
+    const scanning = phoneTransport(
+      { kind: 'scan-device' },
+      { plugin: plugin({ scanDevice: refusal('Cancelled', 'the scan was cancelled') }), leave: () => {} },
+    );
     expect(await scanning.scan!('coasys:device:1:')).toBeNull();
-    await expect(scanning.scan!('coasys:device:1:')).rejects.toThrow('paste the code');
+    expect(await scanning.step({ kind: 'code', code: 'scanned' })).toMatchObject({ screen: 'enter-code' });
   });
 });
 

@@ -516,6 +516,8 @@ pub struct PhoneVault {
     device: Arc<dyn Sealer>,
     lock: Mutex<()>,
     allow_weak: AtomicBool,
+    /// The publishes of this vault's pending incepts: one at a time, a refusal for good remembered.
+    publishing: we_identity_steps::PublishGate,
 }
 
 impl PhoneVault {
@@ -532,7 +534,13 @@ impl PhoneVault {
             device,
             lock: Mutex::new(()),
             allow_weak: AtomicBool::new(false),
+            publishing: we_identity_steps::PublishGate::new(),
         })
+    }
+
+    /// The gate this vault's pending incepts are published through.
+    pub fn publishing(&self) -> &we_identity_steps::PublishGate {
+        &self.publishing
     }
 
     /// The person agreed to keep a master key at the protection the phone has, below StrongBox

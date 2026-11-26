@@ -424,7 +424,7 @@ impl DeviceKeys {
 
     /// The enc key, opened for one use and checked against the key on record. It has no caller
     /// outside the tests: a holder seals to the enc key, and the inbox that opens with it is read
-    /// through the store (`apps/we-mobile/docs/phase-2b.md`).
+    /// through the store (`apps/we-mobile/README.md`).
     #[cfg(test)]
     fn enc_key(&self, file: &KeyFile) -> Result<ad4m_identity_core::X25519Secret, PhoneKeyError> {
         let sealed = file.sealed_enc()?;

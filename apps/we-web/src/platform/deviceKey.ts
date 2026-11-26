@@ -88,7 +88,9 @@ export interface SignedSessionStatement {
  * Why a call was refused: the Rust error's variant (or the plugin's own), as `code`. The ones a
  * caller acts on: `NoKeys`, `KeysExist`, `NoIdentity`, `AlreadyJoined`, `NoClaim`, `Sealer`
  * (the Keystore refused), `Invalid`, `NoBiometrics`, `WeakProtection`, `Ended` (a link is over),
- * `CameraDenied`, `NoCamera`, `Cancelled`.
+ * `CameraDenied`, `NoCamera`, `Cancelled`, `Mismatch` (the codes were not the same), `NotAllowed`
+ * (the page may not call it: only the phone's identity page may link, send the master key, rename
+ * or answer).
  */
 export interface DeviceKeyError extends Error {
   code?: string;
@@ -268,7 +270,10 @@ export interface DeviceKeyPlugin {
   }>;
   /** Asks the store how the pending claim stands, for up to `seconds` (60 by default). */
   waitJoined(options?: { seconds?: number }): Promise<{ progress: ClaimProgress }>;
-  /** A key statement for one executor, signed by the device key. */
+  /**
+   * A key statement for one executor, signed by the device key once the person has confirmed the
+   * address in a prompt.
+   */
   signSession(request: SessionSignRequest): Promise<SignedSessionStatement>;
   /** The identity as the store has it now. */
   identityStatus(): Promise<PhoneIdentityView>;
@@ -287,13 +292,22 @@ export interface DeviceKeyPlugin {
   /** Answers a request; asks for the biometric to use the master key. */
   answer(options: { id: string }): Promise<RequestAnswered>;
   devices(): Promise<{ devices: PhoneDeviceView[] }>;
+  /** Renames a device, after the person has confirmed the new name in a prompt. */
   rename(options: { keyId: string; name: string }): Promise<Record<string, never>>;
   revoke(options: { keyIds: string[] }): Promise<{ note: string | null }>;
-  /** Starts linking the device whose `coasys:device:1:` code this is; the link's id. */
-  scanDevice(options: { code: string }): Promise<{ link: string }>;
+  /**
+   * Opens the camera on the new device's `coasys:device:1:` code and starts linking it; the link's
+   * id. The code is read natively and never handed in: a page that could name one could enrol a
+   * device of its own. Refused with `CameraDenied`, `NoCamera` or `Cancelled`.
+   */
+  scanDevice(): Promise<{ link: string }>;
   /** Waits for the link's next step. */
   linkNext(options: { link: string }): Promise<LinkStep>;
-  /** The codes matched: add the device, with its name, and send it the master key or not. */
+  /**
+   * Adds the device, with its name, and sends it the master key or not. The phone asks the person
+   * for the code the other device shows and compares it itself (`Mismatch` ends the link), and asks
+   * for a biometric of its own before it sends the master key.
+   */
   linkConfirm(options: { link: string; name?: string; keepMaster?: boolean }): Promise<Record<string, never>>;
   linkCancel(options: { link: string }): Promise<Record<string, never>>;
   /**
@@ -369,7 +383,7 @@ export function deviceKeyPlugin(
     devices: () => call('devices'),
     rename: (options) => call('rename', options),
     revoke: (options) => call('revoke', options),
-    scanDevice: (options) => call('scanDevice', options),
+    scanDevice: () => call('scanDevice'),
     linkNext: (options) => call('linkNext', options),
     linkConfirm: (options) => call('linkConfirm', options),
     linkCancel: (options) => call('linkCancel', options),

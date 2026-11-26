@@ -43,7 +43,7 @@ use std::sync::mpsc::{channel, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use ad4m_identity_client::flows::create::{resume, Created};
+use ad4m_identity_client::flows::create::Created;
 use ad4m_identity_client::flows::master;
 use ad4m_identity_client::flows::restore::{Enrolled, RestoreFlow};
 use ad4m_identity_client::flows::rotate::Rotated;
@@ -54,8 +54,8 @@ use ad4m_identity_core::{did_of, scid_of, Event, Op};
 use futures_executor::block_on;
 use we_identity_steps::{
     enrol_again, finish_restore, handed_over, joined, key_ids, listed, lock_out_of, record_note,
-    revoke_again, rotate_with_words, words_refused, MakeWords, RestoreDevice, NOT_THESE_WORDS,
-    WRONG_CONFIRM,
+    revoke_again, rotate_with_words, words_refused, MakeWords, PublishError, RestoreDevice,
+    NOT_THESE_WORDS, WRONG_CONFIRM,
 };
 use zeroize::Zeroizing;
 
@@ -597,11 +597,7 @@ pub(crate) fn finish_pending(
     vault: &PhoneVault,
     exec: &Executor,
 ) -> Result<Option<Created>, PhoneKeyError> {
-    if vault.pending_incepts().map_err(vault_error)?.is_empty() {
-        return Ok(None);
-    }
-    log::info!("phone: publishing an identity this phone made and did not publish");
-    match block_on(resume(exec, vault)) {
+    match block_on(vault.publishing().finish(exec, vault)) {
         Ok(Some(created)) => {
             parts.keys.record_identity(
                 &created.scid,
@@ -611,19 +607,10 @@ pub(crate) fn finish_pending(
             Ok(Some(created))
         }
         Ok(None) => Ok(None),
-        Err(ClientError::HasIdentity(held)) => {
-            let status = block_on(exec.status()).map_err(rpc)?;
-            if let Some(incept) = own_pending(vault, &status.device_key).map_err(vault_error)? {
-                log::warn!(
-                    "phone: this phone speaks for {held}; dropping the incept of {} it can never \
-                     publish",
-                    did_of(&incept.scid)
-                );
-                vault.incept_published(&incept.scid).map_err(vault_error)?;
-            }
-            Ok(None)
-        }
-        Err(e) => Err(phone_error(e)),
+        Err(PublishError::Refused(refused)) => Err(PhoneKeyError::Refused {
+            reason: refused.message,
+        }),
+        Err(PublishError::Failed(e)) => Err(phone_error(e)),
     }
 }
 

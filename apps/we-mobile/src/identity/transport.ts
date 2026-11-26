@@ -113,6 +113,21 @@ export function backPath(search: string, origin: string): string {
   }
 }
 
+/**
+ * Said on the join screen when the Keystore is not secure hardware (an emulator, or a phone
+ * without a secure chip). The device key is how this phone signs in, so it is told, and may go on.
+ */
+export const NO_HARDWARE_PROTECTION =
+  'This phone keeps your sign-in key without hardware protection. Anyone who can read the phone’s files could use it.';
+
+/** What the code of a device to add starts with: the one code the phone reads without handing it to the page. */
+const DEVICE_CODE_PREFIX = 'coasys:device:1:';
+
+/** What `scan` answers for a device code the phone read and used itself. */
+const SCANNED = 'scanned';
+
+const SCAN_THE_CODE = 'Scan the code on the new device with the camera. A pasted code can’t add a device.';
+
 /** Why the phone does not run a change: one only a computer can. */
 export const ON_A_COMPUTER = 'This phone can’t do this. Do it on a linked computer.';
 
@@ -203,6 +218,8 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
   /** The holder link `scan-device` runs, while it runs. */
   let link: string | null = null;
   let cancelled = false;
+  /** The phone keeps the device key without hardware protection: the join says so. */
+  let unprotected = false;
   /** The last screen's name only: a screen of the words is never held here. */
   let last: Screen['screen'] | null = null;
   /** The request `answer-request` shows, and the device `revoke` and `rename` act on. */
@@ -327,13 +344,22 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
 
   /** The code card. A phone joins with its own key, never as a desktop's first run: nothing to accept here. */
   function matching(code: string, did: string): Screen {
-    return { screen: 'device-match', code, did, needsAccept: false, accepted: false, confirmed: false };
+    return {
+      screen: 'device-match',
+      code,
+      did,
+      needsAccept: false,
+      accepted: false,
+      confirmed: false,
+      ...(unprotected ? { notice: NO_HARDWARE_PROTECTION } : {}),
+    };
   }
 
   async function joinStart(): Promise<Screen> {
     const status = await plugin.status();
     if (status.identity) return failed('This phone is already linked.');
-    if (!status.keys) await plugin.create();
+    const protection = status.keys ? status.protection : (await plugin.create()).protection;
+    unprotected = protection === 'software' || protection === 'unknown';
     if (status.pending) return matching(status.pending.matchCode, status.pending.did);
     return offerScreen(null, deps.keyHost?.read() ?? '');
   }
@@ -447,21 +473,26 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
       case 'wait-join':
         return waitJoined();
       case 'code':
-        try {
-          link = (await plugin.scanDevice({ code: input.code })).link;
-        } catch (error) {
-          return { screen: 'enter-code', error: reason(error) };
-        }
+        // The code only counts when the phone read it with its camera (`scan`, below): the link it
+        // started is the one held. A typed or pasted code starts nothing.
+        if (!link) return { screen: 'enter-code', error: SCAN_THE_CODE };
         return nextLinkStep();
       case 'wait-claim':
         return nextLinkStep();
       case 'confirm':
         if (!link) return failed('This link has ended. Start again.');
-        await plugin.linkConfirm({
-          link,
-          ...(input.name ? { name: input.name } : {}),
-          keepMaster: input.keepMaster ?? false,
-        });
+        try {
+          // The phone asks for the other device's code and compares it, and asks again before it
+          // sends the master key. Any refusal ends the link there.
+          await plugin.linkConfirm({
+            link,
+            ...(input.name ? { name: input.name } : {}),
+            keepMaster: input.keepMaster ?? false,
+          });
+        } catch (error) {
+          link = null;
+          throw error;
+        }
         return nextLinkStep();
       case 'answer':
         if (!request) return failed('This request has ended. Start again.');
@@ -557,6 +588,12 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
     },
     async scan(prefix) {
       try {
+        if (prefix === DEVICE_CODE_PREFIX) {
+          // The camera reads this code inside the plugin, which starts the link with it. The page
+          // gets no text it could send back, only the fact that the link is running.
+          link = (await plugin.scanDevice()).link;
+          return SCANNED;
+        }
         return (await plugin.scanCode({ prefix })).text;
       } catch (error) {
         if (code(error) === 'Cancelled') return null;

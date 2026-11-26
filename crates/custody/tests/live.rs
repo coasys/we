@@ -1806,7 +1806,7 @@ async fn poll_state<T>(
 }
 
 /// The computers' side of the phone app's emulator run for the master key on the phone
-/// (`apps/we-mobile/docs/phase-2b.md`).
+/// (`apps/we-mobile/README.md`).
 /// Executor A, with this computer's custody service as "Desktop A", makes an identity; the phone
 /// joins it by its offer link and asks for the master key, which A sends; the phone takes it
 /// behind its biometric. Then the phone is the holder: it adds desktop B by the code B shows, B

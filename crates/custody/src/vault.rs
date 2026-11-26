@@ -96,6 +96,8 @@ pub struct DesktopVault {
     store: Arc<dyn SecretStore>,
     pending: PendingIncepts,
     kdf: Kdf,
+    /// The publishes of this vault's pending incepts: one at a time, a refusal for good remembered.
+    publishing: we_identity_steps::PublishGate,
 }
 
 fn os_random(out: &mut [u8]) {
@@ -109,7 +111,13 @@ impl DesktopVault {
             store: Arc::from(store),
             pending,
             kdf: Kdf::DESKTOP,
+            publishing: we_identity_steps::PublishGate::new(),
         }
+    }
+
+    /// The gate this vault's pending incepts are published through.
+    pub fn publishing(&self) -> &we_identity_steps::PublishGate {
+        &self.publishing
     }
 
     /// With another Argon2id cost (tests).
@@ -118,6 +126,7 @@ impl DesktopVault {
             store: Arc::from(store),
             pending,
             kdf,
+            publishing: we_identity_steps::PublishGate::new(),
         }
     }
 

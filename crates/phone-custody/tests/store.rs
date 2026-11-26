@@ -7,7 +7,7 @@
 
 use std::cell::Cell;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::Poll;
 
@@ -144,6 +144,10 @@ struct PhoneHttp {
     refuse_publish_after: AtomicUsize,
     sent: AtomicUsize,
     appends: Mutex<Vec<Value>>,
+    /// A status the store answers every publish with (0: none), as a store that refuses the log.
+    refuse_with: AtomicU16,
+    /// How many publishes were asked of the store, answered or not.
+    append_tries: AtomicUsize,
 }
 
 impl StoreTransport for PhoneHttp {
@@ -154,6 +158,20 @@ impl StoreTransport for PhoneHttp {
             });
         }
         let append = request.method == "POST" && request.url.ends_with("/events");
+        if append {
+            self.append_tries.fetch_add(1, Ordering::SeqCst);
+            let status = self.refuse_with.load(Ordering::SeqCst);
+            if status != 0 {
+                return Ok(StoreReply {
+                    status,
+                    headers: vec![Header {
+                        name: "content-type".into(),
+                        value: "application/json".into(),
+                    }],
+                    body: br#"{"error":"malformed events"}"#.to_vec(),
+                });
+            }
+        }
         let refused = self.refuse_publish.load(Ordering::SeqCst)
             || self.appends.lock().unwrap().len()
                 >= self.refuse_publish_after.load(Ordering::SeqCst);
@@ -340,6 +358,8 @@ fn phone(world: &World, protection: &str) -> Phone {
         refuse_publish_after: AtomicUsize::new(usize::MAX),
         sent: AtomicUsize::new(0),
         appends: Mutex::new(Vec::new()),
+        refuse_with: AtomicU16::new(0),
+        append_tries: AtomicUsize::new(0),
     });
     let master = MasterKeystore::new(protection);
     let identity = open_identity(&keys, &http, &master);
@@ -2083,5 +2103,157 @@ fn the_phone_replaces_its_master_key_with_the_words() {
         phone.identity.retry_master_pushes().unwrap(),
         None,
         "no other app keeps the master key"
+    );
+}
+
+// A fingerprint declined at the replace keeps the new master key nowhere, so nothing is published:
+// the old key stays in force, the flow ends, and the log is as it was. Asking again is a new
+// replace, started by the person, and it works.
+#[test]
+fn a_declined_fingerprint_on_a_replace_publishes_nothing() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (did, words) = made(&phone);
+    let published = phone.http.appends.lock().unwrap().len();
+
+    let steps = phone.identity.start_rotate(false).unwrap();
+    steps.next().unwrap();
+    phone.master.next(Finger::Cancel);
+    let declined = steps.step(PhoneInput::TwelveWords {
+        words: words.join(" "),
+    });
+    assert!(
+        matches!(declined, Err(PhoneKeyError::Cancelled)),
+        "{declined:?}"
+    );
+    assert!(
+        phone
+            .master
+            .prompts()
+            .last()
+            .is_some_and(|p| p.contains("new master key")),
+        "the prompt named what it keeps: {:?}",
+        phone.master.prompts()
+    );
+    assert_eq!(
+        phone.http.appends.lock().unwrap().len(),
+        published,
+        "nothing was published"
+    );
+    wait_ended(&steps);
+    let status = phone.identity.status().unwrap();
+    assert_eq!(status.did, did);
+    assert_eq!(
+        status.master_index,
+        Some(0),
+        "the old key is still in force"
+    );
+
+    // The person asks again and puts a finger on it: one rotation, the next index.
+    phone.master.next(Finger::Touch);
+    let steps = phone.identity.start_rotate(false).unwrap();
+    steps.next().unwrap();
+    let replaced = steps
+        .step(PhoneInput::TwelveWords {
+            words: words.join(" "),
+        })
+        .unwrap();
+    assert!(
+        matches!(replaced, PhoneScreen::MasterReplaced { index: 1, .. }),
+        "{replaced:?}"
+    );
+    assert_eq!(phone.http.appends.lock().unwrap().len(), published + 1);
+}
+
+// The same for a restore: its rotation keeps the new master key before it publishes, so a declined
+// fingerprint leaves the log and the first phone's key as they were, and this phone joins nothing.
+#[test]
+fn a_declined_fingerprint_on_a_restore_publishes_nothing() {
+    let world = world();
+    let first = phone(&world, "strongbox");
+    let (_, words) = made(&first);
+    let published = first.http.appends.lock().unwrap().len();
+
+    let other = phone(&world, "strongbox");
+    let steps = other.identity.start_restore(false).unwrap();
+    steps.next().unwrap();
+    let PhoneScreen::RestoreDevices { .. } = steps
+        .step(PhoneInput::TwelveWords {
+            words: words.join(" "),
+        })
+        .unwrap()
+    else {
+        panic!("expected the devices");
+    };
+    other.master.next(Finger::Cancel);
+    let declined = steps.step(PhoneInput::LockOut {
+        key_ids: Vec::new(),
+        name: Some("Tablet".into()),
+    });
+    assert!(
+        matches!(declined, Err(PhoneKeyError::Cancelled)),
+        "{declined:?}"
+    );
+    // Each phone's transport keeps what it sent: the other phone sent no publish at all.
+    assert!(
+        other.http.appends.lock().unwrap().is_empty(),
+        "nothing was published"
+    );
+    assert_eq!(first.http.appends.lock().unwrap().len(), published);
+    assert!(
+        other.identity.status().is_err(),
+        "this phone joined nothing"
+    );
+    assert_eq!(first.identity.status().unwrap().master_index, Some(0));
+}
+
+// A pending identity read from two places at once is published once: the publish is one at a
+// time, and the one that waited finds nothing left.
+#[test]
+fn a_pending_identity_is_published_once_when_two_calls_finish_it_together() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (steps, _) = made_to_name(&phone);
+    phone.http.refuse_publish.store(true, Ordering::SeqCst);
+    steps.step(PhoneInput::NameDevice { name: None }).unwrap();
+    steps.cancel();
+    phone.http.refuse_publish.store(false, Ordering::SeqCst);
+    let identity = &phone.identity;
+    let results: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..4)
+            .map(|_| scope.spawn(|| identity.finish_pending()))
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap()).collect()
+    });
+    let published = results.iter().filter(|r| matches!(r, Ok(Some(_)))).count();
+    assert_eq!(published, 1, "{results:?}");
+    assert!(results.iter().all(|r| r.is_ok()), "{results:?}");
+    assert_eq!(phone.http.appends.lock().unwrap().len(), 1);
+}
+
+// An incept the store refuses for good is answered as refused each time it is asked, and the
+// store is asked once: each ask would solve the new log's proof of work again for the same answer.
+#[test]
+fn an_incept_the_store_refused_for_good_is_not_published_again() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (steps, _) = made_to_name(&phone);
+    phone.http.refuse_publish.store(true, Ordering::SeqCst);
+    steps.step(PhoneInput::NameDevice { name: None }).unwrap();
+    steps.cancel();
+    phone.http.refuse_publish.store(false, Ordering::SeqCst);
+    phone.http.refuse_with.store(400, Ordering::SeqCst);
+    let before = phone.http.append_tries.load(Ordering::SeqCst);
+    for _ in 0..3 {
+        let refused = phone.identity.finish_pending();
+        assert!(
+            matches!(refused, Err(PhoneKeyError::Refused { .. })),
+            "{refused:?}"
+        );
+    }
+    assert_eq!(
+        phone.http.append_tries.load(Ordering::SeqCst) - before,
+        1,
+        "the store is asked once"
     );
 }

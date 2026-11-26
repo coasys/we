@@ -7,7 +7,7 @@
 # it. It does not depend on `we-custody`, which keeps master keys on a computer. The phone
 # keeps a master key too, behind a second, biometric-gated Keystore key, and runs
 # `ad4m-identity-client`'s flows against the identity store directly through `ViaStore` (the phone
-# has no executor of its own): see `README.md` and `apps/we-mobile/docs/phase-2b.md`. With no
+# has no executor of its own): see `README.md` and `apps/we-mobile/README.md`. With no
 # computer at all, it makes an identity from new words, restores one from its 12 words and replaces
 # the master key with them (`src/steps.rs`, over the steps `crates/identity-steps` shares with the
 # desktop), and spends the store's proof of work on a new log's incept (`src/brake.rs`).

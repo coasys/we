@@ -472,6 +472,35 @@ const grantEditor: SchemaNode = {
   },
 };
 
+// A bot that was removed while its key could not be revoked: its key is still valid in the key log.
+const keyStillValidCard: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'botStore.selected.keyStillValid' },
+    then: card([
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Its key is still valid'] },
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-muted' },
+        children: [
+          "The bot's permissions are ended, but its key still works until it ends, on your other computers too. Revoke the key to finish removing it.",
+        ],
+      },
+      {
+        type: 'we-button',
+        props: {
+          variant: 'soft',
+          size: 'sm',
+          alignSelf: 'start',
+          loading: { $: 'botStore.revoking' },
+          onClick: { $invoke: 'botStore.revoke' },
+        },
+        children: ['Revoke key'],
+      },
+    ]),
+  },
+};
+
 const stateCard: SchemaNode = {
   type: '$if',
   props: {
@@ -637,6 +666,8 @@ const detailView: SchemaNode = {
     ),
     problem("botStore.conflict != ''", 'botStore.conflict', 'warning'),
     problem("botStore.error != ''", 'botStore.error'),
+    problem("botStore.keyRevokeError != ''", 'botStore.keyRevokeError', 'warning'),
+    keyStillValidCard,
     grantEditor,
     stateCard,
     activityLog,
@@ -644,8 +675,9 @@ const detailView: SchemaNode = {
       open: { $: 'local.confirmRevokeBot' },
       close: { $setLocal: 'confirmRevokeBot', value: false },
       title: { $: '`Remove ${botStore.selected.name}?`' },
-      body: "It stops working on this computer for good and can't be resumed. Its activity stays.",
-      detail: 'On other computers, its key works until it ends. To use a bot again, add a new one.',
+      body: "This ends the bot's permissions and revokes its key in your key log, so it stops working everywhere. It can't be resumed. Its activity stays.",
+      detail:
+        'Revoking the key is signed where your master key is kept, so you may be asked to confirm. To use a bot again, add a new one.',
       confirmLabel: 'Remove',
       confirm: { $invoke: 'botStore.revoke' },
     }),

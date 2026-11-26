@@ -49,11 +49,43 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // The key a build for real people is signed with, kept outside the repo: its keystore and
+        // passwords come from the environment or from Gradle properties (~/.gradle/gradle.properties,
+        // -P). The debug key above is public, so a build signed with it must never reach a person:
+        // anyone could sign an update with it, and Android hands an update the app's data, which
+        // holds the device key. A release build without all four settings fails (below).
+        release {
+            def setting = { String name -> System.getenv(name) ?: (project.findProperty(name) as String) }
+            def file_ = setting('WE_RELEASE_STORE_FILE')
+            if (file_) storeFile new File(file_)
+            storePassword setting('WE_RELEASE_STORE_PASSWORD')
+            keyAlias setting('WE_RELEASE_KEY_ALIAS')
+            keyPassword setting('WE_RELEASE_KEY_PASSWORD')
+        }
     }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+// Building the release APK or bundle needs the release key. Checked when the build is about to
+// run, so debug builds and the unit tests need none; a release build never falls back to the
+// debug key.
+gradle.taskGraph.whenReady { graph ->
+    def releasing = graph.allTasks.any { it.project == project && it.name ==~ /(assemble|bundle|package|sign|install)Release.*/ }
+    if (releasing) {
+        def release = android.signingConfigs.release
+        def missing = []
+        if (release.storeFile == null || !release.storeFile.isFile()) missing << 'WE_RELEASE_STORE_FILE (a keystore file that exists)'
+        if (!release.storePassword) missing << 'WE_RELEASE_STORE_PASSWORD'
+        if (!release.keyAlias) missing << 'WE_RELEASE_KEY_ALIAS'
+        if (!release.keyPassword) missing << 'WE_RELEASE_KEY_PASSWORD'
+        if (missing) {
+            throw new GradleException("A release build needs the release signing key, set in the environment or as Gradle properties: ${missing.join(', ')}. It is never signed with the debug key.")
         }
     }
 }

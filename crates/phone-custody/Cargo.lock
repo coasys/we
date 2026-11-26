@@ -1923,6 +1923,7 @@ version = "0.1.0"
 dependencies = [
  "ad4m-identity-client",
  "ad4m-identity-core",
+ "futures-util",
  "log",
  "serde",
  "zeroize",

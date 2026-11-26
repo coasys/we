@@ -121,6 +121,11 @@ describe('the phone custody host', () => {
     expect(p.finishPending).toHaveBeenCalledTimes(2);
   });
 
+  it('names an identity pending when the page may not finish it', async () => {
+    const p = plugin({ status: refusal('NoIdentity'), pending: DID, finish: refusal('NotAllowed', 'not this page') });
+    expect(await phoneCustodyHost(p).publicState()).toMatchObject({ did: null, pending: DID });
+  });
+
   it('asks nothing of the store when no identity was made here', async () => {
     const p = plugin({ status: refusal('NoIdentity') });
     expect(await phoneCustodyHost(p).publicState()).toMatchObject({ did: null });

@@ -495,6 +495,7 @@ function body(screen: Screen): Child[] {
       const note = deviceMatchNote(screen);
       const accept = actions.accept ? [button('Confirm', () => step({ kind: 'accept' }), 'primary')] : [];
       return [
+        ...(screen.notice ? [el('p', { className: 'error', textContent: screen.notice })] : []),
         el('div', { className: 'code', textContent: screen.code }),
         el('div', { className: 'link', textContent: screen.did }),
         ...(note ? [el('p', { className: 'note', textContent: note })] : []),

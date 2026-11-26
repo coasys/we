@@ -12,14 +12,18 @@
 //! - [`rotate`]: replace the master key with the words.
 //! - [`restore`]: the lock-out list, its check, and the restore's rotation and enrolment.
 //! - [`notes`]: what a hand-over of a new master key left undone.
+//! - [`publish`]: finishing an identity that was made and not seen published, one publish at a
+//!   time, and not again once the store has refused it for good.
 //!
 //! Generic over [`ExecutorRpc`](ad4m_identity_client::ExecutorRpc): the desktop runs these over
-//! the executor's RPC, the phone over the identity store's HTTPS (`ViaStore`). Nothing here names
-//! the executor, a transport or a platform.
+//! the executor's RPC, the phone over the identity store's HTTPS (`ViaStore`). The steps are
+//! transport-neutral, not backend-neutral: they are written against ad4m's identity client and
+//! its `ExecutorRpc`, and name no executor process, no particular transport and no platform.
 
 pub mod epoch;
 pub mod make;
 pub mod notes;
+pub mod publish;
 pub mod restore;
 pub mod rotate;
 pub mod words;
@@ -27,6 +31,7 @@ pub mod words;
 pub use epoch::{recover_lost_epoch, words_make_current_master, EpochRecovery};
 pub use make::MakeWords;
 pub use notes::{handed_over, joined, key_ids};
+pub use publish::{own_pending, refused_for_good, PublishError, PublishGate, Refused};
 pub use restore::{
     enrol_again, finish_restore, listed, lock_out_of, record_note, revoke_again, RestoreDevice,
 };

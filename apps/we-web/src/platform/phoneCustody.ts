@@ -11,7 +11,9 @@
  * The phone takes the 12 words as a computer does: making an identity, restoring one and replacing
  * the master key run on the identity page too. An identity made here whose publish did not go through
  * is published again each time the state is read (`finishPending`), as the desktop's custody service
- * does; until it is, the state names it as `pending`.
+ * does; until it is, the state names it as `pending`. Finishing a publish is the identity page's to
+ * ask, not an app page's: from Settings the plugin refuses (`NotAllowed`), so the state stays
+ * `pending` there until the identity page's next make or read publishes it.
  */
 import type { Ad4mCustodyHost, Ad4mCustodyState } from '@we/backend-ad4m';
 
@@ -70,7 +72,8 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
     try {
       return (await plugin.finishPending()).did === null ? null : 'published';
     } catch {
-      // The store did not answer: it stays pending, and is published again at the next read.
+      // The store did not answer, or this page may not finish it: it stays pending, and is
+      // published again at the next read from a page that may.
       return did;
     }
   }

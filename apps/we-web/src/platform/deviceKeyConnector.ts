@@ -257,7 +257,8 @@ export async function keyLoginTarget(
     const status = await plugin.status();
     if (!status.identity) return null;
     // What the Keystore actually gives the key that seals the device key: StrongBox is asked for,
-    // and anything is accepted. Said here so a reviewer reading the log sees it.
+    // and anything is accepted (an emulator has no secure hardware). The person is told on the join
+    // screen (`NO_HARDWARE_PROTECTION`, apps/we-mobile); this line is for a reviewer reading the log.
     if (status.protection === 'strongbox' || status.protection === 'tee') {
       console.info(`[WE] Logging in with the device key; its seeds are sealed at ${status.protection} protection.`);
     } else {

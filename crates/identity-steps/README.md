@@ -15,22 +15,27 @@ here, so a make, a restore or a replace means the same thing on either.
 
 ## Modules
 
-| Module    | What it holds                                                                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `make`    | `MakeWords`: the 12 words made (`Zeroizing`), two positions asked back, and the identity made from the seed with this device's key in its incept |
-| `words`   | Why typed words were refused, in the sentences a person reads                                                                                    |
-| `epoch`   | `EpochRecovery`, `recover_lost_epoch`, `words_make_current_master`: the words-gated way back from a lost custody epoch, before a rotation        |
-| `rotate`  | Replace the master key with the words                                                                                                            |
-| `restore` | The lock-out list, its check, the restore's rotation and enrolment, and `revoke_again` for a rotation whose revoke was refused                   |
-| `notes`   | What a hand-over of a new master key left undone                                                                                                 |
+| Module    | What it holds                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `make`    | `MakeWords`: the 12 words made (`Zeroizing`), two positions asked back, and the identity made from the seed with this device's key in its incept                                                        |
+| `words`   | Why typed words were refused, in the sentences a person reads                                                                                                                                           |
+| `epoch`   | `EpochRecovery`, `recover_lost_epoch`, `words_make_current_master`: the words-gated way back from a lost custody epoch, before a rotation                                                               |
+| `rotate`  | Replace the master key with the words                                                                                                                                                                   |
+| `restore` | The lock-out list, its check, the restore's rotation and enrolment, and `revoke_again` for a rotation whose revoke was refused                                                                          |
+| `notes`   | What a hand-over of a new master key left undone                                                                                                                                                        |
+| `publish` | `PublishGate`: publishing a kept incept one at a time per vault, with a store's refusal for good remembered so it is not retried (and its proof of work not solved again) until the incept is discarded |
 
-Generic over `ad4m_identity_client::ExecutorRpc`; nothing here names the executor, a transport or
-a platform.
+Generic over `ad4m_identity_client::ExecutorRpc`, which is how each caller reaches the identity
+store: through the desktop's executor, or straight over HTTPS on the phone. The steps are
+transport-neutral and platform-neutral, not backend-neutral: they are written against ad4m's
+identity client (`ExecutorRpc`, `ViaExecutor`, `Vault`), and a different backend would need its own
+steps. What they do not name is a transport, a runtime or a platform. The publish gate's lock waits
+under any executor, so it runs on the desktop's tokio and on the phone's `block_on` alike.
 
 ## Boundary
 
-`tests/boundary.rs` keeps it that way: the crate depends on no executor, transport or platform
-crate, and its ad4m rev is the one `crates/custody` and `crates/phone-custody` name (one ad4m per
+`tests/boundary.rs` keeps it that way: the crate depends on no executor, transport, runtime or
+platform crate, and its ad4m rev is the one `crates/custody` and `crates/phone-custody` name (one ad4m per
 WE build, or the ad4m types the steps take would not be the ones the others pass).
 `scripts/bump-ad4m.mjs` moves all three crates' revs and lockfiles together.
 
