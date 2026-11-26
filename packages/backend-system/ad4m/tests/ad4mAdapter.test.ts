@@ -5,7 +5,7 @@
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
 import { ad4mCapabilities, createAd4mQueryAdapter } from '@we/backend-ad4m';
-import { CONTAINMENT_PREDICATE, type QueryIR, type Scope } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type IncludeMap, type QueryIR, type Scope } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
@@ -96,6 +96,17 @@ describe('adapter.plan — AD4M conditional degradations', () => {
     const ir = base({ sort: [{ by: 'location.country', dir: 'asc' }] });
     const features = adapter.plan(ir).gaps.map((g) => g.feature);
     expect(features).toContain('sort:needs-limit');
+  });
+
+  it('a projection with a select, at any depth → refused, not sent with the select dropped', () => {
+    const projection = { over: 'replies', select: ['body'] };
+    const includes: IncludeMap[] = [{ $latest: projection }, { children: { include: { $latest: projection } } }];
+    for (const include of includes) {
+      const plan = adapter.plan(base({ include }));
+      expect(plan.gaps.map((g) => g.feature)).toContain('projection:select');
+      expect(plan.runnable).toBe(false);
+    }
+    expect(adapter.plan(base({ include: { children: { select: ['body'] } } })).gaps).toEqual([]);
   });
 
   it('no sort → no degradation gaps even under OR', () => {
