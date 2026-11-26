@@ -65,6 +65,15 @@ export interface RunOperationOptions {
   invocationId?: string;
   /** The version of the declaring manifest the caller wrote against; refused when it is not the registered one. */
   version?: string;
+  /**
+   * The host's judgement of an entity a step chooses when it runs (an expression `entity` with a
+   * `oneOf`): asked with the entity actually chosen, before the step writes it, and the operation
+   * fails with static `notGranted` when it answers false. How a host lets one operation write a
+   * post for a caller that may write content and refuse a task state to the same caller, where the
+   * static summary can only say "a record of any type". Not asked for a literal entity, which the
+   * summary already names. Absent, every chosen entity the `oneOf` admits is written.
+   */
+  admitChosen?: (entity: string) => boolean;
 }
 
 /** A record as a step binds it: its fields as data, never the backend's instance. */
@@ -107,6 +116,7 @@ interface Run {
   invocationId: string;
   invoker: string;
   invokedAt: string;
+  admitChosen?: (entity: string) => boolean;
   /** Instances a step made or found, by id, so a later write reaches a record the backend has only staged. */
   instances: Map<string, Instance>;
   /** Relation membership as this operation has left it, by `id`, then relation — for strict links. */
@@ -145,6 +155,7 @@ export async function runOperation(
     invocationId: options.invocationId ?? crypto.randomUUID(),
     invoker: options.invoker,
     invokedAt: options.invokedAt ?? new Date().toISOString(),
+    ...(options.admitChosen ? { admitChosen: options.admitChosen } : {}),
     instances: new Map(),
     membership: new Map(),
     created: new Map(),
@@ -278,7 +289,7 @@ async function runStep(
       return find(run, body, scope, step);
 
     case 'create': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const Model = statics(entity, run.dataset, step);
       const fields = fieldsOf(value('fields'), step);
       const id = await deriveRecordId(run.invocationId, segments);
@@ -312,7 +323,7 @@ async function runStep(
     }
 
     case 'update': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const instance = (await instanceOf(run, entity, idOf(value('id'), `${step}.id`), step))!;
       const fields = body.fields === undefined ? {} : fieldsOf(value('fields'), step);
       // Clearing a field is writing '' on every backend: the contract never stores it.
@@ -323,7 +334,7 @@ async function runStep(
     }
 
     case 'delete': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const id = idOf(value('id'), `${step}.id`);
       // Deleting what is not there is the state asked for, as the contract's own delete has it.
       const instance = await instanceOf(run, entity, id, step, { optional: true });
@@ -334,7 +345,7 @@ async function runStep(
 
     case 'link':
     case 'unlink': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const Model = statics(entity, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
@@ -363,7 +374,7 @@ async function runStep(
     }
 
     case 'setRelation': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const Model = statics(entity, run.dataset, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
@@ -547,23 +558,21 @@ async function checkExpectations(run: Run): Promise<void> {
 
 // ── Writes ────────────────────────────────────────────────────────────────────
 
-function chosenEntity(
-  body: Record<string, unknown>,
-  scope: Map<string, unknown>,
-  dataset: unknown,
-  step: string,
-): string {
+function chosenEntity(run: Run, body: Record<string, unknown>, scope: Map<string, unknown>, step: string): string {
   if (typeof body.entity === 'string') return writable(body.entity, step);
   const chosen = resolve(body.entity, scope, `${step}.entity`);
   const oneOf = (body.oneOf as OneOfEntry[] | undefined) ?? [];
   const allowed =
     typeof chosen === 'string' &&
     oneOf.some((entry) =>
-      typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, dataset),
+      typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, run.dataset),
     );
   if (!allowed)
     throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
-  return writable(chosen, step);
+  writable(chosen, step);
+  if (run.admitChosen && !run.admitChosen(chosen))
+    throw staticError('notGranted', `The caller may not write ${chosen} through this operation`, step);
+  return chosen;
 }
 
 /**

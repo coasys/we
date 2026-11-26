@@ -23,6 +23,7 @@ export type StaticErrorCode =
   | 'unboundName'
   | 'unknownEntity'
   | 'outsideOneOf'
+  | 'notGranted'
   | 'protectedEntity'
   | 'forEachKey'
   | 'notAList'

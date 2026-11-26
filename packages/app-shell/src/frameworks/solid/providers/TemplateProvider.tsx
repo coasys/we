@@ -170,8 +170,8 @@ export default function TemplateProvider() {
 
   /*
     Declared operations from a template: the dataset named the way `record.create` takes one (the
-    space on screen when none is), the signed-in agent as invoker, and a fresh invocation — the
-    runner fills its id and time. A failure is said as `operationFailureMessage` says it, so a press
+    space on screen when none is), the signed-in agent as invoker, the bag's judgement of an entity
+    chosen at call time, and a fresh invocation — the runner fills its id and time. A failure is said as `operationFailureMessage` says it, so a press
     that did nothing never does so silently; the error still reaches the template's onError.
   */
   const operationHost: OperationHost = {
@@ -181,7 +181,11 @@ export default function TemplateProvider() {
       const dataset = resolveDataset(options?.dataset) ?? datasetStore.currentDataset()?.handle;
       if (!dataset) throw new Error('Open a space to do this.');
       try {
-        return await runOperation(name, params, { dataset, invoker });
+        return await runOperation(name, params, {
+          dataset,
+          invoker,
+          ...(options?.admitChosen ? { admitChosen: options.admitChosen } : {}),
+        });
       } catch (error) {
         const message = operationFailureMessage(error);
         if (message) {

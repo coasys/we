@@ -221,6 +221,16 @@ A value no entry admits fails with static `outsideOneOf`. Either way, an entity 
 access-control fails with static `protectedEntity`, and one the dataset has no record type for fails
 with static `unknownEntity`.
 
+**The host judges a chosen entity per call.** A host that decides permission from the effect summary
+([Permission and confirmation](#permission-and-confirmation)) cannot know, before the operation
+runs, which entity a chosen entity will be. So the invocation MAY carry the host's judgement of a
+chosen entity: once the entity is resolved and admitted above, and before the step writes, the
+runner asks it with the entity's name, and when it refuses, the operation fails with static
+`notGranted` and nothing it wrote lands. A host that gates operations by permission MUST pass one
+for every invocation it gates, and it MUST answer from the same table it uses for the summary, for
+the entity actually chosen. The judgement is the host's; nothing in the invocation's `args` can
+supply or widen it.
+
 ### Returns
 
 After the last step (and after every `expect` re-read), `returns`, when present, is evaluated and is
@@ -362,6 +372,7 @@ way; the fault is in the definition or the call.
 | `unboundName`      | An expression reads a name not bound where it sits.                                                                                                                                                                                           |
 | `unknownEntity`    | The dataset has no record type for an entity a step names.                                                                                                                                                                                    |
 | `outsideOneOf`     | A chosen entity's value is not admitted by its `oneOf`.                                                                                                                                                                                       |
+| `notGranted`       | The host refused the entity a chosen entity resolved to, for this caller ([Chosen entities](#chosen-entities)).                                                                                                                               |
 | `protectedEntity`  | A write names an access-control entity.                                                                                                                                                                                                       |
 | `forEachKey`       | A `forEach` item has no key, or two items share one.                                                                                                                                                                                          |
 | `notAList`         | A `forEach`'s `in` or a `setRelation`'s `targets` is not a list.                                                                                                                                                                              |
@@ -432,15 +443,24 @@ reads and checks) is not a write.
 > summary listing them would change too, and a consent given against it would silently cover a type
 > the person never saw.
 
+> **Why per call, not the widest.** Giving a category the widest group a caller might hold would
+> make a generic write (delete these records, edit this record) need settings permission to delete
+> a post, and give anyone who holds it every entity the category reaches. Judging the entity passed
+> gives each call exactly what the same write made on its own would need.
+
 ### Permission and confirmation
 
 A host deriving what invoking an operation needs MUST derive it from the effect summary, never from
 anything written beside the operation:
 
-- **Permission.** The host keeps one table mapping entities, and categories, to its permission
-  groups. An operation needs the widest group any recorded entity or category reaches, and an entity
-  the table does not list falls in the host's default group. So invoking an operation needs what
-  making its writes one at a time would.
+- **Permission.** The host keeps one table mapping entities to its permission groups. Holding an
+  operation at all needs the widest group any entity recorded under `entities` reaches, and an entity
+  the table does not list falls in the host's default group. A category recorded under `categories`
+  says "an entity chosen at call time, in this category", and adds nothing to that group: the entity
+  is known only when the step runs, so the host judges it then, by the same table, for the caller
+  invoking it ([Chosen entities](#chosen-entities)). So invoking an operation needs what making its
+  writes one at a time would, call by call: one generic delete removes a post for a caller who may
+  write content and is refused a settings record to the same caller.
 - **Confirmation.** A host that confirms destructive actions MUST treat an operation as destructive
   exactly when `destructive` is true, and SHOULD describe it to the person from the summary ("creates
   a board; adds to board's children; may write many records in one call").

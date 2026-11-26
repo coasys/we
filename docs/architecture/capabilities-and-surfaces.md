@@ -69,6 +69,14 @@ entities it writes, `operationGroups.ts` maps those to the narrowest capability 
 them, and a destructive one (a delete, an unlink) is confirmed by the host as `record.delete` is. An
 operation that writes counts as a write for the gesture rule; one that only reads does not.
 
+An entity the operation **chooses when it is called** (`oneOf` with a category: any record type, any
+block type) is not in that group, because nothing knows it before the call. The bag hands the runner
+a judgement instead (`admitsChosen`), asked with the entity actually passed, from the same table and
+the template's own grants: `core.deleteRecords` held by a template granted only `content` deletes a
+post and is refused a task state (`notGranted`), and no space template reaches the agent's own
+records through it, whatever the operation names. A category never stands for the widest group it
+might reach, which would make a generic delete need settings permission to delete a post.
+
 Reach for one when a store method would otherwise be a sequence of writes with a precondition
 between them. Do not reach for one for behaviour the step set cannot say — a device, the clock, a
 model call — which stays a store action.

@@ -48,7 +48,7 @@ import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
 import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
 
-import { operationMemberSpec, operationSurfaceEntries } from './operationGroups';
+import { admitsChosen, operationMemberSpec, operationSurfaceEntries } from './operationGroups';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -1861,10 +1861,17 @@ function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
 
 /**
  * What the host lends for declared operations: one runner, which every `ops.<ns>.<name>` in a bag
- * calls with its own name. `options.dataset` is the same store path `record.create` takes.
+ * calls with its own name. `options.dataset` is the same store path `record.create` takes;
+ * `options.admitChosen` is the bag's judgement of an entity an operation chooses at call time,
+ * which the host hands the runner (`RunOperationOptions.admitChosen`).
  */
+export interface OperationRunOptions {
+  dataset?: string;
+  admitChosen?: (entity: string) => boolean;
+}
+
 export interface OperationHost {
-  run(name: string, params?: Record<string, unknown>, options?: { dataset?: string }): Promise<unknown>;
+  run(name: string, params?: Record<string, unknown>, options?: OperationRunOptions): Promise<unknown>;
 }
 
 /**
@@ -1874,7 +1881,9 @@ export interface OperationHost {
  * effect summary through `operationGroups.ts`, so a new operation is reachable by exactly the
  * templates that could make its writes one at a time. One that is not granted is absent, as a store
  * member is; one that writes is gated on somebody asking, as a store write is; a destructive one is
- * confirmed by the host first.
+ * confirmed by the host first. An entity it chooses at call time is judged on each call against the
+ * same grants, so a generic delete held by a space template removes a post and is refused a task
+ * state.
  */
 function operationNamespaces(
   host: OperationHost,
@@ -1885,13 +1894,14 @@ function operationNamespaces(
   for (const [name, spec] of Object.entries(operationSurfaceEntries())) {
     if (!granted.has(spec.group)) continue;
     const path = `ops.${name}`;
-    // One argument, the params, and the dataset option after it; nothing else reaches the runner.
+    // One argument, the params, and the dataset option after it; nothing else of the caller's reaches
+    // the runner. The judgement of a chosen entity is the bag's own, never the template's.
+    const admitChosen = (entity: string) => admitsChosen(granted, entity);
     let method: AnyFn = (params?: unknown, given?: unknown) =>
-      host.run(
-        name,
-        params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined,
-        given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : undefined,
-      );
+      host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
+        ...(given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : {}),
+        admitChosen,
+      });
     if (spec.destructive && options.onDestructive) {
       const guard = options.onDestructive;
       const bound = method;
