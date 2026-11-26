@@ -393,15 +393,46 @@ describe('a key session on a server', () => {
     server.endGrants();
     await vi.waitFor(() => expect(signer.agent.signSessionStatement).toHaveBeenCalledTimes(2));
 
-    await session.close();
+    // close() waits for the probe, so the statement is signed while it is closing.
+    const closing = session.close();
     sign();
-    await flush();
-    await flush();
+    await closing;
 
     // The probe never sent its login: no grant exists, none was issued, nobody was told it ended.
     expect(server.tokens.size).toBe(tokensBefore);
     expect(server.grants.size).toBe(0);
     expect(ended).not.toHaveBeenCalled();
+  });
+
+  it('waits, when closed, for a probe login already sent, and logs that grant out before it returns', async () => {
+    const server = fakeServer();
+    let held = false;
+    let land!: () => void;
+    // The probe's login is in flight when close() runs: the server answers only once `land` is called.
+    const connect: typeof server.connect = (address, token) => {
+      const remote = server.connect(address, token);
+      if (token || !held) return remote;
+      const login = remote.agent.loginWithKey;
+      remote.agent.loginWithKey = (proof, app) =>
+        new Promise((resolve, reject) => (land = () => login(proof, app).then(resolve, reject)));
+      return remote;
+    };
+    const session = await openKeySession(fakeSigner(), ADDRESS, { connect, now: server.now, ...fakeTimers() });
+    held = true;
+
+    server.endGrants();
+    await vi.waitFor(() => expect(land).toBeDefined());
+    let closed = false;
+    const closing = session.close().then(() => (closed = true));
+    await flush();
+    expect(closed).toBe(false);
+
+    land();
+    await closing;
+
+    // The probe's grant was issued and logged out before close() returned: none is left open.
+    expect(server.grants.size).toBe(0);
+    expect(server.loggedOut).toHaveLength(1);
   });
 
   it('tells every listener, and closes its client, even when one listener throws', async () => {

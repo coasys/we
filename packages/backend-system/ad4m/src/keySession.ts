@@ -413,11 +413,12 @@ export async function openKeySession(
   // The server refused the token: it ended the grant. Ask it once more which way. The probe dials
   // and signs for `origin`, as the session did: the address as typed may carry a path or a case
   // the server would refuse as its audience, which would read a revoked device as merely ended.
-  let probing = false;
+  // The probe in flight, if any: close() waits for it, so a probe login that landed is logged out
+  // before the caller goes on (a server switch restarts the app right after).
+  let probing: Promise<void> | null = null;
   const probe = () => {
     if (finished || probing) return;
-    probing = true;
-    void (async () => {
+    probing = (async () => {
       try {
         const probeLogin = await loginOnce(signer, origin, connect, app, now, () => finished);
         // It lets this computer in still, so the session merely ended. The probe's own grant is
@@ -456,6 +457,7 @@ export async function openKeySession(
       listeners.clear();
       await client.agent.logout().catch(() => false);
       client.close();
+      await probing;
     },
   };
 }
