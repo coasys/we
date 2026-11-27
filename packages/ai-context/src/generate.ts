@@ -28,6 +28,7 @@ import {
   extractDestructiveMembers,
   type ExtractedStore,
   extractHostSources,
+  extractMemberGroups,
   extractProfileHomes,
   extractRegisteredComponents,
   extractStores,
@@ -297,7 +298,14 @@ async function main() {
   const destructive = extractDestructiveMembers(
     resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
   );
+  // The group each store member is granted under — what the validator sorts host-only uses by.
+  const groups = extractMemberGroups(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'));
   for (const store of contextData.storeEntries) {
+    const byMember = groups.get(store.name);
+    if (byMember && !store.homes) {
+      const own = [...Object.keys(store.state), ...store.actions].filter((member) => byMember.has(member));
+      if (own.length) store.groups = Object.fromEntries(own.sort().map((member) => [member, byMember.get(member)!]));
+    }
     // A namespace's member is classified where its store holds it.
     const home = (action: string) => store.homes?.[action] ?? store.name;
     store.ambient = store.actions.filter((action) => ambient.get(home(action))?.has(action));
