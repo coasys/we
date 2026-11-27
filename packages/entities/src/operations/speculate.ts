@@ -19,6 +19,7 @@
  * read nothing on screen holds goes to the backend, and then the prediction waits for it.
  */
 import { checkEntityWrite, getEntityForDataset } from '../entityRegistry';
+import { CORE_MANIFEST } from '../manifest';
 import { heldAnswer } from '../predictions/held';
 import { withPredictedRows } from '../predictions/live';
 import { readShapeOf } from '../predictions/overlay';
@@ -34,6 +35,24 @@ export interface Speculation {
 }
 
 type Row = Record<string, unknown> & { id: string };
+
+/**
+ * Fields as a read gives them back. A file the record stores is written as its bytes and read, where
+ * its property says so (`readAs: 'dataUri'`), as a data URI — so a predicted picture is drawn as the
+ * picture, as the record will read once the write lands, rather than as the bytes it was written with.
+ */
+function asRead(entity: string, fields: Record<string, unknown>): Record<string, unknown> {
+  const properties = CORE_MANIFEST.entities[entity]?.properties;
+  if (!properties) return fields;
+  const out = { ...fields };
+  for (const [key, value] of Object.entries(fields)) {
+    const file = value as { data_base64?: unknown; file_type?: unknown } | null;
+    if (properties[key]?.readAs !== 'dataUri' || !file || typeof file.data_base64 !== 'string') continue;
+    out[key] =
+      `data:${typeof file.file_type === 'string' ? file.file_type : 'application/octet-stream'};base64,${file.data_base64}`;
+  }
+  return out;
+}
 
 interface Reads {
   findAll(dataset: unknown, query?: Record<string, unknown>): Promise<Row[]>;
@@ -71,7 +90,7 @@ export async function speculateOperation(
             record: () => (made ? { ...seen, author: invoker } : seen),
           });
           Object.assign(seen, fields);
-          writes.push({ kind: 'edit', entity, id: row.id, fields });
+          writes.push({ kind: 'edit', entity, id: row.id, fields: asRead(entity, fields) });
         },
       },
       delete: {
@@ -104,7 +123,7 @@ export async function speculateOperation(
         const parent = opts?.parent as { id: string; relation: string; entity?: string } | undefined;
         // Stamped as the backend stamps them, so a read whose where names the author finds it.
         const fields = { ...data, author: invoker, createdAt: options.invokedAt };
-        writes.push({ kind: 'create', entity, id, fields, ...(parent ? { parent } : {}) });
+        writes.push({ kind: 'create', entity, id, fields: asRead(entity, fields), ...(parent ? { parent } : {}) });
         return instance(entity, { ...fields, id }, true);
       },
       addRelation: async (_ds: unknown, id: string, rel: string, target: string) => {
