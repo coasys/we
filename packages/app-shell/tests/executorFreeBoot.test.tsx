@@ -1858,6 +1858,133 @@ describe('dataset lifecycle through the real stores', () => {
     expect((await Space.findAll(ref.handle as never))[0]?.defaultTemplateId).toBe('first');
   }, 10000);
 
+  /*
+    The template on screen belongs to the record on screen, so a default-template write touches no
+    template itself: it is drawn on the record, and the space-template follow repaints from it. A
+    failed write is withdrawn the same way, and the follow paints what the record holds — so a
+    template the record itself brought in meanwhile is never rolled back over, where a snapshot taken
+    while the other space's record was still up would have replayed *that* into the new space. The
+    record read stays held below, which is exactly the window.
+  */
+  it('does not roll the space still on screen’s template into the space switched to', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const from = refs.find((d) => d.name === 'From')!.id;
+    const to = refs.find((d) => d.name === 'To')!.id;
+    await stores.datasets.switchDataset(from);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+
+    // From's template is up; To's own default is stored first, so there is an exact value to go back to.
+    app.templates.list = [{ id: 'from-tpl' }, { id: 'to-default' }, { id: 'to-new' }];
+    await setDefault(stores, 'Template', 'to-default', to);
+    app.templates.put({ id: 'from-tpl' });
+
+    // Hold To's record read, so the dataset moves while the record on screen stays From's.
+    let release!: () => void;
+    const heldRead = new Promise<void>((resolve) => (release = resolve));
+    let toRead = false;
+    const Entity = getEntity('Space') as unknown as {
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
+    };
+    const query = Entity.query.bind(Entity);
+    const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, heldRead, () => (toRead = true));
+    });
+    try {
+      await stores.datasets.switchDataset(to);
+      await vi.waitFor(() => expect(toRead).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+
+      // The write is held at its real run, so it is still out when To's own template arrives.
+      const run = heldRun();
+      const saving = setDefault(stores, 'Template', 'to-new', to, run.before);
+      await vi.waitFor(() =>
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-new'),
+      );
+      // To's own template lands in the window, the record read still held. Then the write fails.
+      app.templates.put({ id: 'to-default' });
+      run.fail();
+      await expect(saving).rejects.toThrow('disk full');
+
+      // To's own template stayed up — From's was not replayed into it — and To's row is back to
+      // what it stored, not the choice that failed.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(app.templates.shown().id).toBe('to-default');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-default');
+    } finally {
+      release();
+      querySpy.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(refs.find((d) => d.name === 'To')!.handle as never);
+    expect(stored?.defaultTemplateId).toBe('to-default');
+  }, 10000);
+
+  /*
+    A write's drawing starts the space-template follow, and its withdrawal starts another. The first
+    can still be inside its preference read when the second paints the stored default — and its
+    record was read before the withdrawal, so left to run it would paint the failed write's template
+    back over what the record holds. The choose is sequenced so only the newest paints, and the record
+    is re-read after the wait.
+  */
+  it('does not let a follow still reading paint the failed write’s template over the stored one', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    app.templates.list = [{ id: 'first' }, { id: 'second' }];
+    await setDefault(stores, 'Template', 'first', uuid);
+    await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
+
+    // The first follow's preference read is held — the follow the write's drawing started.
+    let releaseRead!: () => void;
+    const heldRead = new Promise<void>((resolve) => (releaseRead = resolve));
+    let holding = true;
+    const Preference = getEntity('SpacePreference') as unknown as {
+      findAll: (...a: unknown[]) => Promise<unknown[]>;
+    };
+    const findAll = Preference.findAll.bind(Preference);
+    const preference = vi.spyOn(Preference, 'findAll').mockImplementation(async (...args: unknown[]) => {
+      if (holding) {
+        holding = false;
+        await heldRead;
+      }
+      return findAll(...args);
+    });
+    const run = heldRun();
+    const paintsBefore = app.templates.repaints.length;
+    try {
+      const saving = setDefault(stores, 'Template', 'second', uuid, run.before);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultTemplateId()).toBe('second'));
+      await vi.waitFor(() => expect(preference).toHaveBeenCalled());
+      run.fail();
+      await expect(saving).rejects.toThrow('disk full');
+      // Withdrawn: the record's own default is drawn again, and its follow is free to paint it.
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultTemplateId()).toBe('first'));
+      await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(paintsBefore));
+      expect(app.templates.repaints.at(-1)).toBe('first');
+
+      releaseRead();
+      // The held follow's answer must not land: the screen keeps the stored default.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(app.templates.shown().id).toBe('first');
+      expect(app.templates.repaints.at(-1)).toBe('first');
+    } finally {
+      releaseRead();
+      preference.mockRestore();
+    }
+  }, 10000);
+
   it('refuses a default for a space that has no record, and says so', async () => {
     const stores = mountShell();
     await ready(stores);
