@@ -69,8 +69,8 @@ import { DNA_FOCUS, DNA_PARAM, IN_CANVAS, inspect, PAGE_EXPR, withView } from '.
  * (`SELECTED_EXPR`), which is long enough that the few places using it here passed what an expression
  * may be.
  */
-export const CALL = `(${PAGE_EXPR}) == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''`;
-const PERSON = `(${PAGE_EXPR}) == 'person' ? routeStore.params.did : ''`;
+export const CALL = `(${PAGE_EXPR}) == 'record' && navigation.params.kind == 'call' ? navigation.params.id : ''`;
+const PERSON = `(${PAGE_EXPR}) == 'person' ? navigation.params.did : ''`;
 const WORKFLOW = `(${PAGE_EXPR}) == 'workflows' && workflowStore.open`;
 /** The Calls group, chosen as a whole. */
 const CALLS = `(${PAGE_EXPR}) == 'calls'`;
@@ -107,7 +107,7 @@ const CANVAS_EXPR = `${landmark('canvas')} ?? ''`;
 const CANVAS = { $: CANVAS_EXPR };
 
 /** A record's own page, which a double-click opens. */
-const RECORD_PAGE = "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
+const RECORD_PAGE = "navigation.spacePath + '/record/' + event.recordType + '?id=' + event.recordId";
 
 /** Social DNA in focus, over the canvas. */
 const ON_DNA = `(${IN_CANVAS}) && ${DNA_FOCUS}`;
@@ -187,7 +187,7 @@ const dnaMap: SchemaNode = vocabularyMap({
     {
       $if: {
         condition: { $: dnaFocusOf('event') },
-        then: { $invoke: 'routeStore.setParam', args: [DNA_PARAM, { $: dnaFocusOf('event') }] },
+        then: { $invoke: 'navigation.setParam', args: [DNA_PARAM, { $: dnaFocusOf('event') }] },
       },
     },
     OPEN_IN_INSPECTOR,
@@ -221,7 +221,7 @@ const CRUMBS: Crumb[] = [
     },
     onClick: [
       { $if: { condition: { $: `(${GROUP}) == 'workflows'` }, then: { $invoke: 'workflowStore.closeWorkflow' } } },
-      { $invoke: 'routeStore.navigate', args: [{ $: withView(`spaceStore.spacePath + '/' + (${GROUP})`) }] },
+      { $invoke: 'navigation.navigate', args: [{ $: withView(`navigation.spacePath + '/' + (${GROUP})`) }] },
     ],
     when: `!(${ON_DNA}) && (${GROUP}) != ''`,
   },
@@ -229,7 +229,7 @@ const CRUMBS: Crumb[] = [
     label: {
       $: [
         `(${CALL}) ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call')`,
-        `: (${PERSON}) ? (profileStore.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
+        `: (${PERSON}) ? (identity.profiles.find(p, p.did == (${PERSON})).name ?? 'A person')`,
         `: workflowStore.open.label`,
       ].join(' '),
     },
@@ -402,10 +402,10 @@ export const canvasPane: SchemaNode = {
             // Who answered with the reaction the tree is weighed by, for the strip's list of voices.
             onSeedSummary: TREE_VOICE_SUMMARY,
             onCanvasDoubleClick: askWhatGoesHere(CANVAS),
-            onNodeDoubleClick: { $invoke: 'routeStore.navigate', args: [{ $: RECORD_PAGE }] },
+            onNodeDoubleClick: { $invoke: 'navigation.navigate', args: [{ $: RECORD_PAGE }] },
             // A card opens in the inspector beside the canvas, which selects what the inspector shows.
             onNodeClick: OPEN_IN_INSPECTOR,
-            focus: { $: 'routeStore.params.card' },
+            focus: { $: 'navigation.params.card' },
           },
         },
         // Social DNA, over the canvas, which stays mounted beneath so coming back to it is instant.

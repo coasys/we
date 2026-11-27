@@ -44,12 +44,12 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
                         {
                           type: 'we-text',
                           props: { variant: 'heading-lg', tag: 'h1' },
-                          children: [{ $: 'spaceStore.currentSpace.name' }],
+                          children: [{ $: 'spaceSettings.currentSpace.name' }],
                         },
                         {
                           type: 'we-text',
                           props: { color: 'text-muted' },
-                          children: [{ $: 'spaceStore.currentSpace.description' }],
+                          children: [{ $: 'spaceSettings.currentSpace.description' }],
                         },
                       ],
                     },
@@ -61,14 +61,14 @@ export const fieldGuideShell: TemplateSchema & { id: string } = {
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
+                      props: { items: { $: 'navigation.viewNav' }, as: 'view' },
                       children: [
                         {
                           type: 'we-button',
                           props: {
-                            variant: { $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'" },
+                            variant: { $: "contains(navigation.currentPath, view.segment) ? 'soft' : 'ghost'" },
                             size: 'sm',
-                            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                            onClick: { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: { $: 'view.icon' } } },

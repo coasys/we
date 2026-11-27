@@ -25,12 +25,12 @@ describe('token shape validation', () => {
   // --- $invoke ---
   describe('$invoke', () => {
     it('accepts valid $invoke token', () => {
-      expect(() => zSchemaProp.parse({ $invoke: 'routeStore.navigate' })).not.toThrow();
+      expect(() => zSchemaProp.parse({ $invoke: 'navigation.navigate' })).not.toThrow();
     });
 
     it('accepts $invoke with args, including expressions', () => {
       expect(() =>
-        zSchemaProp.parse({ $invoke: 'routeStore.navigate', args: ['/home', { $: 'event.detail' }] }),
+        zSchemaProp.parse({ $invoke: 'navigation.navigate', args: ['/home', { $: 'event.detail' }] }),
       ).not.toThrow();
     });
 

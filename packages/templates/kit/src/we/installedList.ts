@@ -135,8 +135,8 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                     type: '$if',
                     props: {
                       condition: opts.sectionWhen
-                        ? expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }} && !(${{ $: opts.sectionWhen }})`
-                        : expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
+                        ? expr`spaceSettings.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceSettings.currentSpace.${opts.defaultField}` }} && !(${{ $: opts.sectionWhen }})`
+                        : expr`spaceSettings.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceSettings.currentSpace.${opts.defaultField}` }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -144,7 +144,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                           size: 'sm',
                           onClick: {
                             $invoke: 'record.update',
-                            args: ['Space', { $: 'spaceStore.currentSpace.id' }, { [opts.defaultField]: opts.key }],
+                            args: ['Space', { $: 'spaceSettings.currentSpace.id' }, { [opts.defaultField]: opts.key }],
                           },
                         },
                         children: ['Set as default'],
@@ -187,7 +187,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                     type: '$if',
                     props: {
                       condition: {
-                        $: `${opts.as}.author == me.did || spaceStore.canAdministerCurrentSpace`,
+                        $: `${opts.as}.author == me.did || spaceSettings.canAdministerCurrentSpace`,
                       },
                       then: {
                         type: 'we-button',
@@ -222,7 +222,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
               {
                 type: '$if',
                 props: {
-                  condition: expr`${opts.key} == ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
+                  condition: expr`${opts.key} == ${{ $: `spaceSettings.currentSpace.${opts.defaultField}` }}`,
                   then: {
                     type: 'we-badge',
                     props: { tone: 'accent' },

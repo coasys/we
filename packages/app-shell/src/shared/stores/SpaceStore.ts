@@ -297,7 +297,7 @@ export interface SpaceStore {
   /**
    * DIDs this agent has muted, everywhere. Private, held in the root dataset.
    *
-   * A feed filters on this before rendering — `{ $: '!(post.author in spaceStore.mutedDids)' }`. Hiding on
+   * A feed filters on this before rendering — `{ $: '!(post.author in identity.mutedDids)' }`. Hiding on
    * this agent's screen only: a shared space is writable by every member, so nothing here
    * removes anything for anyone else.
    */

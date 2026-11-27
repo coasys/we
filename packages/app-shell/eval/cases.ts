@@ -259,7 +259,7 @@ export const EVAL_CASES: EvalCase[] = [
       expect(
         ofType(s, 'we-button').some(
           (n) =>
-            textOf(n).includes('Get started') && JSON.stringify(n.props ?? {}).match(/routeStore\.navigate.*\/start/),
+            textOf(n).includes('Get started') && JSON.stringify(n.props ?? {}).match(/navigation\.navigate.*\/start/),
         ),
         'no Get started button navigating to /start',
       ),
@@ -267,7 +267,7 @@ export const EVAL_CASES: EvalCase[] = [
       edited(s, (r) =>
         r.children!.push({
           type: 'we-button',
-          props: { variant: 'solid', onClick: { $invoke: 'routeStore.navigate', args: ['/start'] } },
+          props: { variant: 'solid', onClick: { $invoke: 'navigation.navigate', args: ['/start'] } },
           children: ['Get started'],
         }),
       ),
@@ -279,10 +279,7 @@ export const EVAL_CASES: EvalCase[] = [
     check: (s) =>
       all(
         expect(ofType(s, 'we-avatar').length > 0, 'no avatar'),
-        expect(
-          /profileStore\.ownProfile|me\.avatar|me\.name/.test(source(s)),
-          'nothing reads the current agent’s profile',
-        ),
+        expect(/identity\.ownProfile|me\.avatar|me\.name/.test(source(s)), 'nothing reads the current agent’s profile'),
       ),
     solve: (s) =>
       edited(s, (r) =>
@@ -292,9 +289,9 @@ export const EVAL_CASES: EvalCase[] = [
           children: [
             {
               type: 'we-avatar',
-              props: { image: { $: 'profileStore.ownProfile.avatar' }, hash: { $: 'me.did' }, size: 'sm' },
+              props: { image: { $: 'identity.ownProfile.avatar' }, hash: { $: 'me.did' }, size: 'sm' },
             },
-            { type: 'we-text', children: [{ $: 'profileStore.ownProfile.name' }] },
+            { type: 'we-text', children: [{ $: 'identity.ownProfile.name' }] },
           ],
         }),
       ),
@@ -305,7 +302,7 @@ export const EVAL_CASES: EvalCase[] = [
     request: 'Below the heading, list the names of the members of this space.',
     check: (s) =>
       expect(
-        ofType(s, '$each').some((n) => /spaceStore\.(members|memberDids)/.test(JSON.stringify(n.props ?? {}))),
+        ofType(s, '$each').some((n) => /identity\.memberDids|spaceStore\.members/.test(JSON.stringify(n.props ?? {}))),
         'no list over the space’s members',
       ),
     solve: (s) =>
@@ -313,7 +310,7 @@ export const EVAL_CASES: EvalCase[] = [
         r.children!.splice(1, 0, {
           type: '$each',
           props: {
-            items: { $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)' },
+            items: { $: 'identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m)' },
             as: 'member',
           },
           children: [{ type: 'we-text', children: [{ $: 'member.name' }] }],
@@ -360,18 +357,18 @@ export const EVAL_CASES: EvalCase[] = [
         ];
         r.children!.splice(1, 0, {
           type: 'we-tabs',
-          props: { selectedKey: { $: 'routeStore.segments[0]' } },
+          props: { selectedKey: { $: 'navigation.segments[0]' } },
           children: [
             {
               type: 'we-tab',
-              props: { key: 'posts', label: 'Posts', onClick: { $invoke: 'routeStore.navigate', args: ['/posts'] } },
+              props: { key: 'posts', label: 'Posts', onClick: { $invoke: 'navigation.navigate', args: ['/posts'] } },
             },
             {
               type: 'we-tab',
               props: {
                 key: 'members',
                 label: 'Members',
-                onClick: { $invoke: 'routeStore.navigate', args: ['/members'] },
+                onClick: { $invoke: 'navigation.navigate', args: ['/members'] },
               },
             },
           ],
@@ -443,7 +440,7 @@ export const EVAL_CASES: EvalCase[] = [
             heading,
             {
               type: 'we-button',
-              props: { variant: 'ghost', onClick: { $invoke: 'routeStore.navigate', args: ['/settings'] } },
+              props: { variant: 'ghost', onClick: { $invoke: 'navigation.navigate', args: ['/settings'] } },
               children: [{ type: 'we-icon', props: { name: 'gear' } }],
             },
           ],

@@ -2063,7 +2063,7 @@ const anchoredCallButton: SchemaNode = {
  * The same fallback every other surface about a call uses, which is what keeps this button talking
  * about the thing beside it rather than about the address.
  */
-const CALL_ON_SCREEN = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+const CALL_ON_SCREEN = 'navigation.params.call ? navigation.params.call : modules.call.callRecordId';
 
 /**
  * Whether this agent is in the call being shown.

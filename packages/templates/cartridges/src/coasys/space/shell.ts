@@ -29,9 +29,9 @@ import { callPage, spaceRoutes } from './views.ts';
 
 /** Put the inspector away: nothing chosen, and its panel closed. */
 const CLOSE_INSPECTOR = [
-  { $invoke: 'routeStore.setParam', args: ['card', ''] },
-  { $invoke: 'routeStore.setParam', args: ['cardType', ''] },
-  { $invoke: 'shellStore.closeTemplatePanel', args: [INSPECTOR_PANEL] },
+  { $invoke: 'navigation.setParam', args: ['card', ''] },
+  { $invoke: 'navigation.setParam', args: ['cardType', ''] },
+  { $invoke: 'viewState.closeTemplatePanel', args: [INSPECTOR_PANEL] },
 ];
 export const coasysSpace: TemplateSchema & { id: string } = {
   schemaVersion: 1,

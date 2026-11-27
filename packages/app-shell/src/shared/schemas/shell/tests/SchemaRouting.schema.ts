@@ -6,7 +6,7 @@
  * Routing features exercised:
  *   - Top-level routes with catch-all (*)
  *   - Nested sub-routes with their own $routes outlet
- *   - Navigation via $invoke routeStore.navigate
+ *   - Navigation via $invoke navigation.navigate
  *   - Route parameter display
  */
 import type { TemplateSchema } from '@we/schema-shared';
@@ -53,24 +53,24 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}`} ? 'solid' : 'soft'`,
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}`] },
+                variant: expr`navigation.currentPath == ${`${basePath}`} ? 'solid' : 'soft'`,
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}`] },
               },
               children: ['Home'],
             },
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'soft'`,
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}/route-1`] },
+                variant: expr`navigation.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'soft'`,
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}/route-1`] },
               },
               children: ['Route 1'],
             },
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-2`} ? 'solid' : 'soft'`,
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}/route-2`] },
+                variant: expr`navigation.currentPath == ${`${basePath}/route-2`} ? 'solid' : 'soft'`,
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}/route-2`] },
               },
               children: ['Route 2'],
             },
@@ -78,7 +78,7 @@ export const schemaRoutingTemplate: TemplateSchema = {
               type: 'we-button',
               props: {
                 variant: 'outline',
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}/nonexistent`] },
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}/nonexistent`] },
               },
               children: ['404 test'],
             },
@@ -125,16 +125,16 @@ export const schemaRoutingTemplate: TemplateSchema = {
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'outline'`,
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}/route-1`] },
+                variant: expr`navigation.currentPath == ${`${basePath}/route-1`} ? 'solid' : 'outline'`,
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}/route-1`] },
               },
               children: ['Route 1.0 (Home)'],
             },
             {
               type: 'we-button',
               props: {
-                variant: expr`routeStore.currentPath == ${`${basePath}/route-1/nested`} ? 'solid' : 'outline'`,
-                onClick: { $invoke: 'routeStore.navigate', args: [`${basePath}/route-1/nested`] },
+                variant: expr`navigation.currentPath == ${`${basePath}/route-1/nested`} ? 'solid' : 'outline'`,
+                onClick: { $invoke: 'navigation.navigate', args: [`${basePath}/route-1/nested`] },
               },
               children: ['Route 1.1'],
             },

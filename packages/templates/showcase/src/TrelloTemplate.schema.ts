@@ -68,7 +68,7 @@ const boardsRoute: RouteSchema = {
               props: {
                 variant: 'bare',
                 width: '100%',
-                onClick: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] },
+                onClick: { $invoke: 'navigation.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] },
               },
               children: [
                 {
@@ -168,7 +168,7 @@ const boardRoute: RouteSchema = {
           props: {
             variant: 'ghost',
             size: 'sm',
-            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+            onClick: { $invoke: 'navigation.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }],
         },
@@ -178,7 +178,7 @@ const boardRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.params.id' } },
+                where: { id: { $: 'navigation.params.id' } },
                 limit: 1,
               },
             },
@@ -200,7 +200,7 @@ const boardRoute: RouteSchema = {
           arrangement is an ordered relation.
         */
         taskBoard({
-          boardId: { $: 'routeStore.params.id' },
+          boardId: { $: 'navigation.params.id' },
           entity: 'CollectionBlock',
           where: { kind: KIND.post },
           lanesOnly: true,
@@ -260,7 +260,7 @@ export const trelloTemplate: TemplateSchema = {
           props: {
             variant: 'soft',
             size: 'sm',
-            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+            onClick: { $invoke: 'navigation.navigate', args: ['~/'] },
           },
           children: ['All boards'],
         },

@@ -26,7 +26,7 @@ export type Choice = Required<
 
 /** Switch to a template, by an expression naming its switcher id. */
 export const chooseTemplate = (id: string): SchemaProp => ({
-  $invoke: 'templateStore.switchTemplate',
+  $invoke: 'appearance.switchTemplate',
   args: [{ $: id }],
 });
 
@@ -39,8 +39,8 @@ export function templateChoice(after: SchemaProp[] = []): Choice {
   return {
     icon: { $: 'template.icon' },
     label: { $: 'template.name' },
-    selected: { $: 'template.id == templateStore.currentSwitcherId' },
-    isDefault: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+    selected: { $: 'template.id == appearance.currentSwitcherId' },
+    isDefault: { $: 'template.id == spaceSettings.spaceDefaultTemplateId' },
     select: [chooseTemplate('template.id'), ...after],
     actions: [
       /*
@@ -59,8 +59,8 @@ export function templateChoice(after: SchemaProp[] = []): Choice {
       {
         icon: 'arrow-counter-clockwise',
         tooltip: "Reset panels to this template's layout",
-        when: { $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' },
-        onClick: { $invoke: 'shellStore.resetTemplateLayout' },
+        when: { $: 'template.id == appearance.currentSwitcherId && layout.layoutDirty' },
+        onClick: { $invoke: 'layout.resetTemplateLayout' },
       },
       {
         icon: 'pencil-simple',
@@ -95,15 +95,15 @@ export function templateChoice(after: SchemaProp[] = []): Choice {
  * without every built-in the deployment carries. The rail's picker lists all of them.
  */
 export const SPACE_TEMPLATE_CHOICES = [
-  "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId),",
-  "find(templateStore.switcherGroups, { label: 'Space templates' }).items,",
-  "find(templateStore.switcherGroups, { label: 'My templates' }).items)",
+  "distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId),",
+  "find(appearance.switcherGroups, { label: 'Space templates' }).items,",
+  "find(appearance.switcherGroups, { label: 'My templates' }).items)",
 ].join(' ');
 
 // ── Themes ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Wear a theme here, by an expression naming its id — see the note on `themeChoice`'s `select`. */
-export const chooseTheme = (id: string): SchemaProp => ({ $invoke: 'themeStore.applyTheme', args: [{ $: id }] });
+export const chooseTheme = (id: string): SchemaProp => ({ $invoke: 'appearance.applyTheme', args: [{ $: id }] });
 
 /**
  * A theme row: the theme bound as `theme`. Choosing one does not take `after` — see `select`. Forking
@@ -113,8 +113,8 @@ export function themeChoice(after: SchemaProp[] = []): Choice {
   return {
     icon: iconOr('theme.icon', 'paint-bucket'),
     label: { $: 'theme.name' },
-    selected: { $: 'theme.id == themeStore.currentThemeId' },
-    isDefault: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
+    selected: { $: 'theme.id == appearance.currentThemeId' },
+    isDefault: { $: 'theme.id == spaceSettings.spaceDefaultThemeId' },
     /*
       `applyTheme` rather than `themeStore.setCurrentTheme`: the choice is persisted where it was
       made — pinned to this space, or set as the agent's default when there is no space.
@@ -134,8 +134,8 @@ export function themeChoice(after: SchemaProp[] = []): Choice {
         icon: 'push-pin',
         weight: 'fill',
         tooltip: "Pinned to this space — unpin to follow the space's theme",
-        when: { $: 'themeStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
-        onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
+        when: { $: 'appearance.spaceThemePinned && theme.id == appearance.currentThemeId' },
+        onClick: { $invoke: 'appearance.clearSpaceThemePin' },
       },
       {
         icon: 'pencil-simple',
@@ -160,6 +160,6 @@ export function themeChoice(after: SchemaProp[] = []): Choice {
 
 /** The themes a space's own list offers — its own, the agent's, and the built-in it wears or defaults to. */
 export const SPACE_THEME_CHOICES = [
-  'distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId),',
-  'themeStore.spaceThemes, themeStore.installedThemes)',
+  'distinct(appearance.builtInThemes.filter(t, t.id == spaceSettings.spaceDefaultThemeId || t.id == appearance.currentThemeId),',
+  'appearance.spaceThemes, appearance.installedThemes)',
 ].join(' ');

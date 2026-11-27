@@ -27,19 +27,27 @@ import type { CapabilityProfile } from './types';
  * template may have it. A profile can hold members of several groups (navigation reads the address,
  * which is `view-state`), and the bag is built from groups exactly as before.
  *
+ * ## Names
+ *
+ * A member is written under its profile's namespace — `navigation.params`, `viewState.openPanel`,
+ * `spaceSettings.currentSpace` — never under the store a host keeps it in. Stores are how one host is built
+ * and may be split or merged; the profile is the contract. So the first segment of a name says
+ * whether it travels: a profile namespace does, a store name (`spaceStore.policy`) is WE's alone.
+ *
  * Every member here must be classified in the host's template surface with the same group, kind and
  * `ambient` — the app shell's tests hold the two together.
  */
 export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
   {
     id: 'navigation',
+    namespace: 'navigation',
     version: '1.0.0',
     title: 'Navigation',
     description:
       'The address, and moving around it: where the person is, the query on the page, the spaces they hold and the sections of the one on screen, and going somewhere else.',
     members: [
       {
-        path: 'routeStore.currentPath',
+        path: 'navigation.currentPath',
         kind: 'state',
         group: 'view-state',
         shape: 'string',
@@ -47,7 +55,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.segments',
+        path: 'navigation.segments',
         kind: 'state',
         group: 'view-state',
         shape: 'string[]',
@@ -55,7 +63,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.templateSegments',
+        path: 'navigation.templateSegments',
         kind: 'state',
         group: 'view-state',
         shape: 'string[]',
@@ -64,7 +72,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.params',
+        path: 'navigation.params',
         kind: 'state',
         group: 'view-state',
         shape: 'Record<string, string>',
@@ -73,7 +81,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.navigate',
+        path: 'navigation.navigate',
         kind: 'action',
         group: 'navigation',
         args: [
@@ -86,7 +94,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.setParam',
+        path: 'navigation.setParam',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -100,7 +108,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'routeStore.back',
+        path: 'navigation.back',
         kind: 'action',
         group: 'navigation',
         args: [],
@@ -109,7 +117,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address'],
       },
       {
-        path: 'spaceStore.mySpaces',
+        path: 'navigation.mySpaces',
         kind: 'state',
         group: 'navigation',
         shape: 'Space[]',
@@ -118,7 +126,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['spaces'],
       },
       {
-        path: 'spaceStore.spacePath',
+        path: 'navigation.spacePath',
         kind: 'state',
         group: 'navigation',
         shape: 'string',
@@ -127,7 +135,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.viewNav',
+        path: 'navigation.viewNav',
         kind: 'state',
         group: 'navigation',
         shape: '{ id: string, segment: string, label: string, icon: string, path: string }[]',
@@ -136,7 +144,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.navigateToSpace',
+        path: 'navigation.navigateToSpace',
         kind: 'action',
         group: 'navigation',
         args: [
@@ -149,7 +157,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['address', 'space'],
       },
       {
-        path: 'spaceStore.openRecordRef',
+        path: 'navigation.openRecordRef',
         kind: 'action',
         group: 'navigation',
         args: [{ name: 'ref', type: 'string' }],
@@ -162,30 +170,31 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'address',
-        changes: ['routeStore.currentPath', 'routeStore.segments', 'routeStore.templateSegments', 'routeStore.params'],
+        changes: ['navigation.currentPath', 'navigation.segments', 'navigation.templateSegments', 'navigation.params'],
         description: 'The address changed: a navigation, a query parameter written, or a step through history.',
       },
       {
         name: 'space',
-        changes: ['spaceStore.spacePath', 'spaceStore.viewNav'],
+        changes: ['navigation.spacePath', 'navigation.viewNav'],
         description: 'A different space is on screen, or the sections of this one changed.',
       },
       {
         name: 'spaces',
-        changes: ['spaceStore.mySpaces'],
+        changes: ['navigation.mySpaces'],
         description: 'The person joined, left or made a space, or one they hold changed.',
       },
     ],
   },
   {
     id: 'view-state',
+    namespace: 'viewState',
     version: '1.0.0',
     title: 'View state',
     description:
       'What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.',
     members: [
       {
-        path: 'shellStore.panelInstances',
+        path: 'viewState.panelInstances',
         kind: 'state',
         group: 'view-state',
         shape: '{ id: string, panel: string, inputs: object, title?: string }[]',
@@ -194,7 +203,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['panels'],
       },
       {
-        path: 'shellStore.openTemplatePanel',
+        path: 'viewState.openTemplatePanel',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'panelId', type: 'string' }],
@@ -204,7 +213,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: [],
       },
       {
-        path: 'shellStore.closeTemplatePanel',
+        path: 'viewState.closeTemplatePanel',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'panelId', type: 'string' }],
@@ -214,7 +223,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: [],
       },
       {
-        path: 'shellStore.openPanel',
+        path: 'viewState.openPanel',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -228,7 +237,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['panels'],
       },
       {
-        path: 'shellStore.closePanel',
+        path: 'viewState.closePanel',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'instanceId', type: 'string' }],
@@ -237,7 +246,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['panels'],
       },
       {
-        path: 'shellStore.scrollToId',
+        path: 'viewState.scrollToId',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'id', type: 'string' }],
@@ -246,7 +255,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: [],
       },
       {
-        path: 'clockStore.clocks',
+        path: 'viewState.clocks',
         kind: 'state',
         group: 'view-state',
         shape:
@@ -256,7 +265,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.play',
+        path: 'viewState.play',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'name', type: 'string' }],
@@ -265,7 +274,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.pause',
+        path: 'viewState.pause',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'name', type: 'string' }],
@@ -274,7 +283,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.toggle',
+        path: 'viewState.toggle',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'name', type: 'string' }],
@@ -283,7 +292,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.seek',
+        path: 'viewState.seek',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -295,7 +304,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.seekProgress',
+        path: 'viewState.seekProgress',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -307,7 +316,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.setSpeed',
+        path: 'viewState.setSpeed',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -319,7 +328,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.setLoop',
+        path: 'viewState.setLoop',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -331,7 +340,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['clock'],
       },
       {
-        path: 'clockStore.configure',
+        path: 'viewState.configure',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -350,12 +359,12 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'panels',
-        changes: ['shellStore.panelInstances'],
+        changes: ['viewState.panelInstances'],
         description: 'A panel instance opened or closed.',
       },
       {
         name: 'clock',
-        changes: ['clockStore.clocks'],
+        changes: ['viewState.clocks'],
         description:
           'A clock moved, started, stopped or was reconfigured. A playing clock changes on every frame it moves.',
       },
@@ -363,13 +372,14 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
   },
   {
     id: 'layout',
+    namespace: 'layout',
     version: '1.0.0',
     title: 'Layout',
     description:
       'How the panels a template declared are arranged on a screen that docks them in lanes: which lanes are folded away, whether the person has moved anything from where the template put it, and putting it all back. A host that draws panels one at a time, or not at all, leaves this profile out and still provides view-state.',
     members: [
       {
-        path: 'shellStore.layoutDirty',
+        path: 'layout.layoutDirty',
         kind: 'state',
         group: 'view-state',
         shape: 'boolean',
@@ -378,7 +388,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['layout'],
       },
       {
-        path: 'shellStore.collapsedLanes',
+        path: 'layout.collapsedLanes',
         kind: 'state',
         group: 'view-state',
         shape: 'string[]',
@@ -386,7 +396,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['layout'],
       },
       {
-        path: 'shellStore.toggleLane',
+        path: 'layout.toggleLane',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'lane', type: 'string' }],
@@ -395,7 +405,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['layout'],
       },
       {
-        path: 'shellStore.setLaneCollapsed',
+        path: 'layout.setLaneCollapsed',
         kind: 'action',
         group: 'view-state',
         args: [
@@ -407,7 +417,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['layout'],
       },
       {
-        path: 'shellStore.resetTemplateLayout',
+        path: 'layout.resetTemplateLayout',
         kind: 'action',
         group: 'view-state',
         args: [],
@@ -420,7 +430,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'layout',
-        changes: ['shellStore.layoutDirty', 'shellStore.collapsedLanes'],
+        changes: ['layout.layoutDirty', 'layout.collapsedLanes'],
         description:
           'A declared panel moved, resized, closed or was put back, or a lane folded or unfolded. Closing or reopening a declared panel through view-state is one of these too.',
       },
@@ -428,13 +438,14 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
   },
   {
     id: 'presence',
+    namespace: 'presence',
     version: '1.0.0',
     title: 'Presence',
     description:
       'Who else is in the space on screen right now, and what this person says about themselves to them. Nothing here is stored: it is said while the person is present and gone when they are not.',
     members: [
       {
-        path: 'presenceStore.available',
+        path: 'presence.available',
         kind: 'state',
         group: 'presence',
         shape: 'boolean',
@@ -443,7 +454,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster'],
       },
       {
-        path: 'presenceStore.peers',
+        path: 'presence.peers',
         kind: 'state',
         group: 'presence',
         shape: 'PresentAgent[]',
@@ -452,7 +463,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster'],
       },
       {
-        path: 'presenceStore.online',
+        path: 'presence.online',
         kind: 'state',
         group: 'presence',
         shape: 'PresentAgent[]',
@@ -460,7 +471,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster'],
       },
       {
-        path: 'presenceStore.onlineHere',
+        path: 'presence.onlineHere',
         kind: 'state',
         group: 'presence',
         shape: 'PresentAgent[]',
@@ -468,7 +479,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster', 'address'],
       },
       {
-        path: 'presenceStore.setAvailability',
+        path: 'presence.setAvailability',
         kind: 'action',
         group: 'presence',
         args: [{ name: 'availability', type: "'available' | 'busy' | 'away' | 'invisible'" }],
@@ -476,7 +487,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster'],
       },
       {
-        path: 'presenceStore.setActivity',
+        path: 'presence.setActivity',
         kind: 'action',
         group: 'presence',
         args: [{ name: 'activity', type: '{ type: string, id?: string, nodeId?: string, [key: string]: unknown }' }],
@@ -485,7 +496,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['roster'],
       },
       {
-        path: 'presenceStore.clearActivity',
+        path: 'presence.clearActivity',
         kind: 'action',
         group: 'presence',
         args: [
@@ -499,25 +510,26 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'roster',
-        changes: ['presenceStore.available', 'presenceStore.peers', 'presenceStore.online', 'presenceStore.onlineHere'],
+        changes: ['presence.available', 'presence.peers', 'presence.online', 'presence.onlineHere'],
         description: 'Somebody arrived, left, moved, or changed what they say about themselves.',
       },
       {
         name: 'address',
-        changes: ['presenceStore.onlineHere'],
+        changes: ['presence.onlineHere'],
         description: 'This person moved to another page, so who shares it with them changed.',
       },
     ],
   },
   {
     id: 'identity',
+    namespace: 'identity',
     version: '1.0.0',
     title: 'Identity',
     description:
       'Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.',
     members: [
       {
-        path: 'profileStore.ownProfile',
+        path: 'identity.ownProfile',
         kind: 'state',
         group: 'identity',
         shape:
@@ -527,7 +539,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['profiles'],
       },
       {
-        path: 'profileStore.ownProfileLoaded',
+        path: 'identity.ownProfileLoaded',
         kind: 'state',
         group: 'identity',
         shape: 'boolean',
@@ -535,7 +547,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['profiles'],
       },
       {
-        path: 'profileStore.profiles',
+        path: 'identity.profiles',
         kind: 'state',
         group: 'identity',
         shape: 'AgentProfileSummary[]',
@@ -544,7 +556,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['profiles'],
       },
       {
-        path: 'spaceStore.memberDids',
+        path: 'identity.memberDids',
         kind: 'state',
         group: 'identity',
         shape: 'string[]',
@@ -552,7 +564,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['members'],
       },
       {
-        path: 'spaceStore.mutedDids',
+        path: 'identity.mutedDids',
         kind: 'state',
         group: 'content',
         shape: 'string[]',
@@ -561,47 +573,48 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['muted'],
       },
       {
-        path: 'spaceStore.readMarkers',
+        path: 'identity.readMarkers',
         kind: 'state',
         group: 'content',
         shape: '{ nodeId: string, lastReadAt: string }[]',
         description:
-          'When the viewing person last read each node, one row per node they have opened, in every space. Theirs alone, like the mute list. No row means never read. A list rather than a map keyed by node id: find the row with find(spaceStore.readMarkers, { nodeId: … }).',
+          'When the viewing person last read each node, one row per node they have opened, in every space. Theirs alone, like the mute list. No row means never read. A list rather than a map keyed by node id: find the row with find(identity.readMarkers, { nodeId: … }).',
         events: ['read'],
       },
     ],
     events: [
       {
         name: 'profiles',
-        changes: ['profileStore.ownProfile', 'profileStore.ownProfileLoaded', 'profileStore.profiles'],
+        changes: ['identity.ownProfile', 'identity.ownProfileLoaded', 'identity.profiles'],
         description: 'A profile arrived or changed.',
       },
       {
         name: 'members',
-        changes: ['spaceStore.memberDids'],
+        changes: ['identity.memberDids'],
         description: 'Somebody joined or left the space on screen, or a different space is on screen.',
       },
       {
         name: 'muted',
-        changes: ['spaceStore.mutedDids'],
+        changes: ['identity.mutedDids'],
         description: 'The viewing person muted or unmuted somebody.',
       },
       {
         name: 'read',
-        changes: ['spaceStore.readMarkers'],
+        changes: ['identity.readMarkers'],
         description: 'The viewing person opened a node, so its read marker moved forward.',
       },
     ],
   },
   {
     id: 'space-settings',
+    namespace: 'spaceSettings',
     version: '1.0.0',
     title: 'Space settings',
     description:
       'The space a template is drawn in, what this person sees of it, and their own settings for it. Pinned to the space on screen — a template cannot reach another space through these. Changing the space’s own record — its name, pictures and defaults — is the space’s operations’, not this profile’s.',
     members: [
       {
-        path: 'spaceStore.currentSpace',
+        path: 'spaceSettings.currentSpace',
         kind: 'state',
         group: 'content',
         shape: 'Space | null',
@@ -610,7 +623,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.canAdministerCurrentSpace',
+        path: 'spaceSettings.canAdministerCurrentSpace',
         kind: 'state',
         group: 'navigation',
         shape: 'boolean',
@@ -619,7 +632,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.spaceDefaultTemplateId',
+        path: 'spaceSettings.spaceDefaultTemplateId',
         kind: 'state',
         group: 'space-settings',
         shape: 'string',
@@ -627,7 +640,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.spaceDefaultThemeId',
+        path: 'spaceSettings.spaceDefaultThemeId',
         kind: 'state',
         group: 'space-settings',
         shape: 'string',
@@ -635,7 +648,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.myModuleSettings',
+        path: 'spaceSettings.myModuleSettings',
         kind: 'state',
         group: 'space-settings',
         shape:
@@ -645,7 +658,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['settings'],
       },
       {
-        path: 'spaceStore.prepareSpaceImage',
+        path: 'spaceSettings.prepareSpaceImage',
         kind: 'action',
         group: 'space-settings',
         args: [
@@ -657,7 +670,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: [],
       },
       {
-        path: 'spaceStore.setViewVisible',
+        path: 'spaceSettings.setViewVisible',
         kind: 'action',
         group: 'space-settings',
         args: [
@@ -669,7 +682,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['space'],
       },
       {
-        path: 'spaceStore.setModuleVisible',
+        path: 'spaceSettings.setModuleVisible',
         kind: 'action',
         group: 'space-settings',
         args: [
@@ -681,7 +694,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: [],
       },
       {
-        path: 'spaceStore.setMyModuleSetting',
+        path: 'spaceSettings.setMyModuleSetting',
         kind: 'action',
         group: 'space-settings',
         args: [
@@ -697,29 +710,30 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
       {
         name: 'space',
         changes: [
-          'spaceStore.currentSpace',
-          'spaceStore.canAdministerCurrentSpace',
-          'spaceStore.spaceDefaultTemplateId',
-          'spaceStore.spaceDefaultThemeId',
+          'spaceSettings.currentSpace',
+          'spaceSettings.canAdministerCurrentSpace',
+          'spaceSettings.spaceDefaultTemplateId',
+          'spaceSettings.spaceDefaultThemeId',
         ],
         description: 'The space on screen changed, or a different one is on screen.',
       },
       {
         name: 'settings',
-        changes: ['spaceStore.myModuleSettings'],
+        changes: ['spaceSettings.myModuleSettings'],
         description: 'A setting changed at any level this person’s value resolves through.',
       },
     ],
   },
   {
     id: 'appearance',
+    namespace: 'appearance',
     version: '1.0.0',
     title: 'Appearance',
     description:
       'Which template and theme this person is looking at, and what they may choose between: the templates and themes on offer here, the ones on screen, switching between them, and this person’s own choice for the space on screen. Choosing is always this person’s own — it changes what they see and nothing anybody else does. A space’s defaults are its record’s, and change through operations.',
     members: [
       {
-        path: 'templateStore.switcherGroups',
+        path: 'appearance.switcherGroups',
         kind: 'state',
         group: 'appearance',
         shape: '{ label: string, items: { id: string, name: string, icon: string, editable: boolean }[] }[]',
@@ -728,7 +742,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['templates'],
       },
       {
-        path: 'templateStore.currentSwitcherId',
+        path: 'appearance.currentSwitcherId',
         kind: 'state',
         group: 'appearance',
         shape: 'string',
@@ -736,7 +750,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['template'],
       },
       {
-        path: 'templateStore.templateOverrideOptions',
+        path: 'appearance.templateOverrideOptions',
         kind: 'state',
         group: 'appearance',
         shape: '{ label: string, value: string }[]',
@@ -745,7 +759,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['templates'],
       },
       {
-        path: 'themeStore.builtInThemes',
+        path: 'appearance.builtInThemes',
         kind: 'state',
         group: 'appearance',
         shape: 'Theme[]',
@@ -753,7 +767,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['themes'],
       },
       {
-        path: 'themeStore.installedThemes',
+        path: 'appearance.installedThemes',
         kind: 'state',
         group: 'appearance',
         shape: 'Theme[]',
@@ -761,7 +775,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['themes'],
       },
       {
-        path: 'themeStore.spaceThemes',
+        path: 'appearance.spaceThemes',
         kind: 'state',
         group: 'appearance',
         shape: 'Theme[]',
@@ -769,7 +783,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['themes'],
       },
       {
-        path: 'themeStore.themeOverrideOptions',
+        path: 'appearance.themeOverrideOptions',
         kind: 'state',
         group: 'appearance',
         shape: '{ label: string, value: string }[]',
@@ -778,7 +792,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['themes'],
       },
       {
-        path: 'themeStore.currentThemeId',
+        path: 'appearance.currentThemeId',
         kind: 'state',
         group: 'view-state',
         shape: 'string',
@@ -787,7 +801,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['theme'],
       },
       {
-        path: 'themeStore.spaceThemePinned',
+        path: 'appearance.spaceThemePinned',
         kind: 'state',
         group: 'appearance',
         shape: 'boolean',
@@ -796,7 +810,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['theme'],
       },
       {
-        path: 'templateStore.switchTemplate',
+        path: 'appearance.switchTemplate',
         kind: 'action',
         group: 'appearance',
         args: [{ name: 'id', type: 'string' }],
@@ -805,7 +819,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['template', 'theme'],
       },
       {
-        path: 'templateStore.setSpaceTemplateOverride',
+        path: 'appearance.setSpaceTemplateOverride',
         kind: 'action',
         group: 'appearance',
         args: [{ name: 'value', type: 'string' }],
@@ -814,7 +828,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['template', 'templates', 'theme'],
       },
       {
-        path: 'themeStore.applyTheme',
+        path: 'appearance.applyTheme',
         kind: 'action',
         group: 'appearance',
         args: [{ name: 'themeId', type: 'string' }],
@@ -823,7 +837,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['theme'],
       },
       {
-        path: 'themeStore.clearSpaceThemePin',
+        path: 'appearance.clearSpaceThemePin',
         kind: 'action',
         group: 'appearance',
         args: [],
@@ -831,7 +845,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['theme'],
       },
       {
-        path: 'themeStore.setSpaceThemeOverride',
+        path: 'appearance.setSpaceThemeOverride',
         kind: 'action',
         group: 'appearance',
         args: [{ name: 'value', type: 'string' }],
@@ -843,29 +857,29 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'templates',
-        changes: ['templateStore.switcherGroups', 'templateStore.templateOverrideOptions'],
+        changes: ['appearance.switcherGroups', 'appearance.templateOverrideOptions'],
         description:
           'The templates on offer changed — a different space is on screen, or one was added or removed — or what the space and this person default to did.',
       },
       {
         name: 'template',
-        changes: ['templateStore.currentSwitcherId'],
+        changes: ['appearance.currentSwitcherId'],
         description: 'A different template is on screen.',
       },
       {
         name: 'themes',
         changes: [
-          'themeStore.builtInThemes',
-          'themeStore.installedThemes',
-          'themeStore.spaceThemes',
-          'themeStore.themeOverrideOptions',
+          'appearance.builtInThemes',
+          'appearance.installedThemes',
+          'appearance.spaceThemes',
+          'appearance.themeOverrideOptions',
         ],
         description:
           'The themes on offer changed — a different space is on screen, or one was added or removed — or what the space and this person default to did.',
       },
       {
         name: 'theme',
-        changes: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
+        changes: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
         description: 'A different theme is on screen, or this person’s choice for the space on screen changed.',
       },
     ],

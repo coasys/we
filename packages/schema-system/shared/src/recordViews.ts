@@ -92,8 +92,8 @@ export function recordViewCandidates(
 
 /** The expression a candidate is chosen by: the entity in the path, and the kind in the address. */
 function condition(candidate: RecordViewCandidate): string {
-  const entity = `last(routeStore.segments) == '${candidate.entity}'`;
-  return candidate.kind ? `${entity} && routeStore.params.kind == '${candidate.kind}'` : entity;
+  const entity = `last(navigation.segments) == '${candidate.entity}'`;
+  return candidate.kind ? `${entity} && navigation.params.kind == '${candidate.kind}'` : entity;
 }
 
 /**

@@ -57,7 +57,7 @@ const back = (label: string, path: string): SchemaNode => ({
     variant: 'ghost',
     size: 'sm',
     alignSelf: 'start',
-    onClick: { $invoke: 'routeStore.navigate', args: [path] },
+    onClick: { $invoke: 'navigation.navigate', args: [path] },
   },
   children: [{ type: 'we-icon', props: { name: 'caret-left' } }, label],
 });
@@ -196,7 +196,7 @@ export const keyLogSummary: SchemaNode[] = [
         props: {
           variant: 'soft',
           size: 'sm',
-          onClick: { $invoke: 'routeStore.navigate', args: ['/security/key-log'] },
+          onClick: { $invoke: 'navigation.navigate', args: ['/security/key-log'] },
         },
         children: ['View log'],
       },

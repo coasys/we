@@ -14,7 +14,7 @@ import { DNA_FOCUS, dnaPage, IN_CANVAS, ON_DNA_PAGE, VIEW_PARAM } from './paths.
 const showTree: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "'tree' in shellStore.collapsedLanes" },
+    condition: { $: "'tree' in layout.collapsedLanes" },
     then: {
       type: 'we-tooltip',
       props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -26,7 +26,7 @@ const showTree: SchemaNode = {
             size: 'md',
             square: true,
             label: 'Show the sidebar',
-            onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+            onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
           },
           children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
         },
@@ -52,13 +52,13 @@ const modeSwitch: SchemaNode = {
       size: 'sm',
       variant: { $: `${canvas ? '' : '!'}(${IN_CANVAS}) ? 'soft' : 'ghost'` },
       onClick: canvas
-        ? { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, 'canvas'] }
+        ? { $invoke: 'navigation.setParam', args: [VIEW_PARAM, 'canvas'] }
         : {
             // Decided before anything moves: the page's address carries no `view`, so it is Page mode too.
             $if: {
               condition: { $: `${DNA_FOCUS} && !(${ON_DNA_PAGE})` },
               then: dnaPage(DNA_FOCUS),
-              else: { $invoke: 'routeStore.setParam', args: [VIEW_PARAM, null] },
+              else: { $invoke: 'navigation.setParam', args: [VIEW_PARAM, null] },
             },
           },
     },

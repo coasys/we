@@ -1389,14 +1389,14 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   // entry lit — `/spaces/space` is still Spaces & data. Exact equality left the nav with nothing
   // selected there, which reads as having navigated out of settings altogether.
   const selected =
-    path === '/' ? { $: "routeStore.currentPath == '/'" } : expr`routeStore.segments[0] == ${path.slice(1)}`;
+    path === '/' ? { $: "navigation.currentPath == '/'" } : expr`navigation.segments[0] == ${path.slice(1)}`;
   return {
     type: 'we-button',
     props: {
       variant: expr`${selected} ? 'soft' : 'ghost'`,
       width: '100%',
       ax: 'start',
-      onClick: { $invoke: 'routeStore.navigate', args: [path] },
+      onClick: { $invoke: 'navigation.navigate', args: [path] },
     },
     children: [
       { type: 'we-icon', props: { name: icon } },

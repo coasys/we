@@ -134,17 +134,17 @@ describe('finding the references at all', () => {
   });
 
   it('judges a deep path by its store and member, as the bag does', () => {
-    // `spaceStore.currentSpace.name` — the bag filters members, and everything under one travels
+    // `spaceSettings.currentSpace.name` — the bag filters members, and everything under one travels
     // with it, so only the first two segments can decide.
-    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } }]);
+    const schema = wellFormed([{ type: 'we-text', props: { text: { $: 'spaceSettings.currentSpace.name' } } }]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).blocked).toEqual([]);
   });
 
   it('reports the groups a template actually uses, for an install prompt', () => {
     const schema = wellFormed([
-      { type: 'we-text', props: { text: { $: 'spaceStore.currentSpace.name' } } },
-      { type: 'we-button', props: { onClick: { $invoke: 'routeStore.navigate', args: ['/'] } } },
+      { type: 'we-text', props: { text: { $: 'spaceSettings.currentSpace.name' } } },
+      { type: 'we-button', props: { onClick: { $invoke: 'navigation.navigate', args: ['/'] } } },
     ]);
 
     expect(inspectTemplateSurface(schema, SPACE_TIER).groups.sort()).toEqual(['content', 'navigation']);

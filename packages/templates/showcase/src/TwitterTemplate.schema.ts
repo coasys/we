@@ -145,12 +145,12 @@ const leftRail: SchemaNode = {
           type: 'we-button',
           props: {
             variant: {
-              $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
+              $: "(nav.segment ? nav.segment in navigation.templateSegments : !count(navigation.templateSegments)) ? 'soft' : 'ghost'",
             },
             width: '100%',
             ax: 'start',
             gap: '300',
-            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+            onClick: { $invoke: 'navigation.navigate', args: [{ $: 'nav.path' }] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -198,7 +198,7 @@ const postCard = (opts: { clickable?: boolean }): SchemaNode => {
         props: {
           variant: 'bare',
           width: '100%',
-          onClick: { $invoke: 'routeStore.navigate', args: ['~/post', { $: '{ query: { id: post.id } }' }] },
+          onClick: { $invoke: 'navigation.navigate', args: ['~/post', { $: '{ query: { id: post.id } }' }] },
         },
         children: [
           {
@@ -315,7 +315,7 @@ const postDetail: RouteSchema = {
         item: {
           $query: {
             entity: 'CollectionBlock',
-            where: { id: { $: 'routeStore.params.id' } },
+            where: { id: { $: 'navigation.params.id' } },
             include: { signals: true },
             limit: 1,
           },
@@ -349,7 +349,7 @@ const postDetail: RouteSchema = {
           props: { px: '400', pb: '600', width: '100%' },
           children: [
             commentThread({
-              anchorId: { $: 'routeStore.params.id' },
+              anchorId: { $: 'navigation.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {

@@ -23,7 +23,7 @@ import { createRouteStore, type RouteStore } from '../src/shared/stores/RouteSto
 
 const go = (id: string, to: string): SchemaNode => ({
   type: 'button',
-  props: { id, onClick: { $invoke: 'routeStore.navigate', args: [to] } },
+  props: { id, onClick: { $invoke: 'navigation.navigate', args: [to] } },
   children: [id],
 });
 
@@ -56,7 +56,8 @@ function mount(): RouteStore {
     routeStore = createRouteStore({ reactivity: solidReactivity, platform: createBrowserPlatform() });
     return null;
   }
-  const stores = () => ({ routeStore }) as never;
+  // `navigation` is what a press calls; the renderer resolves a drawn href through the route store.
+  const stores = () => ({ navigation: routeStore, routeStore }) as never;
   function Layout(props: ParentProps) {
     const navigate = useNavigate();
     const location = useLocation();

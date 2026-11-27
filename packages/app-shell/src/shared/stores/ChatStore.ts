@@ -7,7 +7,7 @@
  *
  * ## Where a chat opens is a viewport question, not two features
  *
- * Given the room, a chat is a panel like any other — `shellStore.openPanel` on a declaration the
+ * Given the room, a chat is a panel like any other — `viewState.openPanel` on a declaration the
  * app template carries (`chat-global` docks at the right, `chat-space` floats over the space, and
  * both can then be moved, resized, docked and shrunk the way every panel can). Below
  * `NARROW_VIEWPORT_PX` a card over the page leaves nothing usable of either, so the same request

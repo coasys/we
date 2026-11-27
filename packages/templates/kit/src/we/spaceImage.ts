@@ -10,12 +10,12 @@
 import type { SchemaProp } from '@we/schema-shared';
 
 export const spaceImageChange = (field: 'avatar' | 'coverImage'): SchemaProp => ({
-  $invoke: 'spaceStore.prepareSpaceImage',
+  $invoke: 'spaceSettings.prepareSpaceImage',
   args: [field, { $: 'arg' }],
   onSuccess: [
     {
       $invoke: 'ops.core.setSpaceImage',
-      args: [{ $: `{ space: spaceStore.currentSpace.id, field: '${field}', image: result }` }],
+      args: [{ $: `{ space: spaceSettings.currentSpace.id, field: '${field}', image: result }` }],
     },
   ],
 });

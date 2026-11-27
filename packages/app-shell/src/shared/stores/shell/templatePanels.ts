@@ -155,7 +155,7 @@ export function createShellTemplatePanels(deps: {
             to this store's real surface, where `close:interpretation` is not a member. It rendered, took
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
-          closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: [panel.id] },
+          closeAction: { $invoke: 'viewState.closeTemplatePanel', args: [panel.id] },
           // What a tab strip calls it, when it shares a seat.
           title: panel.title,
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
@@ -206,7 +206,7 @@ export function createShellTemplatePanels(deps: {
           size: `size:${key}`,
           float: `float:${key}`,
           min: `min:${key}`,
-          closeAction: { $invoke: 'shellStore.closePanel', args: [instance.id] },
+          closeAction: { $invoke: 'viewState.closePanel', args: [instance.id] },
           title: instance.title ?? panel.title,
           storeRef: 'shellStore',
           node: panel.node as SchemaNode,

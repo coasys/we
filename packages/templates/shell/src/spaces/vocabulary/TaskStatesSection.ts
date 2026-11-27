@@ -213,7 +213,7 @@ const EDITING = 'find(spaceStore.taskStates, { slug: local.editTaskStateSlug })'
 const agreementFields: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+    condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
     then: {
       type: 'Column',
       props: { gap: '300', width: '100%' },
@@ -488,7 +488,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
       */
       type: '$if',
       props: {
-        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+        condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
         then: {
           type: 'we-form-field',
           props: {
@@ -499,7 +499,7 @@ export const taskStatesSection: SchemaNode = sectionCard({
             {
               type: 'we-select',
               props: {
-                value: { $: "spaceStore.currentSpace.taskWorkflowRule ?? ''" },
+                value: { $: "spaceSettings.currentSpace.taskWorkflowRule ?? ''" },
                 options: {
                   $: "[{ label: 'To any state', value: '' }, { label: 'On to the next state', value: 'next' }, { label: 'On, or back one', value: 'next-and-back' }]",
                 },

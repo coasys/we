@@ -1,7 +1,7 @@
 /**
  * A space's People page draws its members and their roles from records.
  *
- * The members are `spaceStore.memberDids` joined to `profileStore.profiles`, and the roles the space's
+ * The members are `identity.memberDids` joined to `identity.profiles`, and the roles the space's
  * `Role` and `RoleGrant` records — so this is the page a template now writes in expressions rather
  * than reading the store's view of it. Checked as a person reads it:
  *

@@ -17,7 +17,7 @@
  * **The mute filter, unconditionally.** Every feed drops muted authors, and it is not optional. A
  * feed either carries that filter from its first use or the ones written later quietly do not, and
  * "the block list works everywhere except the profile grid" is precisely the failure a shared
- * fragment exists to prevent. See `spaceStore.mutedDids`.
+ * fragment exists to prevent. See `identity.mutedDids`.
  *
  * **The loaded gate.** A query-backed list is empty on its first frame and full a moment later, so
  * an empty state rendered without gating asserts "nothing here" about a list that has not answered
@@ -33,7 +33,7 @@ export interface CollectionFeedOptions {
   /**
    * Id of the parent whose `children` these are. Omit for collections loose in the space.
    *
-   * Usually a route segment (`{ $: 'routeStore.segments[1]' }`) or a name `$each` bound.
+   * Usually a route segment (`{ $: 'navigation.segments[1]' }`) or a name `$each` bound.
    */
   anchorId?: AnchorId;
   /** Context key for each row, as `$each`'s `as`. Also names the hoisted results (`<as>Rows`). */
@@ -93,7 +93,7 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
         page of twenty posts show fifteen whenever five were muted — the limit is applied by the
         backend, so anything removed afterwards is a hole in the page rather than a shorter list.
       */
-      author: { not: { $: 'spaceStore.mutedDids' } },
+      author: { not: { $: 'identity.mutedDids' } },
     },
     order: { createdAt: opts.order ?? 'desc' },
     ...(paged && { limit: { $: `local.${sizeField}` } }),

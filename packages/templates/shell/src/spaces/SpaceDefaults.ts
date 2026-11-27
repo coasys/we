@@ -93,7 +93,7 @@ const templateRow = defaultPickerRow({
   as: 'template',
   icon: { $: 'template.meta.icon' },
   name: { $: 'template.meta.name' },
-  // The row's own space, not `spaceStore.spaceDefaultTemplateId` — that reads the space on screen,
+  // The row's own space, not `spaceSettings.spaceDefaultTemplateId` — that reads the space on screen,
   // which would mark the wrong row as default on every other space's page.
   currentDefault: 'space.defaultTemplateId',
   operation: 'ops.core.setSpaceDefaultTemplate',
@@ -151,7 +151,7 @@ const hiddenThemeNote: SchemaNode = {
                   props: {
                     variant: 'soft',
                     size: 'sm',
-                    onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
+                    onClick: { $invoke: 'appearance.clearSpaceThemePin' },
                   },
                   children: ["Use the space's theme"],
                 },
@@ -230,7 +230,7 @@ export const spaceDefaultsSection: SchemaNode = {
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
       hiddenThemeNote,
-      group('Built-in', { $: 'themeStore.builtInThemes' }, 'theme', themeRow),
+      group('Built-in', { $: 'appearance.builtInThemes' }, 'theme', themeRow),
       /*
         "Follow system" is not a built-in theme — it resolves to one rather than being one, which is
         why `themeStore` keeps it in a list of its own — but it is a choice made in the same place,
@@ -245,8 +245,8 @@ export const spaceDefaultsSection: SchemaNode = {
       {
         type: '$if',
         props: {
-          condition: { $: 'count(themeStore.spaceThemes)' },
-          then: group('In this space', { $: 'themeStore.spaceThemes' }, 'theme', themeRow),
+          condition: { $: 'count(appearance.spaceThemes)' },
+          then: group('In this space', { $: 'appearance.spaceThemes' }, 'theme', themeRow),
         },
       },
       browseToggle('showThemeMarketplace', themeMarketplaceBrowser),

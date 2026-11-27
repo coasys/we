@@ -144,7 +144,7 @@ const sectionRow: SchemaNode = {
                 // Bare `$event.detail`: an operator object around it resolves at render time, before
                 // the event exists. Same trap as the module switches.
                 onChange: {
-                  $invoke: 'spaceStore.setViewVisible',
+                  $invoke: 'spaceSettings.setViewVisible',
                   args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.id' }],
                 },
               },

@@ -1008,7 +1008,7 @@ export default function TemplateProvider() {
   const notHereNode = {
     type: '$if',
     props: {
-      condition: { $: 'count(spaceStore.viewNav)' },
+      condition: { $: 'count(navigation.viewNav)' },
       then: {
         type: 'Column',
         props: { flex: '1', height: '100%', ax: 'center', ay: 'center', gap: '400', p: '600', bg: 'page' },
@@ -1028,9 +1028,9 @@ export default function TemplateProvider() {
             type: 'we-button',
             props: {
               variant: 'solid',
-              onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'first(spaceStore.viewNav).path' }] },
+              onClick: { $invoke: 'navigation.navigate', args: [{ $: 'first(navigation.viewNav).path' }] },
             },
-            children: [{ $: '`Go to ${first(spaceStore.viewNav).label}`' }],
+            children: [{ $: '`Go to ${first(navigation.viewNav).label}`' }],
           },
         ],
       },

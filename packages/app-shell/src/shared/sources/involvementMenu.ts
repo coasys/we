@@ -52,9 +52,9 @@ export interface InvolvementMenuOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.offeredInvolvementTypes`. */
   types?: Kind[] | null;
-  /** Who is in the space, by DID — `spaceStore.memberDids`. */
+  /** Who is in the space, by DID — `identity.memberDids`. */
   members?: string[] | null;
-  /** `profileStore.profiles`: who each member is, and somebody who holds a part and is no longer one. */
+  /** `identity.profiles`: who each member is, and somebody who holds a part and is no longer one. */
   profiles?: Member[] | null;
   /** The viewer's DID. */
   me?: string | null;

@@ -71,7 +71,7 @@ export const LENS_PARAM = 'colour';
  * What the address says, with absent meaning the default. A ternary rather than `??`, because the
  * switcher carries the parameter from page to page and an empty one must read as the default too.
  */
-const LENS = `(routeStore.params.${LENS_PARAM} ? routeStore.params.${LENS_PARAM} : 'kind')`;
+const LENS = `(navigation.params.${LENS_PARAM} ? navigation.params.${LENS_PARAM} : 'kind')`;
 
 /** Whether each lens is on — expressions, readable wherever the address is. */
 export const BY_KIND = `contains(${LENS}, 'kind')`;
@@ -85,7 +85,7 @@ export const NO_LENS = `!(${BY_KIND} || ${BY_STATE} || ${BY_ORDER})`;
  * explicit `?` drops whatever the address held, so each one has to carry this or the lens is lost
  * on the first click between pages.
  */
-export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=' + routeStore.params.${LENS_PARAM} : ''}`;
+export const LENS_QUERY = `\${navigation.params.${LENS_PARAM} ? '&${LENS_PARAM}=' + navigation.params.${LENS_PARAM} : ''}`;
 
 /**
  * The kinds a reader has put away from the canvas, held in the address beside the lenses — a panel
@@ -95,13 +95,13 @@ export const LENS_QUERY = `\${routeStore.params.${LENS_PARAM} ? '&${LENS_PARAM}=
 export const HIDE_PARAM = 'hide';
 
 /** The hidden kinds, as a list. */
-export const HIDDEN_KINDS = `split(routeStore.params.${HIDE_PARAM})`;
+export const HIDDEN_KINDS = `split(navigation.params.${HIDE_PARAM})`;
 
 /** Put one kind away, or bring it back. Showing the last hidden kind writes nothing at all. */
 export function toggleKindShown(kind: string): SchemaProp {
   const hidden = `(${kind} in ${HIDDEN_KINDS})`;
   return {
-    $invoke: 'routeStore.setParam',
+    $invoke: 'navigation.setParam',
     args: [
       HIDE_PARAM,
       {
@@ -123,7 +123,7 @@ export function toggleKindShown(kind: string): SchemaProp {
 export const FOLD_PARAM = 'fold';
 
 /** The folded cards, as a list — what the canvas hands to the graph. */
-export const FOLDED_CARDS = `split(routeStore.params.${FOLD_PARAM})`;
+export const FOLDED_CARDS = `split(navigation.params.${FOLD_PARAM})`;
 
 /** How many cards are folded, for a reader who has lost track of one. */
 export const FOLD_COUNT = `count(${FOLDED_CARDS})`;
@@ -137,7 +137,7 @@ export const FOLD_COUNT = `count(${FOLDED_CARDS})`;
  * nobody has folded has a clean address.
  */
 export const FOLD_FROM_GRAPH: SchemaProp = {
-  $invoke: 'routeStore.setParam',
+  $invoke: 'navigation.setParam',
   args: [
     FOLD_PARAM,
     {
@@ -159,10 +159,10 @@ export const FOLD_FROM_GRAPH: SchemaProp = {
  * Ids from another call are no trouble: a fold naming a card this canvas does not hold is ignored,
  * so carrying the parameter across a change of call costs a long address and nothing else.
  */
-export const FOLD_QUERY = `\${routeStore.params.${FOLD_PARAM} ? '&${FOLD_PARAM}=' + routeStore.params.${FOLD_PARAM} : ''}`;
+export const FOLD_QUERY = `\${navigation.params.${FOLD_PARAM} ? '&${FOLD_PARAM}=' + navigation.params.${FOLD_PARAM} : ''}`;
 
 /** Bring every folded card back — see `foldSection` for why this exists at all. */
-export const UNFOLD_ALL: SchemaProp = { $invoke: 'routeStore.setParam', args: [FOLD_PARAM, null] };
+export const UNFOLD_ALL: SchemaProp = { $invoke: 'navigation.setParam', args: [FOLD_PARAM, null] };
 
 /**
  * Turn one lens on or off, leaving the other as it is.
@@ -179,7 +179,7 @@ export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
     replaces the heat map — which the arithmetic below already does, since neither is in `order`.
   */
   if (lens === 'order') {
-    return { $invoke: 'routeStore.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
+    return { $invoke: 'navigation.setParam', args: [LENS_PARAM, { $: `${BY_ORDER} ? '' : 'order'` }] };
   }
   const other = lens === 'kind' ? 'state' : 'kind';
   const on = `contains(${LENS}, '${lens}')`;
@@ -189,7 +189,7 @@ export function toggleLens(lens: 'kind' | 'state' | 'order'): SchemaProp {
   const onlyOther = other === 'kind' ? "''" : `'${other}'`;
   const onlyThis = lens === 'kind' ? "''" : `'${lens}'`;
   return {
-    $invoke: 'routeStore.setParam',
+    $invoke: 'navigation.setParam',
     args: [LENS_PARAM, { $: `${on} ? (${otherOn} ? ${onlyOther} : 'none') : (${otherOn} ? ${both} : ${onlyThis})` }],
   };
 }
@@ -646,7 +646,7 @@ function canvasRow(opts: {
 }): SchemaNode {
   const write = (color: SchemaProp): SchemaProp => ({
     $invoke: 'recordStore.setSpaceTypeColor',
-    args: [{ $: 'spaceStore.currentSpace.id' }, opts.key, color],
+    args: [{ $: 'spaceSettings.currentSpace.id' }, opts.key, color],
   });
   return keyRow({
     mark: picker({ $: opts.fill }, write({ $: 'event.detail' })),
@@ -684,7 +684,7 @@ const canvasRows: SchemaNode = {
  * What the tree is ordered by, from the address — the canvas's own `order`, which it keeps there so a
  * panel can read it. Absent is the canvas's default, as arranged.
  */
-const TREE_ORDER = `(routeStore.params.order ? routeStore.params.order : 'manual')`;
+const TREE_ORDER = `(navigation.params.order ? navigation.params.order : 'manual')`;
 const BY_DATE = `(${TREE_ORDER} == 'date' || ${TREE_ORDER} == 'newest')`;
 
 /** What the two ends of the scale are, in words — dates run old to new, a reaction least to most. */
@@ -790,7 +790,7 @@ function kindRow(kind: string): SchemaNode {
       { $: kindColour(kind) },
       {
         $invoke: 'recordStore.setSpaceTypeColor',
-        args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
+        args: [{ $: 'spaceSettings.currentSpace.id' }, { $: kind }, { $: 'event.detail' }],
       },
     ),
     icon: { $: kindIcon(kind) },
@@ -805,7 +805,7 @@ function kindRow(kind: string): SchemaNode {
           { $: kindChosen(kind) },
           {
             $invoke: 'recordStore.setSpaceTypeColor',
-            args: [{ $: 'spaceStore.currentSpace.id' }, { $: kind }, ''],
+            args: [{ $: 'spaceSettings.currentSpace.id' }, { $: kind }, ''],
           },
         ),
         shownToggle(kind),
@@ -955,7 +955,7 @@ const stateRow: SchemaNode = keyRow({
  * The colours are the canvas's now — the board and the calendar draw plain cards — so the lenses and
  * the legend answer nothing on the other two pages.
  */
-const ON_CANVAS = "'canvas' in routeStore.segments";
+const ON_CANVAS = "'canvas' in navigation.segments";
 
 /**
  * The key, as a panel.
@@ -1210,7 +1210,7 @@ export function keyPanel(opts: {
                     aside: {
                       type: '$if',
                       props: {
-                        condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                        condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
                         then: {
                           type: 'we-button',
                           props: {

@@ -179,7 +179,7 @@ export function createProfileStore(deps: ProfileStoreDeps): ProfileStore {
    * and a name that is present on most rows is worse than one that is absent from all of them.
    *
    * This is the single decoration point for everything downstream: `spaceStore.members` and
-   * `presenceStore.peers` are both built by mapping over this accessor, and `$identities` — which
+   * `presence.peers` are both built by mapping over this accessor, and `$identities` — which
    * backs the `$agent` block and the feature-module identity port — is bound to it too. So one
    * derived field reaches every list of people in the app, and no template has to spell a name out
    * of its parts again.

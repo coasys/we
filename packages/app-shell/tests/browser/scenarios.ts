@@ -2196,10 +2196,10 @@ const coasysBar = (): Scenario => {
       children: [
         viewBar(
           [
-            { label: 'Social DNA', onClick: { $invoke: 'routeStore.navigate', args: ['/dna'] } },
+            { label: 'Social DNA', onClick: { $invoke: 'navigation.navigate', args: ['/dna'] } },
             {
               label: 'Signal types',
-              onClick: { $invoke: 'routeStore.navigate', args: ['/dna?dna=model%7CSignalType'] },
+              onClick: { $invoke: 'navigation.navigate', args: ['/dna?dna=model%7CSignalType'] },
             },
             { label: 'Like' },
           ],
@@ -2233,7 +2233,7 @@ const coasysCallBar = (live = true): Scenario => {
       props: { width: '900px', bg: 'page' },
       children: [
         viewBar(
-          [{ label: 'Calls', onClick: { $invoke: 'routeStore.navigate', args: ['/calls'] } }, { label: 'Standup' }],
+          [{ label: 'Calls', onClick: { $invoke: 'navigation.navigate', args: ['/calls'] } }, { label: 'Standup' }],
           'phone',
           callBarAside("'call-1'"),
         ),

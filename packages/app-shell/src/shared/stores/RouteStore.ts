@@ -38,7 +38,7 @@ export interface RouteStore {
   templateSegments: Accessor<string[]>;
   /**
    * The URL's query parameters, reactive. Read from schemas as
-   * `{ $: 'routeStore.params.<name>' }` — view state that belongs in the
+   * `{ $: 'navigation.params.<name>' }` — view state that belongs in the
    * URL (selected content type, sort, filters) lives here so a link reproduces
    * the view for whoever receives it. See docs/architecture/routing-and-view-state.md.
    */
@@ -57,7 +57,7 @@ export interface RouteStore {
    * Lend the router's `navigate`. Returns the disposer — hand it to `onCleanup`.
    *
    * Without one, a layout that unmounted (a template switch is exactly that) left this holding the
-   * dead router's function, and every subsequent `routeStore.navigate` went to a router that no
+   * dead router's function, and every subsequent `navigation.navigate` went to a router that no
    * longer renders anything: a link that visibly does nothing, with no warning, because the slot
    * was full. Clearing it restores the honest "Navigate function not available yet" instead.
    */
@@ -236,7 +236,7 @@ export function createRouteStore({
    * A location change that alters only the query is one the router makes and nothing else here sees
    * — the popstate listener below covers Back/Forward over `setParam`'s own history entries, which
    * the router never sees, and the two gaps are not the same one. Missing this leaves
-   * `routeStore.params` describing the page you came from: two record pages differ only by `?id=`,
+   * `navigation.params` describing the page you came from: two record pages differ only by `?id=`,
    * so following a link from one to another rendered the first record's content under the second
    * record's URL.
    */

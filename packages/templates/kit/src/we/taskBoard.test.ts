@@ -59,7 +59,7 @@ describe('the task board', () => {
   it('draws from the pool less what nobody has kept, while the reader hides it', () => {
     // Before the board is worked out, so the counts and Unplaced agree with what is shown.
     expect(json).toContain(
-      "records: ((routeStore.params.suggestions == 'hide') ? local.pool.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.pool)",
+      "records: ((navigation.params.suggestions == 'hide') ? local.pool.filter(r, !(r.id in modules.transcribe.unconfirmedIds)) : local.pool)",
     );
   });
 
@@ -220,16 +220,16 @@ describe('a board read by who is on the work', () => {
 
 describe('selecting a card, and adding a column', () => {
   const select = {
-    selected: 'routeStore.params.card',
-    onSelect: { $invoke: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+    selected: 'navigation.params.card',
+    onSelect: { $invoke: 'navigation.setParam', args: ['card', { $: 'card.id' }] },
   };
   const selectable = JSON.stringify(taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, select }));
 
   it('selects on a press and draws the selected card in the accent', () => {
-    expect(selectable).toContain('"onClick":{"$invoke":"routeStore.setParam","args":["card",{"$":"card.id"}]}');
-    expect(selectable).toContain("(card.id == routeStore.params.card) ? '1px solid accent'");
+    expect(selectable).toContain('"onClick":{"$invoke":"navigation.setParam","args":["card",{"$":"card.id"}]}');
+    expect(selectable).toContain("(card.id == navigation.params.card) ? '1px solid accent'");
     // And a board that selects nothing has no press to answer.
-    expect(json).not.toContain('routeStore.params.card');
+    expect(json).not.toContain('navigation.params.card');
   });
 
   it('offers a new column after the last one, and in the empty state, never under the board', () => {

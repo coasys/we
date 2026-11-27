@@ -299,20 +299,20 @@ export const seedBundles: Bundle[] = [
                                                     px: { $: 'local.railInset' },
                                                     label: { $: 'space.name' },
                                                     onClick: {
-                                                      $invoke: 'spaceStore.navigateToSpace',
+                                                      $invoke: 'navigation.navigateToSpace',
                                                       args: [{ $: 'space.spaceId' }],
                                                     },
                                                     bg: {
-                                                      $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''",
+                                                      $: "(space.spaceId == navigation.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''",
                                                     },
                                                     color: {
-                                                      $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'",
+                                                      $: "(space.spaceId == navigation.segments[1] && !shellStore.activeShellView) ? 'accent-text' : 'text-muted'",
                                                     },
                                                     hoverProps: {
-                                                      $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
+                                                      $: "(space.spaceId == navigation.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
                                                     },
                                                     activeProps: {
-                                                      $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
+                                                      $: "(space.spaceId == navigation.segments[1] && !shellStore.activeShellView) ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
                                                     },
                                                   },
                                                   children: [
@@ -665,7 +665,7 @@ export const seedBundles: Bundle[] = [
                                         gap: '200',
                                         py: '300',
                                         px: { $: 'local.railInset' },
-                                        label: { $: 'profileStore.ownProfile.name' },
+                                        label: { $: 'identity.ownProfile.name' },
                                         bg: { $: "(shellStore.activeShellView == 'profile') ? 'accent-soft' : ''" },
                                         color: {
                                           $: "(shellStore.activeShellView == 'profile') ? 'accent-text' : 'text-muted'",
@@ -681,8 +681,8 @@ export const seedBundles: Bundle[] = [
                                         {
                                           type: 'we-avatar',
                                           props: {
-                                            image: { $: 'profileStore.ownProfile.avatar' },
-                                            initials: { $: 'profileStore.ownProfile.name' },
+                                            image: { $: 'identity.ownProfile.avatar' },
+                                            initials: { $: 'identity.ownProfile.name' },
                                             hash: { $: 'me.did' },
                                             size: 'sm',
                                             flexShrink: '0',
@@ -707,7 +707,7 @@ export const seedBundles: Bundle[] = [
                                                 {
                                                   type: 'we-text',
                                                   props: { truncate: true, fontSize: '300' },
-                                                  children: [{ $: 'profileStore.ownProfile.name' }],
+                                                  children: [{ $: 'identity.ownProfile.name' }],
                                                 },
                                               ],
                                             },
@@ -1167,9 +1167,9 @@ export const seedBundles: Bundle[] = [
                         props: {
                           size: 'xl',
                           r: '600',
-                          image: { $: 'spaceStore.currentSpace.avatar' },
-                          initials: { $: 'spaceStore.currentSpace.name' },
-                          hash: { $: 'spaceStore.currentSpace.uuid' },
+                          image: { $: 'spaceSettings.currentSpace.avatar' },
+                          initials: { $: 'spaceSettings.currentSpace.name' },
+                          hash: { $: 'spaceSettings.currentSpace.uuid' },
                         },
                       },
                       {
@@ -1179,16 +1179,16 @@ export const seedBundles: Bundle[] = [
                           {
                             type: 'we-text',
                             props: { variant: 'subheading', fontWeight: 'semibold', truncate: true },
-                            children: [{ $: 'spaceStore.currentSpace.name' }],
+                            children: [{ $: 'spaceSettings.currentSpace.name' }],
                           },
                           {
                             type: '$if',
                             props: {
-                              condition: { $: 'spaceStore.currentSpace.description' },
+                              condition: { $: 'spaceSettings.currentSpace.description' },
                               then: {
                                 type: 'we-text',
                                 props: { variant: 'footnote', fontSize: '200', color: 'text-muted', lines: 2 },
-                                children: [{ $: 'spaceStore.currentSpace.description' }],
+                                children: [{ $: 'spaceSettings.currentSpace.description' }],
                               },
                             },
                           },
@@ -1222,7 +1222,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Hide the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', true] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', true] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -1233,7 +1233,9 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: '!spaceStore.currentSpace.description && spaceStore.canAdministerCurrentSpace' },
+                      condition: {
+                        $: '!spaceSettings.currentSpace.description && spaceSettings.canAdministerCurrentSpace',
+                      },
                       then: {
                         type: 'Column',
                         props: { px: '300', pb: '300' },
@@ -1282,7 +1284,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'chatStore.openChat',
                                   args: [
                                     {
-                                      $: '{ datasetId: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
+                                      $: '{ datasetId: datasetStore.currentDataset.id, spaceName: spaceSettings.currentSpace.name, draft: local.findQuery }',
                                     },
                                   ],
                                 },
@@ -1311,7 +1313,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           label: 'This space',
                           selected: {
-                            $: "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? ((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : routeStore.params.card && routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + routeStore.params.cardType : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? (routeStore.params.card ? 'run|' + workflowStore.open.name + '|' + routeStore.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+                            $: "((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna ? ((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? 'group|dna' : startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|') ? 'dnaprop|' + (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') : startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') ? 'dna|model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : 'dnakind|' + (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all')) : navigation.params.card && navigation.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'] ? 'dna|model|' + navigation.params.cardType : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' ? 'call|' + navigation.params.id : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? 'person|' + navigation.params.did : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? (navigation.params.card ? 'run|' + workflowStore.open.name + '|' + navigation.params.card : 'workflow|' + workflowStore.open.name) : 'group|workflows') : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') : 'channel|' + (navigation.params.channel ? navigation.params.channel : spaceStore.root)",
                           },
                           onSelect: [
                             {
@@ -1328,10 +1330,10 @@ export const seedBundles: Bundle[] = [
                                   $: "event.detail.value in ['group|channels', 'group|calls', 'group|people']",
                                 },
                                 then: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1]) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/' + split(event.detail.value, '|')[1], '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(navigation.spacePath + '/' + split(event.detail.value, '|')[1]) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/' + split(event.detail.value, '|')[1], '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -1343,10 +1345,10 @@ export const seedBundles: Bundle[] = [
                                 then: [
                                   { $invoke: 'workflowStore.closeWorkflow' },
                                   {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/workflows') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -1368,15 +1370,15 @@ export const seedBundles: Bundle[] = [
                                         {
                                           $if: {
                                             condition: {
-                                              $: "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
+                                              $: "(((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
                                             },
-                                            then: { $invoke: 'routeStore.setParam', args: ['dna', 'all'] },
+                                            then: { $invoke: 'navigation.setParam', args: ['dna', 'all'] },
                                           },
                                         },
                                         {
                                           $if: {
                                             condition: {
-                                              $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open",
+                                              $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open",
                                             },
                                             then: { $invoke: 'workflowStore.closeWorkflow' },
                                           },
@@ -1392,12 +1394,12 @@ export const seedBundles: Bundle[] = [
                                   },
                                   {
                                     $if: {
-                                      condition: { $: "routeStore.params.view == 'canvas'" },
-                                      then: { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                      condition: { $: "navigation.params.view == 'canvas'" },
+                                      then: { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                       else: {
-                                        $invoke: 'routeStore.navigate',
+                                        $invoke: 'navigation.navigate',
                                         args: [
-                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: "navigation.spacePath + '/dna'" },
                                           { $: "{ query: { dna: 'all' } }" },
                                         ],
                                       },
@@ -1410,10 +1412,10 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'channel|')" },
                                 then: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(navigation.spacePath + '?channel=' + (split(event.detail.value, '|')[1])) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '?channel=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -1423,10 +1425,10 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'call|')" },
                                 then: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(navigation.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1])) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/record/CollectionBlock?kind=call&id=' + (split(event.detail.value, '|')[1]) + '&call=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -1441,10 +1443,10 @@ export const seedBundles: Bundle[] = [
                                     args: [{ $: "split(event.detail.value, '|')[1]" }],
                                   },
                                   {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/workflows') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -1460,10 +1462,10 @@ export const seedBundles: Bundle[] = [
                                     args: [{ $: "split(event.detail.value, '|')[1]" }],
                                   },
                                   {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/workflows') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                       { $: "{ query: { card: split(event.detail.value, '|')[2] } }" },
                                     ],
@@ -1475,10 +1477,10 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'person|')" },
                                 then: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(navigation.spacePath + '/person?did=' + (split(event.detail.value, '|')[1])) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/person?did=' + (split(event.detail.value, '|')[1]), '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -1489,9 +1491,9 @@ export const seedBundles: Bundle[] = [
                                 condition: { $: "startsWith(event.detail.value, 'dna|')" },
                                 then: {
                                   $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    condition: { $: "navigation.params.view == 'canvas'" },
                                     then: {
-                                      $invoke: 'routeStore.setParam',
+                                      $invoke: 'navigation.setParam',
                                       args: [
                                         'dna',
                                         {
@@ -1500,9 +1502,9 @@ export const seedBundles: Bundle[] = [
                                       ],
                                     },
                                     else: {
-                                      $invoke: 'routeStore.navigate',
+                                      $invoke: 'navigation.navigate',
                                       args: [
-                                        { $: "spaceStore.spacePath + '/dna'" },
+                                        { $: "navigation.spacePath + '/dna'" },
                                         {
                                           $: "{ query: { dna: split(event.detail.value, '|')[1] + '|' + split(event.detail.value, '|')[2] } }",
                                         },
@@ -1534,7 +1536,7 @@ export const seedBundles: Bundle[] = [
                                       {
                                         $if: {
                                           condition: {
-                                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open",
+                                            $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open",
                                           },
                                           then: { $invoke: 'workflowStore.closeWorkflow' },
                                         },
@@ -1557,15 +1559,15 @@ export const seedBundles: Bundle[] = [
                                   { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
                                   {
                                     $if: {
-                                      condition: { $: "routeStore.params.view == 'canvas'" },
+                                      condition: { $: "navigation.params.view == 'canvas'" },
                                       then: {
-                                        $invoke: 'routeStore.setParam',
+                                        $invoke: 'navigation.setParam',
                                         args: ['dna', { $: "split(event.detail.value, '|')[1]" }],
                                       },
                                       else: {
-                                        $invoke: 'routeStore.navigate',
+                                        $invoke: 'navigation.navigate',
                                         args: [
-                                          { $: "spaceStore.spacePath + '/dna'" },
+                                          { $: "navigation.spacePath + '/dna'" },
                                           { $: "{ query: { dna: split(event.detail.value, '|')[1] } }" },
                                         ],
                                       },
@@ -1578,7 +1580,7 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'template|')" },
                                 then: {
-                                  $invoke: 'templateStore.switchTemplate',
+                                  $invoke: 'appearance.switchTemplate',
                                   args: [{ $: "split(event.detail.value, '|')[1]" }],
                                 },
                               },
@@ -1587,7 +1589,7 @@ export const seedBundles: Bundle[] = [
                               $if: {
                                 condition: { $: "startsWith(event.detail.value, 'theme|')" },
                                 then: {
-                                  $invoke: 'themeStore.applyTheme',
+                                  $invoke: 'appearance.applyTheme',
                                   args: [{ $: "split(event.detail.value, '|')[1]" }],
                                 },
                               },
@@ -1597,15 +1599,15 @@ export const seedBundles: Bundle[] = [
                                 condition: { $: "startsWith(event.detail.value, 'dnaprop|policy|')" },
                                 then: {
                                   $if: {
-                                    condition: { $: "routeStore.params.view == 'canvas'" },
+                                    condition: { $: "navigation.params.view == 'canvas'" },
                                     then: {
-                                      $invoke: 'routeStore.setParam',
+                                      $invoke: 'navigation.setParam',
                                       args: ['dna', { $: "'policy|' + split(event.detail.value, '|')[2]" }],
                                     },
                                     else: {
-                                      $invoke: 'routeStore.navigate',
+                                      $invoke: 'navigation.navigate',
                                       args: [
-                                        { $: "spaceStore.spacePath + '/dna'" },
+                                        { $: "navigation.spacePath + '/dna'" },
                                         { $: "{ query: { dna: 'policy|' + split(event.detail.value, '|')[2] } }" },
                                       ],
                                     },
@@ -1896,7 +1898,7 @@ export const seedBundles: Bundle[] = [
                               open: { $: "'group|people' in local.openRows" },
                               onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|people' },
                               expandable: {
-                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)) > 0',
+                                $: 'count(identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m)) > 0',
                               },
                             },
                             children: [
@@ -1918,14 +1920,14 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                            $: 'count(identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m))',
                                           },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
                                             children: [
                                               {
-                                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                                $: 'count(identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m))',
                                               },
                                             ],
                                           },
@@ -1939,7 +1941,7 @@ export const seedBundles: Bundle[] = [
                                 type: '$each',
                                 props: {
                                   items: {
-                                    $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                                    $: 'identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m)',
                                   },
                                   as: 'person',
                                 },
@@ -1980,7 +1982,7 @@ export const seedBundles: Bundle[] = [
                             props: {
                               value: 'group|dna',
                               open: {
-                                $: "'group|dna' in local.openRows || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
+                                $: "'group|dna' in local.openRows || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
                               },
                               onOpenChange: {
                                 $if: {
@@ -1999,15 +2001,15 @@ export const seedBundles: Bundle[] = [
                                     {
                                       $if: {
                                         condition: {
-                                          $: "(((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
+                                          $: "(((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
                                         },
-                                        then: { $invoke: 'routeStore.setParam', args: ['dna', 'all'] },
+                                        then: { $invoke: 'navigation.setParam', args: ['dna', 'all'] },
                                       },
                                     },
                                     {
                                       $if: {
                                         condition: {
-                                          $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open",
+                                          $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open",
                                         },
                                         then: { $invoke: 'workflowStore.closeWorkflow' },
                                       },
@@ -2068,15 +2070,15 @@ export const seedBundles: Bundle[] = [
                                     props: {
                                       value: { $: "'dnagroup|' + group.key" },
                                       open: {
-                                        $: "(('dnagroup|' + group.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                        $: "(('dnagroup|' + group.key) in local.openRows) || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                       },
                                       onOpenChange: {
                                         $if: {
                                           condition: {
-                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                            $: "!event.detail.open && ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                           },
                                           then: [
-                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                            { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                             {
                                               $if: {
                                                 condition: { $: "('dnagroup|' + group.key) in local.openRows" },
@@ -2177,15 +2179,15 @@ export const seedBundles: Bundle[] = [
                                             props: {
                                               value: { $: "'dnagroup|' + group.key + '.' + sub.key" },
                                               open: {
-                                                $: "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                                $: "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                               },
                                               onOpenChange: {
                                                 $if: {
                                                   condition: {
-                                                    $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                                    $: "!event.detail.open && ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                                   },
                                                   then: [
-                                                    { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                                    { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                                     {
                                                       $if: {
                                                         condition: {
@@ -2300,7 +2302,7 @@ export const seedBundles: Bundle[] = [
                                 props: {
                                   value: 'dnagroup|flows',
                                   open: {
-                                    $: "'dnagroup|flows' in local.openRows || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
+                                    $: "'dnagroup|flows' in local.openRows || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
                                   },
                                   onOpenChange: {
                                     $if: {
@@ -2319,7 +2321,7 @@ export const seedBundles: Bundle[] = [
                                         {
                                           $if: {
                                             condition: {
-                                              $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open",
+                                              $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open",
                                             },
                                             then: { $invoke: 'workflowStore.closeWorkflow' },
                                           },
@@ -2372,8 +2374,8 @@ export const seedBundles: Bundle[] = [
                                                   square: true,
                                                   label: 'New flow',
                                                   onClick: {
-                                                    $invoke: 'routeStore.navigate',
-                                                    args: [{ $: "spaceStore.spacePath + '/workflows' + '?new=1'" }],
+                                                    $invoke: 'navigation.navigate',
+                                                    args: [{ $: "navigation.spacePath + '/workflows' + '?new=1'" }],
                                                   },
                                                 },
                                                 children: [{ type: 'we-icon', props: { name: 'plus' } }],
@@ -2425,7 +2427,7 @@ export const seedBundles: Bundle[] = [
                                   open: { $: "'group|templates' in local.openRows" },
                                   onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|templates' },
                                   expandable: {
-                                    $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)) > 0",
+                                    $: "count(distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items)) > 0",
                                   },
                                 },
                                 children: [
@@ -2447,14 +2449,14 @@ export const seedBundles: Bundle[] = [
                                             type: '$if',
                                             props: {
                                               condition: {
-                                                $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))",
+                                                $: "count(distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items))",
                                               },
                                               then: {
                                                 type: 'we-badge',
                                                 props: { variant: 'soft', size: 'xs' },
                                                 children: [
                                                   {
-                                                    $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))",
+                                                    $: "count(distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items))",
                                                   },
                                                 ],
                                               },
@@ -2485,7 +2487,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$each',
                                     props: {
                                       items: {
-                                        $: "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)",
+                                        $: "distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items)",
                                       },
                                       as: 'template',
                                     },
@@ -2515,7 +2517,7 @@ export const seedBundles: Bundle[] = [
                                               {
                                                 type: '$if',
                                                 props: {
-                                                  condition: { $: 'template.id == templateStore.currentSwitcherId' },
+                                                  condition: { $: 'template.id == appearance.currentSwitcherId' },
                                                   then: {
                                                     type: 'we-icon',
                                                     props: { name: 'check', color: 'accent-text' },
@@ -2525,7 +2527,9 @@ export const seedBundles: Bundle[] = [
                                               {
                                                 type: '$if',
                                                 props: {
-                                                  condition: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                                                  condition: {
+                                                    $: 'template.id == spaceSettings.spaceDefaultTemplateId',
+                                                  },
                                                   then: {
                                                     type: 'we-tooltip',
                                                     props: { content: "This space's default", placement: 'top' },
@@ -2542,7 +2546,7 @@ export const seedBundles: Bundle[] = [
                                                 type: '$if',
                                                 props: {
                                                   condition: {
-                                                    $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty',
+                                                    $: 'template.id == appearance.currentSwitcherId && layout.layoutDirty',
                                                   },
                                                   then: {
                                                     type: 'we-tooltip',
@@ -2559,7 +2563,7 @@ export const seedBundles: Bundle[] = [
                                                           size: 'sm',
                                                           color: 'text-faint',
                                                           hoverProps: { color: 'text' },
-                                                          onClick: { $invoke: 'shellStore.resetTemplateLayout' },
+                                                          onClick: { $invoke: 'layout.resetTemplateLayout' },
                                                         },
                                                         children: [
                                                           {
@@ -2593,7 +2597,7 @@ export const seedBundles: Bundle[] = [
                                                           hoverProps: { color: 'text' },
                                                           onClick: [
                                                             {
-                                                              $invoke: 'templateStore.switchTemplate',
+                                                              $invoke: 'appearance.switchTemplate',
                                                               args: [{ $: 'template.id' }],
                                                             },
                                                             {
@@ -2627,7 +2631,7 @@ export const seedBundles: Bundle[] = [
                                                       hoverProps: { color: 'text' },
                                                       onClick: [
                                                         {
-                                                          $invoke: 'templateStore.switchTemplate',
+                                                          $invoke: 'appearance.switchTemplate',
                                                           args: [{ $: 'template.id' }],
                                                         },
                                                         { $invoke: 'editorStore.startFork' },
@@ -2665,15 +2669,15 @@ export const seedBundles: Bundle[] = [
                                     props: {
                                       value: { $: "'dnagroup|' + group.key" },
                                       open: {
-                                        $: "(('dnagroup|' + group.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                        $: "(('dnagroup|' + group.key) in local.openRows) || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                       },
                                       onOpenChange: {
                                         $if: {
                                           condition: {
-                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                            $: "!event.detail.open && ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && group.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                           },
                                           then: [
-                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                            { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                             {
                                               $if: {
                                                 condition: { $: "('dnagroup|' + group.key) in local.openRows" },
@@ -2774,15 +2778,15 @@ export const seedBundles: Bundle[] = [
                                             props: {
                                               value: { $: "'dnagroup|' + group.key + '.' + sub.key" },
                                               open: {
-                                                $: "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                                $: "(('dnagroup|' + group.key + '.' + sub.key) in local.openRows) || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                               },
                                               onOpenChange: {
                                                 $if: {
                                                   condition: {
-                                                    $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
+                                                    $: "!event.detail.open && ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'model|') && sub.classes.exists(c, c.id == split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])))",
                                                   },
                                                   then: [
-                                                    { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                                    { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                                     {
                                                       $if: {
                                                         condition: {
@@ -2897,15 +2901,15 @@ export const seedBundles: Bundle[] = [
                                 props: {
                                   value: { $: "'dnakind|policy'" },
                                   open: {
-                                    $: "(('dnakind|policy') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|')))",
+                                    $: "(('dnakind|policy') in local.openRows) || ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|')))",
                                   },
                                   onOpenChange: {
                                     $if: {
                                       condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|')))",
+                                        $: "!event.detail.open && ((((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna) && (startsWith((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), 'policy|')))",
                                       },
                                       then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'policy'" }] },
+                                        { $invoke: 'navigation.setParam', args: ['dna', { $: "'policy'" }] },
                                         {
                                           $if: {
                                             condition: { $: "('dnakind|policy') in local.openRows" },
@@ -2977,7 +2981,7 @@ export const seedBundles: Bundle[] = [
                               open: { $: "'group|themes' in local.openRows" },
                               onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|themes' },
                               expandable: {
-                                $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes)) > 0',
+                                $: 'count(distinct(appearance.builtInThemes.filter(t, t.id == spaceSettings.spaceDefaultThemeId || t.id == appearance.currentThemeId), appearance.spaceThemes, appearance.installedThemes)) > 0',
                               },
                             },
                             children: [
@@ -2999,14 +3003,14 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes))',
+                                            $: 'count(distinct(appearance.builtInThemes.filter(t, t.id == spaceSettings.spaceDefaultThemeId || t.id == appearance.currentThemeId), appearance.spaceThemes, appearance.installedThemes))',
                                           },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
                                             children: [
                                               {
-                                                $: 'count(distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes))',
+                                                $: 'count(distinct(appearance.builtInThemes.filter(t, t.id == spaceSettings.spaceDefaultThemeId || t.id == appearance.currentThemeId), appearance.spaceThemes, appearance.installedThemes))',
                                               },
                                             ],
                                           },
@@ -3037,7 +3041,7 @@ export const seedBundles: Bundle[] = [
                                 type: '$each',
                                 props: {
                                   items: {
-                                    $: 'distinct(themeStore.builtInThemes.filter(t, t.id == spaceStore.spaceDefaultThemeId || t.id == themeStore.currentThemeId), themeStore.spaceThemes, themeStore.installedThemes)',
+                                    $: 'distinct(appearance.builtInThemes.filter(t, t.id == spaceSettings.spaceDefaultThemeId || t.id == appearance.currentThemeId), appearance.spaceThemes, appearance.installedThemes)',
                                   },
                                   as: 'theme',
                                 },
@@ -3067,14 +3071,14 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: '$if',
                                             props: {
-                                              condition: { $: 'theme.id == themeStore.currentThemeId' },
+                                              condition: { $: 'theme.id == appearance.currentThemeId' },
                                               then: { type: 'we-icon', props: { name: 'check', color: 'accent-text' } },
                                             },
                                           },
                                           {
                                             type: '$if',
                                             props: {
-                                              condition: { $: 'theme.id == spaceStore.spaceDefaultThemeId' },
+                                              condition: { $: 'theme.id == spaceSettings.spaceDefaultThemeId' },
                                               then: {
                                                 type: 'we-tooltip',
                                                 props: { content: "This space's default", placement: 'top' },
@@ -3091,7 +3095,7 @@ export const seedBundles: Bundle[] = [
                                             type: '$if',
                                             props: {
                                               condition: {
-                                                $: 'themeStore.spaceThemePinned && theme.id == themeStore.currentThemeId',
+                                                $: 'appearance.spaceThemePinned && theme.id == appearance.currentThemeId',
                                               },
                                               then: {
                                                 type: 'we-tooltip',
@@ -3108,7 +3112,7 @@ export const seedBundles: Bundle[] = [
                                                       size: 'sm',
                                                       color: 'text-faint',
                                                       hoverProps: { color: 'text' },
-                                                      onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
+                                                      onClick: { $invoke: 'appearance.clearSpaceThemePin' },
                                                     },
                                                     children: [
                                                       { type: 'we-icon', props: { name: 'push-pin', weight: 'fill' } },
@@ -3235,44 +3239,44 @@ export const seedBundles: Bundle[] = [
                 },
                 $queries: {
                   card: {
-                    entity: { $: 'routeStore.params.cardType' },
-                    where: { id: { $: 'routeStore.params.card' } },
+                    entity: { $: 'navigation.params.cardType' },
+                    where: { id: { $: 'navigation.params.card' } },
                     limit: 1,
                     include: { signals: true, $replies: { from: 'thread', count: true, where: { kind: 'reply' } } },
-                    when: { $: 'routeStore.params.card' },
+                    when: { $: 'navigation.params.card' },
                   },
                   relationshipKinds: { entity: 'RelationshipType', order: { name: 'asc' } },
                   connections: {
                     entity: 'Relationship',
                     where: {
-                      OR: [{ source: { $: 'routeStore.params.card' } }, { target: { $: 'routeStore.params.card' } }],
+                      OR: [{ source: { $: 'navigation.params.card' } }, { target: { $: 'navigation.params.card' } }],
                     },
                     include: { source: true, target: true },
                     order: { createdAt: 'asc' },
                     limit: 50,
-                    when: { $: "routeStore.params.card && !(routeStore.params.cardType == 'Relationship')" },
+                    when: { $: "navigation.params.card && !(navigation.params.cardType == 'Relationship')" },
                   },
                   link: {
                     entity: 'Relationship',
-                    where: { id: { $: 'routeStore.params.card' } },
+                    where: { id: { $: 'navigation.params.card' } },
                     include: { source: true, target: true },
                     limit: 1,
-                    when: { $: "routeStore.params.card && routeStore.params.cardType == 'Relationship'" },
+                    when: { $: "navigation.params.card && navigation.params.cardType == 'Relationship'" },
                   },
                   involvements: {
                     entity: 'Involvement',
-                    when: { $: "routeStore.params.card && !(routeStore.params.cardType == 'Relationship')" },
+                    when: { $: "navigation.params.card && !(navigation.params.cardType == 'Relationship')" },
                   },
                   inspectedCall: {
                     entity: 'CollectionBlock',
                     where: {
                       id: {
-                        $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                        $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : ''",
                       },
                     },
                     limit: 1,
                     when: {
-                      $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                      $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : ''",
                     },
                   },
                   signalTypes: { entity: 'SignalType', subscribe: true },
@@ -3307,7 +3311,7 @@ export const seedBundles: Bundle[] = [
                             type: '$if',
                             props: {
                               condition: {
-                                $: "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
+                                $: "count(local.card) && (count(recordStore.displays[navigation.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
                               },
                               then: {
                                 type: 'we-tooltip',
@@ -3366,7 +3370,7 @@ export const seedBundles: Bundle[] = [
                                       label: 'Delete this record',
                                       onClick: {
                                         $invoke: 'record.delete',
-                                        args: [{ $: 'routeStore.params.cardType' }, { $: 'routeStore.params.card' }],
+                                        args: [{ $: 'navigation.params.cardType' }, { $: 'navigation.params.card' }],
                                       },
                                     },
                                     children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -3387,9 +3391,9 @@ export const seedBundles: Bundle[] = [
                                   variant: 'ghost',
                                   label: 'Close',
                                   onClick: [
-                                    { $invoke: 'routeStore.setParam', args: ['card', ''] },
-                                    { $invoke: 'routeStore.setParam', args: ['cardType', ''] },
-                                    { $invoke: 'shellStore.closeTemplatePanel', args: ['inspector'] },
+                                    { $invoke: 'navigation.setParam', args: ['card', ''] },
+                                    { $invoke: 'navigation.setParam', args: ['cardType', ''] },
+                                    { $invoke: 'viewState.closeTemplatePanel', args: ['inspector'] },
                                   ],
                                 },
                                 children: [{ type: 'we-icon', props: { name: 'x' } }],
@@ -3424,7 +3428,7 @@ export const seedBundles: Bundle[] = [
                                 $localState: {
                                   display: {
                                     type: 'object',
-                                    initial: { $: 'recordStore.displays[routeStore.params.cardType]' },
+                                    initial: { $: 'recordStore.displays[navigation.params.cardType]' },
                                   },
                                   showEmpty: { type: 'boolean', initial: false },
                                 },
@@ -3437,13 +3441,13 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: "(routeStore.params.cardType == 'CollectionBlock' ? 'note' : recordStore.displays[routeStore.params.cardType].icon)",
+                                            $: "(navigation.params.cardType == 'CollectionBlock' ? 'note' : recordStore.displays[navigation.params.cardType].icon)",
                                           },
                                           then: {
                                             type: 'we-icon',
                                             props: {
                                               name: {
-                                                $: "(routeStore.params.cardType == 'CollectionBlock' ? 'note' : recordStore.displays[routeStore.params.cardType].icon)",
+                                                $: "(navigation.params.cardType == 'CollectionBlock' ? 'note' : recordStore.displays[navigation.params.cardType].icon)",
                                               },
                                               color: 'accent-text',
                                             },
@@ -3455,7 +3459,7 @@ export const seedBundles: Bundle[] = [
                                         props: { fontSize: '400', color: 'text-muted' },
                                         children: [
                                           {
-                                            $: "(routeStore.params.cardType == 'CollectionBlock' ? 'Note' : recordStore.displays[routeStore.params.cardType].label ? recordStore.displays[routeStore.params.cardType].label : routeStore.params.cardType)",
+                                            $: "(navigation.params.cardType == 'CollectionBlock' ? 'Note' : recordStore.displays[navigation.params.cardType].label ? recordStore.displays[navigation.params.cardType].label : navigation.params.cardType)",
                                           },
                                         ],
                                       },
@@ -3773,7 +3777,7 @@ export const seedBundles: Bundle[] = [
                                         type: '$each',
                                         props: {
                                           items: {
-                                            $: "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+                                            $: "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
                                           },
                                           as: 'field',
                                         },
@@ -3804,8 +3808,8 @@ export const seedBundles: Bundle[] = [
                                                           onChange: {
                                                             $invoke: 'recordStore.updateRecordField',
                                                             args: [
-                                                              { $: 'routeStore.params.cardType' },
-                                                              { $: 'routeStore.params.card' },
+                                                              { $: 'navigation.params.cardType' },
+                                                              { $: 'navigation.params.card' },
                                                               { $: 'field.name' },
                                                               { $: 'event.detail' },
                                                             ],
@@ -3834,8 +3838,8 @@ export const seedBundles: Bundle[] = [
                                                               onChange: {
                                                                 $invoke: 'recordStore.updateRecordField',
                                                                 args: [
-                                                                  { $: 'routeStore.params.cardType' },
-                                                                  { $: 'routeStore.params.card' },
+                                                                  { $: 'navigation.params.cardType' },
+                                                                  { $: 'navigation.params.card' },
                                                                   { $: 'field.name' },
                                                                   { $: 'event.detail' },
                                                                 ],
@@ -3865,8 +3869,8 @@ export const seedBundles: Bundle[] = [
                                                                   onChange: {
                                                                     $invoke: 'recordStore.updateRecordField',
                                                                     args: [
-                                                                      { $: 'routeStore.params.cardType' },
-                                                                      { $: 'routeStore.params.card' },
+                                                                      { $: 'navigation.params.cardType' },
+                                                                      { $: 'navigation.params.card' },
                                                                       { $: 'field.name' },
                                                                       { $: 'event.detail' },
                                                                     ],
@@ -3899,8 +3903,8 @@ export const seedBundles: Bundle[] = [
                                                                       onChange: {
                                                                         $invoke: 'recordStore.updateRecordField',
                                                                         args: [
-                                                                          { $: 'routeStore.params.cardType' },
-                                                                          { $: 'routeStore.params.card' },
+                                                                          { $: 'navigation.params.cardType' },
+                                                                          { $: 'navigation.params.card' },
                                                                           { $: 'field.name' },
                                                                           { $: 'event.detail' },
                                                                         ],
@@ -3931,8 +3935,8 @@ export const seedBundles: Bundle[] = [
                                                                           onChange: {
                                                                             $invoke: 'recordStore.updateRecordField',
                                                                             args: [
-                                                                              { $: 'routeStore.params.cardType' },
-                                                                              { $: 'routeStore.params.card' },
+                                                                              { $: 'navigation.params.cardType' },
+                                                                              { $: 'navigation.params.card' },
                                                                               { $: 'field.name' },
                                                                               { $: 'event.detail' },
                                                                             ],
@@ -3962,8 +3966,8 @@ export const seedBundles: Bundle[] = [
                                                                                 $invoke:
                                                                                   'recordStore.updateRecordField',
                                                                                 args: [
-                                                                                  { $: 'routeStore.params.cardType' },
-                                                                                  { $: 'routeStore.params.card' },
+                                                                                  { $: 'navigation.params.cardType' },
+                                                                                  { $: 'navigation.params.card' },
                                                                                   { $: 'field.name' },
                                                                                   { $: 'event.detail' },
                                                                                 ],
@@ -3993,8 +3997,8 @@ export const seedBundles: Bundle[] = [
                                                                                 $invoke:
                                                                                   'recordStore.updateRecordField',
                                                                                 args: [
-                                                                                  { $: 'routeStore.params.cardType' },
-                                                                                  { $: 'routeStore.params.card' },
+                                                                                  { $: 'navigation.params.cardType' },
+                                                                                  { $: 'navigation.params.card' },
                                                                                   { $: 'field.name' },
                                                                                   { $: 'event.detail' },
                                                                                 ],
@@ -4264,7 +4268,7 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: '$if',
                                             props: {
-                                              condition: { $: "!(routeStore.params.cardType == 'Relationship')" },
+                                              condition: { $: "!(navigation.params.cardType == 'Relationship')" },
                                               then: {
                                                 type: 'Column',
                                                 props: { width: '100%' },
@@ -4332,7 +4336,7 @@ export const seedBundles: Bundle[] = [
                                             type: '$each',
                                             props: {
                                               items: {
-                                                $: "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+                                                $: "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
                                               },
                                               as: 'field',
                                             },
@@ -4524,7 +4528,7 @@ export const seedBundles: Bundle[] = [
                                   {
                                     type: '$if',
                                     props: {
-                                      condition: { $: "routeStore.params.cardType == 'Relationship'" },
+                                      condition: { $: "navigation.params.cardType == 'Relationship'" },
                                       then: {
                                         type: '$if',
                                         props: {
@@ -4556,7 +4560,7 @@ export const seedBundles: Bundle[] = [
                                                             $invoke: 'recordStore.updateRecordField',
                                                             args: [
                                                               'Relationship',
-                                                              { $: 'routeStore.params.card' },
+                                                              { $: 'navigation.params.card' },
                                                               'relationshipTypeId',
                                                               { $: 'event.detail' },
                                                             ],
@@ -4583,7 +4587,7 @@ export const seedBundles: Bundle[] = [
                                                                     $invoke: 'recordStore.updateRecordField',
                                                                     args: [
                                                                       'Relationship',
-                                                                      { $: 'routeStore.params.card' },
+                                                                      { $: 'navigation.params.card' },
                                                                       'relationshipTypeId',
                                                                       '',
                                                                     ],
@@ -4661,7 +4665,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
+                                        $: "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
                                       },
                                       then: {
                                         type: 'Column',
@@ -4707,7 +4711,7 @@ export const seedBundles: Bundle[] = [
                                                         props: { size: 'xs', variant: 'solid' },
                                                         children: [
                                                           {
-                                                            $: "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
+                                                            $: "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
                                                           },
                                                         ],
                                                       },
@@ -4741,7 +4745,7 @@ export const seedBundles: Bundle[] = [
                                                     type: '$each',
                                                     props: {
                                                       items: {
-                                                        $: "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+                                                        $: "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
                                                       },
                                                       as: 'field',
                                                     },
@@ -4776,8 +4780,8 @@ export const seedBundles: Bundle[] = [
                                                                       onChange: {
                                                                         $invoke: 'recordStore.updateRecordField',
                                                                         args: [
-                                                                          { $: 'routeStore.params.cardType' },
-                                                                          { $: 'routeStore.params.card' },
+                                                                          { $: 'navigation.params.cardType' },
+                                                                          { $: 'navigation.params.card' },
                                                                           { $: 'field.name' },
                                                                           { $: 'event.detail' },
                                                                         ],
@@ -4806,8 +4810,8 @@ export const seedBundles: Bundle[] = [
                                                                           onChange: {
                                                                             $invoke: 'recordStore.updateRecordField',
                                                                             args: [
-                                                                              { $: 'routeStore.params.cardType' },
-                                                                              { $: 'routeStore.params.card' },
+                                                                              { $: 'navigation.params.cardType' },
+                                                                              { $: 'navigation.params.card' },
                                                                               { $: 'field.name' },
                                                                               { $: 'event.detail' },
                                                                             ],
@@ -4838,8 +4842,8 @@ export const seedBundles: Bundle[] = [
                                                                                 $invoke:
                                                                                   'recordStore.updateRecordField',
                                                                                 args: [
-                                                                                  { $: 'routeStore.params.cardType' },
-                                                                                  { $: 'routeStore.params.card' },
+                                                                                  { $: 'navigation.params.cardType' },
+                                                                                  { $: 'navigation.params.card' },
                                                                                   { $: 'field.name' },
                                                                                   { $: 'event.detail' },
                                                                                 ],
@@ -4876,9 +4880,9 @@ export const seedBundles: Bundle[] = [
                                                                                       'recordStore.updateRecordField',
                                                                                     args: [
                                                                                       {
-                                                                                        $: 'routeStore.params.cardType',
+                                                                                        $: 'navigation.params.cardType',
                                                                                       },
-                                                                                      { $: 'routeStore.params.card' },
+                                                                                      { $: 'navigation.params.card' },
                                                                                       { $: 'field.name' },
                                                                                       { $: 'event.detail' },
                                                                                     ],
@@ -4913,10 +4917,10 @@ export const seedBundles: Bundle[] = [
                                                                                           'recordStore.updateRecordField',
                                                                                         args: [
                                                                                           {
-                                                                                            $: 'routeStore.params.cardType',
+                                                                                            $: 'navigation.params.cardType',
                                                                                           },
                                                                                           {
-                                                                                            $: 'routeStore.params.card',
+                                                                                            $: 'navigation.params.card',
                                                                                           },
                                                                                           { $: 'field.name' },
                                                                                           { $: 'event.detail' },
@@ -4952,10 +4956,10 @@ export const seedBundles: Bundle[] = [
                                                                                               'recordStore.updateRecordField',
                                                                                             args: [
                                                                                               {
-                                                                                                $: 'routeStore.params.cardType',
+                                                                                                $: 'navigation.params.cardType',
                                                                                               },
                                                                                               {
-                                                                                                $: 'routeStore.params.card',
+                                                                                                $: 'navigation.params.card',
                                                                                               },
                                                                                               { $: 'field.name' },
                                                                                               { $: 'event.detail' },
@@ -4989,10 +4993,10 @@ export const seedBundles: Bundle[] = [
                                                                                               'recordStore.updateRecordField',
                                                                                             args: [
                                                                                               {
-                                                                                                $: 'routeStore.params.cardType',
+                                                                                                $: 'navigation.params.cardType',
                                                                                               },
                                                                                               {
-                                                                                                $: 'routeStore.params.card',
+                                                                                                $: 'navigation.params.card',
                                                                                               },
                                                                                               { $: 'field.name' },
                                                                                               { $: 'event.detail' },
@@ -5030,7 +5034,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "routeStore.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic']",
+                                        $: "navigation.params.cardType in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic']",
                                       },
                                       then: {
                                         type: 'we-button',
@@ -5057,7 +5061,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!(routeStore.params.cardType == 'Relationship') && count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))",
+                                        $: "!(navigation.params.cardType == 'Relationship') && count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))",
                                       },
                                       then: {
                                         type: 'Column',
@@ -5106,7 +5110,7 @@ export const seedBundles: Bundle[] = [
                                                 type: '$if',
                                                 props: {
                                                   condition: {
-                                                    $: 'count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, !k.reflexive))',
+                                                    $: 'count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, !k.reflexive))',
                                                   },
                                                   then: {
                                                     type: 'DropdownMenu',
@@ -5120,7 +5124,7 @@ export const seedBundles: Bundle[] = [
                                                       searchable: true,
                                                       searchPlaceholder: 'Find a member',
                                                       items: {
-                                                        $: 'involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })',
+                                                        $: 'involvementMenu({ node: row.id, entity: navigation.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did, said: row.assignee })',
                                                       },
                                                       onSelect: {
                                                         $invoke: 'spaceStore.setInvolvement',
@@ -5186,7 +5190,7 @@ export const seedBundles: Bundle[] = [
                                                     type: '$each',
                                                     props: {
                                                       items: {
-                                                        $: 'spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))',
+                                                        $: 'spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))',
                                                       },
                                                       as: 'part',
                                                     },
@@ -5221,7 +5225,7 @@ export const seedBundles: Bundle[] = [
                                                                     props: {
                                                                       size: 'xs',
                                                                       avatars: {
-                                                                        $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                                                        $: '[{ image: find(identity.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
                                                                       },
                                                                     },
                                                                   },
@@ -5233,7 +5237,7 @@ export const seedBundles: Bundle[] = [
                                                                       minWidth: '0',
                                                                       truncate: true,
                                                                       text: {
-                                                                        $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                                                        $: "holder.did == me.did ? find(identity.profiles, { did: holder.did }).name + ' (you)' : find(identity.profiles, { did: holder.did }).name",
                                                                       },
                                                                     },
                                                                   },
@@ -5387,7 +5391,7 @@ export const seedBundles: Bundle[] = [
                                                   itemSize: 'sm',
                                                   placement: 'bottom-end',
                                                   items: {
-                                                    $: 'workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })',
+                                                    $: 'workflowStore.startable.filter(f, (navigation.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })',
                                                   },
                                                   onSelect: {
                                                     $invoke: 'workflowStore.startWorkflow',
@@ -5543,9 +5547,9 @@ export const seedBundles: Bundle[] = [
                                                                       args: [{ $: 'inWorkflow.workflow' }],
                                                                     },
                                                                     {
-                                                                      $invoke: 'routeStore.navigate',
+                                                                      $invoke: 'navigation.navigate',
                                                                       args: [
-                                                                        { $: '`${spaceStore.spacePath}/workflows`' },
+                                                                        { $: '`${navigation.spacePath}/workflows`' },
                                                                       ],
                                                                     },
                                                                   ],
@@ -5714,7 +5718,7 @@ export const seedBundles: Bundle[] = [
                                   {
                                     type: '$if',
                                     props: {
-                                      condition: { $: "routeStore.params.cardType == 'Relationship'" },
+                                      condition: { $: "navigation.params.cardType == 'Relationship'" },
                                       then: {
                                         type: 'Column',
                                         props: { gap: '100' },
@@ -5796,11 +5800,11 @@ export const seedBundles: Bundle[] = [
                                                       label: { $: "'Open ' + end.name" },
                                                       onClick: [
                                                         {
-                                                          $invoke: 'routeStore.setParam',
+                                                          $invoke: 'navigation.setParam',
                                                           args: ['cardType', { $: 'end.type' }],
                                                         },
                                                         {
-                                                          $invoke: 'routeStore.setParam',
+                                                          $invoke: 'navigation.setParam',
                                                           args: ['card', { $: 'end.id' }],
                                                         },
                                                       ],
@@ -5971,7 +5975,7 @@ export const seedBundles: Bundle[] = [
                                                         type: '$each',
                                                         props: {
                                                           items: {
-                                                            $: "local.connections.map(link, { link: link, out: (link.source.id ?? link.source) == routeStore.params.card }).map(c, { link: c.link, out: c.out, other: c.out ? c.link.target : c.link.source, stored: c.out ? c.link.targetType : c.link.sourceType, kind: find(local.relationshipKinds, { id: c.link.relationshipTypeId }) }).map(c, { link: c.link, out: c.out, other: c.other, kind: c.kind, type: (c.stored ? c.stored : c.other.__subjectClass) }).map(c, { id: c.link.id, otherId: c.other.id ?? c.other, otherType: c.type, name: (!c.other ? 'Removed' : c.other[recordStore.displays[c.type].title] ? c.other[recordStore.displays[c.type].title] : c.other.textContent ? c.other.textContent : (c.type == 'CollectionBlock' ? 'Note' : recordStore.displays[c.type].label ? recordStore.displays[c.type].label : c.type)), icon: (c.type == 'CollectionBlock' ? 'note' : recordStore.displays[c.type].icon), verb: c.out ? (c.kind.name ? c.kind.name : c.link.label) : (c.kind.inverseName ? c.kind.inverseName : c.kind.name ? c.kind.name : c.link.label), arrow: c.kind.directed == false ? 'arrows-left-right' : c.out ? 'arrow-right' : 'arrow-left', tint: c.kind.color })",
+                                                            $: "local.connections.map(link, { link: link, out: (link.source.id ?? link.source) == navigation.params.card }).map(c, { link: c.link, out: c.out, other: c.out ? c.link.target : c.link.source, stored: c.out ? c.link.targetType : c.link.sourceType, kind: find(local.relationshipKinds, { id: c.link.relationshipTypeId }) }).map(c, { link: c.link, out: c.out, other: c.other, kind: c.kind, type: (c.stored ? c.stored : c.other.__subjectClass) }).map(c, { id: c.link.id, otherId: c.other.id ?? c.other, otherType: c.type, name: (!c.other ? 'Removed' : c.other[recordStore.displays[c.type].title] ? c.other[recordStore.displays[c.type].title] : c.other.textContent ? c.other.textContent : (c.type == 'CollectionBlock' ? 'Note' : recordStore.displays[c.type].label ? recordStore.displays[c.type].label : c.type)), icon: (c.type == 'CollectionBlock' ? 'note' : recordStore.displays[c.type].icon), verb: c.out ? (c.kind.name ? c.kind.name : c.link.label) : (c.kind.inverseName ? c.kind.inverseName : c.kind.name ? c.kind.name : c.link.label), arrow: c.kind.directed == false ? 'arrows-left-right' : c.out ? 'arrow-right' : 'arrow-left', tint: c.kind.color })",
                                                           },
                                                           as: 'conn',
                                                         },
@@ -5993,11 +5997,11 @@ export const seedBundles: Bundle[] = [
                                                                   label: { $: "'Open ' + conn.name" },
                                                                   onClick: [
                                                                     {
-                                                                      $invoke: 'routeStore.setParam',
+                                                                      $invoke: 'navigation.setParam',
                                                                       args: ['cardType', { $: 'conn.otherType' }],
                                                                     },
                                                                     {
-                                                                      $invoke: 'routeStore.setParam',
+                                                                      $invoke: 'navigation.setParam',
                                                                       args: ['card', { $: 'conn.otherId' }],
                                                                     },
                                                                   ],
@@ -6065,11 +6069,11 @@ export const seedBundles: Bundle[] = [
                                                                       label: 'Open this connection',
                                                                       onClick: [
                                                                         {
-                                                                          $invoke: 'routeStore.setParam',
+                                                                          $invoke: 'navigation.setParam',
                                                                           args: ['cardType', 'Relationship'],
                                                                         },
                                                                         {
-                                                                          $invoke: 'routeStore.setParam',
+                                                                          $invoke: 'navigation.setParam',
                                                                           args: ['card', { $: 'conn.id' }],
                                                                         },
                                                                       ],
@@ -6148,7 +6152,7 @@ export const seedBundles: Bundle[] = [
                                           {
                                             type: '$if',
                                             props: {
-                                              condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                                              condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
                                               then: {
                                                 type: 'we-tooltip',
                                                 props: { content: 'New signal type' },
@@ -6235,7 +6239,7 @@ export const seedBundles: Bundle[] = [
                                                         type: '$each',
                                                         props: {
                                                           items: {
-                                                            $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids })',
+                                                            $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: identity.mutedDids })',
                                                           },
                                                           as: 'sig',
                                                         },
@@ -6405,7 +6409,7 @@ export const seedBundles: Bundle[] = [
                                                                           size: 'sm',
                                                                           signalType: { $: 'sig' },
                                                                           signals: {
-                                                                            $: 'filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                            $: 'filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } })',
                                                                           },
                                                                           myDid: { $: 'me.did' },
                                                                           onSignal: {
@@ -6439,13 +6443,13 @@ export const seedBundles: Bundle[] = [
                                                                 type: '$if',
                                                                 props: {
                                                                   condition: {
-                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                   },
                                                                   then: {
                                                                     type: '$if',
                                                                     props: {
                                                                       condition: {
-                                                                        $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                        $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                       },
                                                                       then: {
                                                                         type: 'we-button',
@@ -6475,7 +6479,7 @@ export const seedBundles: Bundle[] = [
                                                                                 type: 'AvatarStack',
                                                                                 props: {
                                                                                   avatars: {
-                                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                   },
                                                                                   max: 4,
                                                                                   size: 'xs',
@@ -6491,7 +6495,7 @@ export const seedBundles: Bundle[] = [
                                                                                 },
                                                                                 children: [
                                                                                   {
-                                                                                    $: "`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                    $: "`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                   },
                                                                                 ],
                                                                               },
@@ -6516,7 +6520,7 @@ export const seedBundles: Bundle[] = [
                                                                 type: '$if',
                                                                 props: {
                                                                   condition: {
-                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors',
+                                                                    $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors',
                                                                   },
                                                                   enterTransition: [
                                                                     { type: 'reveal', duration: 200 },
@@ -6526,7 +6530,7 @@ export const seedBundles: Bundle[] = [
                                                                     type: '$if',
                                                                     props: {
                                                                       condition: {
-                                                                        $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                        $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                       },
                                                                       then: {
                                                                         type: 'Column',
@@ -6536,7 +6540,7 @@ export const seedBundles: Bundle[] = [
                                                                             type: '$each',
                                                                             props: {
                                                                               items: {
-                                                                                $: 'filter(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 8)',
+                                                                                $: 'filter(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 8)',
                                                                               },
                                                                               as: 'sigWho',
                                                                             },
@@ -6625,7 +6629,7 @@ export const seedBundles: Bundle[] = [
                                                                             type: '$if',
                                                                             props: {
                                                                               condition: {
-                                                                                $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 8',
+                                                                                $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 8',
                                                                               },
                                                                               then: {
                                                                                 type: 'we-button',
@@ -6646,7 +6650,7 @@ export const seedBundles: Bundle[] = [
                                                                                     props: { fontSize: '100' },
                                                                                     children: [
                                                                                       {
-                                                                                        $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 8} more…`',
+                                                                                        $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 8} more…`',
                                                                                       },
                                                                                     ],
                                                                                   },
@@ -6666,7 +6670,7 @@ export const seedBundles: Bundle[] = [
                                                                                 },
                                                                                 children: [
                                                                                   {
-                                                                                    $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).unresolved} more whose name has not loaded yet`',
+                                                                                    $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).unresolved} more whose name has not loaded yet`',
                                                                                   },
                                                                                 ],
                                                                               },
@@ -6705,7 +6709,7 @@ export const seedBundles: Bundle[] = [
                                                             type: '$if',
                                                             props: {
                                                               condition: {
-                                                                $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(row.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(row.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } }))))',
                                                               },
                                                               then: {
                                                                 type: 'we-input',
@@ -6729,7 +6733,7 @@ export const seedBundles: Bundle[] = [
                                                                 type: '$each',
                                                                 props: {
                                                                   items: {
-                                                                    $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids })',
+                                                                    $: 'signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: identity.mutedDids })',
                                                                   },
                                                                   as: 'sig',
                                                                 },
@@ -6911,7 +6915,7 @@ export const seedBundles: Bundle[] = [
                                                                                   size: 'sm',
                                                                                   signalType: { $: 'sig' },
                                                                                   signals: {
-                                                                                    $: 'filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                    $: 'filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } })',
                                                                                   },
                                                                                   myDid: { $: 'me.did' },
                                                                                   onSignal: {
@@ -6947,13 +6951,13 @@ export const seedBundles: Bundle[] = [
                                                                         type: '$if',
                                                                         props: {
                                                                           condition: {
-                                                                            $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                            $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                           },
                                                                           then: {
                                                                             type: '$if',
                                                                             props: {
                                                                               condition: {
-                                                                                $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                               },
                                                                               then: {
                                                                                 type: 'we-button',
@@ -6983,7 +6987,7 @@ export const seedBundles: Bundle[] = [
                                                                                         type: 'AvatarStack',
                                                                                         props: {
                                                                                           avatars: {
-                                                                                            $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                            $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                           },
                                                                                           max: 4,
                                                                                           size: 'xs',
@@ -6999,7 +7003,7 @@ export const seedBundles: Bundle[] = [
                                                                                         },
                                                                                         children: [
                                                                                           {
-                                                                                            $: "`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                            $: "`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                           },
                                                                                         ],
                                                                                       },
@@ -7024,7 +7028,7 @@ export const seedBundles: Bundle[] = [
                                                                         type: '$if',
                                                                         props: {
                                                                           condition: {
-                                                                            $: "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+                                                                            $: "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
                                                                           },
                                                                           enterTransition: [
                                                                             { type: 'reveal', duration: 200 },
@@ -7034,7 +7038,7 @@ export const seedBundles: Bundle[] = [
                                                                             type: '$if',
                                                                             props: {
                                                                               condition: {
-                                                                                $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                $: 'count(reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                               },
                                                                               then: {
                                                                                 type: 'Column',
@@ -7048,7 +7052,7 @@ export const seedBundles: Bundle[] = [
                                                                                     type: '$each',
                                                                                     props: {
                                                                                       items: {
-                                                                                        $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people',
+                                                                                        $: 'reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).people',
                                                                                       },
                                                                                       as: 'sigWho',
                                                                                     },
@@ -7140,7 +7144,7 @@ export const seedBundles: Bundle[] = [
                                                                                     type: '$if',
                                                                                     props: {
                                                                                       condition: {
-                                                                                        $: 'trim(local.reactorSearch) && reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved',
+                                                                                        $: 'trim(local.reactorSearch) && reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved',
                                                                                       },
                                                                                       then: {
                                                                                         type: 'we-text',
@@ -7150,7 +7154,7 @@ export const seedBundles: Bundle[] = [
                                                                                         },
                                                                                         children: [
                                                                                           {
-                                                                                            $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
+                                                                                            $: '`${reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
                                                                                           },
                                                                                         ],
                                                                                       },
@@ -7175,7 +7179,7 @@ export const seedBundles: Bundle[] = [
                                                   {
                                                     type: '$if',
                                                     props: {
-                                                      condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+                                                      condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
                                                       then: {
                                                         type: '$if',
                                                         props: {
@@ -8106,7 +8110,7 @@ export const seedBundles: Bundle[] = [
                                                                                                         type: '$each',
                                                                                                         props: {
                                                                                                           items: {
-                                                                                                            $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                            $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: identity.mutedDids, limit: 4 })',
                                                                                                           },
                                                                                                           as: 'focusedSig',
                                                                                                         },
@@ -8218,7 +8222,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     {
                                                                                                                                       condition:
                                                                                                                                         {
-                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                         },
                                                                                                                                       then: {
                                                                                                                                         type: 'Column',
@@ -8237,7 +8241,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   items:
                                                                                                                                                     {
-                                                                                                                                                      $: 'filter(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                      $: 'filter(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                     },
                                                                                                                                                   as: 'focusedSigFace',
                                                                                                                                                 },
@@ -8352,7 +8356,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                      $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'we-text',
@@ -8364,7 +8368,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                     children:
                                                                                                                                                       [
                                                                                                                                                         {
-                                                                                                                                                          $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                          $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                         },
                                                                                                                                                       ],
                                                                                                                                                   },
@@ -8387,10 +8391,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                           },
                                                                                                                           count:
                                                                                                                             {
-                                                                                                                              $: 'signalTally({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), type: focusedSig })',
+                                                                                                                              $: 'signalTally({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), type: focusedSig })',
                                                                                                                             },
                                                                                                                           mine: {
-                                                                                                                            $: 'count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                            $: 'count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                           },
                                                                                                                           size: 'xs',
                                                                                                                           label:
@@ -8402,7 +8406,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               $if: {
                                                                                                                                 condition:
                                                                                                                                   {
-                                                                                                                                    $: '(count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : focusedSig.rangeMax) == null',
+                                                                                                                                    $: '(count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : focusedSig.rangeMax) == null',
                                                                                                                                   },
                                                                                                                                 then: {
                                                                                                                                   $invoke:
@@ -8418,7 +8422,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     'ops.core.upsertSignal',
                                                                                                                                   args: [
                                                                                                                                     {
-                                                                                                                                      $: '{ node: focused.id, signalType: focusedSig.id, value: (count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : focusedSig.rangeMax) }',
+                                                                                                                                      $: '{ node: focused.id, signalType: focusedSig.id, value: (count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : focusedSig.rangeMax) }',
                                                                                                                                     },
                                                                                                                                   ],
                                                                                                                                 },
@@ -8541,7 +8545,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                      $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'Column',
@@ -8560,7 +8564,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               items:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'filter(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                  $: 'filter(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                 },
                                                                                                                                                               as: 'focusedSigFace',
                                                                                                                                                             },
@@ -8675,7 +8679,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                  $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'we-text',
@@ -8687,7 +8691,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                 children:
                                                                                                                                                                   [
                                                                                                                                                                     {
-                                                                                                                                                                      $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                      $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                     },
                                                                                                                                                                   ],
                                                                                                                                                               },
@@ -8710,10 +8714,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                       },
                                                                                                                                       count:
                                                                                                                                         {
-                                                                                                                                          $: 'signalTally({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), type: focusedSig })',
+                                                                                                                                          $: 'signalTally({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), type: focusedSig })',
                                                                                                                                         },
                                                                                                                                       mine: {
-                                                                                                                                        $: 'count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                        $: 'count(filter(filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                       },
                                                                                                                                       size: 'xs',
                                                                                                                                       label:
@@ -8769,7 +8773,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                         },
                                                                                                                                       signals:
                                                                                                                                         {
-                                                                                                                                          $: 'filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                          $: 'filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } })',
                                                                                                                                         },
                                                                                                                                       myDid:
                                                                                                                                         {
@@ -8905,7 +8909,7 @@ export const seedBundles: Bundle[] = [
                                                                                                             props: {
                                                                                                               condition:
                                                                                                                 {
-                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(focused.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                  $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(focused.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } }))))',
                                                                                                                 },
                                                                                                               then: {
                                                                                                                 type: 'we-input',
@@ -8945,7 +8949,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   items:
                                                                                                                     {
-                                                                                                                      $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: spaceStore.mutedDids })',
+                                                                                                                      $: 'signalTypesByUse({ of: focused.id, types: local.signalTypes.filter(t, !t.retired), signals: focused.signals, muted: identity.mutedDids })',
                                                                                                                     },
                                                                                                                   as: 'focusedSig',
                                                                                                                 },
@@ -9207,7 +9211,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                               },
                                                                                                                                             signals:
                                                                                                                                               {
-                                                                                                                                                $: 'filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                $: 'filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } })',
                                                                                                                                               },
                                                                                                                                             myDid:
                                                                                                                                               {
@@ -9252,7 +9256,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               {
                                                                                                                                 condition:
                                                                                                                                   {
-                                                                                                                                    $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                                                                                    $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                                                                                   },
                                                                                                                                 then: {
                                                                                                                                   type: '$if',
@@ -9260,7 +9264,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     {
                                                                                                                                       condition:
                                                                                                                                         {
-                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                         },
                                                                                                                                       then: {
                                                                                                                                         type: 'we-button',
@@ -9310,7 +9314,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                       {
                                                                                                                                                         avatars:
                                                                                                                                                           {
-                                                                                                                                                            $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                                                                                            $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                                                                                           },
                                                                                                                                                         max: 4,
                                                                                                                                                         size: 'xs',
@@ -9330,7 +9334,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                     children:
                                                                                                                                                       [
                                                                                                                                                         {
-                                                                                                                                                          $: "`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                                                                                          $: "`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                                                                                         },
                                                                                                                                                       ],
                                                                                                                                                   },
@@ -9358,7 +9362,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               {
                                                                                                                                 condition:
                                                                                                                                   {
-                                                                                                                                    $: "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+                                                                                                                                    $: "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
                                                                                                                                   },
                                                                                                                                 enterTransition:
                                                                                                                                   [
@@ -9377,7 +9381,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     {
                                                                                                                                       condition:
                                                                                                                                         {
-                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                          $: 'count(reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                         },
                                                                                                                                       then: {
                                                                                                                                         type: 'Column',
@@ -9396,7 +9400,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   items:
                                                                                                                                                     {
-                                                                                                                                                      $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people',
+                                                                                                                                                      $: 'reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).people',
                                                                                                                                                     },
                                                                                                                                                   as: 'focusedSigWho',
                                                                                                                                                 },
@@ -9513,7 +9517,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'trim(local.reactorSearch) && reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved',
+                                                                                                                                                      $: 'trim(local.reactorSearch) && reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'we-text',
@@ -9527,7 +9531,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                     children:
                                                                                                                                                       [
                                                                                                                                                         {
-                                                                                                                                                          $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
+                                                                                                                                                          $: '`${reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
                                                                                                                                                         },
                                                                                                                                                       ],
                                                                                                                                                   },
@@ -9548,7 +9552,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   condition:
                                                                                                                     {
-                                                                                                                      $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                      $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                     },
                                                                                                                   then: {
                                                                                                                     type: 'Column',
@@ -9626,7 +9630,7 @@ export const seedBundles: Bundle[] = [
                                                                                                     type: '$if',
                                                                                                     props: {
                                                                                                       condition: {
-                                                                                                        $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                        $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                       },
                                                                                                       then: {
                                                                                                         type: '$if',
@@ -10386,7 +10390,7 @@ export const seedBundles: Bundle[] = [
                                                                                             type: '$if',
                                                                                             props: {
                                                                                               condition: {
-                                                                                                $: "spaceStore.currentSpace.threadMode != 'flat'",
+                                                                                                $: "spaceSettings.currentSpace.threadMode != 'flat'",
                                                                                               },
                                                                                               then: {
                                                                                                 type: 'we-button',
@@ -10445,7 +10449,7 @@ export const seedBundles: Bundle[] = [
                                                 $queries: {
                                                   threadRows: {
                                                     entity: 'CollectionBlock',
-                                                    where: { author: { not: { $: 'spaceStore.mutedDids' } } },
+                                                    where: { author: { not: { $: 'identity.mutedDids' } } },
                                                     scope: {
                                                       anchor: 'CollectionBlock',
                                                       via: 'responses',
@@ -11141,7 +11145,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                 props: {
                                                                                                                   items:
                                                                                                                     {
-                                                                                                                      $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                      $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: identity.mutedDids, limit: 4 })',
                                                                                                                     },
                                                                                                                   as: 'replySig',
                                                                                                                 },
@@ -11255,7 +11259,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'Column',
@@ -11274,7 +11278,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               items:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'filter(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                  $: 'filter(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                 },
                                                                                                                                                               as: 'replySigFace',
                                                                                                                                                             },
@@ -11389,7 +11393,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                  $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'we-text',
@@ -11401,7 +11405,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                 children:
                                                                                                                                                                   [
                                                                                                                                                                     {
-                                                                                                                                                                      $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                      $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                     },
                                                                                                                                                                   ],
                                                                                                                                                               },
@@ -11424,10 +11428,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                       },
                                                                                                                                       count:
                                                                                                                                         {
-                                                                                                                                          $: 'signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })',
+                                                                                                                                          $: 'signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), type: replySig })',
                                                                                                                                         },
                                                                                                                                       mine: {
-                                                                                                                                        $: 'count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                        $: 'count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                       },
                                                                                                                                       size: 'xs',
                                                                                                                                       label:
@@ -11439,7 +11443,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                           $if: {
                                                                                                                                             condition:
                                                                                                                                               {
-                                                                                                                                                $: '(count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : replySig.rangeMax) == null',
+                                                                                                                                                $: '(count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : replySig.rangeMax) == null',
                                                                                                                                               },
                                                                                                                                             then: {
                                                                                                                                               $invoke:
@@ -11455,7 +11459,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 'ops.core.upsertSignal',
                                                                                                                                               args: [
                                                                                                                                                 {
-                                                                                                                                                  $: '{ node: reply.id, signalType: replySig.id, value: (count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : replySig.rangeMax) }',
+                                                                                                                                                  $: '{ node: reply.id, signalType: replySig.id, value: (count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : replySig.rangeMax) }',
                                                                                                                                                 },
                                                                                                                                               ],
                                                                                                                                             },
@@ -11579,7 +11583,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'Column',
@@ -11598,7 +11602,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                         {
                                                                                                                                                                           items:
                                                                                                                                                                             {
-                                                                                                                                                                              $: 'filter(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                              $: 'filter(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                             },
                                                                                                                                                                           as: 'replySigFace',
                                                                                                                                                                         },
@@ -11713,7 +11717,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                         {
                                                                                                                                                                           condition:
                                                                                                                                                                             {
-                                                                                                                                                                              $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                              $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                             },
                                                                                                                                                                           then: {
                                                                                                                                                                             type: 'we-text',
@@ -11725,7 +11729,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                             children:
                                                                                                                                                                               [
                                                                                                                                                                                 {
-                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                                 },
                                                                                                                                                                               ],
                                                                                                                                                                           },
@@ -11748,10 +11752,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                   },
                                                                                                                                                   count:
                                                                                                                                                     {
-                                                                                                                                                      $: 'signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })',
+                                                                                                                                                      $: 'signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), type: replySig })',
                                                                                                                                                     },
                                                                                                                                                   mine: {
-                                                                                                                                                    $: 'count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                                    $: 'count(filter(filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                                   },
                                                                                                                                                   size: 'xs',
                                                                                                                                                   label:
@@ -11807,7 +11811,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                     },
                                                                                                                                                   signals:
                                                                                                                                                     {
-                                                                                                                                                      $: 'filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                      $: 'filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                     },
                                                                                                                                                   myDid:
                                                                                                                                                     {
@@ -11955,7 +11959,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                         {
                                                                                                                           condition:
                                                                                                                             {
-                                                                                                                              $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                              $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } }))))',
                                                                                                                             },
                                                                                                                           then: {
                                                                                                                             type: 'we-input',
@@ -11999,7 +12003,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               {
                                                                                                                                 items:
                                                                                                                                   {
-                                                                                                                                    $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                    $: 'signalTypesByUse({ of: reply.id, types: local.signalTypes.filter(t, !t.retired), signals: reply.signals, muted: identity.mutedDids })',
                                                                                                                                   },
                                                                                                                                 as: 'replySig',
                                                                                                                               },
@@ -12261,7 +12265,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                           },
                                                                                                                                                         signals:
                                                                                                                                                           {
-                                                                                                                                                            $: 'filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                            $: 'filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                           },
                                                                                                                                                         myDid:
                                                                                                                                                           {
@@ -12306,7 +12310,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                           {
                                                                                                                                             condition:
                                                                                                                                               {
-                                                                                                                                                $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                                                                                                $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                                                                                               },
                                                                                                                                             then: {
                                                                                                                                               type: '$if',
@@ -12314,7 +12318,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'we-button',
@@ -12364,7 +12368,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                   {
                                                                                                                                                                     avatars:
                                                                                                                                                                       {
-                                                                                                                                                                        $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                                                                                                        $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                                                                                                       },
                                                                                                                                                                     max: 4,
                                                                                                                                                                     size: 'xs',
@@ -12384,7 +12388,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                 children:
                                                                                                                                                                   [
                                                                                                                                                                     {
-                                                                                                                                                                      $: "`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                                                                                                      $: "`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                                                                                                     },
                                                                                                                                                                   ],
                                                                                                                                                               },
@@ -12412,7 +12416,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                           {
                                                                                                                                             condition:
                                                                                                                                               {
-                                                                                                                                                $: "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+                                                                                                                                                $: "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
                                                                                                                                               },
                                                                                                                                             enterTransition:
                                                                                                                                               [
@@ -12431,7 +12435,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                 {
                                                                                                                                                   condition:
                                                                                                                                                     {
-                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                      $: 'count(reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                     },
                                                                                                                                                   then: {
                                                                                                                                                     type: 'Column',
@@ -12450,7 +12454,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               items:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people',
+                                                                                                                                                                  $: 'reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).people',
                                                                                                                                                                 },
                                                                                                                                                               as: 'replySigWho',
                                                                                                                                                             },
@@ -12567,7 +12571,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved',
+                                                                                                                                                                  $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved',
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'we-text',
@@ -12581,7 +12585,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                 children:
                                                                                                                                                                   [
                                                                                                                                                                     {
-                                                                                                                                                                      $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
+                                                                                                                                                                      $: '`${reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
                                                                                                                                                                     },
                                                                                                                                                                   ],
                                                                                                                                                               },
@@ -12603,7 +12607,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                               {
                                                                                                                                 condition:
                                                                                                                                   {
-                                                                                                                                    $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                                    $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                                   },
                                                                                                                                 then: {
                                                                                                                                   type: 'Column',
@@ -12682,7 +12686,7 @@ export const seedBundles: Bundle[] = [
                                                                                                             props: {
                                                                                                               condition:
                                                                                                                 {
-                                                                                                                  $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                  $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                 },
                                                                                                               then: {
                                                                                                                 type: '$if',
@@ -13455,7 +13459,7 @@ export const seedBundles: Bundle[] = [
                                                                                                     type: '$if',
                                                                                                     props: {
                                                                                                       condition: {
-                                                                                                        $: "spaceStore.currentSpace.threadMode != 'flat'",
+                                                                                                        $: "spaceSettings.currentSpace.threadMode != 'flat'",
                                                                                                       },
                                                                                                       then: {
                                                                                                         type: 'we-button',
@@ -14506,7 +14510,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                               {
                                                                                                                                                                                 items:
                                                                                                                                                                                   {
-                                                                                                                                                                                    $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                                                                                    $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: identity.mutedDids, limit: 4 })',
                                                                                                                                                                                   },
                                                                                                                                                                                 as: 'reply2Sig',
                                                                                                                                                                               },
@@ -14620,7 +14624,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                             {
                                                                                                                                                                                                               condition:
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               then: {
                                                                                                                                                                                                                 type: 'Column',
@@ -14639,7 +14643,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                         {
                                                                                                                                                                                                                           items:
                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                              $: 'filter(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                                                                              $: 'filter(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                           as: 'reply2SigFace',
                                                                                                                                                                                                                         },
@@ -14754,7 +14758,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                         {
                                                                                                                                                                                                                           condition:
                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                           then: {
                                                                                                                                                                                                                             type: 'we-text',
@@ -14766,7 +14770,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                             children:
                                                                                                                                                                                                                               [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                               ],
                                                                                                                                                                                                                           },
@@ -14789,10 +14793,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                   },
                                                                                                                                                                                                   count:
                                                                                                                                                                                                     {
-                                                                                                                                                                                                      $: 'signalTally({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), type: reply2Sig })',
+                                                                                                                                                                                                      $: 'signalTally({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), type: reply2Sig })',
                                                                                                                                                                                                     },
                                                                                                                                                                                                   mine: {
-                                                                                                                                                                                                    $: 'count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                                                                                    $: 'count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                                                                                   },
                                                                                                                                                                                                   size: 'xs',
                                                                                                                                                                                                   label:
@@ -14804,7 +14808,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                       $if: {
                                                                                                                                                                                                         condition:
                                                                                                                                                                                                           {
-                                                                                                                                                                                                            $: '(count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : reply2Sig.rangeMax) == null',
+                                                                                                                                                                                                            $: '(count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : reply2Sig.rangeMax) == null',
                                                                                                                                                                                                           },
                                                                                                                                                                                                         then: {
                                                                                                                                                                                                           $invoke:
@@ -14820,7 +14824,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                             'ops.core.upsertSignal',
                                                                                                                                                                                                           args: [
                                                                                                                                                                                                             {
-                                                                                                                                                                                                              $: '{ node: reply2.id, signalType: reply2Sig.id, value: (count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : reply2Sig.rangeMax) }',
+                                                                                                                                                                                                              $: '{ node: reply2.id, signalType: reply2Sig.id, value: (count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : reply2Sig.rangeMax) }',
                                                                                                                                                                                                             },
                                                                                                                                                                                                           ],
                                                                                                                                                                                                         },
@@ -14944,7 +14948,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                         {
                                                                                                                                                                                                                           condition:
                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                              $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                              $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                           then: {
                                                                                                                                                                                                                             type: 'Column',
@@ -14963,7 +14967,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                       items:
                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                          $: 'filter(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                                                                                          $: 'filter(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                       as: 'reply2SigFace',
                                                                                                                                                                                                                                     },
@@ -15078,7 +15082,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                       condition:
                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                          $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                                                                                          $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                       then: {
                                                                                                                                                                                                                                         type: 'we-text',
@@ -15090,7 +15094,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                         children:
                                                                                                                                                                                                                                           [
                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                              $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                                                                                              $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                           ],
                                                                                                                                                                                                                                       },
@@ -15113,10 +15117,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                               },
                                                                                                                                                                                                               count:
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  $: 'signalTally({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), type: reply2Sig })',
+                                                                                                                                                                                                                  $: 'signalTally({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), type: reply2Sig })',
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               mine: {
-                                                                                                                                                                                                                $: 'count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                                                                                                $: 'count(filter(filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                                                                                               },
                                                                                                                                                                                                               size: 'xs',
                                                                                                                                                                                                               label:
@@ -15172,7 +15176,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               signals:
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  $: 'filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                                                                                  $: 'filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               myDid:
                                                                                                                                                                                                                 {
@@ -15323,7 +15327,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                     {
                                                                                                                                                                                       condition:
                                                                                                                                                                                         {
-                                                                                                                                                                                          $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply2.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                                                                                          $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply2.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } }))))',
                                                                                                                                                                                         },
                                                                                                                                                                                       then: {
                                                                                                                                                                                         type: 'we-input',
@@ -15367,7 +15371,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                           {
                                                                                                                                                                                             items:
                                                                                                                                                                                               {
-                                                                                                                                                                                                $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                                                                                $: 'signalTypesByUse({ of: reply2.id, types: local.signalTypes.filter(t, !t.retired), signals: reply2.signals, muted: identity.mutedDids })',
                                                                                                                                                                                               },
                                                                                                                                                                                             as: 'reply2Sig',
                                                                                                                                                                                           },
@@ -15629,7 +15633,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                       },
                                                                                                                                                                                                                     signals:
                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                        $: 'filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                                                                                        $: 'filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                                                                                       },
                                                                                                                                                                                                                     myDid:
                                                                                                                                                                                                                       {
@@ -15674,7 +15678,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                       {
                                                                                                                                                                                                         condition:
                                                                                                                                                                                                           {
-                                                                                                                                                                                                            $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                                                                                                                                                            $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                                                                                                                                                           },
                                                                                                                                                                                                         then: {
                                                                                                                                                                                                           type: '$if',
@@ -15682,7 +15686,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                             {
                                                                                                                                                                                                               condition:
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               then: {
                                                                                                                                                                                                                 type: 'we-button',
@@ -15732,7 +15736,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                 avatars:
                                                                                                                                                                                                                                   {
-                                                                                                                                                                                                                                    $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                                                                                                                                                                    $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                                                                                                                                                                   },
                                                                                                                                                                                                                                 max: 4,
                                                                                                                                                                                                                                 size: 'xs',
@@ -15752,7 +15756,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                             children:
                                                                                                                                                                                                                               [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  $: "`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                                                                                                                                                                  $: "`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                               ],
                                                                                                                                                                                                                           },
@@ -15780,7 +15784,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                       {
                                                                                                                                                                                                         condition:
                                                                                                                                                                                                           {
-                                                                                                                                                                                                            $: "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+                                                                                                                                                                                                            $: "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
                                                                                                                                                                                                           },
                                                                                                                                                                                                         enterTransition:
                                                                                                                                                                                                           [
@@ -15799,7 +15803,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                             {
                                                                                                                                                                                                               condition:
                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                  $: 'count(reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                 },
                                                                                                                                                                                                               then: {
                                                                                                                                                                                                                 type: 'Column',
@@ -15818,7 +15822,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                         {
                                                                                                                                                                                                                           items:
                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people',
+                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).people',
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                           as: 'reply2SigWho',
                                                                                                                                                                                                                         },
@@ -15935,7 +15939,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                         {
                                                                                                                                                                                                                           condition:
                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                              $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved',
+                                                                                                                                                                                                                              $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved',
                                                                                                                                                                                                                             },
                                                                                                                                                                                                                           then: {
                                                                                                                                                                                                                             type: 'we-text',
@@ -15949,7 +15953,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                             children:
                                                                                                                                                                                                                               [
                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
+                                                                                                                                                                                                                                  $: '`${reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                               ],
                                                                                                                                                                                                                           },
@@ -15971,7 +15975,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                           {
                                                                                                                                                                                             condition:
                                                                                                                                                                                               {
-                                                                                                                                                                                                $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                                                                                                $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                                                                                               },
                                                                                                                                                                                             then: {
                                                                                                                                                                                               type: 'Column',
@@ -16051,7 +16055,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                         {
                                                                                                                                                                           condition:
                                                                                                                                                                             {
-                                                                                                                                                                              $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                                                                              $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                                                                             },
                                                                                                                                                                           then: {
                                                                                                                                                                             type: '$if',
@@ -16827,7 +16831,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                             {
                                                                                                                                                               condition:
                                                                                                                                                                 {
-                                                                                                                                                                  $: "spaceStore.currentSpace.threadMode != 'flat'",
+                                                                                                                                                                  $: "spaceSettings.currentSpace.threadMode != 'flat'",
                                                                                                                                                                 },
                                                                                                                                                               then: {
                                                                                                                                                                 type: 'we-button',
@@ -17976,7 +17980,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                         {
                                                                                                                                                                                                                                           items:
                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                              $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: spaceStore.mutedDids, limit: 4 })',
+                                                                                                                                                                                                                                              $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: identity.mutedDids, limit: 4 })',
                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                           as: 'reply3Sig',
                                                                                                                                                                                                                                         },
@@ -18090,7 +18094,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                       {
                                                                                                                                                                                                                                                                         condition:
                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         then: {
                                                                                                                                                                                                                                                                           type: 'Column',
@@ -18109,7 +18113,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                                     items:
                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                        $: 'filter(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                                                                                                                                        $: 'filter(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                     as: 'reply3SigFace',
                                                                                                                                                                                                                                                                                   },
@@ -18224,7 +18228,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                                     condition:
                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                        $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                                                                                                                                        $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                     then: {
                                                                                                                                                                                                                                                                                       type: 'we-text',
@@ -18236,7 +18240,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                       children:
                                                                                                                                                                                                                                                                                         [
                                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                                            $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                                                                                                                                            $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                                         ],
                                                                                                                                                                                                                                                                                     },
@@ -18259,10 +18263,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                                             count:
                                                                                                                                                                                                                                                               {
-                                                                                                                                                                                                                                                                $: 'signalTally({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), type: reply3Sig })',
+                                                                                                                                                                                                                                                                $: 'signalTally({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), type: reply3Sig })',
                                                                                                                                                                                                                                                               },
                                                                                                                                                                                                                                                             mine: {
-                                                                                                                                                                                                                                                              $: 'count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                                                                                                                                              $: 'count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                                             size: 'xs',
                                                                                                                                                                                                                                                             label:
@@ -18274,7 +18278,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                 $if: {
                                                                                                                                                                                                                                                                   condition:
                                                                                                                                                                                                                                                                     {
-                                                                                                                                                                                                                                                                      $: '(count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : reply3Sig.rangeMax) == null',
+                                                                                                                                                                                                                                                                      $: '(count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : reply3Sig.rangeMax) == null',
                                                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                                                   then: {
                                                                                                                                                                                                                                                                     $invoke:
@@ -18290,7 +18294,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                       'ops.core.upsertSignal',
                                                                                                                                                                                                                                                                     args: [
                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                        $: '{ node: reply3.id, signalType: reply3Sig.id, value: (count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did })) ? null : reply3Sig.rangeMax) }',
+                                                                                                                                                                                                                                                                        $: '{ node: reply3.id, signalType: reply3Sig.id, value: (count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), { author: me.did })) ? null : reply3Sig.rangeMax) }',
                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                     ],
                                                                                                                                                                                                                                                                   },
@@ -18414,7 +18418,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                                     condition:
                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                        $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                                                                                        $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                     then: {
                                                                                                                                                                                                                                                                                       type: 'Column',
@@ -18433,7 +18437,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                                                                 items:
                                                                                                                                                                                                                                                                                                   {
-                                                                                                                                                                                                                                                                                                    $: 'filter(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people, {}, 5)',
+                                                                                                                                                                                                                                                                                                    $: 'filter(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people, {}, 5)',
                                                                                                                                                                                                                                                                                                   },
                                                                                                                                                                                                                                                                                                 as: 'reply3SigFace',
                                                                                                                                                                                                                                                                                               },
@@ -18548,7 +18552,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                                                                 condition:
                                                                                                                                                                                                                                                                                                   {
-                                                                                                                                                                                                                                                                                                    $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total > 5',
+                                                                                                                                                                                                                                                                                                    $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total > 5',
                                                                                                                                                                                                                                                                                                   },
                                                                                                                                                                                                                                                                                                 then: {
                                                                                                                                                                                                                                                                                                   type: 'we-text',
@@ -18560,7 +18564,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                                   children:
                                                                                                                                                                                                                                                                                                     [
                                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                                        $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total - 5} more…`',
+                                                                                                                                                                                                                                                                                                        $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total - 5} more…`',
                                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                                     ],
                                                                                                                                                                                                                                                                                                 },
@@ -18583,10 +18587,10 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                                         count:
                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                            $: 'signalTally({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), type: reply3Sig })',
+                                                                                                                                                                                                                                                                            $: 'signalTally({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), type: reply3Sig })',
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         mine: {
-                                                                                                                                                                                                                                                                          $: 'count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), { author: me.did }))',
+                                                                                                                                                                                                                                                                          $: 'count(filter(filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), { author: me.did }))',
                                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                                         size: 'xs',
                                                                                                                                                                                                                                                                         label:
@@ -18642,7 +18646,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         signals:
                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                            $: 'filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                                                                                                                                            $: 'filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         myDid:
                                                                                                                                                                                                                                                                           {
@@ -18793,7 +18797,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                 condition:
                                                                                                                                                                                                                                                   {
-                                                                                                                                                                                                                                                    $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply3.signals, { signalTypeId: t.id, author: { not: spaceStore.mutedDids } }))))',
+                                                                                                                                                                                                                                                    $: 'count(local.signalTypes.filter(t, !t.retired).filter(t, count(filter(reply3.signals, { signalTypeId: t.id, author: { not: identity.mutedDids } }))))',
                                                                                                                                                                                                                                                   },
                                                                                                                                                                                                                                                 then: {
                                                                                                                                                                                                                                                   type: 'we-input',
@@ -18837,7 +18841,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                                       items:
                                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                                          $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: spaceStore.mutedDids })',
+                                                                                                                                                                                                                                                          $: 'signalTypesByUse({ of: reply3.id, types: local.signalTypes.filter(t, !t.retired), signals: reply3.signals, muted: identity.mutedDids })',
                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                       as: 'reply3Sig',
                                                                                                                                                                                                                                                     },
@@ -19099,7 +19103,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                                                                               signals:
                                                                                                                                                                                                                                                                                 {
-                                                                                                                                                                                                                                                                                  $: 'filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } })',
+                                                                                                                                                                                                                                                                                  $: 'filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } })',
                                                                                                                                                                                                                                                                                 },
                                                                                                                                                                                                                                                                               myDid:
                                                                                                                                                                                                                                                                                 {
@@ -19144,7 +19148,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                 {
                                                                                                                                                                                                                                                                   condition:
                                                                                                                                                                                                                                                                     {
-                                                                                                                                                                                                                                                                      $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total != 1',
+                                                                                                                                                                                                                                                                      $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total != 1',
                                                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                                                   then: {
                                                                                                                                                                                                                                                                     type: '$if',
@@ -19152,7 +19156,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                       {
                                                                                                                                                                                                                                                                         condition:
                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         then: {
                                                                                                                                                                                                                                                                           type: 'we-button',
@@ -19202,7 +19206,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                         {
                                                                                                                                                                                                                                                                                           avatars:
                                                                                                                                                                                                                                                                                             {
-                                                                                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
+                                                                                                                                                                                                                                                                                              $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people.map(p, { image: p.avatar, hash: p.did })',
                                                                                                                                                                                                                                                                                             },
                                                                                                                                                                                                                                                                                           max: 4,
                                                                                                                                                                                                                                                                                           size: 'xs',
@@ -19222,7 +19226,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                       children:
                                                                                                                                                                                                                                                                                         [
                                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                                            $: "`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total, 'person', 'people')}`",
+                                                                                                                                                                                                                                                                                            $: "`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total} ${plural(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total, 'person', 'people')}`",
                                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                                         ],
                                                                                                                                                                                                                                                                                     },
@@ -19250,7 +19254,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                 {
                                                                                                                                                                                                                                                                   condition:
                                                                                                                                                                                                                                                                     {
-                                                                                                                                                                                                                                                                      $: "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+                                                                                                                                                                                                                                                                      $: "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
                                                                                                                                                                                                                                                                     },
                                                                                                                                                                                                                                                                   enterTransition:
                                                                                                                                                                                                                                                                     [
@@ -19269,7 +19273,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                       {
                                                                                                                                                                                                                                                                         condition:
                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).people)',
+                                                                                                                                                                                                                                                                            $: 'count(reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).people)',
                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                         then: {
                                                                                                                                                                                                                                                                           type: 'Column',
@@ -19288,7 +19292,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                                     items:
                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                        $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).people',
+                                                                                                                                                                                                                                                                                        $: 'reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).people',
                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                     as: 'reply3SigWho',
                                                                                                                                                                                                                                                                                   },
@@ -19405,7 +19409,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                                     condition:
                                                                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                                                                        $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved',
+                                                                                                                                                                                                                                                                                        $: 'trim(local.reactorSearch) && reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved',
                                                                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                                                                     then: {
                                                                                                                                                                                                                                                                                       type: 'we-text',
@@ -19419,7 +19423,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                                                       children:
                                                                                                                                                                                                                                                                                         [
                                                                                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                                                                                            $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
+                                                                                                                                                                                                                                                                                            $: '`${reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did, search: local.reactorSearch }).unresolved} more whose name has not loaded yet`',
                                                                                                                                                                                                                                                                                           },
                                                                                                                                                                                                                                                                                         ],
                                                                                                                                                                                                                                                                                     },
@@ -19441,7 +19445,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                     {
                                                                                                                                                                                                                                                       condition:
                                                                                                                                                                                                                                                         {
-                                                                                                                                                                                                                                                          $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                                                                                                                                                          $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                                                                                                                                                         },
                                                                                                                                                                                                                                                       then: {
                                                                                                                                                                                                                                                         type: 'Column',
@@ -19521,7 +19525,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                     condition:
                                                                                                                                                                                                                                       {
-                                                                                                                                                                                                                                        $: 'spaceStore.canAdministerCurrentSpace',
+                                                                                                                                                                                                                                        $: 'spaceSettings.canAdministerCurrentSpace',
                                                                                                                                                                                                                                       },
                                                                                                                                                                                                                                     then: {
                                                                                                                                                                                                                                       type: '$if',
@@ -20297,7 +20301,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                       {
                                                                                                                                                                                                                         condition:
                                                                                                                                                                                                                           {
-                                                                                                                                                                                                                            $: "spaceStore.currentSpace.threadMode != 'flat'",
+                                                                                                                                                                                                                            $: "spaceSettings.currentSpace.threadMode != 'flat'",
                                                                                                                                                                                                                           },
                                                                                                                                                                                                                         then: {
                                                                                                                                                                                                                           type: 'we-button',
@@ -21328,9 +21332,9 @@ export const seedBundles: Bundle[] = [
               $queries: {
                 callRecord: {
                   entity: 'CollectionBlock',
-                  where: { id: { $: 'routeStore.params.id' } },
+                  where: { id: { $: 'navigation.params.id' } },
                   limit: 1,
-                  when: { $: 'routeStore.params.id' },
+                  when: { $: 'navigation.params.id' },
                 },
               },
               children: [
@@ -21349,7 +21353,7 @@ export const seedBundles: Bundle[] = [
                     {
                       type: '$if',
                       props: {
-                        condition: { $: "'tree' in shellStore.collapsedLanes" },
+                        condition: { $: "'tree' in layout.collapsedLanes" },
                         then: {
                           type: 'we-tooltip',
                           props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -21361,7 +21365,7 @@ export const seedBundles: Bundle[] = [
                                 size: 'md',
                                 square: true,
                                 label: 'Show the sidebar',
-                                onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                               },
                               children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                             },
@@ -21386,10 +21390,10 @@ export const seedBundles: Bundle[] = [
                                 color: 'text-muted',
                                 hoverProps: { color: 'text' },
                                 onClick: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
                                     {
-                                      $: "(spaceStore.spacePath + '/calls') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/calls', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                      $: "(navigation.spacePath + '/calls') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/calls', '?') ? '&' : '?') + 'view=canvas' : '')",
                                     },
                                   ],
                                 },
@@ -21415,25 +21419,25 @@ export const seedBundles: Bundle[] = [
                         },
                         {
                           type: '$part',
-                          props: { id: 'call.renameCallButton', subject: { $: 'routeStore.params.id' } },
+                          props: { id: 'call.renameCallButton', subject: { $: 'navigation.params.id' } },
                         },
                       ],
                     },
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'modules.call.callRecordId != routeStore.params.id' },
+                        condition: { $: 'modules.call.callRecordId != navigation.params.id' },
                         then: {
                           type: 'we-button',
                           props: {
                             variant: 'solid',
                             size: 'sm',
-                            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: 'routeStore.params.id' }] },
+                            onClick: { $invoke: 'modules.call.continueCall', args: [{ $: 'navigation.params.id' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: 'phone' } },
                             {
-                              $: "find(modules.call.liveCalls, { recordId: routeStore.params.id }) ? 'Join' : 'Pick it back up'",
+                              $: "find(modules.call.liveCalls, { recordId: navigation.params.id }) ? 'Join' : 'Pick it back up'",
                             },
                           ],
                         },
@@ -21442,7 +21446,7 @@ export const seedBundles: Bundle[] = [
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'find(modules.call.liveCalls, { recordId: routeStore.params.id })' },
+                        condition: { $: 'find(modules.call.liveCalls, { recordId: navigation.params.id })' },
                         then: {
                           type: 'we-badge',
                           props: { tone: 'success', size: 'sm' },
@@ -21464,10 +21468,10 @@ export const seedBundles: Bundle[] = [
                                 variant: 'ghost',
                                 size: 'md',
                                 square: {
-                                  $: '!count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                  $: '!count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
                                 },
                                 label: {
-                                  $: "count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'",
+                                  $: "count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]) ? `Interpretation, ${count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])} ${plural(count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)]), 'suggestion', 'suggestions')} to review` : 'Interpretation'",
                                 },
                                 expanded: { $: 'modules.transcribe.interpretationOpen' },
                                 onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:interpretation'] },
@@ -21485,14 +21489,14 @@ export const seedBundles: Bundle[] = [
                                   type: '$if',
                                   props: {
                                     condition: {
-                                      $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                      $: 'count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
                                     },
                                     then: {
                                       type: 'we-badge',
                                       props: { size: 'xs', variant: 'solid', tone: 'accent' },
                                       children: [
                                         {
-                                          $: 'count(modules.transcribe.proposalsFor[routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
+                                          $: 'count(modules.transcribe.proposalsFor[navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : spaceStore.root)])',
                                         },
                                       ],
                                     },
@@ -21517,7 +21521,7 @@ export const seedBundles: Bundle[] = [
                             label: 'Export the transcript',
                             onClick: {
                               $invoke: 'spaceStore.exportCallTranscript',
-                              args: [{ $: 'routeStore.params.id' }],
+                              args: [{ $: 'navigation.params.id' }],
                             },
                           },
                           children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
@@ -21532,20 +21536,20 @@ export const seedBundles: Bundle[] = [
                           type: 'we-button',
                           props: {
                             size: 'sm',
-                            variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                            variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                             onClick: {
                               $if: {
                                 condition: {
-                                  $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                  $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                                 },
                                 then: {
-                                  $invoke: 'routeStore.navigate',
+                                  $invoke: 'navigation.navigate',
                                   args: [
-                                    { $: "spaceStore.spacePath + '/dna'" },
-                                    { $: '{ query: { dna: routeStore.params.dna } }' },
+                                    { $: "navigation.spacePath + '/dna'" },
+                                    { $: '{ query: { dna: navigation.params.dna } }' },
                                   ],
                                 },
-                                else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                else: { $invoke: 'navigation.setParam', args: ['view', null] },
                               },
                             },
                           },
@@ -21555,8 +21559,8 @@ export const seedBundles: Bundle[] = [
                           type: 'we-button',
                           props: {
                             size: 'sm',
-                            variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                            onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                            variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                            onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                           },
                           children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                         },
@@ -21567,7 +21571,7 @@ export const seedBundles: Bundle[] = [
                 {
                   type: 'Column',
                   props: { flex: '1', minHeight: '0', minWidth: '0', px: '500', pb: '500' },
-                  children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: 'routeStore.params.id' } } }],
+                  children: [{ type: '$part', props: { id: 'feed.callFeed', subject: { $: 'navigation.params.id' } } }],
                 },
               ],
             },
@@ -21596,7 +21600,7 @@ export const seedBundles: Bundle[] = [
               {
                 type: '$if',
                 props: {
-                  condition: { $: "routeStore.params.view == 'canvas'" },
+                  condition: { $: "navigation.params.view == 'canvas'" },
                   then: {
                     type: 'Column',
                     props: { width: '100%', height: '100%' },
@@ -21620,55 +21624,55 @@ export const seedBundles: Bundle[] = [
                       treeSignalTypes: { entity: 'SignalType', order: { name: 'asc' }, subscribe: true },
                       vocabRows: {
                         entity: {
-                          $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                          $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                         },
                         order: { name: 'asc' },
                         when: {
-                          $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) && ((split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic']))",
+                          $: "((navigation.params.view == 'canvas') && navigation.params.dna) && ((split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic']))",
                         },
                       },
                       classRows: {
                         entity: {
-                          $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                          $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                         },
                         order: { createdAt: 'desc' },
                         limit: 100,
                         when: {
-                          $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) && ((split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']) && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic']))",
+                          $: "((navigation.params.view == 'canvas') && navigation.params.dna) && ((split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']) && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic']))",
                         },
                       },
                       classRecord: {
                         entity: {
-                          $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                          $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                         },
                         where: {
                           id: {
-                            $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2]",
+                            $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2]",
                           },
                         },
                         limit: 1,
                         when: {
-                          $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) && ((split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']))",
+                          $: "((navigation.params.view == 'canvas') && navigation.params.dna) && ((split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']))",
                         },
                       },
                       typeStyles: {
                         entity: 'TypeStyle',
-                        scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceStore.currentSpace.id' } },
+                        scope: { anchor: 'Space', via: 'typeStyles', anchorId: { $: 'spaceSettings.currentSpace.id' } },
                         limit: 50,
-                        when: { $: 'spaceStore.currentSpace.id' },
+                        when: { $: 'spaceSettings.currentSpace.id' },
                       },
                       spaceLandmarks: { entity: 'SpaceLandmark' },
                       focusCall: {
                         entity: 'CollectionBlock',
                         where: {
                           id: {
-                            $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                            $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : ''",
                           },
                         },
                         select: ['title'],
                         limit: 1,
                         when: {
-                          $: "(routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : ''",
+                          $: "(navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : ''",
                         },
                       },
                     },
@@ -21688,7 +21692,7 @@ export const seedBundles: Bundle[] = [
                           {
                             type: '$if',
                             props: {
-                              condition: { $: "'tree' in shellStore.collapsedLanes" },
+                              condition: { $: "'tree' in layout.collapsedLanes" },
                               then: {
                                 type: 'we-tooltip',
                                 props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -21700,7 +21704,7 @@ export const seedBundles: Bundle[] = [
                                       size: 'md',
                                       square: true,
                                       label: 'Show the sidebar',
-                                      onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                      onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                                     },
                                     children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                                   },
@@ -21712,7 +21716,7 @@ export const seedBundles: Bundle[] = [
                             type: 'we-icon',
                             props: {
                               name: {
-                                $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) ? 'dna' : 'squares-four'",
+                                $: "((navigation.params.view == 'canvas') && navigation.params.dna) ? 'dna' : 'squares-four'",
                               },
                               color: 'text-muted',
                             },
@@ -21724,12 +21728,12 @@ export const seedBundles: Bundle[] = [
                               {
                                 type: '$if',
                                 props: {
-                                  condition: { $: "(routeStore.params.view == 'canvas') && routeStore.params.dna" },
+                                  condition: { $: "(navigation.params.view == 'canvas') && navigation.params.dna" },
                                   then: {
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || (((routeStore.params.view == 'canvas') && routeStore.params.dna) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+                                        $: "!((((navigation.params.view == 'canvas') && navigation.params.dna) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || (((navigation.params.view == 'canvas') && navigation.params.dna) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
                                       },
                                       then: {
                                         type: 'we-text',
@@ -21755,15 +21759,15 @@ export const seedBundles: Bundle[] = [
                                               hoverProps: { color: 'text' },
                                               onClick: {
                                                 $if: {
-                                                  condition: { $: "routeStore.params.view == 'canvas'" },
+                                                  condition: { $: "navigation.params.view == 'canvas'" },
                                                   then: {
-                                                    $invoke: 'routeStore.setParam',
+                                                    $invoke: 'navigation.setParam',
                                                     args: ['dna', { $: "'all'" }],
                                                   },
                                                   else: {
-                                                    $invoke: 'routeStore.navigate',
+                                                    $invoke: 'navigation.navigate',
                                                     args: [
-                                                      { $: "spaceStore.spacePath + '/dna'" },
+                                                      { $: "navigation.spacePath + '/dna'" },
                                                       { $: "{ query: { dna: 'all' } }" },
                                                     ],
                                                   },
@@ -21797,20 +21801,20 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
+                                    $: "((navigation.params.view == 'canvas') && navigation.params.dna) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
                                   },
                                   then: {
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+                                        $: "!((((navigation.params.view == 'canvas') && navigation.params.dna) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
                                       },
                                       then: {
                                         type: 'we-text',
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                            $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                           },
                                         ],
                                       },
@@ -21833,22 +21837,22 @@ export const seedBundles: Bundle[] = [
                                               hoverProps: { color: 'text' },
                                               onClick: {
                                                 $if: {
-                                                  condition: { $: "routeStore.params.view == 'canvas'" },
+                                                  condition: { $: "navigation.params.view == 'canvas'" },
                                                   then: {
-                                                    $invoke: 'routeStore.setParam',
+                                                    $invoke: 'navigation.setParam',
                                                     args: [
                                                       'dna',
                                                       {
-                                                        $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                                        $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                                       },
                                                     ],
                                                   },
                                                   else: {
-                                                    $invoke: 'routeStore.navigate',
+                                                    $invoke: 'navigation.navigate',
                                                     args: [
-                                                      { $: "spaceStore.spacePath + '/dna'" },
+                                                      { $: "navigation.spacePath + '/dna'" },
                                                       {
-                                                        $: "{ query: { dna: split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] } }",
+                                                        $: "{ query: { dna: split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] } }",
                                                       },
                                                     ],
                                                   },
@@ -21861,7 +21865,7 @@ export const seedBundles: Bundle[] = [
                                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                                 children: [
                                                   {
-                                                    $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                                    $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                                   },
                                                 ],
                                               },
@@ -21886,20 +21890,20 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "((routeStore.params.view == 'canvas') && routeStore.params.dna) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])",
+                                    $: "((navigation.params.view == 'canvas') && navigation.params.dna) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])",
                                   },
                                   then: {
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+                                        $: "!((!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
                                       },
                                       then: {
                                         type: 'we-text',
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
+                                            $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
                                           },
                                         ],
                                       },
@@ -21923,7 +21927,7 @@ export const seedBundles: Bundle[] = [
                                             },
                                             children: [
                                               {
-                                                $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
+                                                $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
                                               },
                                             ],
                                           },
@@ -21946,20 +21950,20 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != ''",
+                                    $: "!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != ''",
                                   },
                                   then: {
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+                                        $: "!((!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
                                       },
                                       then: {
                                         type: 'we-text',
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]",
+                                            $: "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')]",
                                           },
                                         ],
                                       },
@@ -21984,16 +21988,16 @@ export const seedBundles: Bundle[] = [
                                                 {
                                                   $if: {
                                                     condition: {
-                                                      $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == 'workflows'",
+                                                      $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == 'workflows'",
                                                     },
                                                     then: { $invoke: 'workflowStore.closeWorkflow' },
                                                   },
                                                 },
                                                 {
-                                                  $invoke: 'routeStore.navigate',
+                                                  $invoke: 'navigation.navigate',
                                                   args: [
                                                     {
-                                                      $: "(spaceStore.spacePath + '/' + (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? ''))) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/' + (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                                      $: "(navigation.spacePath + '/' + (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? ''))) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/' + (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')), '?') ? '&' : '?') + 'view=canvas' : '')",
                                                     },
                                                   ],
                                                 },
@@ -22005,7 +22009,7 @@ export const seedBundles: Bundle[] = [
                                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                                 children: [
                                                   {
-                                                    $: "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')]",
+                                                    $: "{ calls: 'Calls', people: 'People', channels: 'Channels', workflows: 'Flows' }[((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')]",
                                                   },
                                                 ],
                                               },
@@ -22030,20 +22034,20 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
+                                    $: "!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)",
                                   },
                                   then: {
                                     type: '$if',
                                     props: {
                                       condition: {
-                                        $: "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+                                        $: "!((!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
                                       },
                                       then: {
                                         type: 'we-text',
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : workflowStore.open.label",
+                                            $: "((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? (identity.profiles.find(p, p.did == ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '')).name ?? 'A person') : workflowStore.open.label",
                                           },
                                         ],
                                       },
@@ -22067,7 +22071,7 @@ export const seedBundles: Bundle[] = [
                                             },
                                             children: [
                                               {
-                                                $: "((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? (profileStore.profiles.find(p, p.did == ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '')).name ?? 'A person') : workflowStore.open.label",
+                                                $: "((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? (first(local.focusCall).title ? first(local.focusCall).title : 'A call') : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? (identity.profiles.find(p, p.did == ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '')).name ?? 'A person') : workflowStore.open.label",
                                               },
                                             ],
                                           },
@@ -22090,7 +22094,7 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''",
+                                    $: "!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''",
                                   },
                                   then: {
                                     type: 'we-text',
@@ -22104,7 +22108,7 @@ export const seedBundles: Bundle[] = [
                           {
                             type: '$if',
                             props: {
-                              condition: { $: "(routeStore.params.view == 'canvas') && routeStore.params.dna" },
+                              condition: { $: "(navigation.params.view == 'canvas') && navigation.params.dna" },
                               then: {
                                 type: 'we-button',
                                 props: {
@@ -22115,7 +22119,7 @@ export const seedBundles: Bundle[] = [
                                     args: [
                                       'vocabulary',
                                       {
-                                        $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' ? (shapeStore.spaceShapes.find(s, s.name == (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])).id) ?? '' : ''",
+                                        $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' ? (shapeStore.spaceShapes.find(s, s.name == (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])).id) ?? '' : ''",
                                       },
                                     ],
                                   },
@@ -22128,7 +22132,7 @@ export const seedBundles: Bundle[] = [
                             type: '$if',
                             props: {
                               condition: {
-                                $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open))",
+                                $: "!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'calls') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open))",
                               },
                               then: {
                                 type: 'DropdownMenu',
@@ -22164,20 +22168,20 @@ export const seedBundles: Bundle[] = [
                                 type: 'we-button',
                                 props: {
                                   size: 'sm',
-                                  variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                                  variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                                   onClick: {
                                     $if: {
                                       condition: {
-                                        $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                        $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                                       },
                                       then: {
-                                        $invoke: 'routeStore.navigate',
+                                        $invoke: 'navigation.navigate',
                                         args: [
-                                          { $: "spaceStore.spacePath + '/dna'" },
-                                          { $: '{ query: { dna: routeStore.params.dna } }' },
+                                          { $: "navigation.spacePath + '/dna'" },
+                                          { $: '{ query: { dna: navigation.params.dna } }' },
                                         ],
                                       },
-                                      else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                      else: { $invoke: 'navigation.setParam', args: ['view', null] },
                                     },
                                   },
                                 },
@@ -22187,8 +22191,8 @@ export const seedBundles: Bundle[] = [
                                 type: 'we-button',
                                 props: {
                                   size: 'sm',
-                                  variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                                  onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                                  variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                                  onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                                 },
                                 children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                               },
@@ -22222,14 +22226,14 @@ export const seedBundles: Bundle[] = [
                                   counts: ['signals', 'responses'],
                                   limit: 1000,
                                   weigh: {
-                                    $: "(local.treeMode || local.order == 'signal') && (local.signalType ? local.signalType : first(local.treeSignalTypes).id) ? { signalTypeId: (local.signalType ? local.signalType : first(local.treeSignalTypes).id), aggregate: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).aggregate, mode: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).mode, rangeMin: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMin, rangeMax: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMax, step: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).step, excludeAuthors: spaceStore.mutedDids, me: me.did } : null",
+                                    $: "(local.treeMode || local.order == 'signal') && (local.signalType ? local.signalType : first(local.treeSignalTypes).id) ? { signalTypeId: (local.signalType ? local.signalType : first(local.treeSignalTypes).id), aggregate: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).aggregate, mode: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).mode, rangeMin: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMin, rangeMax: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).rangeMax, step: find(local.treeSignalTypes, { id: (local.signalType ? local.signalType : first(local.treeSignalTypes).id) }).step, excludeAuthors: identity.mutedDids, me: me.did } : null",
                                   },
                                   weights: { $: 'local.voices' },
                                   relations: {
                                     $: 'local.treeMode && treeSpine({ value: local.spine }).relations ? { children: true } : false',
                                   },
                                   hideWhere: {
-                                    $: "(local.others) == 'hide' ? (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? [{ 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') ? [{ 'data.origin': { exists: false } }, { 'data.origin': spaceStore.root }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? [{ 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }] : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }] : null) : null",
+                                    $: "(local.others) == 'hide' ? (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? [{ 'data.origin': { not: ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') } }] : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'calls') ? [{ 'data.origin': { exists: false } }, { 'data.origin': spaceStore.root }] : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? [{ 'data.author': { not: ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') } }] : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open) ? [{ 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }] : null) : null",
                                   },
                                 },
                               },
@@ -22291,19 +22295,19 @@ export const seedBundles: Bundle[] = [
                                   style: { borderColor: 'warning-text', borderWidth: 2 },
                                 },
                                 {
-                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { not: ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': { exists: false } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'calls') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.origin': spaceStore.root }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.author': { not: ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.author': { not: ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') } }, style: { opacity: 0.1 } }] : []",
                                 },
                                 {
-                                  $: "(((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }, style: { opacity: 0.1 } }] : []",
+                                  $: "(((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open) && ((local.others) == 'dim' || (local.others) == 'hide')) ? [{ when: { 'data.recordId': { not: workflowStore.open.records.map(r, r.record) } }, style: { opacity: 0.1 } }] : []",
                                 },
                               ],
                               edgeStyle: [
@@ -22505,9 +22509,9 @@ export const seedBundles: Bundle[] = [
                                   $if: {
                                     condition: { $: "event.action == 'review'" },
                                     then: [
-                                      { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
-                                      { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
-                                      { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                                      { $invoke: 'navigation.setParam', args: ['cardType', { $: 'event.recordType' }] },
+                                      { $invoke: 'navigation.setParam', args: ['card', { $: 'event.recordId' }] },
+                                      { $invoke: 'viewState.openTemplatePanel', args: ['inspector'] },
                                     ],
                                   },
                                 },
@@ -22602,10 +22606,10 @@ export const seedBundles: Bundle[] = [
                                 },
                               },
                               onNodeDoubleClick: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
                                   {
-                                    $: "spaceStore.spacePath + '/record/' + event.recordType + '?id=' + event.recordId",
+                                    $: "navigation.spacePath + '/record/' + event.recordType + '?id=' + event.recordId",
                                   },
                                 ],
                               },
@@ -22615,19 +22619,19 @@ export const seedBundles: Bundle[] = [
                                     $: "event.recordId && event.recordType && event.recordType != '$schema'",
                                   },
                                   then: [
-                                    { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
-                                    { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
-                                    { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                                    { $invoke: 'navigation.setParam', args: ['cardType', { $: 'event.recordType' }] },
+                                    { $invoke: 'navigation.setParam', args: ['card', { $: 'event.recordId' }] },
+                                    { $invoke: 'viewState.openTemplatePanel', args: ['inspector'] },
                                   ],
                                 },
                               },
-                              focus: { $: 'routeStore.params.card' },
+                              focus: { $: 'navigation.params.card' },
                             },
                           },
                           {
                             type: '$if',
                             props: {
-                              condition: { $: "(routeStore.params.view == 'canvas') && routeStore.params.dna" },
+                              condition: { $: "(navigation.params.view == 'canvas') && navigation.params.dna" },
                               then: {
                                 type: 'Column',
                                 props: {
@@ -22683,10 +22687,10 @@ export const seedBundles: Bundle[] = [
                                         },
                                         { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
                                         {
-                                          $: "((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: [split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0] } }, style: { opacity: 0.1 } }] : []",
+                                          $: "((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: [split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0] } }, style: { opacity: 0.1 } }] : []",
                                         },
                                         {
-                                          $: "([split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[2] || (p[0] == 'policy' && p[1]) || (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']))[0]) ? [{ when: [split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[2] ? { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.recordId': { not: p[2] } } : p[0] == 'policy' ? { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.item': { not: p[1] } } : { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.entity': { not: p[1] } }))[0], style: { opacity: 0.1 } }] : []",
+                                          $: "([split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[2] || (p[0] == 'policy' && p[1]) || (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']))[0]) ? [{ when: [split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[2] ? { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.recordId': { not: p[2] } } : p[0] == 'policy' ? { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.item': { not: p[1] } } : { 'data.bucket': (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))), type: { not: 'vocabulary' }, 'data.entity': { not: p[1] } }))[0], style: { opacity: 0.1 } }] : []",
                                         },
                                       ],
                                       edgeStyle: [
@@ -22707,7 +22711,7 @@ export const seedBundles: Bundle[] = [
                                         { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
                                       ],
                                       open: {
-                                        $: "distinct(local.vocabOpen, (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all' ? [[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0]] : [], [split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[2] ? [p[2]] : (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']) ? [p[1]] : [])[0])",
+                                        $: "distinct(local.vocabOpen, (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all' ? [[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0]] : [], [split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[2] ? [p[2]] : (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']) ? [p[1]] : [])[0])",
                                       },
                                       onNodeOpen: {
                                         $setLocal: 'vocabOpen',
@@ -22716,7 +22720,7 @@ export const seedBundles: Bundle[] = [
                                         },
                                       },
                                       focus: {
-                                        $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? '' : p[2] ? p[2] : p[0] == 'policy' ? (p[1] ? 'policy:' + p[1] : 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other')))) : (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']) ? p[1] : 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0]",
+                                        $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' ? '' : p[2] ? p[2] : p[0] == 'policy' ? (p[1] ? 'policy:' + p[1] : 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other')))) : (p[0] == 'model' && p[1] && (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))) in ['models', 'other']) ? p[1] : 'we-graph://cluster/vocabulary/' + (p[0] == 'policy' ? 'policy' : ({ SignalType: 'signals', RelationshipType: 'connections', TaskState: 'states', InvolvementType: 'kinds', Topic: 'topics' }[p[1]] ?? (p[1] in recordStore.creatableEntities.map(k, k.value) ? 'models' : 'other'))))[0]",
                                       },
                                       focusCentre: true,
                                       onNodeClick: [
@@ -22726,7 +22730,7 @@ export const seedBundles: Bundle[] = [
                                               $: "event.data.bucket == 'policy' ? (event.type == 'vocabulary' ? 'policy' : 'policy|' + event.data.item) : event.data.bucket in ['models', 'other'] ? (event.data.entity ? 'model|' + event.data.entity : '') : !({ signals: 'SignalType', connections: 'RelationshipType', states: 'TaskState', kinds: 'InvolvementType', topics: 'Topic' }[event.data.bucket]) ? '' : event.type == 'vocabulary' ? 'model|' + { signals: 'SignalType', connections: 'RelationshipType', states: 'TaskState', kinds: 'InvolvementType', topics: 'Topic' }[event.data.bucket] : event.recordId ? 'model|' + { signals: 'SignalType', connections: 'RelationshipType', states: 'TaskState', kinds: 'InvolvementType', topics: 'Topic' }[event.data.bucket] + '|' + event.recordId : ''",
                                             },
                                             then: {
-                                              $invoke: 'routeStore.setParam',
+                                              $invoke: 'navigation.setParam',
                                               args: [
                                                 'dna',
                                                 {
@@ -22743,14 +22747,14 @@ export const seedBundles: Bundle[] = [
                                             },
                                             then: [
                                               {
-                                                $invoke: 'routeStore.setParam',
+                                                $invoke: 'navigation.setParam',
                                                 args: ['cardType', { $: 'event.recordType' }],
                                               },
                                               {
-                                                $invoke: 'routeStore.setParam',
+                                                $invoke: 'navigation.setParam',
                                                 args: ['card', { $: 'event.recordId' }],
                                               },
-                                              { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                                              { $invoke: 'viewState.openTemplatePanel', args: ['inspector'] },
                                             ],
                                           },
                                         },
@@ -22765,7 +22769,7 @@ export const seedBundles: Bundle[] = [
                           {
                             type: '$if',
                             props: {
-                              condition: { $: "!((routeStore.params.view == 'canvas') && routeStore.params.dna)" },
+                              condition: { $: "!((navigation.params.view == 'canvas') && navigation.params.dna)" },
                               then: {
                                 type: 'Row',
                                 props: {
@@ -22953,7 +22957,7 @@ export const seedBundles: Bundle[] = [
                                                             type: '$if',
                                                             props: {
                                                               condition: {
-                                                                $: 'count(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }))',
+                                                                $: 'count(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }))',
                                                               },
                                                               else: {
                                                                 type: 'we-text',
@@ -22976,7 +22980,7 @@ export const seedBundles: Bundle[] = [
                                                                     type: '$each',
                                                                     props: {
                                                                       items: {
-                                                                        $: 'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }).map(v, v.did)',
+                                                                        $: 'voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }).map(v, v.did)',
                                                                       },
                                                                       as: 'voiceDid',
                                                                     },
@@ -22998,14 +23002,14 @@ export const seedBundles: Bundle[] = [
                                                                                 props: {
                                                                                   size: 'xs',
                                                                                   image: {
-                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).avatar',
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).avatar',
                                                                                   },
                                                                                   hash: { $: 'voiceDid' },
                                                                                   initials: {
-                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name',
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).name',
                                                                                   },
                                                                                   icon: {
-                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).pretend ? 'robot' : ''",
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).pretend ? 'robot' : ''",
                                                                                   },
                                                                                 },
                                                                               },
@@ -23018,7 +23022,7 @@ export const seedBundles: Bundle[] = [
                                                                                     props: { truncate: true },
                                                                                     children: [
                                                                                       {
-                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).name",
                                                                                       },
                                                                                     ],
                                                                                   },
@@ -23030,7 +23034,7 @@ export const seedBundles: Bundle[] = [
                                                                                     },
                                                                                     children: [
                                                                                       {
-                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards + ' ' + plural((find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards, 'card', 'cards') + ' · average ' + (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mean",
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).cards + ' ' + plural((find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).cards, 'card', 'cards') + ' · average ' + (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).mean",
                                                                                       },
                                                                                     ],
                                                                                   },
@@ -23044,7 +23048,7 @@ export const seedBundles: Bundle[] = [
                                                                                 },
                                                                                 children: [
                                                                                   {
-                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).share + '%'",
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).share + '%'",
                                                                                   },
                                                                                 ],
                                                                               },
@@ -23056,7 +23060,7 @@ export const seedBundles: Bundle[] = [
                                                                                   onClick: {
                                                                                     $setLocal: 'voices',
                                                                                     value: {
-                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })',
+                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }) })',
                                                                                     },
                                                                                   },
                                                                                 },
@@ -23073,7 +23077,7 @@ export const seedBundles: Bundle[] = [
                                                                               max: 100,
                                                                               step: 5,
                                                                               value: {
-                                                                                $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).weight',
+                                                                                $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).weight',
                                                                               },
                                                                               onInput: {
                                                                                 $setLocal: 'voices',
@@ -25377,10 +25381,10 @@ export const seedBundles: Bundle[] = [
             $queries: {
               channelRecord: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root' } },
+                where: { id: { $: 'navigation.params.channel ? navigation.params.channel : spaceStore.root' } },
                 limit: 1,
                 when: {
-                  $: 'spaceStore.rootLoaded && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
+                  $: 'spaceStore.rootLoaded && !((navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root)',
                 },
               },
               anyCall: {
@@ -25412,7 +25416,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -25424,7 +25428,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -25436,7 +25440,7 @@ export const seedBundles: Bundle[] = [
                     type: 'we-icon',
                     props: {
                       name: {
-                        $: "!(spaceStore.rootLoaded) ? '' : ((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
+                        $: "!(spaceStore.rootLoaded) ? '' : ((navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root) ? 'chats-circle' : 'hash'",
                       },
                       color: 'text-muted',
                     },
@@ -25449,7 +25453,7 @@ export const seedBundles: Bundle[] = [
                         type: '$if',
                         props: {
                           condition: {
-                            $: '(spaceStore.rootLoaded) && !((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root)',
+                            $: '(spaceStore.rootLoaded) && !((navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root)',
                           },
                           then: {
                             type: 'Row',
@@ -25463,10 +25467,10 @@ export const seedBundles: Bundle[] = [
                                   color: 'text-muted',
                                   hoverProps: { color: 'text' },
                                   onClick: {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/channels') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/channels', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/channels') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/channels', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -25492,7 +25496,7 @@ export const seedBundles: Bundle[] = [
                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                         children: [
                           {
-                            $: "(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')",
+                            $: "(navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')",
                           },
                         ],
                       },
@@ -25506,20 +25510,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -25529,8 +25533,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -25546,7 +25550,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: '(routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root',
+                        $: '(navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root',
                       },
                       then: {
                         type: 'Column',
@@ -25556,7 +25560,7 @@ export const seedBundles: Bundle[] = [
                             type: '$if',
                             props: {
                               condition: {
-                                $: '((routeStore.params.channel ? routeStore.params.channel : spaceStore.root) == spaceStore.root) && local.anyCallLoaded && !count(local.anyCall)',
+                                $: '((navigation.params.channel ? navigation.params.channel : spaceStore.root) == spaceStore.root) && local.anyCallLoaded && !count(local.anyCall)',
                               },
                               then: {
                                 type: 'Column',
@@ -25680,7 +25684,7 @@ export const seedBundles: Bundle[] = [
                                 props: {
                                   id: 'transcribe.transcriptFeed',
                                   subject: {
-                                    $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root',
+                                    $: 'navigation.params.channel ? navigation.params.channel : spaceStore.root',
                                   },
                                 },
                               },
@@ -25765,7 +25769,7 @@ export const seedBundles: Bundle[] = [
                                                       $invoke: 'modules.transcribe.addMessage',
                                                       args: [
                                                         {
-                                                          $: 'routeStore.params.channel ? routeStore.params.channel : spaceStore.root',
+                                                          $: 'navigation.params.channel ? navigation.params.channel : spaceStore.root',
                                                         },
                                                         { $: 'event.text' },
                                                         { $: 'event.marks' },
@@ -25844,7 +25848,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -25856,7 +25860,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -25892,10 +25896,10 @@ export const seedBundles: Bundle[] = [
                                   onClick: [
                                     { $invoke: 'workflowStore.closeWorkflow' },
                                     {
-                                      $invoke: 'routeStore.navigate',
+                                      $invoke: 'navigation.navigate',
                                       args: [
                                         {
-                                          $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                          $: "(navigation.spacePath + '/workflows') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                         },
                                       ],
                                     },
@@ -25938,20 +25942,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -25961,8 +25965,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -27604,10 +27608,10 @@ export const seedBundles: Bundle[] = [
                                                               p: '300',
                                                               r: 'surface',
                                                               border: {
-                                                                $: "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'",
+                                                                $: "(rec.record == navigation.params.card) ? '1px solid accent' : '1px solid border'",
                                                               },
                                                               bg: {
-                                                                $: "(rec.record == routeStore.params.card) ? 'accent-soft' : 'surface'",
+                                                                $: "(rec.record == navigation.params.card) ? 'accent-soft' : 'surface'",
                                                               },
                                                             },
                                                             children: [
@@ -27620,7 +27624,7 @@ export const seedBundles: Bundle[] = [
                                                                     props: {
                                                                       variant: 'bare',
                                                                       onClick: {
-                                                                        $invoke: 'routeStore.setParam',
+                                                                        $invoke: 'navigation.setParam',
                                                                         args: ['card', { $: 'rec.record' }],
                                                                       },
                                                                     },
@@ -27990,7 +27994,7 @@ export const seedBundles: Bundle[] = [
                                                                                 props: {
                                                                                   placement: 'top',
                                                                                   content: {
-                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')",
+                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(identity.profiles, { did: d }).name ?? 'Someone'), ', ')",
                                                                                   },
                                                                                 },
                                                                                 children: [
@@ -27998,7 +28002,7 @@ export const seedBundles: Bundle[] = [
                                                                                     type: 'AvatarStack',
                                                                                     props: {
                                                                                       avatars: {
-                                                                                        $: 'step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })',
+                                                                                        $: 'step.approvers.map(d, { image: find(identity.profiles, { did: d }).avatar, hash: d, initials: find(identity.profiles, { did: d }).name })',
                                                                                       },
                                                                                       size: 'xs',
                                                                                       max: 5,
@@ -28113,16 +28117,16 @@ export const seedBundles: Bundle[] = [
                       {
                         type: '$if',
                         props: {
-                          condition: { $: "local.newWorkflowOpen || routeStore.params.new == '1'" },
+                          condition: { $: "local.newWorkflowOpen || navigation.params.new == '1'" },
                           then: {
                             type: 'we-modal',
                             props: {
                               size: 'sm',
                               close: {
                                 $if: {
-                                  condition: { $: "routeStore.params.new == '1'" },
+                                  condition: { $: "navigation.params.new == '1'" },
                                   then: [
-                                    { $invoke: 'routeStore.setParam', args: ['new', null] },
+                                    { $invoke: 'navigation.setParam', args: ['new', null] },
                                     { $setLocal: 'newWorkflowOpen', value: false },
                                   ],
                                   else: { $setLocal: 'newWorkflowOpen', value: false },
@@ -28175,9 +28179,9 @@ export const seedBundles: Bundle[] = [
                                       variant: 'soft',
                                       onClick: {
                                         $if: {
-                                          condition: { $: "routeStore.params.new == '1'" },
+                                          condition: { $: "navigation.params.new == '1'" },
                                           then: [
-                                            { $invoke: 'routeStore.setParam', args: ['new', null] },
+                                            { $invoke: 'navigation.setParam', args: ['new', null] },
                                             { $setLocal: 'newWorkflowOpen', value: false },
                                           ],
                                           else: { $setLocal: 'newWorkflowOpen', value: false },
@@ -28203,9 +28207,9 @@ export const seedBundles: Bundle[] = [
                                         onSuccess: [
                                           {
                                             $if: {
-                                              condition: { $: "routeStore.params.new == '1'" },
+                                              condition: { $: "navigation.params.new == '1'" },
                                               then: [
-                                                { $invoke: 'routeStore.setParam', args: ['new', null] },
+                                                { $invoke: 'navigation.setParam', args: ['new', null] },
                                                 { $setLocal: 'newWorkflowOpen', value: false },
                                               ],
                                               else: { $setLocal: 'newWorkflowOpen', value: false },
@@ -28689,7 +28693,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -28701,7 +28705,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -28729,20 +28733,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -28752,8 +28756,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -28775,10 +28779,10 @@ export const seedBundles: Bundle[] = [
                           variant: 'bare',
                           width: '100%',
                           onClick: {
-                            $invoke: 'routeStore.navigate',
+                            $invoke: 'navigation.navigate',
                             args: [
                               {
-                                $: "(spaceStore.spacePath + '?channel=' + (spaceStore.root)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (spaceStore.root), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                $: "(navigation.spacePath + '?channel=' + (spaceStore.root)) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '?channel=' + (spaceStore.root), '?') ? '&' : '?') + 'view=canvas' : '')",
                               },
                             ],
                           },
@@ -28828,10 +28832,10 @@ export const seedBundles: Bundle[] = [
                               variant: 'bare',
                               width: '100%',
                               onClick: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
                                   {
-                                    $: "(spaceStore.spacePath + '?channel=' + (channel.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '?channel=' + (channel.id), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                    $: "(navigation.spacePath + '?channel=' + (channel.id)) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '?channel=' + (channel.id), '?') ? '&' : '?') + 'view=canvas' : '')",
                                   },
                                 ],
                               },
@@ -28912,7 +28916,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -28924,7 +28928,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -28952,20 +28956,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -28975,8 +28979,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -29028,10 +29032,10 @@ export const seedBundles: Bundle[] = [
                                           variant: 'bare',
                                           width: '100%',
                                           onClick: {
-                                            $invoke: 'routeStore.navigate',
+                                            $invoke: 'navigation.navigate',
                                             args: [
                                               {
-                                                $: "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                                $: "(navigation.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id)) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/record/CollectionBlock?kind=call&id=' + (call.id) + '&call=' + (call.id), '?') ? '&' : '?') + 'view=canvas' : '')",
                                               },
                                             ],
                                           },
@@ -29151,7 +29155,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -29163,7 +29167,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -29191,20 +29195,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -29214,8 +29218,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -29231,7 +29235,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: '!count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                        $: '!count(identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m))',
                       },
                       then: {
                         type: 'we-text',
@@ -29246,7 +29250,7 @@ export const seedBundles: Bundle[] = [
                             type: '$each',
                             props: {
                               items: {
-                                $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                                $: 'identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m)',
                               },
                               as: 'person',
                             },
@@ -29257,10 +29261,10 @@ export const seedBundles: Bundle[] = [
                                   variant: 'bare',
                                   width: '100%',
                                   onClick: {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/person?did=' + (person.did)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/person?did=' + (person.did), '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/person?did=' + (person.did)) + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/person?did=' + (person.did), '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -29325,35 +29329,35 @@ export const seedBundles: Bundle[] = [
             $queries: {
               vocabRows: {
                 entity: {
-                  $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                  $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                 },
                 order: { name: 'asc' },
                 when: {
-                  $: "(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'])",
+                  $: "(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'])",
                 },
               },
               classRows: {
                 entity: {
-                  $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                  $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                 },
                 order: { createdAt: 'desc' },
                 limit: 100,
                 when: {
-                  $: "(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']) && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'])",
+                  $: "(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType']) && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'])",
                 },
               },
               classRecord: {
                 entity: {
-                  $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                  $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                 },
                 where: {
                   id: {
-                    $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2]",
+                    $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2]",
                   },
                 },
                 limit: 1,
                 when: {
-                  $: "(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] && !(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType'])",
+                  $: "(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]) && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] && !(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType'])",
                 },
               },
             },
@@ -29373,7 +29377,7 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: "'tree' in shellStore.collapsedLanes" },
+                      condition: { $: "'tree' in layout.collapsedLanes" },
                       then: {
                         type: 'we-tooltip',
                         props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -29385,7 +29389,7 @@ export const seedBundles: Bundle[] = [
                               size: 'md',
                               square: true,
                               label: 'Show the sidebar',
-                              onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                              onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                           },
@@ -29406,7 +29410,7 @@ export const seedBundles: Bundle[] = [
                             type: '$if',
                             props: {
                               condition: {
-                                $: "!(((true) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((true) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])))",
+                                $: "!(((true) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all') || ((true) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])))",
                               },
                               then: {
                                 type: 'we-text',
@@ -29426,12 +29430,12 @@ export const seedBundles: Bundle[] = [
                                       hoverProps: { color: 'text' },
                                       onClick: {
                                         $if: {
-                                          condition: { $: "routeStore.params.view == 'canvas'" },
-                                          then: { $invoke: 'routeStore.setParam', args: ['dna', { $: "'all'" }] },
+                                          condition: { $: "navigation.params.view == 'canvas'" },
+                                          then: { $invoke: 'navigation.setParam', args: ['dna', { $: "'all'" }] },
                                           else: {
-                                            $invoke: 'routeStore.navigate',
+                                            $invoke: 'navigation.navigate',
                                             args: [
-                                              { $: "spaceStore.spacePath + '/dna'" },
+                                              { $: "navigation.spacePath + '/dna'" },
                                               { $: "{ query: { dna: 'all' } }" },
                                             ],
                                           },
@@ -29460,20 +29464,20 @@ export const seedBundles: Bundle[] = [
                         type: '$if',
                         props: {
                           condition: {
-                            $: "(true) && (routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
+                            $: "(true) && (navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') != 'all'",
                           },
                           then: {
                             type: '$if',
                             props: {
                               condition: {
-                                $: "!(((true) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])))",
+                                $: "!(((true) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])))",
                               },
                               then: {
                                 type: 'we-text',
                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                 children: [
                                   {
-                                    $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                    $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                   },
                                 ],
                               },
@@ -29490,22 +29494,22 @@ export const seedBundles: Bundle[] = [
                                       hoverProps: { color: 'text' },
                                       onClick: {
                                         $if: {
-                                          condition: { $: "routeStore.params.view == 'canvas'" },
+                                          condition: { $: "navigation.params.view == 'canvas'" },
                                           then: {
-                                            $invoke: 'routeStore.setParam',
+                                            $invoke: 'navigation.setParam',
                                             args: [
                                               'dna',
                                               {
-                                                $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                                $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                               },
                                             ],
                                           },
                                           else: {
-                                            $invoke: 'routeStore.navigate',
+                                            $invoke: 'navigation.navigate',
                                             args: [
-                                              { $: "spaceStore.spacePath + '/dna'" },
+                                              { $: "navigation.spacePath + '/dna'" },
                                               {
-                                                $: "{ query: { dna: split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] } }",
+                                                $: "{ query: { dna: split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'policy' : 'model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] } }",
                                               },
                                             ],
                                           },
@@ -29518,7 +29522,7 @@ export const seedBundles: Bundle[] = [
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                         children: [
                                           {
-                                            $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                            $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? 'Policy' : ({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                           },
                                         ],
                                       },
@@ -29538,14 +29542,14 @@ export const seedBundles: Bundle[] = [
                         type: '$if',
                         props: {
                           condition: {
-                            $: "(true) && (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])",
+                            $: "(true) && (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] : split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2])",
                           },
                           then: {
                             type: 'we-text',
                             props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                             children: [
                               {
-                                $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
+                                $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, p[0] == 'policy' ? p[1] : ((find((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows), { id: p[2] }) ?? first(local.classRecord))[recordStore.displays[p[1]].title ?? 'name']) ?? 'Record')[0]",
                               },
                             ],
                           },
@@ -29563,7 +29567,7 @@ export const seedBundles: Bundle[] = [
                         args: [
                           'vocabulary',
                           {
-                            $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' ? (shapeStore.spaceShapes.find(s, s.name == (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])).id) ?? '' : ''",
+                            $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' ? (shapeStore.spaceShapes.find(s, s.name == (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1])).id) ?? '' : ''",
                           },
                         ],
                       },
@@ -29578,20 +29582,20 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                           onClick: {
                             $if: {
                               condition: {
-                                $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                               },
                               then: {
-                                $invoke: 'routeStore.navigate',
+                                $invoke: 'navigation.navigate',
                                 args: [
-                                  { $: "spaceStore.spacePath + '/dna'" },
-                                  { $: '{ query: { dna: routeStore.params.dna } }' },
+                                  { $: "navigation.spacePath + '/dna'" },
+                                  { $: '{ query: { dna: navigation.params.dna } }' },
                                 ],
                               },
-                              else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                              else: { $invoke: 'navigation.setParam', args: ['view', null] },
                             },
                           },
                         },
@@ -29601,8 +29605,8 @@ export const seedBundles: Bundle[] = [
                         type: 'we-button',
                         props: {
                           size: 'sm',
-                          variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                          onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                          variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                          onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                         },
                         children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                       },
@@ -29618,7 +29622,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' && sum([{ key: 'models', label: 'Models', classes: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), rows: distinct(recordStore.creatableEntities.filter(k, k.group == 'This space').map(k, { id: k.value, label: k.label, icon: k.icon }), distinct(datasetStore.currentDatasetEntities.filter(e, !(e.name in recordStore.creatableEntities.map(k, k.value)) && !(e.name in recordStore.plumbingClasses) && !(e.name in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(e, e.name)).map(n, { id: n, label: recordStore.displays[n].label ?? n, icon: 'cube', namespace: first(split(find(datasetStore.currentDatasetEntities, { name: n }).targetClass, n)) ?? '' })), sub: [] }, { key: 'we', label: 'Built in', classes: distinct([{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon })), rows: [{ id: 'SignalType', label: 'Signal types', icon: 'heart' }, { id: 'RelationshipType', label: 'Connection types', icon: 'arrows-left-right' }, { id: 'TaskState', label: 'Task states', icon: 'circle-half' }, { id: 'InvolvementType', label: 'Involvement', icon: 'hand-waving' }, { id: 'Topic', label: 'Topics', icon: 'hash' }], sub: [{ key: 'blocks', label: 'Blocks', classes: recordStore.creatableEntities.filter(k, k.group != 'This space' && !(k.value in ['SignalType', 'RelationshipType', 'TaskState', 'InvolvementType', 'Topic'])).map(k, { id: k.value, label: k.label, icon: k.icon }) }].filter(s, count(s.classes) > 0) }].filter(g, g.key == 'models' || count(g.classes) > 0).map(g, count(g.classes))) == 0 && count(spaceStore.policy.sentences) == 0",
                       },
                       then: {
                         type: 'we-text',
@@ -29633,7 +29637,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
                       },
                       then: {
                         type: 'Column',
@@ -29691,9 +29695,9 @@ export const seedBundles: Bundle[] = [
                                                       variant: 'bare',
                                                       width: '100%',
                                                       onClick: {
-                                                        $invoke: 'routeStore.navigate',
+                                                        $invoke: 'navigation.navigate',
                                                         args: [
-                                                          { $: "spaceStore.spacePath + '/dna'" },
+                                                          { $: "navigation.spacePath + '/dna'" },
                                                           { $: "{ query: { dna: 'model|' + cls.id } }" },
                                                         ],
                                                       },
@@ -29801,9 +29805,9 @@ export const seedBundles: Bundle[] = [
                                                       variant: 'bare',
                                                       width: '100%',
                                                       onClick: {
-                                                        $invoke: 'routeStore.navigate',
+                                                        $invoke: 'navigation.navigate',
                                                         args: [
-                                                          { $: "spaceStore.spacePath + '/dna'" },
+                                                          { $: "navigation.spacePath + '/dna'" },
                                                           { $: "{ query: { dna: 'model|' + cls.id } }" },
                                                         ],
                                                       },
@@ -29879,7 +29883,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
                       },
                       then: {
                         type: 'Column',
@@ -29932,10 +29936,10 @@ export const seedBundles: Bundle[] = [
                                                   args: [{ $: 'workflow.name' }],
                                                 },
                                                 {
-                                                  $invoke: 'routeStore.navigate',
+                                                  $invoke: 'navigation.navigate',
                                                   args: [
                                                     {
-                                                      $: "(spaceStore.spacePath + '/workflows') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                                      $: "(navigation.spacePath + '/workflows') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/workflows', '?') ? '&' : '?') + 'view=canvas' : '')",
                                                     },
                                                   ],
                                                 },
@@ -30008,7 +30012,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
                       },
                       then: {
                         type: 'Column',
@@ -30033,7 +30037,7 @@ export const seedBundles: Bundle[] = [
                                     props: { color: 'text-muted' },
                                     children: [
                                       {
-                                        $: "count(distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items))",
+                                        $: "count(distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items))",
                                       },
                                     ],
                                   },
@@ -30047,7 +30051,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$each',
                                     props: {
                                       items: {
-                                        $: "distinct(find(templateStore.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceStore.spaceDefaultTemplateId || t.id == templateStore.currentSwitcherId), find(templateStore.switcherGroups, { label: 'Space templates' }).items, find(templateStore.switcherGroups, { label: 'My templates' }).items)",
+                                        $: "distinct(find(appearance.switcherGroups, { label: 'Built-in' }).items.filter(t, t.id == spaceSettings.spaceDefaultTemplateId || t.id == appearance.currentSwitcherId), find(appearance.switcherGroups, { label: 'Space templates' }).items, find(appearance.switcherGroups, { label: 'My templates' }).items)",
                                       },
                                       as: 'template',
                                     },
@@ -30058,7 +30062,7 @@ export const seedBundles: Bundle[] = [
                                           variant: 'bare',
                                           width: '100%',
                                           onClick: {
-                                            $invoke: 'templateStore.switchTemplate',
+                                            $invoke: 'appearance.switchTemplate',
                                             args: [{ $: 'template.id' }],
                                           },
                                         },
@@ -30073,7 +30077,7 @@ export const seedBundles: Bundle[] = [
                                               direction: 'row',
                                               ay: 'center',
                                               border: {
-                                                $: "(template.id == templateStore.currentSwitcherId) ? '1px solid accent' : '1px solid transparent'",
+                                                $: "(template.id == appearance.currentSwitcherId) ? '1px solid accent' : '1px solid transparent'",
                                               },
                                               hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
                                             },
@@ -30100,7 +30104,9 @@ export const seedBundles: Bundle[] = [
                                               {
                                                 type: '$if',
                                                 props: {
-                                                  condition: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                                                  condition: {
+                                                    $: 'template.id == spaceSettings.spaceDefaultTemplateId',
+                                                  },
                                                   then: {
                                                     type: 'we-icon',
                                                     props: { name: 'star', weight: 'fill', color: 'warning-text' },
@@ -30125,7 +30131,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all'",
                       },
                       then: {
                         type: 'Column',
@@ -30179,9 +30185,9 @@ export const seedBundles: Bundle[] = [
                                                   variant: 'bare',
                                                   width: '100%',
                                                   onClick: {
-                                                    $invoke: 'routeStore.navigate',
+                                                    $invoke: 'navigation.navigate',
                                                     args: [
-                                                      { $: "spaceStore.spacePath + '/dna'" },
+                                                      { $: "navigation.spacePath + '/dna'" },
                                                       { $: "{ query: { dna: 'model|' + cls.id } }" },
                                                     ],
                                                   },
@@ -30277,9 +30283,9 @@ export const seedBundles: Bundle[] = [
                                                       variant: 'bare',
                                                       width: '100%',
                                                       onClick: {
-                                                        $invoke: 'routeStore.navigate',
+                                                        $invoke: 'navigation.navigate',
                                                         args: [
-                                                          { $: "spaceStore.spacePath + '/dna'" },
+                                                          { $: "navigation.spacePath + '/dna'" },
                                                           { $: "{ query: { dna: 'model|' + cls.id } }" },
                                                         ],
                                                       },
@@ -30355,7 +30361,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                        $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'model' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                       },
                       then: {
                         type: 'Column',
@@ -30369,7 +30375,7 @@ export const seedBundles: Bundle[] = [
                                 type: 'we-icon',
                                 props: {
                                   name: {
-                                    $: "({ SignalType: 'heart', RelationshipType: 'arrows-left-right', TaskState: 'circle-half', InvolvementType: 'hand-waving', Topic: 'hash' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].icon) ?? 'cube'",
+                                    $: "({ SignalType: 'heart', RelationshipType: 'arrows-left-right', TaskState: 'circle-half', InvolvementType: 'hand-waving', Topic: 'hash' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].icon) ?? 'cube'",
                                   },
                                   color: 'text-muted',
                                 },
@@ -30379,7 +30385,7 @@ export const seedBundles: Bundle[] = [
                                 props: { variant: 'subheading', fontWeight: 'semibold' },
                                 children: [
                                   {
-                                    $: "({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                    $: "({ SignalType: 'Signal types', RelationshipType: 'Connection types', TaskState: 'Task states', InvolvementType: 'Involvement', Topic: 'Topics' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].label) ?? split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                   },
                                 ],
                               },
@@ -30388,7 +30394,7 @@ export const seedBundles: Bundle[] = [
                                 props: { color: 'text-muted' },
                                 children: [
                                   {
-                                    $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (!(p[1] in ['TaskState', 'InvolvementType']) && !(p[1] in ['SignalType', 'RelationshipType', 'Topic']) && count((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows)) >= 100 ? '100+' : count((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))))[0]",
+                                    $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (!(p[1] in ['TaskState', 'InvolvementType']) && !(p[1] in ['SignalType', 'RelationshipType', 'Topic']) && count((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows)) >= 100 ? '100+' : count((p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))))[0]",
                                   },
                                 ],
                               },
@@ -30398,7 +30404,7 @@ export const seedBundles: Bundle[] = [
                             type: '$if',
                             props: {
                               condition: {
-                                $: "count([split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))[0]) > 0",
+                                $: "count([split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))[0]) > 0",
                               },
                               then: {
                                 type: 'Grid',
@@ -30408,7 +30414,7 @@ export const seedBundles: Bundle[] = [
                                     type: '$each',
                                     props: {
                                       items: {
-                                        $: "[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))[0]",
+                                        $: "[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')].map(p, (p[1] in ['TaskState', 'InvolvementType'] ? { TaskState: spaceStore.taskStates, InvolvementType: spaceStore.involvementTypes }[p[1]] : p[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRows : local.classRows))[0]",
                                       },
                                       as: 'row',
                                     },
@@ -30420,25 +30426,25 @@ export const seedBundles: Bundle[] = [
                                           width: '100%',
                                           onClick: [
                                             {
-                                              $invoke: 'routeStore.navigate',
+                                              $invoke: 'navigation.navigate',
                                               args: [
-                                                { $: "spaceStore.spacePath + '/dna'" },
+                                                { $: "navigation.spacePath + '/dna'" },
                                                 {
-                                                  $: "{ query: { dna: 'model|' + split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] + '|' + row.id } }",
+                                                  $: "{ query: { dna: 'model|' + split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] + '|' + row.id } }",
                                                 },
                                               ],
                                             },
                                             {
-                                              $invoke: 'routeStore.setParam',
+                                              $invoke: 'navigation.setParam',
                                               args: [
                                                 'cardType',
                                                 {
-                                                  $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
+                                                  $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]",
                                                 },
                                               ],
                                             },
-                                            { $invoke: 'routeStore.setParam', args: ['card', { $: 'row.id' }] },
-                                            { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                                            { $invoke: 'navigation.setParam', args: ['card', { $: 'row.id' }] },
+                                            { $invoke: 'viewState.openTemplatePanel', args: ['inspector'] },
                                           ],
                                         },
                                         children: [
@@ -30452,7 +30458,7 @@ export const seedBundles: Bundle[] = [
                                               direction: 'row',
                                               ay: 'center',
                                               border: {
-                                                $: "(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] == row.id) ? '1px solid accent' : '1px solid transparent'",
+                                                $: "(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[2] == row.id) ? '1px solid accent' : '1px solid transparent'",
                                               },
                                               hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
                                             },
@@ -30461,7 +30467,7 @@ export const seedBundles: Bundle[] = [
                                                 type: 'we-icon',
                                                 props: {
                                                   name: {
-                                                    $: "row.icon ? row.icon : ({ SignalType: 'heart', RelationshipType: 'arrows-left-right', TaskState: 'circle-half', InvolvementType: 'hand-waving', Topic: 'hash' }[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].icon) ?? 'cube'",
+                                                    $: "row.icon ? row.icon : ({ SignalType: 'heart', RelationshipType: 'arrows-left-right', TaskState: 'circle-half', InvolvementType: 'hand-waving', Topic: 'hash' }[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]] ?? recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].icon) ?? 'cube'",
                                                   },
                                                   color: 'accent-text',
                                                   size: 'md',
@@ -30476,7 +30482,7 @@ export const seedBundles: Bundle[] = [
                                                     props: { fontWeight: 'semibold', truncate: true },
                                                     children: [
                                                       {
-                                                        $: "row[recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].title] ?? row.name ?? row.id",
+                                                        $: "row[recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].title] ?? row.name ?? row.id",
                                                       },
                                                     ],
                                                   },
@@ -30485,7 +30491,7 @@ export const seedBundles: Bundle[] = [
                                                     props: { variant: 'footnote', color: 'text-muted', truncate: true },
                                                     children: [
                                                       {
-                                                        $: "row[recordStore.displays[split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].summary] ?? row.description ?? ''",
+                                                        $: "row[recordStore.displays[split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1]].summary] ?? row.description ?? ''",
                                                       },
                                                     ],
                                                   },
@@ -30503,7 +30509,7 @@ export const seedBundles: Bundle[] = [
                                 type: '$if',
                                 props: {
                                   condition: {
-                                    $: "split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType'] || (split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRowsLoaded : local.classRowsLoaded)",
+                                    $: "split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['TaskState', 'InvolvementType'] || (split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] in ['SignalType', 'RelationshipType', 'Topic'] ? local.vocabRowsLoaded : local.classRowsLoaded)",
                                   },
                                   then: {
                                     type: 'we-text',
@@ -30522,7 +30528,7 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' || split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy'",
+                        $: "(navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all') == 'all' || split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy'",
                       },
                       then: {
                         type: 'Column',
@@ -30534,8 +30540,8 @@ export const seedBundles: Bundle[] = [
                               variant: 'bare',
                               alignSelf: 'start',
                               onClick: {
-                                $invoke: 'routeStore.navigate',
-                                args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: "{ query: { dna: 'policy' } }" }],
+                                $invoke: 'navigation.navigate',
+                                args: [{ $: "navigation.spacePath + '/dna'" }, { $: "{ query: { dna: 'policy' } }" }],
                               },
                             },
                             children: [
@@ -30576,9 +30582,9 @@ export const seedBundles: Bundle[] = [
                                           variant: 'bare',
                                           width: '100%',
                                           onClick: {
-                                            $invoke: 'routeStore.navigate',
+                                            $invoke: 'navigation.navigate',
                                             args: [
-                                              { $: "spaceStore.spacePath + '/dna'" },
+                                              { $: "navigation.spacePath + '/dna'" },
                                               { $: "{ query: { dna: 'policy|' + rule } }" },
                                             ],
                                           },
@@ -30594,7 +30600,7 @@ export const seedBundles: Bundle[] = [
                                               direction: 'row',
                                               ay: 'center',
                                               border: {
-                                                $: "(split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' && split((routeStore.params.dna ? [split(routeStore.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? routeStore.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] == rule) ? '1px solid accent' : '1px solid transparent'",
+                                                $: "(split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[0] == 'policy' && split((navigation.params.dna ? [split(navigation.params.dna, '|')].map(p, p[0] in ['all', 'policy', 'model'] ? navigation.params.dna : [p[0] == 'class' ? p[1] : { signal: 'SignalType', connection: 'RelationshipType', relationship: 'RelationshipType', taskstate: 'TaskState', involvement: 'InvolvementType', topic: 'Topic' }[p[0]]].map(c, c ? 'model|' + c + (p[p[0] == 'class' ? 2 : 1] ? '|' + p[p[0] == 'class' ? 2 : 1] : '') : 'all')[0])[0] : 'all'), '|')[1] == rule) ? '1px solid accent' : '1px solid transparent'",
                                               },
                                               hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
                                             },
@@ -30644,7 +30650,7 @@ export const seedBundles: Bundle[] = [
             children: [
               {
                 type: '$agent',
-                props: { did: { $: 'routeStore.params.did' }, as: 'person' },
+                props: { did: { $: 'navigation.params.did' }, as: 'person' },
                 children: [
                   {
                     type: 'Row',
@@ -30661,7 +30667,7 @@ export const seedBundles: Bundle[] = [
                       {
                         type: '$if',
                         props: {
-                          condition: { $: "'tree' in shellStore.collapsedLanes" },
+                          condition: { $: "'tree' in layout.collapsedLanes" },
                           then: {
                             type: 'we-tooltip',
                             props: { content: 'Show the sidebar', placement: 'bottom' },
@@ -30673,7 +30679,7 @@ export const seedBundles: Bundle[] = [
                                   size: 'md',
                                   square: true,
                                   label: 'Show the sidebar',
-                                  onClick: { $invoke: 'shellStore.setLaneCollapsed', args: ['tree', false] },
+                                  onClick: { $invoke: 'layout.setLaneCollapsed', args: ['tree', false] },
                                 },
                                 children: [{ type: 'we-icon', props: { name: 'sidebar-simple' } }],
                               },
@@ -30698,10 +30704,10 @@ export const seedBundles: Bundle[] = [
                                   color: 'text-muted',
                                   hoverProps: { color: 'text' },
                                   onClick: {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
                                       {
-                                        $: "(spaceStore.spacePath + '/people') + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/people', '?') ? '&' : '?') + 'view=canvas' : '')",
+                                        $: "(navigation.spacePath + '/people') + ((navigation.params.view == 'canvas') ? (contains(navigation.spacePath + '/people', '?') ? '&' : '?') + 'view=canvas' : '')",
                                       },
                                     ],
                                   },
@@ -30750,20 +30756,20 @@ export const seedBundles: Bundle[] = [
                             type: 'we-button',
                             props: {
                               size: 'sm',
-                              variant: { $: "!(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                              variant: { $: "!(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
                               onClick: {
                                 $if: {
                                   condition: {
-                                    $: "routeStore.params.dna && !((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna')",
+                                    $: "navigation.params.dna && !((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna')",
                                   },
                                   then: {
-                                    $invoke: 'routeStore.navigate',
+                                    $invoke: 'navigation.navigate',
                                     args: [
-                                      { $: "spaceStore.spacePath + '/dna'" },
-                                      { $: '{ query: { dna: routeStore.params.dna } }' },
+                                      { $: "navigation.spacePath + '/dna'" },
+                                      { $: '{ query: { dna: navigation.params.dna } }' },
                                     ],
                                   },
-                                  else: { $invoke: 'routeStore.setParam', args: ['view', null] },
+                                  else: { $invoke: 'navigation.setParam', args: ['view', null] },
                                 },
                               },
                             },
@@ -30773,8 +30779,8 @@ export const seedBundles: Bundle[] = [
                             type: 'we-button',
                             props: {
                               size: 'sm',
-                              variant: { $: "(routeStore.params.view == 'canvas') ? 'soft' : 'ghost'" },
-                              onClick: { $invoke: 'routeStore.setParam', args: ['view', 'canvas'] },
+                              variant: { $: "(navigation.params.view == 'canvas') ? 'soft' : 'ghost'" },
+                              onClick: { $invoke: 'navigation.setParam', args: ['view', 'canvas'] },
                             },
                             children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Canvas'],
                           },
@@ -31246,7 +31252,7 @@ export const seedBundles: Bundle[] = [
                         props: {
                           variant: 'outline',
                           size: 'lg',
-                          onClick: { $invoke: 'shellStore.scrollToId', args: ['app'] },
+                          onClick: { $invoke: 'viewState.scrollToId', args: ['app'] },
                         },
                         children: ['See the app'],
                       },

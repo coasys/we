@@ -132,7 +132,7 @@ export function createSpaceUnread(deps: SpaceContext) {
    * Markers as `{ nodeId, lastReadAt }` rows.
    *
    * An array rather than a map keyed by node id, because **a schema cannot index a map
-   * dynamically**: a store read resolves a static dot path, so `spaceStore.readMarkers.<some context
+   * dynamically**: a store read resolves a static dot path, so `identity.readMarkers.<some context
    * ref>` is not expressible — the path would be taken literally. The read is always "this row's
    * marker" from inside a `$each`, which means `find()` over an array with a context ref in `where`,
    * the only form the resolver supports. Linear per rendered row, over a list the size of the

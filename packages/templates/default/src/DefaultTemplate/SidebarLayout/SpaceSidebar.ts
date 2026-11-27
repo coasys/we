@@ -9,7 +9,7 @@ export const spaceSidebar: SchemaNode = {
     {
       type: 'EditableImage',
       props: {
-        src: { $: 'spaceStore.currentSpace.coverImage' },
+        src: { $: 'spaceSettings.currentSpace.coverImage' },
         alt: 'Cover image',
         fit: 'cover',
         width: '100%',
@@ -29,7 +29,7 @@ export const spaceSidebar: SchemaNode = {
         {
           type: 'EditableImage',
           props: {
-            src: { $: 'spaceStore.currentSpace.avatar' },
+            src: { $: 'spaceSettings.currentSpace.avatar' },
             alt: 'Profile picture',
             fit: 'cover',
             width: '120px',
@@ -54,9 +54,9 @@ export const spaceSidebar: SchemaNode = {
           type: 'we-text',
           props: {
             textAlign: 'center',
-            loading: { $: '!spaceStore.currentSpace' },
+            loading: { $: '!spaceSettings.currentSpace' },
           },
-          children: [{ $: 'spaceStore.currentSpace.name' }],
+          children: [{ $: 'spaceSettings.currentSpace.name' }],
         },
         {
           type: 'we-text',
@@ -64,9 +64,9 @@ export const spaceSidebar: SchemaNode = {
             variant: 'body',
             textAlign: 'center',
             mb: '400',
-            loading: { $: '!spaceStore.currentSpace' },
+            loading: { $: '!spaceSettings.currentSpace' },
           },
-          children: [{ $: 'spaceStore.currentSpace.description' }],
+          children: [{ $: 'spaceSettings.currentSpace.description' }],
         },
       ],
     },
@@ -79,13 +79,13 @@ export const spaceSidebar: SchemaNode = {
           // The same resolved list the header layout reads, and the same one the routes are built
           // from — see the note there for what having three copies of it cost.
           type: '$each',
-          props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
+          props: { items: { $: 'navigation.viewNav' }, as: 'view' },
           children: [
             {
               type: 'we-button',
               props: {
-                variant: { $: "routeStore.segments[2] == view.segment ? 'solid' : 'ghost'" },
-                onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                variant: { $: "navigation.segments[2] == view.segment ? 'solid' : 'ghost'" },
+                onClick: { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
               },
               children: [
                 { type: 'we-icon', props: { name: { $: 'view.icon' } } },

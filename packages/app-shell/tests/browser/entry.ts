@@ -26,7 +26,7 @@ import {
 } from '@shared/registries/dockRegistry';
 import { provideChromeBag } from '@shared/registries/templateBag';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
-import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
+import { buildTemplateBag, CHROME_TIER, PROFILE_HOMES, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 import { createShellStore, type ShellStore } from '@shared/stores/ShellStore';
 import { EdgeLanes } from '@solid/components/EdgeLanes';
@@ -116,6 +116,28 @@ function defaultStores(): Record<string, unknown> {
   };
 }
 
+/**
+ * A scenario's stores as a template names them, for a scenario drawn without a bag: each profile
+ * namespace over the members a scenario keeps in their stores, as the host does. Only the naming the
+ * bag does — nothing is filtered, tagged or copied, so a fake store's plain values still read and a
+ * scenario that changes one is followed. (The stores themselves are left whole; keeping a profile
+ * member from its store's name is the bag's job, which the `space` scenarios run.)
+ */
+function underTemplateNames(stores: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...stores };
+  for (const [namespace, homes] of Object.entries(PROFILE_HOMES)) {
+    const members: Record<string, unknown> = {};
+    for (const [store, names] of Object.entries(homes)) {
+      const source = stores[store] as Record<string, unknown> | undefined;
+      if (!source || typeof source !== 'object') continue;
+      for (const name of names)
+        if (name in source) Object.defineProperty(members, name, { enumerable: true, get: () => source[name] });
+    }
+    out[namespace] = members;
+  }
+  return out;
+}
+
 let disposeMount: (() => void) | undefined;
 /**
  * The backend the mounted scenario is reading, kept so an interaction can write to it.
@@ -179,7 +201,10 @@ function mount(name: string, width: number, scale?: number): void {
     fetch: () => {},
   };
   // A scenario about the trust boundary renders against what a space template is actually handed.
-  const bag = scenario.bag === 'space' ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) : stores;
+  const bag =
+    scenario.bag === 'space'
+      ? buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' })
+      : underTemplateNames(stores);
   /*
     The block host, as the app gives one (`TemplateProvider`): who a mention names, from the same
     profiles the scenario seeds. Without it a mention's hover card has nobody to show.

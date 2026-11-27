@@ -30,7 +30,7 @@ export interface AgentAction {
   kind: 'open';
   /**
    * What to open, as a record reference (`we:./TaskBlock/<id>` for a record in this space) — what
-   * `spaceStore.openRecordRef` follows, so an app surface showing the answer needs nothing else.
+   * `navigation.openRecordRef` follows, so an app surface showing the answer needs nothing else.
    */
   ref: string;
   /** What the button says. */

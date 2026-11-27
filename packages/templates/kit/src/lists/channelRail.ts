@@ -68,7 +68,7 @@ const SPACE_ROOT: AnchorId = { $: 'spaceStore.root' };
 /** One channel row: name, unread dot, active highlight. */
 function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   /** This agent's marker for this row — `readMarkers` is a list, so it is found, not indexed. */
-  const marker = `find(spaceStore.readMarkers, { nodeId: ${as}.id }).lastReadAt`;
+  const marker = `find(identity.readMarkers, { nodeId: ${as}.id }).lastReadAt`;
 
   // Never opened — everything in it is new — or something newer than the last look.
   const unread = { $: `${as}.$latestChild && (!${marker} || ${as}.$latestChild.createdAt > ${marker})` };
@@ -76,12 +76,12 @@ function channelRow(opts: ChannelRailOptions, as: string): SchemaNode {
   return {
     type: 'we-button',
     props: {
-      variant: { $: `routeStore.params.id == ${as}.id ? 'soft' : 'ghost'` },
+      variant: { $: `navigation.params.id == ${as}.id ? 'soft' : 'ghost'` },
       size: 'sm',
       width: '100%',
       ax: 'between',
       onClick: [
-        { $invoke: 'routeStore.navigate', args: [opts.path, { $: `{ query: { id: ${as}.id } }` }] },
+        { $invoke: 'navigation.navigate', args: [opts.path, { $: `{ query: { id: ${as}.id } }` }] },
         // Opening a channel is what marks it read. Deliberately on the navigation rather than on
         // the feed's mount: a feed that marks on mount also marks on every re-render the router
         // does, and re-reading a channel you are already in would clear a dot you had not seen.

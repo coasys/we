@@ -65,11 +65,11 @@ const accountMenu: SchemaNode = {
   children: [
     railItem({
       avatar: {
-        src: { $: 'profileStore.ownProfile.avatar' },
-        name: { $: 'profileStore.ownProfile.name' },
+        src: { $: 'identity.ownProfile.avatar' },
+        name: { $: 'identity.ownProfile.name' },
         hash: { $: 'me.did' },
       },
-      label: { $: 'profileStore.ownProfile.name' },
+      label: { $: 'identity.ownProfile.name' },
       active: { $: "shellStore.activeShellView == 'profile'" },
     }),
   ],
@@ -185,14 +185,14 @@ const rail: SchemaNode = railShell({
               id: { $: 'space.uuid' },
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
-              active: { $: 'space.spaceId == routeStore.segments[1] && !shellStore.activeShellView' },
+              active: { $: 'space.spaceId == navigation.segments[1] && !shellStore.activeShellView' },
               /*
                 Only the navigation: it closes whatever overlay is up itself, once the space has
                 switched under it. Closing it first exposed the page behind the landing overlay — the
                 spaces, as cards — for as long as the switch took, which on the first space after a
                 boot is long enough to see.
               */
-              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+              onClick: { $invoke: 'navigation.navigateToSpace', args: [{ $: 'space.spaceId' }] },
               // The space a call is running in, so the way back to it is on the rail.
               live: {
                 when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },

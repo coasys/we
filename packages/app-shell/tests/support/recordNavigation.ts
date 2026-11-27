@@ -7,7 +7,7 @@
  * of solid-js and the store itself. `@we/template-conformance` calls `runNavigationScript`
  * from its `solid` vitest project; nothing here is reachable from the plain node project.
  *
- * The router itself is mocked: `routeStore.navigate` hands its target to whatever function was
+ * The router itself is mocked: `navigation.navigate` hands its target to whatever function was
  * lent through `setNavigateFunction`, so the script's own mirror applies it to `window.history`
  * the way @solidjs/router would (push unless `replace`), then reports the location back through
  * `setCurrentPath` — the same call TemplateLayout's router effect makes.

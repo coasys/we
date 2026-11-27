@@ -8,7 +8,7 @@
  * the binding is an effect in a root of its own that reads the accessor and tells React, and an
  * untracked read for the snapshot.
  *
- * The accessor is the store's own member (`routeStore.currentPath`), which is the same function on
+ * The accessor is the store's own member (`navigation.currentPath`), which is the same function on
  * every render, so React subscribes once per mount. A memo or signal hands back the value it holds
  * until it changes, which is the stable snapshot React requires.
  */

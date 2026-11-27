@@ -39,13 +39,13 @@ const header: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'bare',
-            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+            onClick: { $invoke: 'navigation.navigate', args: ['~/'] },
           },
           children: [
             {
               type: 'we-text',
               props: { variant: 'heading-sm' },
-              children: [{ $: 'spaceStore.currentSpace.name' }],
+              children: [{ $: 'spaceSettings.currentSpace.name' }],
             },
           ],
         },
@@ -57,7 +57,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['~/mine'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'navigation.navigate', args: ['~/mine'] } },
           children: [{ type: 'we-icon', props: { name: 'user' } }],
         },
         {
@@ -91,7 +91,7 @@ const grid = (opts: { author?: SchemaProp; empty: SchemaNode }): SchemaNode =>
     minTileWidth: '260px',
     overlay: tileOverlay,
     onTileClick: (as) => ({
-      $invoke: 'routeStore.navigate',
+      $invoke: 'navigation.navigate',
       args: ['~/photo', { $: `{ query: { id: ${as}.id } }` }],
     }),
     empty: opts.empty,
@@ -114,7 +114,7 @@ const photoDetail: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+            onClick: { $invoke: 'navigation.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -124,7 +124,7 @@ const photoDetail: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.params.id' } },
+                where: { id: { $: 'navigation.params.id' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -176,7 +176,7 @@ const photoDetail: RouteSchema = {
                   saveLabel: 'Comment',
                 }),
                 commentThread({
-                  anchorId: { $: 'routeStore.params.id' },
+                  anchorId: { $: 'navigation.params.id' },
                   empty: noReplies(),
                   depth: 2,
                   reply: (as) => [

@@ -402,7 +402,7 @@ describe('breakpoint tiers', () => {
 describe('"open" on a panel, and what a panel\'s node can read', () => {
   /*
     `open: false` places a panel without opening it — a module's without invoking its launcher (the
-    call module's joins a call), a template's own until `shellStore.openTemplatePanel` opens it: an
+    call module's joins a call), a template's own until `viewState.openTemplatePanel` opens it: an
     inspector, opened when something is chosen. It was once read only for a module's panel, and this
     validator warned that it did nothing on one the template supplies; the shell reads it for both now.
   */
@@ -423,7 +423,7 @@ describe('"open" on a panel, and what a panel\'s node can read', () => {
   });
 
   /*
-    A panel's node is told which panel it is and what it was opened with — `shellStore.openPanel`
+    A panel's node is told which panel it is and what it was opened with — `viewState.openPanel`
     opens one as many times as asked, each with inputs of its own.
   */
   it("lets a panel's node read `panel`, and nothing else", () => {
@@ -545,7 +545,7 @@ describe('a write wired to an event nobody causes', () => {
   });
 
   it('finds the write inside a handler list and inside a lifecycle callback', () => {
-    const nested = { $invoke: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    const nested = { $invoke: 'navigation.navigate', args: ['/'], onSuccess: [create] };
     expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
   });
 
@@ -555,7 +555,7 @@ describe('a write wired to an event nobody causes', () => {
 
   it('says nothing about an action that may run unasked', () => {
     expect(
-      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'routeStore.navigate', args: ['/'] } } }),
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'navigation.navigate', args: ['/'] } } }),
     ).toEqual([]);
     expect(unasked({ type: 'Grid', props: { onArrange: { $invoke: 'modules.call.setArrangement' } } })).toEqual([]);
   });
@@ -872,7 +872,7 @@ describe('a record id in the path of an address', () => {
   const PUT_IN_PATH = 'A record id is put into the path';
   const go = (to: unknown, ...rest: unknown[]): SchemaNode => ({
     type: 'we-button',
-    props: { onClick: { $invoke: 'routeStore.navigate', args: [to, ...rest] } },
+    props: { onClick: { $invoke: 'navigation.navigate', args: [to, ...rest] } },
   });
   const warned = (node: SchemaNode) => messages(node, 'warning').some((m) => m.startsWith(PUT_IN_PATH));
 
@@ -898,7 +898,7 @@ describe('a record id in the path of an address', () => {
 describe('a relative path that goes nowhere useful', () => {
   const button = (to: string): SchemaNode => ({
     type: 'we-button',
-    props: { onClick: { $invoke: 'routeStore.navigate', args: [to] } },
+    props: { onClick: { $invoke: 'navigation.navigate', args: [to] } },
   });
   const template = (route: SchemaNode, chrome: SchemaNode[] = []) =>
     ({

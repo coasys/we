@@ -481,7 +481,7 @@ export interface RecordStore {
    * recolour every meeting.
    *
    * Takes the space's record id rather than reading it, for the reason every canvas action takes a
-   * canvas: this store knows datasets, not spaces, and a template has `spaceStore.currentSpace.id` to
+   * canvas: this store knows datasets, not spaces, and a template has `spaceSettings.currentSpace.id` to
    * hand. An empty colour *deletes* the record rather than writing the unset sentinel, so the list a
    * key reads back never carries a row that means nothing.
    */

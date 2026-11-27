@@ -170,7 +170,7 @@ import {
  * publishes it on presence. `callRecordId` is that, which is the question these surfaces are
  * actually asking.
  */
-const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+const CALL_EXPR = 'navigation.params.call ? navigation.params.call : modules.call.callRecordId';
 const CALL = { $: CALL_EXPR };
 
 /**
@@ -216,11 +216,11 @@ const INTERPRETABLE = { $: 'shapeStore.interpretationCandidates' };
  * from no conversation, so it is outside every scope.
  */
 const SCOPE_PARAM = 'scope';
-const SCOPE = `routeStore.params.${SCOPE_PARAM}`;
+const SCOPE = `navigation.params.${SCOPE_PARAM}`;
 /** The record the scope names, or empty for none. */
 const SCOPE_RECORD = `(${SCOPE} == 'call' ? (${CALL_EXPR}) : ${SCOPE} == 'space' ? spaceStore.root : ${SCOPE} ? ${SCOPE} : '')`;
 const FROM_PARAM = 'from';
-const FROM_MODE = `routeStore.params.${FROM_PARAM}`;
+const FROM_MODE = `navigation.params.${FROM_PARAM}`;
 const FROM_DIM = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'dim'`;
 const FROM_HIDE = `(${SCOPE_RECORD}) && ${FROM_MODE} == 'hide'`;
 const FROM_ON = `(${FROM_DIM}) || (${FROM_HIDE})`;
@@ -232,7 +232,7 @@ const FROM_LENS = scopeLens({
 /** The scope's parameter, carried between pages beside `FROM_QUERY`. */
 const SCOPE_QUERY = `\${${SCOPE} ? '&${SCOPE_PARAM}=' + ${SCOPE} : ''}`;
 /** The lens parameter, carried between pages the way `LENS_QUERY` carries the colour lens. */
-const FROM_QUERY = `\${routeStore.params.${FROM_PARAM} ? '&${FROM_PARAM}=' + routeStore.params.${FROM_PARAM} : ''}`;
+const FROM_QUERY = `\${navigation.params.${FROM_PARAM} ? '&${FROM_PARAM}=' + navigation.params.${FROM_PARAM} : ''}`;
 
 /**
  * The page on screen, as a segment — or the canvas, before the redirect has landed on one.
@@ -241,7 +241,7 @@ const FROM_QUERY = `\${routeStore.params.${FROM_PARAM} ? '&${FROM_PARAM}=' + rou
  * name `canvas` outright, so choosing a call from the kanban threw you onto the canvas, and the
  * only way back was the switcher.
  */
-const PAGE_EXPR = "routeStore.templateSegments[0] ? routeStore.templateSegments[0] : 'canvas'";
+const PAGE_EXPR = "navigation.templateSegments[0] ? navigation.templateSegments[0] : 'canvas'";
 
 /** This space's current page, with whatever call parameter is given — `''` for none. */
 const pageWithCall = (callExpr: string): SchemaProp => ({
@@ -256,7 +256,7 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     route matched, so every route said "Page not found". Nothing that navigates and sets a parameter
     can be two steps.
 
-    Absolute, from `spaceStore.spacePath`. A relative path resolves against wherever the click came
+    Absolute, from `navigation.spacePath`. A relative path resolves against wherever the click came
     from, and most of these clicks are on a **panel** — host chrome, rendered outside the route tree
     — so "wherever you are" is not a thing they can rely on. The switcher's own buttons are inside
     the tree, and even they are absolute now that they carry a query: a relative path with a `?` is
@@ -269,10 +269,10 @@ const pageWithCall = (callExpr: string): SchemaProp => ({
     The key's lens comes along — an explicit `?` drops whatever the address held, so a navigation
     that spelt only the call would turn the lens back to its default on every change of call.
   */
-  $invoke: 'routeStore.navigate',
+  $invoke: 'navigation.navigate',
   args: [
     {
-      $: `\`\${spaceStore.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
+      $: `\`\${navigation.spacePath}/\${${PAGE_EXPR}}?call=\${${callExpr}}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}\``,
     },
   ],
 });
@@ -291,7 +291,7 @@ const openCall = (idExpr: string): SchemaProp => pageWithCall(idExpr);
 const openLiveCall: SchemaProp = pageWithCall("''");
 
 /**
- * Routes, as segments. Compared against `routeStore.segments`, which is how `route` matches too.
+ * Routes, as segments. Compared against `navigation.segments`, which is how `route` matches too.
  *
  * There was a `calls` route here — the archive, with each meeting's transcript under a disclosure.
  * The calls *panel* does the choosing better and from every route, and the transcript panel already
@@ -353,7 +353,7 @@ const NAV = [
  * switch that spelt its query without it would silently put the colours back to the default.
  */
 const navPath = {
-  $: `\`\${spaceStore.spacePath}/\${nav.segment}?call=\${routeStore.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
+  $: `\`\${navigation.spacePath}/\${nav.segment}?call=\${navigation.params.call ?? ''}${LENS_QUERY}${FOLD_QUERY}${OPEN_QUERY}${VOCAB_QUERY}${FROM_QUERY}${SCOPE_QUERY}\``,
 };
 
 /**
@@ -603,8 +603,8 @@ const fromLensControl: SchemaNode = {
         $if: {
           condition: { $: "arg.id == 'scope:all'" },
           then: [
-            { $invoke: 'routeStore.setParam', args: [SCOPE_PARAM, ''] },
-            { $invoke: 'routeStore.setParam', args: [FROM_PARAM, ''] },
+            { $invoke: 'navigation.setParam', args: [SCOPE_PARAM, ''] },
+            { $invoke: 'navigation.setParam', args: [FROM_PARAM, ''] },
           ],
         },
       },
@@ -613,13 +613,13 @@ const fromLensControl: SchemaNode = {
           condition: { $: "arg.id == 'scope:space' || arg.id == 'scope:call'" },
           then: [
             {
-              $invoke: 'routeStore.setParam',
+              $invoke: 'navigation.setParam',
               args: [SCOPE_PARAM, { $: "arg.id == 'scope:space' ? 'space' : 'call'" }],
             },
             {
               $if: {
                 condition: { $: `!${FROM_MODE}` },
-                then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, 'dim'] },
+                then: { $invoke: 'navigation.setParam', args: [FROM_PARAM, 'dim'] },
               },
             },
           ],
@@ -628,7 +628,7 @@ const fromLensControl: SchemaNode = {
       {
         $if: {
           condition: { $: "arg.id == 'mode:dim' || arg.id == 'mode:hide'" },
-          then: { $invoke: 'routeStore.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
+          then: { $invoke: 'navigation.setParam', args: [FROM_PARAM, { $: "arg.id == 'mode:hide' ? 'hide' : 'dim'" }] },
         },
       },
     ],
@@ -674,8 +674,8 @@ const switcher: SchemaNode = {
             // were reading as a row of small ornaments over a full-bleed canvas.
             r: 'control',
             gap: '200',
-            variant: { $: "nav.segment in routeStore.segments ? 'soft' : 'ghost'" },
-            onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
+            variant: { $: "nav.segment in navigation.segments ? 'soft' : 'ghost'" },
+            onClick: { $invoke: 'navigation.navigate', args: [navPath] },
           },
           children: [
             { type: 'we-icon', props: { name: { $: 'nav.icon' } } },
@@ -695,7 +695,7 @@ const switcher: SchemaNode = {
               what the pill is painted with a few lines above.
             */
             peopleAtPath({
-              path: { $: '`${spaceStore.spacePath}/${nav.segment}`' },
+              path: { $: '`${navigation.spacePath}/${nav.segment}`' },
               edge: 'var(--we-role-surface-raised)',
             }),
           ],
@@ -1204,7 +1204,7 @@ const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
  */
 const ROW_FACES =
   `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces.map(f, { image: f.image, hash: f.hash, initials: f.initials, tone: 'success' }) ` +
-  ': call.participants.map(m, { image: find(profileStore.profiles, { did: m }).avatar, hash: m })';
+  ': call.participants.map(m, { image: find(identity.profiles, { did: m }).avatar, hash: m })';
 
 /**
  * The calls, as a panel — how you change which call every other surface is about.
@@ -1922,7 +1922,7 @@ const canvas: SchemaNode = {
       nothing more than it did. A record not on this canvas clears the selection rather than leaving
       the last one lit.
     */
-    focus: { $: 'routeStore.params.card' },
+    focus: { $: 'navigation.params.card' },
     /*
       The folded cards, from the address — and the press that folds one, back into it.
 
@@ -1961,7 +1961,7 @@ const canvas: SchemaNode = {
         {
           $if: {
             condition: { $: `!(${NO_LENS})` },
-            then: { $invoke: 'routeStore.setParam', args: [LENS_PARAM, 'none'] },
+            then: { $invoke: 'navigation.setParam', args: [LENS_PARAM, 'none'] },
           },
         },
       ],
@@ -2298,10 +2298,10 @@ const kanbanRoute: RouteSchema = {
           then: { $setLocal: 'pressedCard', value: false },
           else: {
             $if: {
-              condition: { $: 'routeStore.params.card' },
+              condition: { $: 'navigation.params.card' },
               then: [
-                { $invoke: 'routeStore.setParam', args: ['card', null] },
-                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'navigation.setParam', args: ['card', null] },
+                { $invoke: 'navigation.setParam', args: ['cardType', null] },
               ],
             },
           },
@@ -2434,11 +2434,11 @@ const kanbanRoute: RouteSchema = {
                             about a card under the wrong type for the instant between the two writes.
                           */
                       select: {
-                        selected: 'routeStore.params.card',
+                        selected: 'navigation.params.card',
                         onSelect: [
                           { $setLocal: 'pressedCard', value: true },
-                          { $invoke: 'routeStore.setParam', args: ['cardType', 'TaskBlock'] },
-                          { $invoke: 'routeStore.setParam', args: ['card', { $: 'card.id' }] },
+                          { $invoke: 'navigation.setParam', args: ['cardType', 'TaskBlock'] },
+                          { $invoke: 'navigation.setParam', args: ['card', { $: 'card.id' }] },
                         ],
                       },
                       empty: emptyState({
@@ -2516,7 +2516,7 @@ const VISIBLE_EVENTS =
 const UNCONFIRMED_EVENT = (as: string) => `${as}.id in ${UNCONFIRMED}`;
 
 /** The event the inspector is open on — the same address the canvas and the board write. */
-const SELECTED_EVENT = "event.id == routeStore.params.card && routeStore.params.cardType == 'EventBlock'";
+const SELECTED_EVENT = "event.id == navigation.params.card && navigation.params.cardType == 'EventBlock'";
 
 /** Faded, for an event nobody chosen is on while the filter dims. */
 const DIMMED = (as: string) =>
@@ -3076,10 +3076,10 @@ const calendarRoute: RouteSchema = {
           then: { $setLocal: 'pressedCard', value: false },
           else: {
             $if: {
-              condition: { $: 'routeStore.params.card' },
+              condition: { $: 'navigation.params.card' },
               then: [
-                { $invoke: 'routeStore.setParam', args: ['card', null] },
-                { $invoke: 'routeStore.setParam', args: ['cardType', null] },
+                { $invoke: 'navigation.setParam', args: ['card', null] },
+                { $invoke: 'navigation.setParam', args: ['cardType', null] },
               ],
             },
           },

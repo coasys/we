@@ -16,7 +16,7 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
   'datasetStore.currentDataset': 'currentDataset',
 
   // Reads of the space's own records.
-  'spaceStore.root': 'spaceStore.currentSpace.root',
+  'spaceStore.root': 'spaceSettings.currentSpace.root',
   'spaceStore.taskStates': "a $query of 'TaskState'",
   'spaceStore.offeredTaskStates': "a $query of 'TaskState' where retired is false",
   'spaceStore.involvementTypes': "a $query of 'InvolvementType'",

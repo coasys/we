@@ -101,7 +101,7 @@ const identifier: SchemaNode = {
 const avatar: SchemaNode = {
   type: 'EditableImage',
   props: {
-    src: { $: 'profileStore.ownProfile.avatar' },
+    src: { $: 'identity.ownProfile.avatar' },
     alt: 'Profile picture',
     fit: 'cover',
     width: '96px',
@@ -277,7 +277,7 @@ const thisDeviceRow: SchemaNode = {
   props: {
     variant: 'bare',
     width: '100%',
-    onClick: { $invoke: 'routeStore.navigate', args: ['/devices/this'] },
+    onClick: { $invoke: 'navigation.navigate', args: ['/devices/this'] },
   },
   children: [
     {
@@ -363,7 +363,7 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
     children: [
       {
         type: 'we-button',
-        props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['/devices'] } },
+        props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'navigation.navigate', args: ['/devices'] } },
         children: [{ type: 'we-icon', props: { name: 'caret-left' } }, 'Devices'],
       },
       heading('This device', "Settings for the computer or host you're using now."),

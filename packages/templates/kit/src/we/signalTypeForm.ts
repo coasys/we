@@ -27,7 +27,7 @@ export function newSignalTypeButton(options: { open: string }): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: 'spaceStore.canAdministerCurrentSpace' },
+      condition: { $: 'spaceSettings.canAdministerCurrentSpace' },
       then: {
         type: 'we-tooltip',
         props: { content: 'New signal type' },
@@ -62,7 +62,7 @@ export function newSignalTypeButton(options: { open: string }): SchemaNode {
  *
  * One form for both, so the second surface cannot quietly offer a narrower one. The gate stays the
  * caller's: the vocabulary section asks `space.canAdminister` and the sheet asks
- * `spaceStore.canAdministerCurrentSpace`, which are the same question about two different rows.
+ * `spaceSettings.canAdministerCurrentSpace`, which are the same question about two different rows.
  */
 export function createSignalTypeModal(options: CreateSignalTypeModalOptions): SchemaNode {
   return formModal({

@@ -5,11 +5,11 @@ import type { SchemaNode } from '@we/schema-shared';
  *
  * A real `href` rather than a click handler, because everything people expect of a link depends on
  * it: middle-click, open in a new tab, copy link address, and the browser's own idea of what has
- * been visited. A `we-button` with `onClick: routeStore.navigate` looks identical and supports none
+ * been visited. A `we-button` with `onClick: navigation.navigate` looks identical and supports none
  * of them. Solid Router resolves the click through `composedPath()`, so the anchor inside the
  * primitive's shadow root is still intercepted and the navigation stays client-side.
  *
- * ## Why the path is built from `spaceStore.spacePath`
+ * ## Why the path is built from `navigation.spacePath`
  *
  * The route is injected where a shell puts its sections, which for every WE shell is under
  * `/space/:spaceId` — so a bare `/record/…` is a different route entirely and lands on the
@@ -48,7 +48,7 @@ export const RECORD_ROUTE_PATH = '/record/:entity';
 
 export function recordLink(entity: unknown, id: unknown): SchemaNode {
   const path = RECORD_ROUTE_PATH.replace(':entity', `\${${(entity as { $: string }).$}}`);
-  const target = `\`\${spaceStore.spacePath}${path}?id=\${${(id as { $: string }).$}}\``;
+  const target = `\`\${navigation.spacePath}${path}?id=\${${(id as { $: string }).$}}\``;
   return {
     /*
       Absent outside a space, rather than pointing nowhere.
@@ -60,7 +60,7 @@ export function recordLink(entity: unknown, id: unknown): SchemaNode {
     */
     type: '$if',
     props: {
-      condition: { $: 'spaceStore.spacePath' },
+      condition: { $: 'navigation.spacePath' },
       then: {
         type: 'we-tooltip',
         props: { content: 'Open' },

@@ -144,7 +144,7 @@ export function newContainerModal(opts: {
         { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
       ],
       ...(opts.navigateTo && {
-        onSuccess: [{ $invoke: 'routeStore.navigate', args: [opts.navigateTo, { $: '{ query: { id: result.id } }' }] }],
+        onSuccess: [{ $invoke: 'navigation.navigate', args: [opts.navigateTo, { $: '{ query: { id: result.id } }' }] }],
       }),
     },
   });

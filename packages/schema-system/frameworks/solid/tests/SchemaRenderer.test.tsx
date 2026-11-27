@@ -210,11 +210,11 @@ describe('SchemaRenderer', () => {
   it('seeds $localState signal from $store expression when initial is a token', () => {
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
     const registry: ComponentRegistry = { InputComp };
-    const stores = { spaceStore: { currentSpace: { name: 'My Space' } } };
+    const stores = { spaceSettings: { currentSpace: { name: 'My Space' } } };
     const node: SchemaNode = {
       type: 'div',
       $localState: {
-        editName: { type: 'string', initial: { $: 'spaceStore.currentSpace.name' } as any },
+        editName: { type: 'string', initial: { $: 'spaceSettings.currentSpace.name' } as any },
       },
       children: [
         {
@@ -277,7 +277,7 @@ describe('SchemaRenderer', () => {
     const registry: ComponentRegistry = { InputComp };
     const [spaceName, setSpaceName] = createSignal('Space A');
     const stores = {
-      spaceStore: {
+      spaceSettings: {
         get currentSpace() {
           return { name: spaceName() };
         },
@@ -286,7 +286,7 @@ describe('SchemaRenderer', () => {
     const node: SchemaNode = {
       type: 'div',
       $localState: {
-        editName: { type: 'string', initial: { $: 'spaceStore.currentSpace.name' } as any },
+        editName: { type: 'string', initial: { $: 'spaceSettings.currentSpace.name' } as any },
       },
       children: [{ type: 'InputComp', props: { value: { $: 'local.editName' } } }],
     };

@@ -400,7 +400,7 @@ function threadQueries(opts: CommentThreadOptions, depth: number): Record<string
         take milliseconds timed out at thirty seconds. Calls about a post are few, so drawing them
         out on the client costs nothing.
       */
-      where: { author: { not: { $: 'spaceStore.mutedDids' } } },
+      where: { author: { not: { $: 'identity.mutedDids' } } },
       // The `responses` relation, drilled from the anchor. Untyped like `children`, so `scope` is
       // the only form available — `include` needs a known target class.
       scope: { anchor: 'CollectionBlock', via: 'responses', anchorId: opts.anchorId, levels },

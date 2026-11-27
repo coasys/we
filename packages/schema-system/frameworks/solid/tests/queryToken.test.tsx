@@ -823,7 +823,7 @@ describe('$query when', () => {
     const stores = {
       $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => Task,
-      routeStore: {
+      navigation: {
         get params() {
           return params();
         },
@@ -835,9 +835,9 @@ describe('$query when', () => {
       $queries: {
         card: {
           entity: 'Task',
-          where: { id: { $: 'routeStore.params.card' } },
+          where: { id: { $: 'navigation.params.card' } },
           limit: 1,
-          when: { $: 'routeStore.params.card' },
+          when: { $: 'navigation.params.card' },
         },
       },
       props: { data: { $: '[local.cardLoaded, local.card]' } },
@@ -870,7 +870,7 @@ describe('$query when', () => {
     const stores = {
       $currentDataset: () => ({ uuid: 'test-dataset' }),
       $getEntity: () => Task,
-      routeStore: {
+      navigation: {
         get params() {
           return params();
         },
@@ -879,7 +879,7 @@ describe('$query when', () => {
 
     const node: SchemaNode = {
       type: 'DataDisplay',
-      $queries: { card: { entity: 'Task', limit: 1, when: { $: 'routeStore.params.card' } } },
+      $queries: { card: { entity: 'Task', limit: 1, when: { $: 'navigation.params.card' } } },
       props: { data: { $: 'local.card' } },
     };
 
