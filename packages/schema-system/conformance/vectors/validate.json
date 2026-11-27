@@ -936,6 +936,143 @@
       ]
     },
     {
+      "id": "validate.scope.route-not-outlet-advice",
+      "note": "a route reading what is declared on the way to its outlet is told to move it to the node with routes; a route reading what is declared beside the outlet is not",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Row",
+            "$localState": {
+              "beside": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": []
+          },
+          {
+            "type": "Column",
+            "$localState": {
+              "near": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": [
+              {
+                "type": "$routes"
+              }
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.near"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "path": "/beside",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.beside"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["routes", 0, "children", 0, "children", 0, "$"],
+          "message": "Expression: local.near is not declared in $localState or $queries here (column 0)"
+        },
+        {
+          "at": ["routes", 1, "children", 0, "children", 0, "$"],
+          "message": "Expression: local.beside is not declared in $localState or $queries here (column 0)"
+        }
+      ],
+      "warnings": [
+        {
+          "at": ["routes", 0, "children", 0, "children", 0, "$"],
+          "message": "local.near is declared at children[1], between the node with routes (the template's root) and its $routes outlet, which a route does not see: a route's scope is where it is written, not where it is drawn. Move it to the node with `routes`."
+        }
+      ]
+    },
+    {
+      "id": "validate.scope.panel-not-tree-advice",
+      "note": "a panel reading what is declared below the root is told to move it to the template's root",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "panels": [
+            {
+              "id": "side",
+              "node": {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.inner"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "inner": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": []
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "panels", 0, "node", "children", 0, "$"],
+          "message": "Expression: local.inner is not declared in $localState or $queries here (column 0)"
+        }
+      ],
+      "warnings": [
+        {
+          "at": ["meta", "panels", 0, "node", "children", 0, "$"],
+          "message": "local.inner is declared at children[0], inside the template's tree, which a panel does not see: a panel's scope is the root's, wherever it is drawn. Move it to the template's root."
+        }
+      ]
+    },
+    {
       "id": "validate.scope.panel-reads-root",
       "note": "a panel's node reads the root's local state",
       "document": {

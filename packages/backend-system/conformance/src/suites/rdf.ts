@@ -40,11 +40,63 @@ export interface OperationsDocument {
 
 const lines = (nquads: string) => nquads.split('\n').filter((line) => line !== '');
 
+const mapValues = <T, U>(record: Record<string, T>, fn: (value: T) => U): Record<string, U> =>
+  Object.fromEntries(Object.entries(record).map(([key, value]) => [key, fn(value)]));
+
+/**
+ * The two rewrites the context cannot make, done before it applies (`rdf.md`, "Two keys rewritten"):
+ * a param's `required` is SHACL's `minCount`, 1 or 0, and an error's message is the node of its code,
+ * `{ "message": … }`, so the context can index it by code. Nothing else changes.
+ */
+function forReading(document: OperationsDocument): unknown {
+  return {
+    version: document.version,
+    operations: mapValues(document.operations, (definition) => {
+      const { params, errors, ...rest } = definition;
+      return {
+        ...rest,
+        ...(params
+          ? {
+              params: mapValues(params, ({ required, ...param }) => ({
+                ...param,
+                ...(required === undefined ? {} : { minCount: required ? 1 : 0 }),
+              })),
+            }
+          : {}),
+        ...(errors ? { errors: mapValues(errors, (message) => ({ message })) } : {}),
+      };
+    }),
+  };
+}
+
+/** The way back from {@link forReading}. */
+function fromReading(document: OperationsDocument): OperationsDocument {
+  type Read = { params?: Record<string, { minCount?: number }>; errors?: Record<string, { message: string }> };
+  return {
+    version: document.version,
+    operations: mapValues(document.operations, (definition) => {
+      const { params, errors, ...rest } = definition as unknown as Read & Record<string, unknown>;
+      return {
+        ...rest,
+        ...(params
+          ? {
+              params: mapValues(params, ({ minCount, ...param }) => ({
+                ...param,
+                ...(minCount === undefined ? {} : { required: minCount > 0 }),
+              })),
+            }
+          : {}),
+        ...(errors ? { errors: mapValues(errors, ({ message }) => message) } : {}),
+      } as unknown as OperationDefinition;
+    }),
+  };
+}
+
 /** The document's triples, canonical N-Quads, one statement a line, sorted. */
 export async function toNQuads(document: OperationsDocument): Promise<string[]> {
   return lines(
     await canonize(
-      { '@context': context(), ...document },
+      { '@context': context(), ...(forReading(document) as object) },
       { algorithm: 'URDNA2015', format: 'application/n-quads', safe: true },
     ),
   );
@@ -52,21 +104,69 @@ export async function toNQuads(document: OperationsDocument): Promise<string[]> 
 
 type NodeObject = Record<string, unknown>;
 
+/** A key of the context: the IRI it names, and how its values are read back. */
 interface Term {
   term: string;
+  iri: string;
+  /** For an index container, the key the index is read from. */
   index?: string;
+  /** Its string values are IRIs, read back to the terms or vocabulary-relative names they expand from. */
+  vocab?: boolean;
+  /** Its string values are IRIs relative to the base, read back to the reference they resolve from. */
+  ref?: boolean;
+  /** The context its values are read with, when it carries one of its own. */
+  scoped?: Context;
 }
 
-/** The context's terms by the IRI each names, so a node's properties are read back to their keys. */
-function termsByIri(ctx: Record<string, unknown>): Map<string, Term> {
-  const expand = (iri: string) => iri.replace(/^op:/, OP);
-  const out = new Map<string, Term>();
-  for (const [term, definition] of Object.entries(ctx)) {
-    if (term.startsWith('@') || term === 'op') continue;
-    const d = (typeof definition === 'string' ? { '@id': definition } : definition) as Record<string, string>;
-    out.set(expand(d['@id']), { term, ...(d['@container'] === '@index' ? { index: d['@index'] } : {}) });
+/** A context as the way back reads it: its vocabulary, and its keys by the IRI each names. */
+interface Context {
+  vocab?: string;
+  base?: string;
+  byIri: Map<string, Term>;
+}
+
+/**
+ * Read a context's terms, inheriting from the one it is scoped within. The prefixes are the outer
+ * context's: every term written `prefix:name` expands through them, and anything else is relative to
+ * the vocabulary in effect.
+ */
+function readContext(raw: Record<string, unknown>, prefixes: Record<string, string>, outer?: Context): Context {
+  const expand = (iri: string, vocab?: string) => {
+    const colon = iri.indexOf(':');
+    if (colon > 0 && prefixes[iri.slice(0, colon)]) return prefixes[iri.slice(0, colon)] + iri.slice(colon + 1);
+    return iri.includes(':') ? iri : `${vocab ?? ''}${iri}`;
+  };
+  const ctx: Context = {
+    vocab: typeof raw['@vocab'] === 'string' ? expand(raw['@vocab']) : outer?.vocab,
+    base: typeof raw['@base'] === 'string' ? raw['@base'] : outer?.base,
+    byIri: new Map(outer?.byIri),
+  };
+  const scopes: [Term, Record<string, unknown>][] = [];
+  for (const [term, definition] of Object.entries(raw)) {
+    if (term.startsWith('@') || term in prefixes) continue;
+    const d = (typeof definition === 'string' ? { '@id': definition } : definition) as Record<string, unknown>;
+    const entry: Term = {
+      term,
+      iri: expand((d['@id'] as string | undefined) ?? term, ctx.vocab),
+      ...(d['@container'] === '@index' ? { index: d['@index'] as string } : {}),
+      ...(d['@type'] === '@vocab' ? { vocab: true } : {}),
+      ...(d['@type'] === '@id' ? { ref: true } : {}),
+    };
+    // A key the outer context maps to the same IRI is replaced, not added beside.
+    for (const [iri, known] of ctx.byIri) if (known.term === term) ctx.byIri.delete(iri);
+    ctx.byIri.set(entry.iri, entry);
+    if (d['@context']) scopes.push([entry, d['@context'] as Record<string, unknown>]);
   }
-  return out;
+  for (const [entry, scoped] of scopes) entry.scoped = readContext(scoped, prefixes, ctx);
+  return ctx;
+}
+
+/** An IRI read back to the key it expands from: a term of the context, else a vocabulary-relative name. */
+function compactIri(iri: string, ctx: Context): string {
+  const term = ctx.byIri.get(iri);
+  if (term) return term.term;
+  if (ctx.vocab && iri.startsWith(ctx.vocab)) return iri.slice(ctx.vocab.length);
+  throw new Error(`The context reads no key back from ${iri}`);
 }
 
 /**
@@ -75,8 +175,10 @@ function termsByIri(ctx: Record<string, unknown>): Map<string, Term> {
  * Read back by the context's own terms rather than by a processor's compaction: a JSON literal that
  * is a list of one is a value, and compaction would hand it back as the one entry, which is a
  * different value. Everything else is what compaction does: each property to its term, a list to an
- * array, an index container to an object keyed by the index, and each blank node put back in the one
- * place it is referenced (operations are trees, so the node referenced by none is the root).
+ * array, an index container to an object keyed by the index, an IRI a key's values are coerced to
+ * back to the name it expands from, each node read with the context its key scopes, and each blank
+ * node put back in the one place it is referenced (operations are trees, so the node referenced by
+ * none is the root). Then the two rewrites made before reading are undone.
  */
 export async function fromNQuads(quads: string[]): Promise<OperationsDocument> {
   const flat = (await fromRDF(quads.join('\n') + '\n', {
@@ -90,38 +192,49 @@ export async function fromNQuads(quads: string[]): Promise<OperationsDocument> {
       if (key === '@id' && typeof value === 'string' && value !== node['@id']) referenced.add(value);
       return value;
     });
-  const terms = termsByIri(context());
+  const raw = context();
+  const prefixes = Object.fromEntries(
+    Object.entries(raw).filter(
+      (entry): entry is [string, string] =>
+        !entry[0].startsWith('@') && typeof entry[1] === 'string' && /[#/]$/.test(entry[1]),
+    ),
+  );
+  const root = readContext(raw, prefixes);
 
   // A JSON literal's value is the JSON itself, a list of one included; a plain literal is its value.
-  const value = (item: unknown): unknown => {
+  const value = (item: unknown, term: Term, ctx: Context): unknown => {
     const v = item as NodeObject;
     if ('@value' in v) return v['@value'];
-    if ('@list' in v) return (v['@list'] as unknown[]).map(value);
-    return node(byId.get(v['@id'] as string) ?? v);
+    if ('@list' in v) return (v['@list'] as unknown[]).map((entry) => value(entry, term, ctx));
+    const id = v['@id'] as string;
+    const inner = term.scoped ?? ctx;
+    if (byId.has(id) || id.startsWith('_:')) return node(byId.get(id) ?? v, inner);
+    // A reference resolves against the base of the context it was written in, the node's own.
+    if (term.ref && ctx.base && id.startsWith(ctx.base)) return decodeURIComponent(id.slice(ctx.base.length));
+    return compactIri(id, inner);
   };
-  const node = (n: NodeObject): NodeObject => {
+  const node = (n: NodeObject, ctx: Context): NodeObject => {
     const out: NodeObject = {};
     for (const [iri, values] of Object.entries(n)) {
       if (iri === '@id') continue;
-      const term = terms.get(iri);
-      if (!term) throw new Error(`The context maps no key to ${iri}`);
+      const term = ctx.byIri.get(iri) ?? { term: compactIri(iri, ctx), iri };
       const items = values as unknown[];
       if (term.index) {
         const indexed: NodeObject = {};
         for (const item of items) {
-          const child = value(item) as NodeObject;
+          const child = value(item, term, ctx) as NodeObject;
           const key = child[term.index] as string;
           delete child[term.index];
           indexed[key] = child;
         }
         out[term.term] = indexed;
-      } else out[term.term] = value(items[0]);
+      } else out[term.term] = value(items[0], term, ctx);
     }
     return out;
   };
-  const root = flat.find((n) => !referenced.has(n['@id'] as string));
-  if (!root) throw new Error('No node is the root');
-  return node(root) as unknown as OperationsDocument;
+  const top = flat.find((n) => !referenced.has(n['@id'] as string));
+  if (!top) throw new Error('No node is the root');
+  return fromReading(node(top, root) as unknown as OperationsDocument);
 }
 
 /**
@@ -168,7 +281,7 @@ export const CORE_DOCUMENT: OperationsDocument = { version: '1', operations: COR
 export const RDF_CASES: RdfCase[] = [
   {
     id: 'rdf.make-board',
-    note: 'an operation is a node named in its manifest; its steps an rdf:List, each a node under its verb; values rdf:JSON literals, expressions kept inside them',
+    note: 'an operation is a node named in its manifest; its params property shapes, its errors nodes; its steps an rdf:List, each a node under its verb; values rdf:JSON literals, expressions kept inside them',
     document: {
       version: '1',
       operations: {
@@ -212,7 +325,7 @@ export const RDF_CASES: RdfCase[] = [
   },
   {
     id: 'rdf.chosen-entity',
-    note: 'an entity chosen by expression is a node holding the expression; a oneOf is one JSON literal; the summary names the category, not its members',
+    note: 'an entity chosen by expression is a node holding the expression; a oneOf is an rdf:List of names and category nodes; the summary names the category, not its members',
     document: {
       version: '1',
       operations: {
@@ -251,6 +364,29 @@ export const RDF_CASES: RdfCase[] = [
             },
             { call: { as: 'done', operation: 'core.thread', args: { node: { $: 'board' } } }, when: false },
           ],
+        },
+      } as unknown as Record<string, OperationDefinition>,
+    },
+  },
+  {
+    id: 'rdf.params-as-shapes',
+    note: 'a param is a SHACL property shape: sh:path its name, resolved under the param base, sh:datatype its type, sh:minCount 1 or 0 for required, sh:description; an error a node of its code and message',
+    document: {
+      version: '1',
+      operations: {
+        describeEverything: {
+          description: 'Takes one param of each type, and raises either of two errors.',
+          params: {
+            entity: { type: 'string', required: true, description: 'Named like a key of the format.' },
+            count: { type: 'number' },
+            done: { type: 'boolean', required: false },
+            items: { type: 'list', required: true },
+            fields: { type: 'object' },
+            anything: { type: 'json', description: 'Any JSON value.' },
+          },
+          errors: { name: 'Named like a key of the format.', tooMany: 'Too many.' },
+          steps: [{ check: { condition: { $: 'count(items) < 10' }, error: 'tooMany' } }],
+          returns: { found: { $: 'count(items) > 0' } },
         },
       } as unknown as Record<string, OperationDefinition>,
     },

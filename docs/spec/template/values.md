@@ -28,15 +28,40 @@ Every value is resolved where it stands, against the [context](README.md#terms) 
 position. An expression is **reactive**: a renderer MUST redraw what depends on it when a value it
 read changes, and SHOULD redraw nothing else.
 
+### Scope is where a body is written
+
+The locals a value reads are those of the node it is on and of
+the nodes above it in the document. A route body and a panel body are drawn elsewhere (a route at its
+parent's `$routes` outlet, a panel in a lane), but they read the scope of where they are written: a
+route the node that lists it and everything above that, a panel the template's root
+([A route's scope](routing.md#a-routes-scope)). So a local declared between the node with `routes`
+and its outlet is not one a route reads, and nor is a local declared below the root one a panel
+reads. A validator warns when a route or panel body reads such a local, naming where it is declared
+and the fix: move it to the node with `routes` (for a panel, to the root). State a route shares with
+the layout around its outlet belongs on that node.
+
+> **Why scope follows where a route is written, not where it is drawn.** A route body should mean
+> the same wherever its outlet is: moving the outlet into a sidebar or behind a `$if` must not change
+> what a route reads. And the host reads the route table as data about the whole template, apart
+> from where it is drawn (the views it lists, the navigation, deep links, the editor), so the table
+> stays on the node with `routes`, not on its outlet. This is how React Router has it too: the route
+> configuration sits at the top, `<Outlet/>` sits in the layout, and a route receives state from
+> around its outlet only through an explicit `useOutletContext`, never by being nested there. The
+> format has no outlet context; a template that needs one shares the state from the node with
+> `routes`.
+
 ---
 
-Implemented by: [`dispatcher.ts`](../../../packages/schema-system/shared/src/propResolvers/dispatcher.ts)
+Implemented by: [`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
+(the warning on a body reading a local it does not see), [`dispatcher.ts`](../../../packages/schema-system/shared/src/propResolvers/dispatcher.ts)
 (`resolveProp`), [`expression.ts`](../../../packages/schema-system/shared/src/propResolvers/expression.ts),
 [`zodSchemas.ts`](../../../packages/schema-system/shared/src/zodSchemas.ts) (`zSchemaProp`,
 `zPropToken`).
 Pinned by: [`propResolvers.test.ts`](../../../packages/schema-system/shared/tests/propResolvers.test.ts),
 [`tokenSchemas.test.ts`](../../../packages/schema-system/shared/tests/tokenSchemas.test.ts); render
-vectors `render.node.reactive-prop`, `render.degrade.failing-expression`.
+vectors `render.node.reactive-prop`, `render.degrade.failing-expression`,
+`render.routes.outlet-scope-not-lexical`; validate vectors `validate.scope.route-not-outlet-advice`,
+`validate.scope.panel-not-tree-advice`.
 
 ## Render time and call time
 

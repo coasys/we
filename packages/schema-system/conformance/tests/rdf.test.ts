@@ -90,6 +90,20 @@ describe('rdf.json', () => {
   });
 });
 
+describe('props as triples', () => {
+  it('reads each prop under we:prop/<name>, never through a key of the format', async () => {
+    const lines = await toNQuads(RDF_CASES.find((c) => c.id === 'rdf.props-as-triples')!.template);
+    const prop = (name: string) => `<https://we.example/ns/template#prop/${name}>`;
+    for (const name of ['gap', 'wrap', 'type', 'id', 'options', 'items', 'then', 'onClick'])
+      expect(
+        lines.some((line) => line.includes(prop(name))),
+        name,
+      ).toBe(true);
+    // A prop named `type` is the prop's, not the node's class.
+    expect(lines.some((line) => line.includes('#email>'))).toBe(false);
+  });
+});
+
 describe('every template a bundle ships reads back as itself', () => {
   const files = readdirSync(BUNDLES).filter((name) => name.endsWith('.bundle.json'));
   for (const file of files) {

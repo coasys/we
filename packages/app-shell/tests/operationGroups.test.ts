@@ -59,13 +59,17 @@ describe('the capability group an operation needs', () => {
 });
 
 /*
-  The effect-summary vectors carry WE's permission table, so another host can check its reading of the
-  rule against the reference. This holds the table here to the one in the file, and this host's
-  reading to every case's.
+  The effect-summary vectors of WE's core operations carry WE's permission table, so another host can
+  check its reading of the rule against the reference. This holds the table here to the one in the
+  file, and this host's reading to every case's. (The format's own effect vectors carry an example
+  table over neutral entities, which this host's table does not read.)
 */
 describe('the effect vectors, read by this host', () => {
   const file = JSON.parse(
-    readFileSync(new URL('../../backend-system/conformance/vectors/operations/effects.json', import.meta.url), 'utf8'),
+    readFileSync(
+      new URL('../../backend-system/conformance/vectors/operations/we-core/effects.json', import.meta.url),
+      'utf8',
+    ),
   ) as {
     groups: { default: string; entities: Record<string, string> };
     cases: { id: string; summary: Parameters<typeof operationSurface>[0]; permission: Record<string, unknown> }[];

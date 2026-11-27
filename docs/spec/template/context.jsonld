@@ -18,7 +18,7 @@
     "slots": { "@id": "we:slots", "@container": "@index", "@index": "slotName" },
     "$defs": { "@id": "we:defs", "@container": "@index", "@index": "defName" },
     "$": "we:expression",
-    "props": { "@id": "we:props", "@type": "@json" },
+    "props": "we:props",
     "$localState": { "@id": "we:localState", "@type": "@json" },
     "$queries": { "@id": "we:queries", "@type": "@json" },
     "styles": { "@id": "we:styles", "@type": "@json" },

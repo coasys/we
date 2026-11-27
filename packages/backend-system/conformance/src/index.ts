@@ -42,13 +42,18 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { describeEmptyValues, EMPTY_VALUE_CASES, type EmptyValueCase } from './emptyValues';
 import { describeJsonValues, JSON_VALUE_CASES, type JsonValueCase } from './jsonValues';
 import {
+  CORE_OPERATION_CASES,
+  CORE_VECTOR_SUITE,
   describeOperations,
+  FORMAT_VECTOR_SUITE,
   OPERATION_CASES,
   OPERATION_CONFORMANCE_CASES,
+  OPERATION_VECTOR_SUITES,
   type OperationCase,
   type OperationConformanceCase,
   type OperationVector,
   type OperationVectorFile,
+  type OperationVectorSuite,
   readOperationVectors,
   runVector,
 } from './operations';
@@ -73,7 +78,10 @@ import { describeTemplateQueries, TEMPLATE_QUERY_CASES, type TemplateQueryCase }
 import { describeWriteCases, WRITE_CASES, type WriteCase } from './writes';
 
 export {
+  CORE_OPERATION_CASES,
+  CORE_VECTOR_SUITE,
   EMPTY_VALUE_CASES,
+  FORMAT_VECTOR_SUITE,
   type EmptyValueCase,
   JSON_VALUE_CASES,
   type JsonValueCase,
@@ -83,6 +91,8 @@ export {
   type OperationConformanceCase,
   type OperationVector,
   type OperationVectorFile,
+  OPERATION_VECTOR_SUITES,
+  type OperationVectorSuite,
   expectRows,
   QUERY_LEVELS,
   QUERY_VECTORS_FILE,
