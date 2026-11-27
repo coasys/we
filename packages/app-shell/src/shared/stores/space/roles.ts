@@ -35,6 +35,7 @@ import {
   type PolicyVersion,
   policyView,
   presetOf,
+  SpaceArriving,
   type SpacePolicyView,
   type SpaceStanding,
 } from '../../spacePolicy';
@@ -510,7 +511,9 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     A read that fails here throws, and the check refuses the write as `unreadable`, as it does for the
     policy: no roles means no admins and the creator's word, so a failed read must not count as none.
     A failed read of the `Space` record refuses too, where the dataset is known to be a space; for any
-    other dataset it cannot be told from one that is not a space, and is not judged, as before.
+    other dataset it cannot be told from one that is not a space, and is not judged, as before. So
+    does a read that answers with no `Space` record for a known space: that is the record still
+    syncing, not a dataset that is not a space, and it is refused as still arriving.
   */
   async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
     const selves = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch((error: unknown) => {
@@ -518,7 +521,10 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
       return [];
     })) as Space[];
     const [self] = selves;
-    if (!self) return null;
+    if (!self) {
+      if (knownSpace(ds)) throw new SpaceArriving();
+      return null;
+    }
     const [roles, grants, versions] = await Promise.all([
       Role.findAll(ds.handle) as Promise<Role[]>,
       RoleGrant.findAll(ds.handle) as Promise<RoleGrant[]>,

@@ -187,6 +187,38 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
   });
 
+  it('refuses a write to a dataset known to be a space whose own record has not arrived, as still arriving', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-a')).handle;
+    // The read succeeds and finds nothing: the space's record is still syncing, not absent.
+    const empty = vi
+      .spyOn(getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> }, 'findAll')
+      .mockResolvedValue([]);
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).rejects.toMatchObject({
+      refusal: { reason: 'unreadable', action: 'CollectionBlock.create', arriving: true },
+    });
+    expect(h.toasts.said).toEqual(['error: This space is still arriving. Try again in a moment.']);
+    // The space's own record is the one write it lets through: it is what the space is waiting for.
+    await expect(Space.create(handle, { name: 'Allotment' })).resolves.toBeTruthy();
+    empty.mockRestore();
+    // Not held: once the record is there the write is judged as any other.
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+  });
+
+  it('does not judge a write to a dataset not known to be a space when its record is not there', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-x')).handle;
+    const empty = vi
+      .spyOn(getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> }, 'findAll')
+      .mockResolvedValue([]);
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+    empty.mockRestore();
+  });
+
   it('does not judge a write to a dataset not known to be a space when its record cannot be read', async () => {
     const built = await build();
     const { h } = built;

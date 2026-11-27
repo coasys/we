@@ -5593,6 +5593,8 @@ describe('a schema install the backend refuses', () => {
     await ready(stores);
     await stores.datasets.switchDataset('garden-1');
     const handle = stores.datasets.currentDataset()!.handle;
+    // A space with its record, so a write to it is judged rather than refused as still arriving.
+    await Space.create(handle as never, { name: 'Garden', uuid: 'garden-1' } as never);
     const type = (name: string) => ({
       name,
       manifest: { version: '1', entities: { [name]: { properties: { label: { type: 'string' } }, relations: {} } } },
