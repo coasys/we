@@ -397,6 +397,14 @@ the same code compiled to WASM. Sharing one implementation is fine for these bec
 what must stay separately implementable is the spec and anything stateful. (Not the same thing as a
 module's capability kernels in `@we/module-shared`, which are ports a module is handed.)
 
+Not every kernel binds. Board arrangement and tree ranks answer with data other members see — which
+cards a column shows, where a card sits — so every host that draws a board or a tree must give the
+same answers, and their vectors are a contract. The dock kernel is WE's reference arrangement: what a
+template may ask of a host about panels is the `layout` capability profile
+(`docs/spec/profiles/`), and a host conforms to that without adopting WE's docks. Its twenty-five
+entry points and their vectors are for a host that wants WE's arrangement, not a rule for one that
+does not.
+
 | Kernel            | Where                                                  | What it answers                                                                                                         | Vectors                                  |
 | ----------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
 | Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                          | `kernels/vectors/boardArrangement.json`  |
