@@ -15,6 +15,11 @@ export interface ValidateCase {
   id: string;
   note: string;
   document: unknown;
+  /**
+   * Record the warnings too, for a case whose point is what a validator advises. Most cases leave
+   * it out: what a validator advises is its own, and only a warning the format asks for is pinned.
+   */
+  warnings?: true;
 }
 
 const meta = { name: 'Case', description: 'A validator case', icon: 'check' };
@@ -30,7 +35,12 @@ const template = (children: unknown[], extra: Record<string, unknown> = {}): unk
 
 const text = (...children: unknown[]): SchemaNode => ({ type: 'we-text', children }) as SchemaNode;
 
-const C = (id: string, note: string, document: unknown): ValidateCase => ({ id, note, document });
+const C = (id: string, note: string, document: unknown, opts: { warnings?: true } = {}): ValidateCase => ({
+  id,
+  note,
+  document,
+  ...opts,
+});
 
 export const VALIDATE_CASES: ValidateCase[] = [
   /* ── valid ──────────────────────────────────────────────────────────────────────────────── */
@@ -207,6 +217,34 @@ export const VALIDATE_CASES: ValidateCase[] = [
         routes: [{ path: '/', type: 'Column', children: [text({ $: 'local.near' })] }],
       },
     ),
+  ),
+  C(
+    'validate.scope.route-not-outlet-advice',
+    'a route reading what is declared on the way to its outlet is told to move it to the node with routes; a route reading what is declared beside the outlet is not',
+    template(
+      [
+        { type: 'Row', $localState: { beside: { type: 'string', initial: '' } }, children: [] },
+        { type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] },
+      ],
+      {
+        routes: [
+          { path: '/', type: 'Column', children: [text({ $: 'local.near' })] },
+          { path: '/beside', type: 'Column', children: [text({ $: 'local.beside' })] },
+        ],
+      },
+    ),
+    { warnings: true },
+  ),
+  C(
+    'validate.scope.panel-not-tree-advice',
+    "a panel reading what is declared below the root is told to move it to the template's root",
+    {
+      ...(template([
+        { type: 'Column', $localState: { inner: { type: 'string', initial: '' } }, children: [] },
+      ]) as object),
+      meta: { ...meta, panels: [{ id: 'side', node: text({ $: 'local.inner' }) }] },
+    },
+    { warnings: true },
   ),
   C('validate.scope.panel-reads-root', "a panel's node reads the root's local state", {
     ...(template([text('x')], { $localState: { count: { type: 'number', initial: 0 } } }) as object),

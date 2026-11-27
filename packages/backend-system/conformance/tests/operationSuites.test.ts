@@ -9,7 +9,7 @@ import type { OperationDefinition } from '@we/backend-shared';
 import { CORE_OPERATIONS } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
 
-import { readOperationVectors } from '../src/operations';
+import { OPERATION_VECTOR_SUITES, readOperationVectors } from '../src/operations';
 import { type EffectCase, permissionOf, recordEffects, summaryOf } from '../src/suites/effects';
 import { derivedId, type IdCase, recordIds, segmentsOf } from '../src/suites/ids';
 import { fromNQuads, OPERATIONS_CONTEXT_PATH, recordRdf, summaryNQuads, toNQuads } from '../src/suites/rdf';
@@ -51,20 +51,24 @@ describe('static-checks.json', () => {
   });
 });
 
-describe('effects.json', () => {
-  const file = load<ReturnType<typeof recordEffects>>('effects.json');
+for (const [name, profile] of [
+  ['effects.json', 'format'],
+  ['we-core/effects.json', 'we-core'],
+] as const)
+  describe(name, () => {
+    const file = load<ReturnType<typeof recordEffects>>(name);
 
-  it('re-records to the committed content', () => {
-    expect(recordEffects()).toEqual(file);
-  });
-
-  for (const c of file.cases)
-    it(`${c.id}: the summary and what invoking it needs`, () => {
-      const summary = summaryOf(c as unknown as EffectCase);
-      expect(summary).toEqual(c.summary);
-      expect(permissionOf(summary, file.groups)).toEqual(c.permission);
+    it('re-records to the committed content', () => {
+      expect(recordEffects(profile)).toEqual(file);
     });
-});
+
+    for (const c of file.cases)
+      it(`${c.id}: the summary and what invoking it needs`, () => {
+        const summary = summaryOf(c as unknown as EffectCase);
+        expect(summary).toEqual(c.summary);
+        expect(permissionOf(summary, file.groups)).toEqual(c.permission);
+      });
+  });
 
 describe('ids.json', () => {
   const file = load<{ cases: (IdCase & { framed: string; result: string })[] }>('ids.json');
@@ -122,6 +126,11 @@ describe('rdf.json', () => {
       '$',
     ];
     expect(keys.filter((key) => !(key in context))).toEqual([]);
+    // A param's keys are read in the params' own scope; `required` is rewritten to `minCount` first.
+    const params = (context.params as { '@context': Record<string, unknown> })['@context'];
+    expect(['type', 'minCount', 'description'].filter((key) => !(key in params))).toEqual([]);
+    // What a param, an error and a oneOf entry become: the index keys and the category.
+    expect(['path', 'code', 'message', 'category'].filter((key) => !(key in context))).toEqual([]);
   });
 });
 
@@ -134,10 +143,11 @@ describe('every operation reads back as itself', () => {
   for (const [name, definition] of Object.entries(CORE_OPERATIONS))
     it(`core.${name}`, () => read({ [name]: definition }), 30_000);
 
-  it('every manifest the operations vectors carry, and its calls', async () => {
-    for (const vector of readOperationVectors().cases) {
-      await read(vector.manifest.operations);
-      if (Object.keys(vector.calls).length) await read(vector.calls);
-    }
-  }, 120_000);
+  for (const suite of OPERATION_VECTOR_SUITES)
+    it(`every manifest the ${suite.profile} operations vectors carry, and its calls`, async () => {
+      for (const vector of readOperationVectors(suite).cases) {
+        await read(vector.manifest.operations);
+        if (Object.keys(vector.calls).length) await read(vector.calls);
+      }
+    }, 120_000);
 });

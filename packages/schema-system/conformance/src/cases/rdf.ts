@@ -20,7 +20,7 @@ export const RDF_CASES: RdfCase[] = [
   },
   {
     id: 'rdf.values-are-json',
-    note: 'props, local state and queries are rdf:JSON literals, expressions and nulls inside them kept as written',
+    note: 'local state and queries are rdf:JSON literals; a prop is a triple of its own: text a literal, an expression a node, a list an rdf:List whose null is a JSON literal',
     template: {
       schemaVersion: 1,
       meta,
@@ -70,6 +70,32 @@ export const RDF_CASES: RdfCase[] = [
       styles: { filter: 'blur(2px)' },
       theme: { themeName: 'dark' },
       children: [],
+    },
+  },
+  {
+    id: 'rdf.props-as-triples',
+    note: 'each prop is one triple under we:prop/<name>, a name like a key of the format included; a number and a boolean are typed literals, data and an empty props one JSON literal each, a token a node, and a node in a node prop a node',
+    template: {
+      schemaVersion: 1,
+      meta,
+      type: 'Column',
+      props: { gap: 300, wrap: false, type: 'email', id: 'field', options: { a: [1, 2] } },
+      children: [
+        { type: 'we-divider', props: {} },
+        {
+          type: '$each',
+          props: { items: { $query: { entity: 'Post', limit: 3 } }, as: 'post' },
+          children: [{ type: 'we-text', children: [{ $: 'post.title' }] }],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.open' },
+            then: { type: 'we-text', props: { variant: 'caption' }, children: ['open'] },
+          },
+        },
+        { type: 'we-button', props: { label: 'Go', onClick: { $navigate: { to: '/board' } } } },
+      ],
     },
   },
 ];

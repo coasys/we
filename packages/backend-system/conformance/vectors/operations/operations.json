@@ -1,383 +1,50 @@
 {
   "version": 2,
   "entities": {
-    "Amendment": {
+    "Card": {
       "properties": {
-        "newValue": {
-          "type": "string",
-          "default": ""
-        },
-        "nodeType": {
-          "type": "string",
-          "default": ""
-        },
-        "previousValue": {
-          "type": "string",
-          "default": ""
-        },
-        "property": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "node": {
-          "target": "",
-          "cardinality": "one"
-        },
-        "run": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        }
-      }
-    },
-    "CollectionBlock": {
-      "properties": {
-        "autoExtract": {
-          "type": "boolean"
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "editorState": {
-          "type": "string",
-          "default": null
-        },
-        "extractionTargets": {
-          "type": "json"
-        },
-        "kind": {
-          "type": "string",
-          "default": ""
-        },
-        "mode": {
-          "type": "string",
-          "default": ""
-        },
-        "slug": {
-          "type": "string",
-          "default": ""
-        },
-        "source": {
-          "type": "string",
-          "default": ""
-        },
-        "sourceName": {
-          "type": "string",
-          "default": ""
-        },
-        "sourceRef": {
-          "type": "string",
-          "default": ""
-        },
-        "textContent": {
-          "type": "string",
-          "default": ""
+        "status": {
+          "type": "string"
         },
         "title": {
           "type": "string",
-          "default": ""
-        },
-        "version": {
-          "type": "number",
-          "default": 0
-        }
-      },
-      "relations": {
-        "amendments": {
-          "target": "Amendment",
-          "cardinality": "many"
-        },
-        "arranges": {
-          "target": "",
-          "cardinality": "many",
-          "ordered": true
-        },
-        "board": {
-          "target": "CollectionBlock",
-          "cardinality": "one"
-        },
-        "children": {
-          "target": "",
-          "cardinality": "many",
-          "ordered": true
-        },
-        "extracted": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "gathers": {
-          "target": "",
-          "cardinality": "one"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "recognised": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      },
-      "blockable": true
-    },
-    "Involvement": {
-      "properties": {
-        "agent": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "kind": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "note": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "node": {
-          "target": "",
-          "cardinality": "one"
-        }
-      }
-    },
-    "InvolvementType": {
-      "properties": {
-        "appliesTo": {
-          "type": "string",
-          "default": ""
-        },
-        "color": {
-          "type": "string",
-          "default": ""
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "icon": {
-          "type": "string",
-          "default": ""
-        },
-        "name": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "reflexive": {
-          "type": "boolean",
-          "default": false
-        },
-        "retired": {
-          "type": "boolean",
-          "default": false
-        },
-        "schemaVersion": {
-          "type": "number",
-          "default": 1
-        },
-        "semantic": {
-          "type": "string",
-          "default": "responsible"
-        },
-        "slug": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      }
-    },
-    "ModelRun": {
-      "properties": {
-        "detail": {
-          "type": "json"
-        },
-        "error": {
-          "type": "string",
-          "default": ""
-        },
-        "kind": {
-          "type": "string",
-          "default": ""
-        },
-        "model": {
-          "type": "string",
-          "default": ""
-        },
-        "outcome": {
-          "type": "string",
-          "default": "done"
-        },
-        "output": {
-          "type": "string",
-          "default": ""
-        },
-        "prompt": {
-          "type": "string",
-          "default": ""
-        },
-        "recordCount": {
-          "type": "number",
-          "default": 0
-        },
-        "trigger": {
-          "type": "string",
-          "default": "manual"
+          "required": true
         }
       },
       "relations": {}
     },
-    "Placement": {
+    "Item": {
       "properties": {
-        "cardShape": {
-          "type": "string",
-          "default": ""
+        "kind": {
+          "type": "string"
         },
-        "color": {
-          "type": "string",
-          "default": ""
+        "slug": {
+          "type": "string"
         },
-        "contentScale": {
-          "type": "number",
-          "default": 0
-        },
-        "height": {
-          "type": "number",
-          "default": 0
-        },
-        "nodeType": {
-          "type": "string",
-          "default": ""
-        },
-        "rank": {
-          "type": "number",
-          "default": 0
-        },
-        "rotation": {
-          "type": "number",
-          "default": 0
-        },
-        "width": {
-          "type": "number",
-          "default": 0
-        },
-        "x": {
-          "type": "number",
-          "default": 0
-        },
-        "y": {
-          "type": "number",
-          "default": 0
-        },
-        "z": {
-          "type": "number",
-          "default": 0
+        "title": {
+          "type": "string"
         }
       },
       "relations": {
-        "node": {
-          "target": "",
-          "cardinality": "one"
+        "children": {
+          "target": "Item",
+          "cardinality": "many",
+          "ordered": true
+        },
+        "mentions": {
+          "target": "Item",
+          "cardinality": "many"
         }
       }
+    },
+    "Label": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "required": true
+        }
+      },
+      "relations": {}
     },
     "Policy": {
       "properties": {
@@ -387,158 +54,6 @@
         }
       },
       "relations": {}
-    },
-    "ReadMarker": {
-      "properties": {
-        "lastReadAt": {
-          "type": "string",
-          "default": ""
-        },
-        "nodeId": {
-          "type": "string",
-          "default": ""
-        },
-        "spaceUuid": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      }
-    },
-    "Relationship": {
-      "properties": {
-        "connection": {
-          "type": "string",
-          "default": ""
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "label": {
-          "type": "string",
-          "default": ""
-        },
-        "relationshipTypeId": {
-          "type": "string",
-          "default": ""
-        },
-        "sourceType": {
-          "type": "string",
-          "default": ""
-        },
-        "targetType": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "source": {
-          "target": "",
-          "cardinality": "one"
-        },
-        "target": {
-          "target": "",
-          "cardinality": "one"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      }
     },
     "Role": {
       "properties": {
@@ -577,487 +92,17 @@
       },
       "relations": {}
     },
-    "Signal": {
+    "Status": {
       "properties": {
-        "signalTypeId": {
+        "name": {
           "type": "string",
-          "default": ""
+          "required": true
         },
-        "value": {
-          "type": "number",
-          "default": 0
+        "slug": {
+          "type": "string"
         }
       },
       "relations": {}
-    },
-    "TagBlock": {
-      "properties": {
-        "color": {
-          "type": "string",
-          "default": ""
-        },
-        "name": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "version": {
-          "type": "number",
-          "default": 0
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      },
-      "blockable": true
-    },
-    "TaskBlock": {
-      "properties": {
-        "assignee": {
-          "type": "string",
-          "default": ""
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "dueDate": {
-          "type": "string",
-          "default": ""
-        },
-        "priority": {
-          "type": "string",
-          "default": "medium"
-        },
-        "status": {
-          "type": "string",
-          "default": "todo"
-        },
-        "title": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "version": {
-          "type": "number",
-          "default": 0
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      },
-      "blockable": true
-    },
-    "TaskState": {
-      "properties": {
-        "approvals": {
-          "type": "number",
-          "default": 1
-        },
-        "approverKind": {
-          "type": "string",
-          "default": ""
-        },
-        "color": {
-          "type": "string",
-          "default": ""
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "evidence": {
-          "type": "json"
-        },
-        "icon": {
-          "type": "string",
-          "default": ""
-        },
-        "name": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        },
-        "retired": {
-          "type": "boolean",
-          "default": false
-        },
-        "schemaVersion": {
-          "type": "number",
-          "default": 1
-        },
-        "semantic": {
-          "type": "string",
-          "default": "open"
-        },
-        "slug": {
-          "type": "string",
-          "default": ""
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      }
-    },
-    "TextBlock": {
-      "properties": {
-        "align": {
-          "type": "string",
-          "default": ""
-        },
-        "checked": {
-          "type": "boolean",
-          "default": false
-        },
-        "direction": {
-          "type": "string",
-          "default": ""
-        },
-        "level": {
-          "type": "number",
-          "default": 0
-        },
-        "listItem": {
-          "type": "string",
-          "default": ""
-        },
-        "marks": {
-          "type": "json"
-        },
-        "source": {
-          "type": "string",
-          "default": ""
-        },
-        "style": {
-          "type": "string",
-          "default": "normal"
-        },
-        "text": {
-          "type": "string",
-          "default": ""
-        },
-        "version": {
-          "type": "number",
-          "default": 0
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      },
-      "blockable": true
-    },
-    "Topic": {
-      "properties": {
-        "color": {
-          "type": "string",
-          "default": ""
-        },
-        "description": {
-          "type": "string",
-          "default": ""
-        },
-        "icon": {
-          "type": "string",
-          "default": ""
-        },
-        "name": {
-          "type": "string",
-          "required": true,
-          "default": ""
-        }
-      },
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      }
-    },
-    "WeNode": {
-      "properties": {},
-      "relations": {
-        "extractedFrom": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "extracted"
-        },
-        "generatedBy": {
-          "target": "ModelRun",
-          "cardinality": "one"
-        },
-        "inThread": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "thread"
-        },
-        "mentions": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "partOf": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "children"
-        },
-        "participants": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "respondsTo": {
-          "target": "",
-          "cardinality": "one",
-          "reverseOf": "responses"
-        },
-        "responses": {
-          "target": "",
-          "cardinality": "many"
-        },
-        "runs": {
-          "target": "ModelRun",
-          "cardinality": "many"
-        },
-        "signals": {
-          "target": "Signal",
-          "cardinality": "many"
-        },
-        "thread": {
-          "target": "",
-          "cardinality": "many"
-        }
-      },
-      "abstract": true
     }
   },
   "protectedEntities": ["Policy", "Role", "RoleGrant"],
@@ -1071,11 +116,11 @@
           "by": ["anyone"]
         },
         {
-          "action": "CollectionBlock.delete",
+          "action": "Item.delete",
           "by": ["author"]
         },
         {
-          "action": "TagBlock.create",
+          "action": "Label.create",
           "by": [
             {
               "role": "curator"
@@ -1112,7 +157,7 @@
               {
                 "create": {
                   "as": "board",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "board",
                     "title": {
@@ -1131,7 +176,7 @@
                     {
                       "create": {
                         "as": "column",
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "fields": {
                           "kind": "column",
                           "title": {
@@ -1142,7 +187,7 @@
                     },
                     {
                       "link": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "id": {
                           "$": "board.id"
                         },
@@ -1183,7 +228,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1192,7 +237,7 @@
         "result": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d",
             "kind": "column",
@@ -1237,7 +282,7 @@
               {
                 "create": {
                   "as": "board",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "board",
                     "title": {
@@ -1256,7 +301,7 @@
                     {
                       "create": {
                         "as": "column",
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "fields": {
                           "kind": "column",
                           "title": {
@@ -1267,7 +312,7 @@
                     },
                     {
                       "link": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "id": {
                           "$": "board.id"
                         },
@@ -1308,7 +353,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1317,7 +362,7 @@
         "result": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:01b39ce5-8a65-8ff1-8585-d297b052740d",
             "kind": "column",
@@ -1358,7 +403,7 @@
               {
                 "find": {
                   "as": "found",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag",
                     "slug": {
@@ -1370,7 +415,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "tag",
                     "slug": {
@@ -1392,7 +437,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -1409,7 +454,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1418,7 +463,7 @@
         "result": "urn:example:tag-garden"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",
@@ -1445,7 +490,7 @@
               {
                 "find": {
                   "as": "found",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag",
                     "slug": {
@@ -1457,7 +502,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "tag",
                     "slug": {
@@ -1479,7 +524,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -1496,7 +541,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1505,7 +550,7 @@
         "result": "urn:uuid:79c3dbb7-8895-8731-92f8-e8cf8cb63ec9"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",
@@ -1531,7 +576,7 @@
               {
                 "find": {
                   "as": "tags",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag"
                   },
@@ -1549,7 +594,7 @@
                   "steps": [
                     {
                       "update": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "id": {
                           "$": "tag.id"
                         },
@@ -1571,7 +616,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -1579,7 +624,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-weeds",
           "fields": {
             "kind": "tag",
@@ -1594,7 +639,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1603,7 +648,7 @@
         "result": ["urn:example:tag-garden", "urn:example:tag-weeds"]
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",
@@ -1639,7 +684,7 @@
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "before"
@@ -1656,7 +701,7 @@
               },
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "after"
@@ -1678,7 +723,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1690,7 +735,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -1705,7 +750,7 @@
               {
                 "create": {
                   "as": "note",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "first"
@@ -1714,7 +759,7 @@
               },
               {
                 "update": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "note.id"
                   },
@@ -1739,7 +784,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1748,7 +793,7 @@
         "result": "urn:uuid:9dd3f374-cb9a-8ed4-b31a-d42615aa6736"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:9dd3f374-cb9a-8ed4-b31a-d42615aa6736",
             "kind": "note",
@@ -1778,7 +823,7 @@
             "steps": [
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "parent"
                   },
@@ -1796,14 +841,14 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:child",
           "fields": {
             "kind": "card"
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:parent",
           "fields": {
             "kind": "board"
@@ -1823,7 +868,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1835,7 +880,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:child",
             "kind": "card"
@@ -1869,7 +914,7 @@
             "steps": [
               {
                 "setRelation": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "parent"
                   },
@@ -1887,7 +932,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k1",
           "fields": {
             "kind": "card",
@@ -1895,7 +940,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k2",
           "fields": {
             "kind": "card",
@@ -1903,7 +948,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k3",
           "fields": {
             "kind": "card",
@@ -1911,7 +956,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:holder",
           "fields": {
             "kind": "board",
@@ -1932,7 +977,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -1941,7 +986,7 @@
         "result": null
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:holder",
             "kind": "board",
@@ -1967,2041 +1012,6 @@
       }
     },
     {
-      "id": "core-upsert-signal",
-      "note": "core.upsertSignal with no reaction yet makes one under the record, and answers with its id",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "upsertSignal": {
-            "description": "Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.",
-            "params": {
-              "node": {
-                "type": "string",
-                "required": true,
-                "description": "The record reacted to."
-              },
-              "signalType": {
-                "type": "string",
-                "required": true,
-                "description": "The SignalType’s id."
-              },
-              "value": {
-                "type": "number",
-                "required": true,
-                "description": "What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal."
-              }
-            },
-            "serial": {
-              "$": "'signal ' + node + ' ' + signalType"
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "mine",
-                  "entity": "Signal",
-                  "scope": {
-                    "anchor": "WeNode",
-                    "via": "signals",
-                    "anchorId": {
-                      "$": "node"
-                    }
-                  },
-                  "where": {
-                    "signalTypeId": {
-                      "$": "signalType"
-                    },
-                    "author": {
-                      "$": "invoker"
-                    }
-                  },
-                  "order": {
-                    "createdAt": "asc"
-                  }
-                }
-              },
-              {
-                "create": {
-                  "as": "made",
-                  "entity": "Signal",
-                  "fields": {
-                    "signalTypeId": {
-                      "$": "signalType"
-                    },
-                    "value": {
-                      "$": "value"
-                    }
-                  },
-                  "parent": {
-                    "id": {
-                      "$": "node"
-                    },
-                    "relation": "signals"
-                  }
-                },
-                "when": {
-                  "$": "count(mine) == 0"
-                }
-              },
-              {
-                "update": {
-                  "entity": "Signal",
-                  "id": {
-                    "$": "first(mine)"
-                  },
-                  "fields": {
-                    "value": {
-                      "$": "value"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "count(mine) > 0"
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "slice(mine, 1)"
-                  },
-                  "as": "extra",
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": "Signal",
-                        "id": {
-                          "$": "extra"
-                        },
-                        "own": true
-                      }
-                    }
-                  ]
-                }
-              }
-            ],
-            "returns": {
-              "$": "count(mine) ? first(mine).id : made.id"
-            }
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:post",
-          "fields": {
-            "kind": "post"
-          }
-        }
-      ],
-      "operation": "upsertSignal",
-      "args": {
-        "node": "urn:example:post",
-        "signalType": "urn:example:like",
-        "value": 0
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000007",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "CollectionBlock",
-          "fields": ["kind"],
-          "relations": ["signals"]
-        },
-        {
-          "entity": "Signal",
-          "fields": ["signalTypeId", "value"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": "urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687"
-      },
-      "records": {
-        "CollectionBlock": [
-          {
-            "id": "urn:example:post",
-            "kind": "post",
-            "signals": ["urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687"]
-          }
-        ],
-        "Signal": [
-          {
-            "id": "urn:uuid:e5a8884b-ad96-85aa-b280-93762a318687",
-            "signalTypeId": "urn:example:like",
-            "value": 0
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-respond-replaces",
-      "note": "core.respond removes the answer the invoker gave before, on this record only, and makes the new one",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "respond": {
-            "description": "Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.",
-            "params": {
-              "node": {
-                "type": "string",
-                "required": true,
-                "description": "The record answered."
-              },
-              "kind": {
-                "type": "string",
-                "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
-              }
-            },
-            "serial": {
-              "$": "'answer ' + node"
-            },
-            "errors": {
-              "notAnAnswer": "That is not an answer anybody can give to this."
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "answers",
-                  "entity": "InvolvementType",
-                  "where": {
-                    "reflexive": true
-                  }
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "!kind || kind in answers.map(t, t.slug)"
-                  },
-                  "error": "notAnAnswer"
-                }
-              },
-              {
-                "find": {
-                  "as": "held",
-                  "entity": "Involvement",
-                  "where": {
-                    "agent": {
-                      "$": "invoker"
-                    },
-                    "kind": {
-                      "$": "answers.map(t, t.slug)"
-                    },
-                    "node": {
-                      "$": "node"
-                    }
-                  }
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "held.filter(r, r.kind != kind)"
-                  },
-                  "as": "stale",
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": "Involvement",
-                        "id": {
-                          "$": "stale"
-                        },
-                        "own": true
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "create": {
-                  "entity": "Involvement",
-                  "fields": {
-                    "agent": {
-                      "$": "invoker"
-                    },
-                    "kind": {
-                      "$": "kind"
-                    },
-                    "node": {
-                      "$": "node"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "kind && !held.exists(r, r.kind == kind)"
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "InvolvementType",
-          "id": "urn:example:going",
-          "fields": {
-            "name": "Going",
-            "slug": "going",
-            "reflexive": true
-          }
-        },
-        {
-          "entity": "InvolvementType",
-          "id": "urn:example:maybe",
-          "fields": {
-            "name": "Maybe",
-            "slug": "maybe",
-            "reflexive": true
-          }
-        },
-        {
-          "entity": "Involvement",
-          "id": "urn:example:said-maybe",
-          "fields": {
-            "agent": "did:example:invoker",
-            "kind": "maybe",
-            "node": "urn:example:event"
-          }
-        },
-        {
-          "entity": "Involvement",
-          "id": "urn:example:other-event",
-          "fields": {
-            "agent": "did:example:invoker",
-            "kind": "maybe",
-            "node": "urn:example:elsewhere"
-          }
-        }
-      ],
-      "operation": "respond",
-      "args": {
-        "node": "urn:example:event",
-        "kind": "going"
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000008",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "Involvement",
-          "fields": ["agent", "kind"],
-          "relations": ["node"]
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "Involvement": [
-          {
-            "id": "urn:example:other-event",
-            "agent": "did:example:invoker",
-            "kind": "maybe",
-            "node": "urn:example:elsewhere"
-          },
-          {
-            "id": "urn:uuid:1d772f7f-2bc7-80e3-b30b-11fe1d59c661",
-            "agent": "did:example:invoker",
-            "kind": "going",
-            "node": "urn:example:event"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-set-involvement-to-one",
-      "note": "core.setInvolvement finds the pair on this record by its to-one, leaves the same pair on another record, and writes the new one’s node as one id",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "setInvolvement": {
-            "description": "Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.",
-            "params": {
-              "node": {
-                "type": "string",
-                "required": true,
-                "description": "The record they are on."
-              },
-              "agent": {
-                "type": "string",
-                "required": true,
-                "description": "Who, as a DID."
-              },
-              "kind": {
-                "type": "string",
-                "required": true,
-                "description": "The InvolvementType’s slug."
-              },
-              "on": {
-                "type": "boolean",
-                "required": true,
-                "description": "The state wanted, so pressing twice cannot undo itself."
-              }
-            },
-            "serial": {
-              "$": "'involve ' + node + ' ' + agent + ' ' + kind"
-            },
-            "errors": {
-              "unknownKind": "That is not a kind of involvement this space has.",
-              "notYours": "Only the person it is about can give that answer."
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "kinds",
-                  "entity": "InvolvementType",
-                  "where": {
-                    "slug": {
-                      "$": "kind"
-                    }
-                  },
-                  "limit": 1
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "count(kinds) > 0"
-                  },
-                  "error": "unknownKind"
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "!first(kinds).reflexive || agent == invoker"
-                  },
-                  "error": "notYours"
-                }
-              },
-              {
-                "call": {
-                  "operation": "core.respond",
-                  "args": {
-                    "node": {
-                      "$": "node"
-                    },
-                    "kind": {
-                      "$": "on ? kind : null"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "first(kinds).reflexive"
-                }
-              },
-              {
-                "find": {
-                  "as": "held",
-                  "entity": "Involvement",
-                  "where": {
-                    "agent": {
-                      "$": "agent"
-                    },
-                    "kind": {
-                      "$": "kind"
-                    },
-                    "node": {
-                      "$": "node"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "!first(kinds).reflexive"
-                }
-              },
-              {
-                "create": {
-                  "entity": "Involvement",
-                  "fields": {
-                    "agent": {
-                      "$": "agent"
-                    },
-                    "kind": {
-                      "$": "kind"
-                    },
-                    "node": {
-                      "$": "node"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "!first(kinds).reflexive && on && count(held) == 0"
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "held"
-                  },
-                  "as": "row",
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": "Involvement",
-                        "id": {
-                          "$": "row"
-                        }
-                      }
-                    }
-                  ]
-                },
-                "when": {
-                  "$": "!first(kinds).reflexive && !on"
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {
-        "core.respond": {
-          "description": "Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.",
-          "params": {
-            "node": {
-              "type": "string",
-              "required": true,
-              "description": "The record answered."
-            },
-            "kind": {
-              "type": "string",
-              "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
-            }
-          },
-          "serial": {
-            "$": "'answer ' + node"
-          },
-          "errors": {
-            "notAnAnswer": "That is not an answer anybody can give to this."
-          },
-          "steps": [
-            {
-              "find": {
-                "as": "answers",
-                "entity": "InvolvementType",
-                "where": {
-                  "reflexive": true
-                }
-              }
-            },
-            {
-              "check": {
-                "condition": {
-                  "$": "!kind || kind in answers.map(t, t.slug)"
-                },
-                "error": "notAnAnswer"
-              }
-            },
-            {
-              "find": {
-                "as": "held",
-                "entity": "Involvement",
-                "where": {
-                  "agent": {
-                    "$": "invoker"
-                  },
-                  "kind": {
-                    "$": "answers.map(t, t.slug)"
-                  },
-                  "node": {
-                    "$": "node"
-                  }
-                }
-              }
-            },
-            {
-              "forEach": {
-                "in": {
-                  "$": "held.filter(r, r.kind != kind)"
-                },
-                "as": "stale",
-                "steps": [
-                  {
-                    "delete": {
-                      "entity": "Involvement",
-                      "id": {
-                        "$": "stale"
-                      },
-                      "own": true
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "create": {
-                "entity": "Involvement",
-                "fields": {
-                  "agent": {
-                    "$": "invoker"
-                  },
-                  "kind": {
-                    "$": "kind"
-                  },
-                  "node": {
-                    "$": "node"
-                  }
-                }
-              },
-              "when": {
-                "$": "kind && !held.exists(r, r.kind == kind)"
-              }
-            }
-          ]
-        }
-      },
-      "dataset": [
-        {
-          "entity": "InvolvementType",
-          "id": "urn:example:assignee",
-          "fields": {
-            "name": "Assignee",
-            "slug": "assignee"
-          }
-        },
-        {
-          "entity": "Involvement",
-          "id": "urn:example:on-other-task",
-          "fields": {
-            "agent": "did:example:ana",
-            "kind": "assignee",
-            "node": "urn:example:other-task"
-          }
-        }
-      ],
-      "operation": "setInvolvement",
-      "args": {
-        "node": "urn:example:task",
-        "agent": "did:example:ana",
-        "kind": "assignee",
-        "on": true
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000013",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "Involvement",
-          "fields": ["agent", "kind"],
-          "relations": ["node"]
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "Involvement": [
-          {
-            "id": "urn:example:on-other-task",
-            "agent": "did:example:ana",
-            "kind": "assignee",
-            "node": "urn:example:other-task"
-          },
-          {
-            "id": "urn:uuid:c053a63e-384a-82f2-8c14-aaa4067ff444",
-            "agent": "did:example:ana",
-            "kind": "assignee",
-            "node": "urn:example:task"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-create-post-reply",
-      "note": "core.createPost as a reply: in its subject’s responses and thread, a child of nothing, its block under it",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "createPost": {
-            "description": "Write a composed document — a post, a message or a reply — with its blocks, in a collection or in response to a record, threaded under its subject.",
-            "params": {
-              "root": {
-                "type": "object",
-                "required": true,
-                "description": "The root’s own fields: kind, mode, and what it stores about its blocks (editorState, textContent), plus where a copy came from."
-              },
-              "blocks": {
-                "type": "list",
-                "required": true,
-                "description": "The blocks in document order, each { key, entity, fields, parent } — parent the planned id of the collection block it is in, absent at the top level."
-              },
-              "mentions": {
-                "type": "list",
-                "description": "The DIDs the document mentions."
-              },
-              "container": {
-                "type": "string",
-                "description": "The collection it is a child of."
-              },
-              "respondsTo": {
-                "type": "string",
-                "description": "The record it answers."
-              },
-              "thread": {
-                "type": "string",
-                "description": "The subject of the thread it joins — respondsTo, or the first record above it that is not itself a response."
-              },
-              "threadEntity": {
-                "type": "string",
-                "description": "The thread subject’s entity."
-              },
-              "generatedBy": {
-                "type": "string",
-                "description": "The ModelRun that wrote it, when a model did."
-              }
-            },
-            "errors": {
-              "twoPlaces": "A post goes in a collection or answers a record, not both."
-            },
-            "steps": [
-              {
-                "check": {
-                  "condition": {
-                    "$": "!(container && respondsTo)"
-                  },
-                  "error": "twoPlaces"
-                }
-              },
-              {
-                "create": {
-                  "as": "post",
-                  "entity": "CollectionBlock",
-                  "fields": {
-                    "$": "generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: generatedBy }) : merge(root, { mentions: mentions ?? [] })"
-                  },
-                  "parent": {
-                    "id": {
-                      "$": "respondsTo"
-                    },
-                    "relation": "responses"
-                  }
-                }
-              },
-              {
-                "link": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "container"
-                  },
-                  "relation": "children",
-                  "target": {
-                    "$": "post"
-                  }
-                },
-                "when": {
-                  "$": "container"
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "blocks"
-                  },
-                  "as": "block",
-                  "key": {
-                    "$": "block.key"
-                  },
-                  "steps": [
-                    {
-                      "create": {
-                        "entity": {
-                          "$": "block.entity"
-                        },
-                        "oneOf": [
-                          {
-                            "category": "blockable"
-                          }
-                        ],
-                        "fields": {
-                          "$": "block.fields"
-                        },
-                        "parent": {
-                          "id": {
-                            "$": "block.parent ?? post.id"
-                          },
-                          "relation": "children",
-                          "entity": "CollectionBlock"
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "call": {
-                  "operation": "core.thread",
-                  "args": {
-                    "record": {
-                      "$": "post.id"
-                    },
-                    "thread": {
-                      "$": "thread"
-                    },
-                    "threadEntity": {
-                      "$": "threadEntity"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "respondsTo && thread"
-                }
-              }
-            ],
-            "returns": {
-              "$": "post.id"
-            }
-          }
-        }
-      },
-      "calls": {
-        "core.thread": {
-          "description": "Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.",
-          "params": {
-            "record": {
-              "type": "string",
-              "required": true,
-              "description": "The response."
-            },
-            "thread": {
-              "type": "string",
-              "required": true,
-              "description": "The subject of the thread it joins — what it answers, or the first record above that is not itself a response."
-            },
-            "threadEntity": {
-              "type": "string",
-              "required": true,
-              "description": "The subject’s entity."
-            }
-          },
-          "steps": [
-            {
-              "link": {
-                "entity": {
-                  "$": "threadEntity"
-                },
-                "oneOf": [
-                  {
-                    "category": "blockable"
-                  },
-                  "Relationship",
-                  "Topic"
-                ],
-                "id": {
-                  "$": "thread"
-                },
-                "relation": "thread",
-                "target": {
-                  "$": "record"
-                }
-              }
-            }
-          ]
-        }
-      },
-      "dataset": [
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:post",
-          "fields": {
-            "kind": "post"
-          }
-        }
-      ],
-      "operation": "createPost",
-      "args": {
-        "root": {
-          "kind": "reply",
-          "mode": "document",
-          "textContent": "agreed"
-        },
-        "blocks": [
-          {
-            "key": "0",
-            "entity": "TextBlock",
-            "fields": {
-              "text": "agreed"
-            }
-          }
-        ],
-        "respondsTo": "urn:example:post",
-        "thread": "urn:example:post",
-        "threadEntity": "CollectionBlock"
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000009",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "CollectionBlock",
-          "fields": ["kind", "textContent"],
-          "relations": ["children", "responses", "thread"]
-        },
-        {
-          "entity": "TextBlock",
-          "fields": ["text"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": "urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"
-      },
-      "records": {
-        "CollectionBlock": [
-          {
-            "id": "urn:example:post",
-            "kind": "post",
-            "responses": ["urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"],
-            "thread": ["urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa"]
-          },
-          {
-            "id": "urn:uuid:11c6684b-5dca-8949-9ac9-fba8cab4baaa",
-            "kind": "reply",
-            "textContent": "agreed",
-            "children": ["urn:uuid:f2a4669d-6d39-8c3a-bcc8-bbf0de9786db"]
-          }
-        ],
-        "TextBlock": [
-          {
-            "id": "urn:uuid:f2a4669d-6d39-8c3a-bcc8-bbf0de9786db",
-            "text": "agreed"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-move-card",
-      "note": "core.moveCard leaves one column, joins the other where it was dropped, and takes a bound column’s state",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "moveCard": {
-            "description": "Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.",
-            "params": {
-              "to": {
-                "type": "string",
-                "required": true,
-                "description": "The column it joins."
-              },
-              "from": {
-                "type": "string",
-                "description": "The column it leaves."
-              },
-              "card": {
-                "type": "string",
-                "required": true,
-                "description": "The card."
-              },
-              "ids": {
-                "type": "list",
-                "description": "The joined column’s order with the card where it was dropped. Omit to append."
-              }
-            },
-            "serial": {
-              "$": "'card ' + card"
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "target",
-                  "entity": "CollectionBlock",
-                  "where": {
-                    "id": {
-                      "$": "to"
-                    }
-                  },
-                  "one": true
-                }
-              },
-              {
-                "find": {
-                  "as": "task",
-                  "entity": "TaskBlock",
-                  "where": {
-                    "id": {
-                      "$": "card"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "target.slug"
-                }
-              },
-              {
-                "setRelation": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "to"
-                  },
-                  "relation": "arranges",
-                  "targets": {
-                    "$": "ids"
-                  },
-                  "keep": true
-                },
-                "when": {
-                  "$": "card in (ids ?? [])"
-                }
-              },
-              {
-                "link": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "to"
-                  },
-                  "relation": "arranges",
-                  "target": {
-                    "$": "card"
-                  }
-                },
-                "when": {
-                  "$": "!(card in (ids ?? []))"
-                }
-              },
-              {
-                "unlink": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "from"
-                  },
-                  "relation": "arranges",
-                  "target": {
-                    "$": "card"
-                  }
-                },
-                "when": {
-                  "$": "from && from != to"
-                }
-              },
-              {
-                "update": {
-                  "entity": "TaskBlock",
-                  "id": {
-                    "$": "card"
-                  },
-                  "fields": {
-                    "status": {
-                      "$": "target.slug"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "count(task) > 0"
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:a",
-          "fields": {
-            "title": "A",
-            "status": "todo"
-          }
-        },
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:b",
-          "fields": {
-            "title": "B",
-            "status": "done"
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:todo",
-          "fields": {
-            "kind": "column",
-            "slug": "todo"
-          },
-          "relations": {
-            "arranges": ["urn:example:a"]
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:done",
-          "fields": {
-            "kind": "column",
-            "slug": "done"
-          },
-          "relations": {
-            "arranges": ["urn:example:b"]
-          }
-        }
-      ],
-      "operation": "moveCard",
-      "args": {
-        "from": "urn:example:todo",
-        "to": "urn:example:done",
-        "card": "urn:example:a",
-        "ids": ["urn:example:a", "urn:example:b"]
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000010",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "CollectionBlock",
-          "fields": ["kind", "slug"],
-          "relations": ["arranges"]
-        },
-        {
-          "entity": "TaskBlock",
-          "fields": ["title", "status"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "CollectionBlock": [
-          {
-            "id": "urn:example:done",
-            "kind": "column",
-            "slug": "done",
-            "arranges": ["urn:example:a", "urn:example:b"]
-          },
-          {
-            "id": "urn:example:todo",
-            "kind": "column",
-            "slug": "todo"
-          }
-        ],
-        "TaskBlock": [
-          {
-            "id": "urn:example:a",
-            "title": "A",
-            "status": "done"
-          },
-          {
-            "id": "urn:example:b",
-            "title": "B",
-            "status": "done"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-remove-board-column",
-      "note": "core.removeBoardColumn hands the column’s cards to the board and deletes the column, never a card",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "removeBoardColumn": {
-            "description": "Take a column off a board — never the work in it: its cards move to the board’s own arrangement, so a made board keeps them.",
-            "params": {
-              "board": {
-                "type": "string",
-                "required": true,
-                "description": "The board."
-              },
-              "column": {
-                "type": "string",
-                "required": true,
-                "description": "The column."
-              }
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "boards",
-                  "entity": "CollectionBlock",
-                  "where": {
-                    "id": {
-                      "$": "board"
-                    }
-                  }
-                }
-              },
-              {
-                "find": {
-                  "as": "columns",
-                  "entity": "CollectionBlock",
-                  "where": {
-                    "id": {
-                      "$": "column"
-                    }
-                  }
-                }
-              },
-              {
-                "setRelation": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "board"
-                  },
-                  "relation": "arranges",
-                  "targets": {
-                    "$": "distinct(first(boards).arranges, first(columns).arranges)"
-                  }
-                },
-                "when": {
-                  "$": "count(boards) > 0 && count(distinct(first(boards).arranges, first(columns).arranges)) > count(first(boards).arranges)"
-                }
-              },
-              {
-                "setRelation": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "board"
-                  },
-                  "relation": "children",
-                  "targets": {
-                    "$": "without(first(boards).children, column)"
-                  }
-                },
-                "when": {
-                  "$": "count(boards) > 0"
-                }
-              },
-              {
-                "delete": {
-                  "entity": "CollectionBlock",
-                  "id": {
-                    "$": "column"
-                  }
-                },
-                "when": {
-                  "$": "first(columns).kind == 'column'"
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:a",
-          "fields": {
-            "title": "A",
-            "status": "todo"
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:lane",
-          "fields": {
-            "kind": "column",
-            "title": "Thursday"
-          },
-          "relations": {
-            "arranges": ["urn:example:a"]
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:board",
-          "fields": {
-            "kind": "board",
-            "title": "Week"
-          },
-          "relations": {
-            "children": ["urn:example:lane"]
-          }
-        }
-      ],
-      "operation": "removeBoardColumn",
-      "args": {
-        "board": "urn:example:board",
-        "column": "urn:example:lane"
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000011",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "CollectionBlock",
-          "fields": ["kind", "title"],
-          "relations": ["children", "arranges"]
-        },
-        {
-          "entity": "TaskBlock",
-          "fields": ["title"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "CollectionBlock": [
-          {
-            "id": "urn:example:board",
-            "kind": "board",
-            "title": "Week",
-            "arranges": ["urn:example:a"]
-          }
-        ],
-        "TaskBlock": [
-          {
-            "id": "urn:example:a",
-            "title": "A"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-place-card",
-      "note": "core.placeCard edits the placement a canvas draws, removes the duplicate it outranks, and answers with what it held",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "placeCard": {
-            "description": "Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.",
-            "params": {
-              "canvas": {
-                "type": "string",
-                "required": true,
-                "description": "The canvas."
-              },
-              "node": {
-                "type": "string",
-                "required": true,
-                "description": "The record the card is."
-              },
-              "nodeType": {
-                "type": "string",
-                "description": "Its entity, for a placement made here."
-              },
-              "fields": {
-                "type": "object",
-                "required": true,
-                "description": "Placement fields — x and y, a size, a colour, a rank …"
-              },
-              "placement": {
-                "type": "string",
-                "description": "The placement the canvas draws for the card, where it has one."
-              },
-              "duplicates": {
-                "type": "list",
-                "description": "Placements of the card the drawn one outranks, to remove."
-              },
-              "create": {
-                "type": "boolean",
-                "description": "Whether a card with no placement may be given one. False for a style, which needs a position."
-              }
-            },
-            "errors": {
-              "notPlaced": "Drag this onto the canvas first — how a card looks is saved with where it sits."
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "current",
-                  "entity": "Placement",
-                  "where": {
-                    "id": {
-                      "$": "placement"
-                    }
-                  }
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "count(current) > 0 || create != false"
-                  },
-                  "error": "notPlaced"
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "duplicates ?? []"
-                  },
-                  "as": "duplicate",
-                  "key": {
-                    "$": "duplicate"
-                  },
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": "Placement",
-                        "id": {
-                          "$": "duplicate"
-                        }
-                      }
-                    }
-                  ]
-                }
-              },
-              {
-                "update": {
-                  "entity": "Placement",
-                  "id": {
-                    "$": "placement"
-                  },
-                  "fields": {
-                    "$": "fields"
-                  }
-                },
-                "when": {
-                  "$": "count(current) > 0"
-                }
-              },
-              {
-                "create": {
-                  "entity": "Placement",
-                  "fields": {
-                    "$": "merge(fields, { nodeType: nodeType, node: node })"
-                  },
-                  "parent": {
-                    "id": {
-                      "$": "canvas"
-                    },
-                    "relation": "children",
-                    "entity": "CollectionBlock"
-                  }
-                },
-                "when": {
-                  "$": "count(current) == 0"
-                }
-              }
-            ],
-            "returns": {
-              "from": {
-                "$": "count(current) > 0 ? pick(first(current), keys(fields)) : null"
-              },
-              "to": {
-                "$": "fields"
-              }
-            }
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "Placement",
-          "id": "urn:example:drawn",
-          "fields": {
-            "nodeType": "TaskBlock",
-            "x": 10,
-            "y": 20
-          }
-        },
-        {
-          "entity": "Placement",
-          "id": "urn:example:stray",
-          "fields": {
-            "nodeType": "TaskBlock",
-            "x": 90,
-            "y": 90
-          }
-        }
-      ],
-      "operation": "placeCard",
-      "args": {
-        "canvas": "urn:example:canvas",
-        "node": "urn:example:card",
-        "fields": {
-          "x": 300,
-          "y": 400
-        },
-        "placement": "urn:example:drawn",
-        "duplicates": ["urn:example:stray"]
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000012",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "Placement",
-          "fields": ["nodeType", "x", "y"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": {
-          "from": {
-            "x": 10,
-            "y": 20
-          },
-          "to": {
-            "x": 300,
-            "y": 400
-          }
-        }
-      },
-      "records": {
-        "Placement": [
-          {
-            "id": "urn:example:drawn",
-            "nodeType": "TaskBlock",
-            "x": 300,
-            "y": 400
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-create-task-state-taken",
-      "note": "core.createTaskState refuses a name whose slug a retired state still holds, and writes nothing",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "createTaskState": {
-            "description": "Name a state this community’s work moves through, refused when the space already has one by that name.",
-            "params": {
-              "name": {
-                "type": "string",
-                "required": true,
-                "description": "What the state is called."
-              },
-              "semantic": {
-                "type": "string",
-                "description": "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given."
-              },
-              "icon": {
-                "type": "string",
-                "description": "A glyph; empty clears it."
-              },
-              "color": {
-                "type": "string",
-                "description": "A colour; empty clears it."
-              }
-            },
-            "errors": {
-              "noSlug": "That name needs a letter or a digit in it.",
-              "slugTaken": "This space already has one called that.",
-              "notASemantic": "That is not something a state can count as."
-            },
-            "steps": [
-              {
-                "check": {
-                  "condition": {
-                    "$": "!semantic || semantic in ['open', 'active', 'blocked', 'done', 'cancelled']"
-                  },
-                  "error": "notASemantic"
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "slug(trim(name)) != ''"
-                  },
-                  "error": "noSlug"
-                }
-              },
-              {
-                "find": {
-                  "as": "taken",
-                  "entity": "TaskState",
-                  "where": {
-                    "slug": {
-                      "$": "slug(trim(name))"
-                    }
-                  }
-                }
-              },
-              {
-                "check": {
-                  "condition": {
-                    "$": "count(taken) == 0"
-                  },
-                  "error": "slugTaken"
-                }
-              },
-              {
-                "create": {
-                  "as": "made",
-                  "entity": "TaskState",
-                  "identity": ["slug"],
-                  "fields": {
-                    "name": {
-                      "$": "trim(name)"
-                    },
-                    "slug": {
-                      "$": "slug(trim(name))"
-                    },
-                    "semantic": {
-                      "$": "semantic ?? 'open'"
-                    },
-                    "color": {
-                      "$": "color"
-                    },
-                    "icon": {
-                      "$": "icon"
-                    }
-                  }
-                }
-              }
-            ],
-            "returns": {
-              "$": "made"
-            }
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "TaskState",
-          "id": "urn:example:blocked",
-          "fields": {
-            "name": "Blocked",
-            "slug": "blocked",
-            "retired": true
-          }
-        }
-      ],
-      "operation": "createTaskState",
-      "args": {
-        "name": " BLOCKED "
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000020",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "TaskState",
-          "fields": ["name", "slug", "retired"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "error": {
-          "class": "precondition",
-          "code": "slugTaken"
-        }
-      },
-      "records": {
-        "TaskState": [
-          {
-            "id": "urn:example:blocked",
-            "name": "Blocked",
-            "slug": "blocked",
-            "retired": true
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-mark-read-heals",
-      "note": "core.markRead moves the oldest marker for a record to the invocation’s time and removes a doubled one",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "markRead": {
-            "description": "Say the invoker has read a record as of now: one marker per record, moved forward.",
-            "params": {
-              "node": {
-                "type": "string",
-                "required": true,
-                "description": "The record read."
-              },
-              "space": {
-                "type": "string",
-                "required": true,
-                "description": "The space’s dataset id."
-              }
-            },
-            "steps": [
-              {
-                "find": {
-                  "as": "rows",
-                  "entity": "ReadMarker",
-                  "where": {
-                    "nodeId": {
-                      "$": "node"
-                    }
-                  },
-                  "order": {
-                    "createdAt": "asc"
-                  }
-                }
-              },
-              {
-                "create": {
-                  "as": "made",
-                  "entity": "ReadMarker",
-                  "fields": {
-                    "nodeId": {
-                      "$": "node"
-                    },
-                    "spaceUuid": {
-                      "$": "space"
-                    },
-                    "lastReadAt": {
-                      "$": "invokedAt"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "count(rows) == 0"
-                }
-              },
-              {
-                "update": {
-                  "entity": "ReadMarker",
-                  "id": {
-                    "$": "first(rows)"
-                  },
-                  "fields": {
-                    "spaceUuid": {
-                      "$": "space"
-                    },
-                    "lastReadAt": {
-                      "$": "invokedAt"
-                    }
-                  }
-                },
-                "when": {
-                  "$": "count(rows) > 0"
-                }
-              },
-              {
-                "forEach": {
-                  "in": {
-                    "$": "slice(rows, 1)"
-                  },
-                  "as": "extra",
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": "ReadMarker",
-                        "id": {
-                          "$": "extra"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            ],
-            "returns": {
-              "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { nodeId: node, spaceUuid: space, lastReadAt: invokedAt })"
-            }
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "ReadMarker",
-          "id": "urn:example:marker",
-          "fields": {
-            "nodeId": "urn:example:channel",
-            "spaceUuid": "space",
-            "lastReadAt": "2026-01-01T00:00:00.000Z"
-          }
-        },
-        {
-          "entity": "ReadMarker",
-          "id": "urn:example:doubled",
-          "fields": {
-            "nodeId": "urn:example:channel",
-            "spaceUuid": "space",
-            "lastReadAt": "2026-01-02T00:00:00.000Z"
-          }
-        }
-      ],
-      "operation": "markRead",
-      "args": {
-        "node": "urn:example:channel",
-        "space": "space"
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000021",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "ReadMarker",
-          "fields": ["nodeId", "spaceUuid", "lastReadAt"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": {
-          "id": "urn:example:marker",
-          "lastReadAt": "2026-11-24T00:00:00.000Z",
-          "nodeId": "urn:example:channel",
-          "spaceUuid": "space"
-        }
-      },
-      "records": {
-        "ReadMarker": [
-          {
-            "id": "urn:example:marker",
-            "nodeId": "urn:example:channel",
-            "spaceUuid": "space",
-            "lastReadAt": "2026-11-24T00:00:00.000Z"
-          }
-        ]
-      }
-    },
-    {
-      "id": "core-delete-records-any",
-      "note": "core.deleteRecords deletes records of two types named at run time, and leaves the rest",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "deleteRecords": {
-            "description": "Delete several records of any type, for everyone, as one act. Not undoable.",
-            "params": {
-              "records": {
-                "type": "list",
-                "required": true,
-                "description": "Each { entity, id }."
-              }
-            },
-            "steps": [
-              {
-                "forEach": {
-                  "in": {
-                    "$": "records"
-                  },
-                  "as": "record",
-                  "steps": [
-                    {
-                      "delete": {
-                        "entity": {
-                          "$": "record.entity"
-                        },
-                        "oneOf": [
-                          {
-                            "category": "any"
-                          }
-                        ],
-                        "id": {
-                          "$": "record.id"
-                        }
-                      }
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:gone-task",
-          "fields": {
-            "title": "Gone",
-            "status": "todo"
-          }
-        },
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:kept-task",
-          "fields": {
-            "title": "Kept",
-            "status": "todo"
-          }
-        },
-        {
-          "entity": "TextBlock",
-          "id": "urn:example:gone-line",
-          "fields": {
-            "text": "gone"
-          }
-        }
-      ],
-      "operation": "deleteRecords",
-      "args": {
-        "records": [
-          {
-            "entity": "TaskBlock",
-            "id": "urn:example:gone-task"
-          },
-          {
-            "entity": "TextBlock",
-            "id": "urn:example:gone-line"
-          }
-        ]
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000022",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "TaskBlock",
-          "fields": ["title"],
-          "relations": []
-        },
-        {
-          "entity": "TextBlock",
-          "fields": ["text"],
-          "relations": []
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "TaskBlock": [
-          {
-            "id": "urn:example:kept-task",
-            "title": "Kept"
-          }
-        ],
-        "TextBlock": []
-      }
-    },
-    {
-      "id": "core-move-under",
-      "note": "core.moveUnder takes a record off one holder’s list and onto another’s, the relation named at run time",
-      "manifest": {
-        "version": "1",
-        "operations": {
-          "moveUnder": {
-            "description": "Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.",
-            "params": {
-              "holder": {
-                "type": "string",
-                "required": true,
-                "description": "The holders’ entity."
-              },
-              "relation": {
-                "type": "string",
-                "required": true,
-                "description": "The relation holding it."
-              },
-              "record": {
-                "type": "string",
-                "required": true,
-                "description": "The record moved."
-              },
-              "from": {
-                "type": "string",
-                "description": "The holder it leaves."
-              },
-              "to": {
-                "type": "string",
-                "description": "The holder it joins; absent to take it off and put it nowhere."
-              }
-            },
-            "steps": [
-              {
-                "unlink": {
-                  "entity": {
-                    "$": "holder"
-                  },
-                  "oneOf": [
-                    {
-                      "category": "any"
-                    }
-                  ],
-                  "id": {
-                    "$": "from"
-                  },
-                  "relation": {
-                    "$": "relation"
-                  },
-                  "target": {
-                    "$": "record"
-                  }
-                },
-                "when": {
-                  "$": "from && from != to"
-                }
-              },
-              {
-                "link": {
-                  "entity": {
-                    "$": "holder"
-                  },
-                  "oneOf": [
-                    {
-                      "category": "any"
-                    }
-                  ],
-                  "id": {
-                    "$": "to"
-                  },
-                  "relation": {
-                    "$": "relation"
-                  },
-                  "target": {
-                    "$": "record"
-                  }
-                },
-                "when": {
-                  "$": "to && to != from"
-                }
-              }
-            ]
-          }
-        }
-      },
-      "calls": {},
-      "dataset": [
-        {
-          "entity": "TaskBlock",
-          "id": "urn:example:card",
-          "fields": {
-            "title": "Card",
-            "status": "todo"
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:from",
-          "fields": {
-            "kind": "folder"
-          },
-          "relations": {
-            "children": ["urn:example:card"]
-          }
-        },
-        {
-          "entity": "CollectionBlock",
-          "id": "urn:example:to",
-          "fields": {
-            "kind": "folder"
-          }
-        }
-      ],
-      "operation": "moveUnder",
-      "args": {
-        "holder": "CollectionBlock",
-        "relation": "children",
-        "record": "urn:example:card",
-        "from": "urn:example:from",
-        "to": "urn:example:to"
-      },
-      "invoker": "did:example:invoker",
-      "invocationId": "00000000-0000-4000-8000-000000000023",
-      "invokedAt": "2026-11-24T00:00:00.000Z",
-      "observe": [
-        {
-          "entity": "CollectionBlock",
-          "fields": ["kind"],
-          "relations": ["children"]
-        }
-      ],
-      "outcome": {
-        "result": null
-      },
-      "records": {
-        "CollectionBlock": [
-          {
-            "id": "urn:example:from",
-            "kind": "folder"
-          },
-          {
-            "id": "urn:example:to",
-            "kind": "folder",
-            "children": ["urn:example:card"]
-          }
-        ]
-      }
-    },
-    {
       "id": "expect-holds",
       "note": "an expect find that reads the same at the end lets the operation land",
       "manifest": {
@@ -4013,7 +1023,7 @@
               {
                 "find": {
                   "as": "notes",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "note"
                   },
@@ -4022,7 +1032,7 @@
               },
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "tag",
                     "slug": "seen"
@@ -4039,7 +1049,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:note",
           "fields": {
             "kind": "note",
@@ -4054,7 +1064,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -4063,7 +1073,7 @@
         "result": 1
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:note",
             "kind": "note",
@@ -4089,7 +1099,7 @@
               {
                 "find": {
                   "as": "notes",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "note"
                   },
@@ -4098,7 +1108,7 @@
               },
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "tag",
                     "slug": "seen"
@@ -4115,7 +1125,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:note",
           "fields": {
             "kind": "note",
@@ -4130,7 +1140,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "concurrent": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:their-note",
           "fields": {
             "kind": "note",
@@ -4140,7 +1150,7 @@
       ],
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -4152,7 +1162,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:note",
             "kind": "note",
@@ -4184,9 +1194,9 @@
               {
                 "find": {
                   "as": "found",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "scope": {
-                    "anchor": "CollectionBlock",
+                    "anchor": "Item",
                     "via": "children",
                     "anchorId": {
                       "$": "root"
@@ -4208,7 +1218,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a1x",
           "fields": {
             "kind": "folder",
@@ -4216,7 +1226,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a1",
           "fields": {
             "kind": "folder",
@@ -4227,7 +1237,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a",
           "fields": {
             "kind": "folder",
@@ -4238,7 +1248,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:b",
           "fields": {
             "kind": "folder",
@@ -4246,7 +1256,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:root",
           "fields": {
             "kind": "folder",
@@ -4288,9 +1298,9 @@
               {
                 "find": {
                   "as": "found",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "scope": {
-                    "anchor": "CollectionBlock",
+                    "anchor": "Item",
                     "via": "children",
                     "anchorId": {
                       "$": "root"
@@ -4312,7 +1322,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a1x",
           "fields": {
             "kind": "folder",
@@ -4320,7 +1330,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a1",
           "fields": {
             "kind": "folder",
@@ -4331,7 +1341,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:a",
           "fields": {
             "kind": "folder",
@@ -4342,7 +1352,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:b",
           "fields": {
             "kind": "folder",
@@ -4350,7 +1360,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:root",
           "fields": {
             "kind": "folder",
@@ -4386,7 +1396,7 @@
               {
                 "find": {
                   "as": "found",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag",
                     "NOT": {
@@ -4408,7 +1418,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -4417,7 +1427,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-weeds",
           "fields": {
             "kind": "tag",
@@ -4426,7 +1436,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-bare",
           "fields": {
             "kind": "tag",
@@ -4452,11 +1462,11 @@
         "version": "1",
         "operations": {
           "noteThenTag": {
-            "description": "Makes a note and then a tag, which the policy lets only a curator make.",
+            "description": "Makes a note and then a label, which the policy lets only a curator make.",
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "before"
@@ -4465,7 +1475,7 @@
               },
               {
                 "create": {
-                  "entity": "TagBlock",
+                  "entity": "Label",
                   "fields": {
                     "name": "garden"
                   }
@@ -4484,12 +1494,12 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TagBlock",
+          "entity": "Label",
           "fields": ["name"],
           "relations": []
         }
@@ -4501,8 +1511,8 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
-        "TagBlock": []
+        "Item": [],
+        "Label": []
       }
     },
     {
@@ -4517,7 +1527,7 @@
               {
                 "create": {
                   "as": "note",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "brief"
@@ -4526,7 +1536,7 @@
               },
               {
                 "delete": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "note.id"
                   }
@@ -4545,7 +1555,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -4554,7 +1564,7 @@
         "result": null
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -4600,7 +1610,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": {
@@ -4627,7 +1637,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "author"],
           "relations": []
         }
@@ -4636,7 +1646,7 @@
         "result": "urn:uuid:6b0250bf-94b9-8038-b68e-b8ea60fbd28e"
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:6b0250bf-94b9-8038-b68e-b8ea60fbd28e",
             "kind": "note",
@@ -4664,7 +1674,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "maybe"
@@ -4692,7 +1702,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -4701,7 +1711,7 @@
         "result": "absent"
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -4726,7 +1736,7 @@
               {
                 "create": {
                   "as": "board",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "board",
                     "title": {
@@ -4745,7 +1755,7 @@
                     {
                       "create": {
                         "as": "column",
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "fields": {
                           "kind": "column",
                           "title": {
@@ -4756,7 +1766,7 @@
                     },
                     {
                       "link": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "id": {
                           "$": "board.id"
                         },
@@ -4779,7 +1789,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5",
           "fields": {
             "kind": "column",
@@ -4806,7 +1816,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -4818,7 +1828,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5",
             "kind": "column",
@@ -4845,7 +1855,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": {
@@ -4864,7 +1874,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "TaskBlock",
+          "entity": "Card",
           "id": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975",
           "fields": {
             "title": "Squatter",
@@ -4881,12 +1891,12 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TaskBlock",
+          "entity": "Card",
           "fields": ["title"],
           "relations": []
         }
@@ -4898,8 +1908,8 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
-        "TaskBlock": [
+        "Item": [],
+        "Card": [
           {
             "id": "urn:uuid:30198dab-4163-8c59-abb3-e132517aa975",
             "title": "Squatter"
@@ -4924,7 +1934,7 @@
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "before"
@@ -4936,7 +1946,7 @@
                   "entity": {
                     "$": "entity"
                   },
-                  "oneOf": ["CollectionBlock", "Policy"],
+                  "oneOf": ["Item", "Policy"],
                   "fields": {}
                 }
               }
@@ -4955,7 +1965,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
@@ -4972,7 +1982,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
+        "Item": [],
         "Policy": []
       }
     },
@@ -5009,7 +2019,7 @@
             "steps": [
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5021,7 +2031,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5033,7 +2043,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5045,7 +2055,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5057,7 +2067,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5069,7 +2079,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5081,7 +2091,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5093,7 +2103,7 @@
               },
               {
                 "link": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -5110,35 +2120,35 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:holder",
           "fields": {
             "kind": "board"
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:alpha",
           "fields": {
             "kind": "card"
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:Zed",
           "fields": {
             "kind": "card"
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:Yew",
           "fields": {
             "kind": "card"
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:Xi",
           "fields": {
             "kind": "card"
@@ -5158,7 +2168,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind"],
           "relations": ["children", "mentions"]
         }
@@ -5167,7 +2177,7 @@
         "result": null
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:Xi",
             "kind": "card"
@@ -5200,7 +2210,7 @@
         "version": "1",
         "operations": {
           "nameState": {
-            "description": "A task state, keyed by its slug.",
+            "description": "A status, keyed by its slug.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5211,7 +2221,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": {
@@ -5241,18 +2251,18 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
       ],
       "outcome": {
-        "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
+        "result": "urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052"
       },
       "records": {
-        "TaskState": [
+        "Status": [
           {
-            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "id": "urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052",
             "name": "blocked",
             "slug": "blocked"
           }
@@ -5266,7 +2276,7 @@
         "version": "1",
         "operations": {
           "nameState": {
-            "description": "A task state, keyed by its slug.",
+            "description": "A status, keyed by its slug.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5277,7 +2287,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": {
@@ -5307,18 +2317,18 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
       ],
       "outcome": {
-        "result": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49"
+        "result": "urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052"
       },
       "records": {
-        "TaskState": [
+        "Status": [
           {
-            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "id": "urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052",
             "name": "blocked",
             "slug": "blocked"
           }
@@ -5332,7 +2342,7 @@
         "version": "1",
         "operations": {
           "nameState": {
-            "description": "A task state, keyed by its slug.",
+            "description": "A status, keyed by its slug.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5343,7 +2353,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": {
@@ -5374,18 +2384,18 @@
       "domain": "urn:example:space-a",
       "observe": [
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
       ],
       "outcome": {
-        "result": "urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f"
+        "result": "urn:uuid:63f20861-2fbe-8ffd-9932-be3304db8eed"
       },
       "records": {
-        "TaskState": [
+        "Status": [
           {
-            "id": "urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f",
+            "id": "urn:uuid:63f20861-2fbe-8ffd-9932-be3304db8eed",
             "name": "blocked",
             "slug": "blocked"
           }
@@ -5399,7 +2409,7 @@
         "version": "1",
         "operations": {
           "nameState": {
-            "description": "A task state, keyed by its slug.",
+            "description": "A status, keyed by its slug.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5410,7 +2420,7 @@
               {
                 "create": {
                   "as": "made",
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": {
@@ -5443,7 +2453,7 @@
       },
       "observe": [
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
@@ -5455,7 +2465,7 @@
         }
       },
       "records": {
-        "TaskState": []
+        "Status": []
       }
     },
     {
@@ -5465,7 +2475,7 @@
         "version": "1",
         "operations": {
           "nameStateTwice": {
-            "description": "The same task state named twice in one operation, and a note before it.",
+            "description": "The same status named twice in one operation, and a note before it.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5475,7 +2485,7 @@
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "before"
@@ -5484,7 +2494,7 @@
               },
               {
                 "create": {
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": "One",
@@ -5496,7 +2506,7 @@
               },
               {
                 "create": {
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": "Two",
@@ -5521,12 +2531,12 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
@@ -5538,8 +2548,8 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
-        "TaskState": []
+        "Item": [],
+        "Status": []
       }
     },
     {
@@ -5549,7 +2559,7 @@
         "version": "1",
         "operations": {
           "nameStateBesideNote": {
-            "description": "A task state keyed by its slug and a note keyed by the invocation, answering both ids.",
+            "description": "A status keyed by its slug and a note keyed by the invocation, answering both ids.",
             "params": {
               "slug": {
                 "type": "string",
@@ -5560,7 +2570,7 @@
               {
                 "create": {
                   "as": "state",
-                  "entity": "TaskState",
+                  "entity": "Status",
                   "identity": ["slug"],
                   "fields": {
                     "name": {
@@ -5575,7 +2585,7 @@
               {
                 "create": {
                   "as": "note",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": {
@@ -5602,30 +2612,30 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["slug"],
           "relations": []
         }
       ],
       "outcome": {
-        "result": ["urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49", "urn:uuid:91a23257-f20e-8662-944b-a36c0f505eb0"]
+        "result": ["urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052", "urn:uuid:91a23257-f20e-8662-944b-a36c0f505eb0"]
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:uuid:91a23257-f20e-8662-944b-a36c0f505eb0",
             "kind": "note",
             "title": "blocked"
           }
         ],
-        "TaskState": [
+        "Status": [
           {
-            "id": "urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49",
+            "id": "urn:uuid:58c743a0-87d5-868d-8fb2-ee4ec5c99052",
             "slug": "blocked"
           }
         ]
@@ -5648,7 +2658,7 @@
             "steps": [
               {
                 "delete": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "id"
                   },
@@ -5662,7 +2672,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:mine",
           "fields": {
             "kind": "note",
@@ -5679,7 +2689,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "author"],
           "relations": []
         }
@@ -5688,7 +2698,7 @@
         "result": null
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -5708,7 +2718,7 @@
             "steps": [
               {
                 "delete": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "id"
                   },
@@ -5722,7 +2732,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:theirs",
           "fields": {
             "kind": "note",
@@ -5739,7 +2749,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "author"],
           "relations": []
         }
@@ -5751,7 +2761,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:theirs",
             "kind": "note",
@@ -5782,7 +2792,7 @@
             "steps": [
               {
                 "setRelation": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "parent"
                   },
@@ -5800,7 +2810,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k1",
           "fields": {
             "kind": "card",
@@ -5808,7 +2818,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k2",
           "fields": {
             "kind": "card",
@@ -5816,7 +2826,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:k3",
           "fields": {
             "kind": "card",
@@ -5824,7 +2834,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:holder",
           "fields": {
             "kind": "board",
@@ -5845,7 +2855,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -5854,7 +2864,7 @@
         "result": null
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:holder",
             "kind": "board",
@@ -5896,7 +2906,7 @@
             "steps": [
               {
                 "update": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "id"
                   },
@@ -5920,7 +2930,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -5932,7 +2942,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -5947,7 +2957,7 @@
               {
                 "find": {
                   "as": "tag",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag"
                   },
@@ -5964,7 +2974,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -5972,7 +2982,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-weeds",
           "fields": {
             "kind": "tag",
@@ -5987,7 +2997,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -5999,7 +3009,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",
@@ -6034,7 +3044,7 @@
             "steps": [
               {
                 "unlink": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "holder"
                   },
@@ -6052,7 +3062,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:parent",
           "fields": {
             "kind": "board",
@@ -6060,7 +3070,7 @@
           }
         },
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:stranger",
           "fields": {
             "kind": "note",
@@ -6078,7 +3088,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6090,7 +3100,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:parent",
             "kind": "board",
@@ -6121,7 +3131,7 @@
             "steps": [
               {
                 "update": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "id"
                   },
@@ -6143,7 +3153,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6155,7 +3165,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6169,7 +3179,7 @@
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": {
@@ -6191,7 +3201,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6203,7 +3213,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6236,7 +3246,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6248,7 +3258,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6258,7 +3268,7 @@
         "version": "1",
         "operations": {
           "makesChosen": {
-            "description": "Creates a record of the entity the caller names, among collections only.",
+            "description": "Creates a record of the entity the caller names, among items only.",
             "params": {
               "kind": {
                 "type": "string",
@@ -6271,7 +3281,7 @@
                   "entity": {
                     "$": "kind"
                   },
-                  "oneOf": ["CollectionBlock"],
+                  "oneOf": ["Item"],
                   "fields": {
                     "$": "{ kind: \"note\" }"
                   }
@@ -6285,19 +3295,19 @@
       "dataset": [],
       "operation": "makesChosen",
       "args": {
-        "kind": "TaskState"
+        "kind": "Status"
       },
       "invoker": "did:example:invoker",
       "invocationId": "00000000-0000-4000-8000-000000000054",
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
@@ -6309,8 +3319,8 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
-        "TaskState": []
+        "Item": [],
+        "Status": []
       }
     },
     {
@@ -6355,7 +3365,7 @@
       "dataset": [],
       "operation": "makesAny",
       "args": {
-        "kind": "TaskState",
+        "kind": "Status",
         "fields": {
           "name": "Blocked",
           "slug": "blocked"
@@ -6364,15 +3374,15 @@
       "invoker": "did:example:invoker",
       "invocationId": "00000000-0000-4000-8000-000000000055",
       "invokedAt": "2026-11-24T00:00:00.000Z",
-      "deniedChosen": ["TaskState"],
+      "deniedChosen": ["Status"],
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         },
         {
-          "entity": "TaskState",
+          "entity": "Status",
           "fields": ["name", "slug"],
           "relations": []
         }
@@ -6384,8 +3394,8 @@
         }
       },
       "records": {
-        "CollectionBlock": [],
-        "TaskState": []
+        "Item": [],
+        "Status": []
       }
     },
     {
@@ -6412,7 +3422,7 @@
                   "steps": [
                     {
                       "create": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "fields": {
                           "kind": "note",
                           "title": {
@@ -6443,7 +3453,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6455,7 +3465,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6482,7 +3492,7 @@
                   "steps": [
                     {
                       "create": {
-                        "entity": "CollectionBlock",
+                        "entity": "Item",
                         "fields": {
                           "kind": "note",
                           "title": {
@@ -6509,7 +3519,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6521,7 +3531,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6705,7 +3715,7 @@
             "steps": [
               {
                 "create": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "fields": {
                     "kind": "note",
                     "title": "bottom"
@@ -6725,7 +3735,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6737,7 +3747,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6758,7 +3768,7 @@
               {
                 "find": {
                   "as": "tags",
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "where": {
                     "kind": "tag"
                   },
@@ -6777,7 +3787,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -6794,7 +3804,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6806,7 +3816,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",
@@ -6842,7 +3852,7 @@
       "invokedAt": "2026-11-24T00:00:00.000Z",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6854,7 +3864,7 @@
         }
       },
       "records": {
-        "CollectionBlock": []
+        "Item": []
       }
     },
     {
@@ -6874,7 +3884,7 @@
             "steps": [
               {
                 "update": {
-                  "entity": "CollectionBlock",
+                  "entity": "Item",
                   "id": {
                     "$": "id"
                   },
@@ -6890,7 +3900,7 @@
       "calls": {},
       "dataset": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "id": "urn:example:tag-garden",
           "fields": {
             "kind": "tag",
@@ -6908,7 +3918,7 @@
       "version": "2",
       "observe": [
         {
-          "entity": "CollectionBlock",
+          "entity": "Item",
           "fields": ["kind", "title", "slug"],
           "relations": ["children"]
         }
@@ -6920,7 +3930,7 @@
         }
       },
       "records": {
-        "CollectionBlock": [
+        "Item": [
           {
             "id": "urn:example:tag-garden",
             "kind": "tag",

@@ -1,6 +1,7 @@
 /**
  * Record the operation suites that need no backend — the static checks, the effect summary, the id
- * derivation and the RDF reading — into `vectors/operations/`, from the reference implementation.
+ * derivation and the RDF reading — into `vectors/operations/`, from the reference implementation;
+ * the effect summary of WE's core operations into `vectors/operations/we-core/`.
  *
  * Run after changing a case or the reference: `pnpm --filter @we/backend-conformance record:suites`.
  * Each file's test re-records it and compares, so a change to a vector is a change to the contract
@@ -24,6 +25,7 @@ const write = async (name: string, data: unknown) => {
 };
 
 await write('static-checks.json', recordStaticChecks());
-await write('effects.json', recordEffects());
+await write('effects.json', recordEffects('format'));
+await write('we-core/effects.json', recordEffects('we-core'));
 await write('ids.json', await recordIds());
 await write('rdf.json', await recordRdf());

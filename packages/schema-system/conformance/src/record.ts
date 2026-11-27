@@ -293,7 +293,17 @@ export function recordValidate() {
       const errors = result.errors
         .filter((e) => e.severity === 'error')
         .map((e) => ({ at: pathSegments(e.path), message: e.message }));
-      return { id: c.id, note: c.note, document: c.document, valid: errors.length === 0, errors };
+      const warnings = result.errors
+        .filter((e) => e.severity === 'warning')
+        .map((e) => ({ at: pathSegments(e.path), message: e.message }));
+      return {
+        id: c.id,
+        note: c.note,
+        document: c.document,
+        valid: errors.length === 0,
+        errors,
+        ...(c.warnings ? { warnings } : {}),
+      };
     }),
   };
 }

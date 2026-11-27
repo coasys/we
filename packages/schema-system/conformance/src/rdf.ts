@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { nodePropsOf } from '@we/schema-shared';
 import jsonld from 'jsonld';
 
 import { RDF_CASES } from './cases/rdf';
@@ -33,16 +34,105 @@ function context(): Record<string, unknown> {
   ];
 }
 
+type NodeObject = Record<string, unknown>;
+
+const isObject = (value: unknown): value is NodeObject =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+/** A JSON literal as JSON-LD writes one in a document: the value, whole, typed `@json`. */
+const json = (value: unknown) => ({ '@value': value, '@type': '@json' });
+
+/**
+ * A prop's key, relative to the vocabulary: `label` is `we:prop/label`. Written so rather than as
+ * the bare name, which would expand through any term the context has (`type`, `id`, `path`).
+ */
+const PROP = 'prop/';
+
+/** The keys the context maps, which a token's own keys must not be for it to be read as a node. */
+const TERMS = new Set(Object.keys(context()));
+
+/**
+ * One prop's value as the reading takes it (`rdf.md`, "Props are triples"): a string, number or
+ * boolean is the literal it is; an expression is its node; a node in a node prop the node; a token
+ * a node whose keys hold JSON literals; a list an `rdf:List` of values read the same way; anything
+ * else (data, and `null`) one JSON literal.
+ */
+function propValue(value: unknown, nodeProp: boolean): unknown {
+  if (value === null) return json(null);
+  if (Array.isArray(value)) return { '@list': value.map((entry) => propValue(entry, false)) };
+  if (!isObject(value)) return value;
+  const keys = Object.keys(value);
+  if (keys.length === 1 && keys[0] === '$' && typeof value.$ === 'string') return value;
+  if (nodeProp && typeof value.type === 'string') return forReading(value);
+  if (keys.length && keys.every((key) => key.startsWith('$') && !TERMS.has(key)))
+    return Object.fromEntries(keys.map((key) => [key, json(value[key])]));
+  return json(value);
+}
+
+/**
+ * A node as the context reads it: each prop by {@link propValue}, an empty `props` one JSON literal
+ * (a node with no triples would not be there to read back), and every node under it the same way.
+ * Nothing else changes; the context does the rest.
+ */
+function forReading(node: NodeObject): NodeObject {
+  const out: NodeObject = { ...node };
+  if (isObject(node.props)) {
+    const declared = nodePropsOf(node.type);
+    const names = Object.keys(node.props);
+    out.props = names.length
+      ? Object.fromEntries(
+          names.map((name) => [`${PROP}${name}`, propValue((node.props as NodeObject)[name], declared.includes(name))]),
+        )
+      : json({});
+  }
+  const each = (value: unknown) => (isObject(value) && !('$' in value) ? forReading(value) : value);
+  if (Array.isArray(node.children)) out.children = node.children.map(each);
+  if (Array.isArray(node.routes)) out.routes = node.routes.map(each);
+  for (const key of ['slots', '$defs'] as const)
+    if (isObject(node[key]))
+      out[key] = Object.fromEntries(Object.entries(node[key]).map(([name, v]) => [name, each(v)]));
+  return out;
+}
+
+/** A JSON literal as compaction gives one back (its `@type` written `type`, the context's alias for it). */
+const isJsonLiteral = (value: NodeObject) => '@value' in value && (value['@type'] ?? value.type) === '@json';
+
+/** One prop's value back from {@link propValue}. */
+function propBack(value: unknown): unknown {
+  if (!isObject(value)) return value;
+  if (isJsonLiteral(value)) return value['@value'];
+  if ('@list' in value) return (value['@list'] as unknown[]).map(propBack);
+  if (typeof value.type === 'string') return fromReading(value);
+  return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, propBack(inner)]));
+}
+
+/**
+ * The way back from {@link forReading}, node by node: each prop's key back to its name and its value
+ * back to the JSON it was. The JSON-literal keys (`meta`, `styles`, …) are left as they read.
+ */
+function fromReading(node: NodeObject): NodeObject {
+  const out: NodeObject = { ...node };
+  if (isObject(node.props))
+    out.props = isJsonLiteral(node.props)
+      ? node.props['@value']
+      : Object.fromEntries(Object.entries(node.props).map(([key, value]) => [key.slice(PROP.length), propBack(value)]));
+  const each = (value: unknown) => (isObject(value) && !('$' in value) ? fromReading(value) : value);
+  if (Array.isArray(node.children)) out.children = node.children.map(each);
+  if (Array.isArray(node.routes)) out.routes = node.routes.map(each);
+  for (const key of ['slots', '$defs'] as const)
+    if (isObject(node[key]))
+      out[key] = Object.fromEntries(Object.entries(node[key]).map(([name, v]) => [name, each(v)]));
+  return out;
+}
+
 /** The template's triples, canonical N-Quads, one statement a line, sorted. */
 export async function toNQuads(template: Record<string, unknown>): Promise<string[]> {
   const nquads = await canonize(
-    { '@context': context(), ...template },
+    { '@context': context(), ...forReading(template) },
     { algorithm: 'URDNA2015', format: 'application/n-quads', safe: true },
   );
   return nquads.split('\n').filter((line) => line !== '');
 }
-
-type NodeObject = Record<string, unknown>;
 
 /** The template the triples denote, as JSON again. */
 export async function fromNQuads(lines: string[]): Promise<Record<string, unknown>> {
@@ -73,7 +163,7 @@ export async function fromNQuads(lines: string[]): Promise<Record<string, unknow
   const root = embedded[flat.findIndex((node) => !referenced.has(node['@id'] as string))];
   const compacted = await compact(root, context());
   delete compacted['@context'];
-  return compacted;
+  return fromReading(compacted);
 }
 
 /** `rdf.json`: each case's template and the triples it denotes. */
