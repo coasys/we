@@ -2,7 +2,10 @@
  * The AD4M backend against the shared conformance suite, on a real executor.
  *
  * Run with `pnpm --filter @we/backend-ad4m test:live`; `executor.ts` starts the executor. Each case
- * gets a perspective of its own with the space SDNA installed, and loses it afterwards.
+ * gets a perspective of its own and loses it afterwards. It holds the space SDNA and the root SDNA
+ * both, so every record type WE has is there: the operations suite seeds per-agent records
+ * (`core.markRead`'s `ReadMarker`), which only the root holds, and the in-memory backend, having no
+ * schemas to install, would never say a case needed them.
  *
  * Writes come back over the executor's subscription socket rather than synchronously, so a case
  * waits seconds for them. The known gaps are the executor's, and each one says what is wrong.
@@ -37,6 +40,7 @@ describeBackendConformance('AD4M', {
     const { ports, agent } = await connect();
     const ref = await ports.lifecycle.create(`conformance-${Date.now()}`);
     await ports.schemas.installSpace(ref.handle, []);
+    await ports.schemas.installRoot(ref.handle);
     datasetIds.set(ref.handle as object, ref.id);
     return { ports, dataset: ref.handle, agent };
   },
@@ -55,8 +59,14 @@ describeBackendConformance('AD4M', {
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
-    // children read back swapped. The issue names the two likely causes.
+    // children read back swapped. coasys/ad4m#1936 records a position for every member added; delete
+    // this, and the entry below, once a pin includes it.
     'relations.ordered-read':
-      'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304)',
+      'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
+    // Two links onto an ordered relation in one transaction: `link` writes no order entry, so the
+    // columns read back in whichever order the executor holds the links, which is right about half
+    // the time. The same fix.
+    'operations.forEach-keys':
+      'a link onto an ordered relation writes no order entry, so the columns sometimes read back in the wrong order (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
   },
 });

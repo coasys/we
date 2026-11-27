@@ -83,7 +83,10 @@ export {
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
   ports: BackendPorts;
-  /** A dataset with the host's space schema installed and no records in it. */
+  /**
+   * A dataset with no records in it, holding every record type the host has: a space's, and the
+   * per-agent ones only an agent's own dataset holds, which the operations cases also write.
+   */
   dataset: DatasetHandle;
   /** The id the ports' context answers `selfId()` with. */
   agent: string;
@@ -209,7 +212,9 @@ export const CONFORMANCE_CASES = [
 /**
  * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
  * values, grouped and named writes, relation writes in the batch that created the record, write
- * checks that see the transaction's own writes, and the template queries.
+ * checks that see the transaction's own writes, the template queries and the declared operations.
+ * An operation case is named by its vector's id, which the type cannot list; the operations suite
+ * refuses a name that is not one of its cases.
  */
 export type ConformanceCase =
   | (typeof CONFORMANCE_CASES)[number]
@@ -218,7 +223,8 @@ export type ConformanceCase =
   | WriteCase
   | SameBatchCase
   | StagedCheckCase
-  | TemplateQueryCase;
+  | TemplateQueryCase
+  | OperationConformanceCase;
 
 interface Row {
   id: string;
@@ -900,15 +906,19 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           where: { id: [viaUpdate.id, viaSave.id] },
           include: { location: true },
         });
-        expect(events.map((row) => (row.location as Row | undefined)?.id)).toEqual([there.id, there.id]);
+        // Keyed by id: the query names no `order`, so the rows may come back in any order.
+        expect(Object.fromEntries(events.map((row) => [row.id, (row.location as Row | undefined)?.id]))).toEqual({
+          [viaUpdate.id]: there.id,
+          [viaSave.id]: there.id,
+        });
         const posts = await reader('CollectionBlock').findAll(subject.dataset, {
           where: { id: [postA.id, postB.id] },
           include: { children: true },
         });
-        expect(posts.map((row) => (row.children as Row[]).map((r) => r.id))).toEqual([
-          [b.id, c.id],
-          [e.id, f.id],
-        ]);
+        expect(Object.fromEntries(posts.map((row) => [row.id, (row.children as Row[]).map((r) => r.id)]))).toEqual({
+          [postA.id]: [b.id, c.id],
+          [postB.id]: [e.id, f.id],
+        });
       });
 
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {
