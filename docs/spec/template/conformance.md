@@ -105,8 +105,10 @@ has `meta`) or, without `meta`, a node on its own. `errors` lists each error as 
 where `at` is the path from the document's root as a list of segments (keys as text, list positions
 as numbers) — the position in the document as [expanded](nodes.md#shared-shapes-defs-and-ref), so a
 mistake inside a shape is reported at every use. Compare `valid`, and the **set** of `at` paths
-(duplicates and order do not count); `message` is informative, and warnings are not recorded,
-since what a validator advises is its own. The cases name only the core catalog's vocabulary.
+(duplicates and order do not count); `message` is informative. Warnings are not recorded, since what
+a validator advises is its own, except in a case whose point is a warning the format asks for: such a
+case carries `warnings`, as `errors`, and a validator SHOULD warn at each of its paths (the
+`validate.scope.*-advice` cases). The cases name only the core catalog's vocabulary.
 
 **safety.** A render case (below) with `grants`, the [capability groups](safety.md#capability-grants)
 the template is granted, and `confirm`, the person's answer to every confirmation the host asks

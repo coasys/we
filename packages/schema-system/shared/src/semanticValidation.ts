@@ -13,6 +13,7 @@ import {
   isCallTime,
   isExpressionToken,
   parseExpression,
+  referencedPaths,
 } from '@we/expressions';
 import { radius, role, semanticValues, space, TONES } from '@we/tokens';
 
@@ -25,7 +26,7 @@ import { describeHostOnly, hostOnlyUses } from './profiles';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
-import { type ChildPositionKind, childrenOf, nodePropsOf } from './treeUtils';
+import { type ChildPosition, type ChildPositionKind, childrenOf, forEachChild, nodePropsOf } from './treeUtils';
 import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
@@ -606,6 +607,14 @@ interface WalkState {
   isFragment: boolean;
   /** The template is an app (`meta.role: 'app'`) — the only kind that places WE's own chrome. */
   isApp: boolean;
+  /**
+   * Locals declared somewhere this body does not see, which an author reads expecting to: in a route
+   * body, the ones declared between the node with `routes` and its outlet; in a panel, the ones
+   * declared below the root. By name, with where each is declared and what to do about it. A read of
+   * one is warned about by name, beside the undeclared-local error, because scope that follows where
+   * a body is written rather than where it is drawn is not what a React or Solid author expects.
+   */
+  unseenLocals?: ReadonlyMap<string, { at: string; fix: string }>;
 }
 
 /**
@@ -1078,6 +1087,76 @@ function checkExpressionToken(
   for (const message of includedRelationComparisons(ast, state.queryIncludes)) {
     errors.push({ path: `${path}.$`, message, severity: 'warning' });
   }
+  if (state.unseenLocals?.size) {
+    const warned = new Set<string>();
+    for (const { root, path: read } of referencedPaths(ast)) {
+      const [field] = read;
+      const unseen = root === 'local' && field ? state.unseenLocals.get(field) : undefined;
+      if (!unseen || state.localScope?.has(field) || warned.has(field)) continue;
+      warned.add(field);
+      errors.push({
+        path: `${path}.$`,
+        message: `local.${field} is declared at ${unseen.at.replace(/^\./, '')}, ${unseen.fix}`,
+        severity: 'warning',
+      });
+    }
+  }
+}
+
+/** A child's position as a validator path segment: `children[0]`, `slots.header`, `props.then`. */
+function positionSegment(at: ChildPosition): string {
+  switch (at.in) {
+    case 'children':
+    case 'routes':
+    case 'panels':
+      return `${at.in}[${at.index}]`;
+    default:
+      return `${at.in}.${at.name}`;
+  }
+}
+
+/** The `$localState` and `$queries` names a node declares. */
+function declaredLocals(node: SchemaNode): string[] {
+  const own = (value: unknown) => (value && typeof value === 'object' ? Object.keys(value) : []);
+  return [...own(node.$localState), ...own(node.$queries)];
+}
+
+/**
+ * The locals declared on the way from a node with `routes` to its `$routes` outlet: on every node
+ * between the two (not the node itself, which its routes see), by name, with the first node's path.
+ */
+function localsOnTheWayToOutlet(node: SchemaNode, path: string): Map<string, string> {
+  const found = new Map<string, string>();
+  const visit = (parent: SchemaNode, at: string) =>
+    forEachChild(
+      parent,
+      (child, position) => {
+        if (child.type === '$routes' || !hasRoutesOutlet(child)) return;
+        const childPath = `${at}.${positionSegment(position)}`;
+        for (const name of declaredLocals(child)) if (!found.has(name)) found.set(name, childPath);
+        visit(child, childPath);
+      },
+      OUTLET_POSITIONS,
+    );
+  visit(node, path);
+  return found;
+}
+
+/** The locals declared anywhere in a template's tree below its root, by name, with the first node's path. */
+function localsBelowRoot(root: SchemaNode): Map<string, string> {
+  const found = new Map<string, string>();
+  const visit = (parent: SchemaNode, at: string) =>
+    forEachChild(
+      parent,
+      (child, position) => {
+        const childPath = `${at}.${positionSegment(position)}`;
+        for (const name of declaredLocals(child)) if (!found.has(name)) found.set(name, childPath);
+        visit(child, childPath);
+      },
+      ['children', 'slots', 'props', 'routes'],
+    );
+  visit(root, '');
+  return found;
 }
 
 /** `local.<name>`, as the expression tree spells it — or undefined. */
@@ -2689,6 +2768,7 @@ function checkRoutes(
     */
     localScope: new Set<string>(state.localScope ?? []),
     contextScope: new Set<string>(),
+    unseenLocals: unseenOnTheWay(n, path, state),
   };
   for (let i = 0; i < routes.length; i++) {
     const routePath = (routes[i] as { path?: unknown } | undefined)?.path;
@@ -2701,6 +2781,23 @@ function checkRoutes(
       errors,
     );
   }
+}
+
+/**
+ * What a route body of `n` does not see and might read: the locals declared on the way to `n`'s
+ * outlet, beside any an enclosing route already did not see, less what its own scope holds.
+ */
+function unseenOnTheWay(
+  n: Record<string, unknown>,
+  path: string,
+  state: WalkState,
+): Map<string, { at: string; fix: string }> {
+  const where = path === '' ? "the template's root" : path;
+  const fix = `between the node with routes (${where}) and its $routes outlet, which a route does not see: a route's scope is where it is written, not where it is drawn. Move it to the node with \`routes\`.`;
+  const unseen = new Map(state.unseenLocals);
+  for (const [name, at] of localsOnTheWayToOutlet(n, path)) unseen.set(name, { at, fix });
+  for (const name of state.localScope ?? []) unseen.delete(name);
+  return unseen;
 }
 
 /**
@@ -2923,6 +3020,13 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
   if (Array.isArray(panels)) {
     const rootScope =
       schema && typeof schema === 'object' ? updateLocalScope(schema as Record<string, unknown>, state) : state;
+    const fix =
+      "inside the template's tree, which a panel does not see: a panel's scope is the root's, wherever it is drawn. Move it to the template's root.";
+    const unseenLocals = new Map(
+      [...localsBelowRoot(schema as SchemaNode)]
+        .filter(([name]) => !rootScope.localScope?.has(name))
+        .map(([name, at]) => [name, { at, fix }]),
+    );
     panels.forEach((panel, index) => {
       if (!panel || typeof panel !== 'object') return;
 
@@ -2962,7 +3066,7 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
         `meta.panels[${index}].node`,
         context,
         // The root's scope: a panel is a child of the template's root, and sees its local state.
-        { ...rootScope, insidePanel: true, contextScope: new Set([...state.contextScope, 'panel']) },
+        { ...rootScope, insidePanel: true, contextScope: new Set([...state.contextScope, 'panel']), unseenLocals },
         errors,
       );
     });

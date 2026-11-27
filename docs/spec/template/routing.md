@@ -83,7 +83,9 @@ the template's root first, and draws the root's shared shapes
 ([Scope across passes](handlers.md#scope-across-passes)). It does not see what is declared or bound
 between that node and its outlet, which it is not inside. What a route receives from the host besides
 is the [surface](blocks.md#surface) it is drawn in and its own position in the address, for
-[relative paths](#relative-paths).
+[relative paths](#relative-paths). A validator warns when a route reads a local declared on the way to its
+outlet, and says to move it to the node with `routes` ([Scope is where a body is
+written](values.md#scope-is-where-a-body-is-written)).
 
 ---
 
@@ -93,7 +95,7 @@ Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/framework
 Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts)
 (local scope across a route boundary); render vectors `render.routes.root-local`,
 `render.routes.nested-local`, `render.routes.outlet-scope-not-lexical`, `render.routes.ref`,
-`render.routes.ref-missing`.
+`render.routes.ref-missing`; validate vector `validate.scope.route-not-outlet-advice`.
 
 ## The template's root
 

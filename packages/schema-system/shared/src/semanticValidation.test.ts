@@ -164,6 +164,62 @@ describe('local scope across a route boundary', () => {
     expect(messages(node, 'error').join(' ')).toMatch(/near/);
   });
 
+  it('warns that a field declared on the way to the outlet belongs on the node with routes', () => {
+    const node = template(
+      [{ path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }] }],
+      [
+        {
+          type: 'Column',
+          children: [
+            { type: 'Row', $queries: { far: { entity: 'SignalType' } }, children: [] },
+            { type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] },
+          ],
+        },
+      ],
+    );
+    const warnings = messages(node, 'warning').filter((message) => message.includes('$routes outlet'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^local\.near is declared at children\[0\]\.children\[1\]/);
+    expect(warnings[0]).toContain('Move it to the node with `routes`.');
+  });
+
+  it('does not warn about a field declared beside the outlet but not on its way, nor one the route declares', () => {
+    const node = template(
+      [
+        {
+          path: '/',
+          type: 'Column',
+          $localState: { near: { type: 'string', initial: '' } },
+          children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }],
+        },
+        { path: '/far', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.far' } } }] },
+      ],
+      [
+        { type: 'Row', $localState: { far: { type: 'string', initial: '' } }, children: [] },
+        { type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] },
+      ],
+    );
+    expect(messages(node, 'warning').filter((message) => message.includes('outlet'))).toEqual([]);
+  });
+
+  it('warns that a field a panel reads from inside the tree belongs on the root', () => {
+    const node = {
+      ...template([]),
+      routes: undefined,
+      children: [{ type: 'Column', $localState: { inner: { type: 'string', initial: '' } }, children: [] }],
+      meta: {
+        name: 'T',
+        description: 'd',
+        icon: 'bug',
+        panels: [{ id: 'side', node: { type: 'we-text', props: { text: { $: 'local.inner' } } } }],
+      },
+    } as SchemaNode;
+    const warnings = messages(node, 'warning').filter((message) => message.includes('panel'));
+    expect(warnings).toEqual([
+      expect.stringMatching(/^local\.inner is declared at children\[0\],.*Move it to the template's root\.$/),
+    ]);
+  });
+
   it('lets a nested route read the layout route that lists it', () => {
     const node = template([
       {
