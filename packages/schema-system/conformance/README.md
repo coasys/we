@@ -166,6 +166,12 @@ what each var records beyond that is decided by what its value _is_, not its nam
 - **anything else** keeps its computed text: shadows (`"0 1px 2px color-mix(in srgb, oklch(…) …)"`),
   gradients, font stacks, `"150ms"`, `"ease-out"`, `"none"`.
 
+**Precision.** In a colour, length or number, every number is rounded to four decimal places,
+trailing zeros trimmed and `-0` written `0` (`oklch(0.925 0.0338 288)`, `"13.3333px"`), so the
+tables depend on the themes and not on the Chrome version that recorded them; Chrome's sixth
+significant digit moves between releases. Text kept as computed is not rounded. Compare at the same
+precision. `src/tokenPrecision.ts` holds the rule and the reasoning for four.
+
 `--we-theme-*` vars are a theme's heterogeneous inputs — colours, lengths and numbers each record
 by the rules above. The six ids: `light`, `dark`, `black`, `retro`, `cyberpunk`, `glow` (the
 bundle's own theme; `glow` counts as a preset in coverage).
