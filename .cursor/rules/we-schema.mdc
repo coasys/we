@@ -3064,12 +3064,14 @@ Stores provide state (readable values) and actions (methods) for dynamic logic i
 Read state in an expression ({ "$": "storeName.member" }) and call actions with $invoke.
 For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).
 
-Capability profiles. A member listed with [navigation], [view-state], [presence], [identity] or [space-settings] belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.
+Capability profiles. A member listed with [navigation], [view-state], [layout], [presence], [identity], [space-settings], [appearance] belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.
 - navigation 1.0.0: routeStore.currentPath, routeStore.segments, routeStore.templateSegments, routeStore.params, routeStore.navigate, routeStore.setParam, routeStore.back, spaceStore.mySpaces, spaceStore.spacePath, spaceStore.viewNav, spaceStore.navigateToSpace, spaceStore.openRecordRef
-- view-state 1.0.0: shellStore.layoutDirty, shellStore.panelInstances, shellStore.collapsedLanes, shellStore.openTemplatePanel, shellStore.closeTemplatePanel, shellStore.openPanel, shellStore.closePanel, shellStore.resetTemplateLayout, shellStore.toggleLane, shellStore.setLaneCollapsed, shellStore.scrollToId, themeStore.currentThemeId, clockStore.clocks, clockStore.play, clockStore.pause, clockStore.toggle, clockStore.seek, clockStore.seekProgress, clockStore.setSpeed, clockStore.setLoop, clockStore.configure
+- view-state 1.0.0: shellStore.panelInstances, shellStore.openTemplatePanel, shellStore.closeTemplatePanel, shellStore.openPanel, shellStore.closePanel, shellStore.scrollToId, clockStore.clocks, clockStore.play, clockStore.pause, clockStore.toggle, clockStore.seek, clockStore.seekProgress, clockStore.setSpeed, clockStore.setLoop, clockStore.configure
+- layout 1.0.0: shellStore.layoutDirty, shellStore.collapsedLanes, shellStore.toggleLane, shellStore.setLaneCollapsed, shellStore.resetTemplateLayout
 - presence 1.0.0: presenceStore.available, presenceStore.peers, presenceStore.online, presenceStore.onlineHere, presenceStore.setAvailability, presenceStore.setActivity, presenceStore.clearActivity
 - identity 1.0.0: profileStore.ownProfile, profileStore.ownProfileLoaded, profileStore.profiles, spaceStore.memberDids, spaceStore.mutedDids, spaceStore.readMarkers
-- space-settings 1.0.0: spaceStore.currentSpace, spaceStore.canAdministerCurrentSpace, spaceStore.spaceDefaultTemplateId, spaceStore.spaceDefaultThemeId, spaceStore.myModuleSettings, spaceStore.setSpaceDefaultTemplate, spaceStore.setSpaceDefaultTheme, spaceStore.updateSpaceImage, spaceStore.setViewVisible, spaceStore.setModuleVisible, spaceStore.setMyModuleSetting
+- space-settings 1.0.0: spaceStore.currentSpace, spaceStore.canAdministerCurrentSpace, spaceStore.spaceDefaultTemplateId, spaceStore.spaceDefaultThemeId, spaceStore.myModuleSettings, spaceStore.prepareSpaceImage, spaceStore.setViewVisible, spaceStore.setModuleVisible, spaceStore.setMyModuleSetting
+- appearance 1.0.0: templateStore.switcherGroups, templateStore.currentSwitcherId, templateStore.templateOverrideOptions, themeStore.builtInThemes, themeStore.installedThemes, themeStore.spaceThemes, themeStore.themeOverrideOptions, themeStore.currentThemeId, themeStore.spaceThemePinned, templateStore.switchTemplate, templateStore.setSpaceTemplateOverride, themeStore.applyTheme, themeStore.clearSpaceThemePin, themeStore.setSpaceThemeOverride
 
 AccountStore:
 - State:
@@ -3589,9 +3591,9 @@ ShapeStore:
 
 ShellStore:
 - State:
-  - [view-state] layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
+  - [layout] layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - [view-state] panelInstances: { id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one
-  - [view-state] collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in shellStore.collapsedLanes" }
+  - [layout] collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in shellStore.collapsedLanes" }
   - activeShellView: string | null — id of the currently open shell overlay ('profile' | 'settings' | 'schema-tests' | 'landing-page'), or null
   - createSpaceOpen: boolean — the create-space modal is open. Shell state because more than one place opens it; bind the modal’s open prop to this and close it with setCreateSpaceOpen
   - joinSpaceOpen: boolean — the join-a-space dialog is open, where somebody pastes an address they were sent. Shell state for createSpaceOpen’s reason, opened from the same two places. It exists because a share link only opens itself on the web: a desktop build has no address bar and registers no protocol handler, so an address arriving by any other route needs somewhere to go
@@ -3626,9 +3628,9 @@ ShellStore:
   - [view-state] openTemplatePanel(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too
   - [view-state] openPanel(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads
   - [view-state] closePanel(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it
-  - [view-state] resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
-  - [view-state] toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
-  - [view-state] setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
+  - [layout] resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
+  - [layout] toggleLane(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout
+  - [layout] setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
   - openShellView(id: string, path?: string): opens a shell overlay by id, optionally at a route inside it — the overlay keeps its own memory router, so this never touches the browser URL
   - closeShellView(): closes the currently open shell overlay
   - setCreateSpaceOpen(open: boolean): opens or closes the create-space modal. Shell state rather than a page’s $localState because more than one place opens it — the settings page and the sidebar’s spaces group — and a page-scoped flag could only be set from inside that page
@@ -3730,9 +3732,7 @@ SpaceStore:
   - archivedWorkflows: string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`
   - policy: { loaded, preset, permissions, frozen, me, roles, sentences } — the space's policy in force: who may do what to its records. Pass it whole to can() to decide whether to offer a control: { $: "can({ policy: spaceStore.policy, action: 'CollectionBlock.delete', record: post })" }. `preset` is 'open', 'community', or null for rules the community wrote itself; `sentences` is each permission in words, for a page that explains the rules; `roles` are the viewer's, admin included while they administer the space. A write the policy does not allow is refused when it is made whatever a template offered — its handler's onError receives the reason as result.message
 - Actions:
-  - [space-settings] updateSpaceImage(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image
-  - [space-settings] setSpaceDefaultTemplate(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen
-  - [space-settings] setSpaceDefaultTheme(themeId: string, spaceUuid?): sets the theme members see when they enter that space
+  - [space-settings] prepareSpaceImage(field: "avatar" | "coverImage", image: File): makes a picture the person chose into what the space record stores for that field, sized for it, and answers with it. Stores nothing: write it with ops.core.setSpaceImage in onSuccess, reading { $: "result" } — spaceImageChange(field) from @we/template-kit is the whole handler for an EditableImage
   - [space-settings] setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
   - [space-settings] setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
   - [space-settings] setViewVisible(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare
@@ -3797,7 +3797,9 @@ SpaceStore:
 
 TemplateStore:
 - State:
-  - templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
+  - [appearance] templateOverrideOptions: { label, value }[] — options for the per-space template override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
+  - [appearance] switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
+  - [appearance] currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
   - personalTemplates: array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)
   - spaceTemplates: array of TemplateSchema objects — templates loaded from the current space
   - builtInTemplates: array of TemplateSchema objects — built-in system templates (always available)
@@ -3805,8 +3807,6 @@ TemplateStore:
   - allTemplates: array of TemplateSchema objects — union of built-in + personal + space templates
   - templateManagementList: TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault, fromApp). `fromApp` names the installed or built-in app a template came with, empty otherwise: such a template is removed with its app, never on its own
   - refusedTemplates: RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate
-  - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
-  - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
   - currentTemplate: TemplateSchema (the active template)
   - loading: boolean — the template lists are still being read. Gate empty states on it
   - defaultTemplateId: string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId
@@ -3818,8 +3818,8 @@ TemplateStore:
   - safeMode: { on, reason, template } — whether this tab is in safe mode, where WE's own templates and themes are drawn in place of the chosen ones. reason is 'asked' (the ?safe address, the key or the menu) or 'unfinished-render' (a template did not finish loading last time — template is its id). Decided before anything rendered; fixed for the page
   - operationLoading: string | null — the id of the template operation in flight, namespaced by kind ('marketplace-install:<id>', 'space-install:<id>'), or null. A key rather than a boolean so one row's spinner does not appear on every row
 - Actions:
-  - setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all
-  - switchTemplate(newTemplateId: string): switches to another template
+  - [appearance] setSpaceTemplateOverride(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all
+  - [appearance] switchTemplate(newTemplateId: string): switches to another template
   - removeTemplate(): removes the current template
   - deleteTemplate(templateId: string): permanently deletes a custom template from the library
   - deleteRefusedTemplate(id: string): permanently deletes a library template that could not be loaded, by its refusedTemplates id
@@ -3844,19 +3844,19 @@ TemplateStore:
 
 ThemeStore:
 - State:
-  - [view-state] currentThemeId: string — id of the currently active theme
-  - builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - [appearance] builtInThemes: array of ThemeData objects — built-in registry themes (origin: "built-in", always available)
+  - [appearance] installedThemes: array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")
+  - [appearance] spaceThemes: array of ThemeData objects — themes stored in the current space (origin: "custom")
+  - [appearance] currentThemeId: string — id of the currently active theme
+  - [appearance] themeOverrideOptions: { label, value }[] — options for the per-space theme override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every theme. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
+  - [appearance] spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
   - automaticThemes: array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes
-  - installedThemes: array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")
-  - spaceThemes: array of ThemeData objects — themes stored in the current space (origin: "custom")
   - allThemes: array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)
   - currentTheme: ThemeData — the currently active theme object (id, name, icon, origin)
   - defaultThemeId: string — id of the user's preferred default theme (used for bootscreen, shell, and future space-override). Persisted to AgentSettings.defaultThemeId
   - themeManagementList: ThemeManagementItem[] — flat list of all themes (built-in + all custom) with management metadata (id, name, icon, isBuiltIn, isInstalled, isDefault)
   - editingTheme: EditingTheme | null — the theme being edited (id, name, icon, overrides, css, basePreset) or null when no theme editing session is open. Its non-nullness is what mounts the theme editor
   - operationLoading: string | null — the id of the theme operation currently in flight, namespaced by kind (e.g. 'marketplace-install:<themeId>'), or null when idle. A key rather than a boolean so one row's spinner does not appear on every row — compare it against the row you are rendering
-  - themeOverrideOptions: { label, value }[] — options for the per-space theme override picker: "Use the space’s default" (space-default), "Use my default" (agent-default), then every theme. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way
-  - spaceThemePinned: boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing
   - spaceThemeHiddenBy: string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two
   - focusedRole: string — the kebab-case role the theme editor should scroll to ('surface-sunken'), or empty. Set by whatever sent somebody to the panel — the inspector's role readout — and re-announced on every set, so pressing the same chip twice scrolls twice
   - systemThemes: { light, dark, resolved } — which two themes 'Follow system' chooses between. light/dark are the ids as chosen, empty for a side left at the built-in; resolved is 'light' | 'dark', whichever the OS is asking for now
@@ -3874,11 +3874,11 @@ ThemeStore:
   - activeTemplateTheme: ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme
   - themeFork: { source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one
 - Actions:
+  - [appearance] setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Three values: 'space-default' follows the space, 'agent-default' follows your own global default, or a concrete theme id pins that one. Private, and applied immediately when that space is the one on screen
+  - [appearance] applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see
+  - [appearance] clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - setCurrentTheme(themeId: string): sets and persists the active theme
   - setDefaultTheme(themeId: string): sets the preferred default theme (persists to AgentSettings.defaultThemeId)
-  - setSpaceThemeOverride(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Three values: 'space-default' follows the space, 'agent-default' follows your own global default, or a concrete theme id pins that one. Private, and applied immediately when that space is the one on screen
-  - applyTheme(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see
-  - clearSpaceThemePin(): drops this agent’s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned
   - focusRole(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll
   - setSystemTheme(polarity: 'light' | 'dark', themeId: string): sets one side of the Follow-system pair. An empty id returns that side to the built-in
   - setThemeMode(mode: 'light' | 'dark' | 'system'): chooses which side of a two-sided theme to wear, for this agent everywhere. A we-select or a segmented control can pass its value bare
@@ -4543,6 +4543,21 @@ An app installed at runtime brings its own, which this list does not show.
   Params: space: string (required) — The space’s dataset id.; group: string (required) — The module or capability the setting belongs to.; key: string (required) — The setting.; value: json — The answer; absent withdraws it, so the level has no opinion again.
   Returns: a value, read in onSuccess as result
   Writes: creates a SpacePreference; deletes a SpacePreference; edits a SpacePreference (may write many records in one call, destructive)
+
+- ops.core.setSpaceDefaultTemplate — Choose the template members see when they open the space.
+  Params: space: string (required) — The space record’s id.; template: string (required) — The template’s id, as the host lists it; empty leaves the choice to each member’s own default.
+  Returns: nothing
+  Writes: edits a Space
+
+- ops.core.setSpaceDefaultTheme — Choose the theme members see when they open the space.
+  Params: space: string (required) — The space record’s id.; theme: string (required) — The theme’s id, as the host lists it; empty leaves the choice to each member’s own default.
+  Returns: nothing
+  Writes: edits a Space
+
+- ops.core.setSpaceImage — Set the space’s avatar or its cover image, or take it away.
+  Params: space: string (required) — The space record’s id.; field: string (required) — avatar or coverImage.; image: json — The picture as the record stores a file — what the host made of the one the person chose; absent takes it away.
+  Returns: nothing
+  Writes: edits a Space
 
 - ops.core.setSpaceModuleSetting — Write, or withdraw, the community’s answer to one setting.
   Params: space: string (required) — The space record’s id.; group: string (required) — The module or capability the setting belongs to.; key: string (required) — The setting.; value: json — The answer; absent withdraws it, so the level has no opinion again.

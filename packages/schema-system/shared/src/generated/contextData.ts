@@ -3385,10 +3385,8 @@ export const contextData: ContextData = {
         'markRead',
         'uploadFile',
         'deleteCollection',
-        'updateSpaceImage',
+        'prepareSpaceImage',
         'updateSpaceMeta',
-        'setSpaceDefaultTemplate',
-        'setSpaceDefaultTheme',
         'setModuleEnabled',
         'setSpaceModuleSetting',
         'setMyModuleSetting',
@@ -3458,10 +3456,8 @@ export const contextData: ContextData = {
         'markRead',
         'uploadFile',
         'deleteCollection',
-        'updateSpaceImage',
+        'prepareSpaceImage',
         'updateSpaceMeta',
-        'setSpaceDefaultTemplate',
-        'setSpaceDefaultTheme',
         'setModuleEnabled',
         'setSpaceModuleSetting',
         'setMyModuleSetting',
@@ -5995,6 +5991,49 @@ export const contextData: ContextData = {
         bulk: true,
         destructive: true,
       },
+    },
+    {
+      name: 'core.setSpaceDefaultTemplate',
+      description: 'Choose the template members see when they open the space.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        template: {
+          type: 'string',
+          required: true,
+          description: 'The template’s id, as the host lists it; empty leaves the choice to each member’s own default.',
+        },
+      },
+      returns: false,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setSpaceDefaultTheme',
+      description: 'Choose the theme members see when they open the space.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        theme: {
+          type: 'string',
+          required: true,
+          description: 'The theme’s id, as the host lists it; empty leaves the choice to each member’s own default.',
+        },
+      },
+      returns: false,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
+    },
+    {
+      name: 'core.setSpaceImage',
+      description: 'Set the space’s avatar or its cover image, or take it away.',
+      params: {
+        space: { type: 'string', required: true, description: 'The space record’s id.' },
+        field: { type: 'string', required: true, description: 'avatar or coverImage.' },
+        image: {
+          type: 'json',
+          description:
+            'The picture as the record stores a file — what the host made of the one the person chose; absent takes it away.',
+        },
+      },
+      returns: false,
+      effects: { entities: { Space: ['edit'] }, categories: {}, bulk: false, destructive: false },
     },
     {
       name: 'core.setSpaceModuleSetting',
