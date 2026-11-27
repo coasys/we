@@ -93,7 +93,7 @@ describe("a space's views", () => {
  * Every bundled feature module's chrome.
  *
  * A module's bar, panel and launcher are schema exactly as a template is, and they name host store
- * members — `spaceStore.members`, `shellStore.toggleMaximiseDock`, `presenceStore.peers`. Nothing
+ * members — `spaceStore.memberDids`, `shellStore.toggleMaximiseDock`, `presenceStore.peers`. Nothing
  * checked them. `modules.<id>.…` is ungated by design (a module's own store is not in the manifest
  * and cannot be), so what is under test is the *host* members a module reaches for: a renamed one,
  * or one nobody classified, and the module's chrome quietly renders with a dead control in it.
@@ -121,7 +121,7 @@ describe('bundled module chrome', () => {
       inspectTemplateSurface(definition, CHROME_TIER).allowed.map((reference) => reference.path),
     );
 
-    expect(named).toContain('datasetStore.currentDataset');
+    expect(named).toContain('spaceStore.root');
   });
 });
 
@@ -229,7 +229,7 @@ describe('a template’s declared panels are part of its surface', () => {
   });
 
   it('leaves a panel that stays inside the tier alone', () => {
-    const template = withPanel({ type: 'we-text', children: [{ $: 'spaceStore.members' }] });
+    const template = withPanel({ type: 'we-text', children: [{ $: 'spaceStore.memberDids' }] });
     expect(inspectTemplateSurface(template, SPACE_TIER).blocked).toEqual([]);
   });
 });

@@ -1923,7 +1923,9 @@
                             "value": "group|people",
                             "open": { "$": "'group|people' in local.openRows" },
                             "onOpenChange": { "$toggleLocalIn": "openRows", "value": "group|people" },
-                            "expandable": { "$": "count(spaceStore.members) > 0" }
+                            "expandable": {
+                              "$": "count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)) > 0"
+                            }
                           },
                           "children": [
                             {
@@ -1946,11 +1948,17 @@
                                     {
                                       "type": "$if",
                                       "props": {
-                                        "condition": { "$": "count(spaceStore.members)" },
+                                        "condition": {
+                                          "$": "count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))"
+                                        },
                                         "then": {
                                           "type": "we-badge",
                                           "props": { "variant": "soft", "size": "xs" },
-                                          "children": [{ "$": "count(spaceStore.members)" }]
+                                          "children": [
+                                            {
+                                              "$": "count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))"
+                                            }
+                                          ]
                                         }
                                       }
                                     }
@@ -1960,7 +1968,12 @@
                             },
                             {
                               "type": "$each",
-                              "props": { "items": { "$": "spaceStore.members" }, "as": "person" },
+                              "props": {
+                                "items": {
+                                  "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)"
+                                },
+                                "as": "person"
+                              },
                               "children": [
                                 {
                                   "type": "we-tree-item",
@@ -5243,7 +5256,7 @@
                                                     "searchable": true,
                                                     "searchPlaceholder": "Find a member",
                                                     "items": {
-                                                      "$": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
+                                                      "$": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
                                                     },
                                                     "onSelect": {
                                                       "$invoke": "spaceStore.setInvolvement",
@@ -7696,7 +7709,7 @@
                                                                     "variant": "solid",
                                                                     "disabled": { "$": "!local.name" },
                                                                     "onClick": {
-                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                      "$invoke": "ops.core.createSignalType",
                                                                       "args": [
                                                                         {
                                                                           "name": { "$": "local.name" },
@@ -9983,7 +9996,7 @@
                                                                                                                       "$": "!local.name"
                                                                                                                     },
                                                                                                                     "onClick": {
-                                                                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                                                                      "$invoke": "ops.core.createSignalType",
                                                                                                                       "args": [
                                                                                                                         {
                                                                                                                           "name": {
@@ -12507,7 +12520,7 @@
                                                                                                                               "$": "!local.name"
                                                                                                                             },
                                                                                                                             "onClick": {
-                                                                                                                              "$invoke": "spaceStore.createSignalType",
+                                                                                                                              "$invoke": "ops.core.createSignalType",
                                                                                                                               "args": [
                                                                                                                                 {
                                                                                                                                   "name": {
@@ -15147,7 +15160,7 @@
                                                                                                                                                                       "$": "!local.name"
                                                                                                                                                                     },
                                                                                                                                                                     "onClick": {
-                                                                                                                                                                      "$invoke": "spaceStore.createSignalType",
+                                                                                                                                                                      "$invoke": "ops.core.createSignalType",
                                                                                                                                                                       "args": [
                                                                                                                                                                         {
                                                                                                                                                                           "name": {
@@ -17791,7 +17804,7 @@
                                                                                                                                                                                                               "$": "!local.name"
                                                                                                                                                                                                             },
                                                                                                                                                                                                             "onClick": {
-                                                                                                                                                                                                              "$invoke": "spaceStore.createSignalType",
+                                                                                                                                                                                                              "$invoke": "ops.core.createSignalType",
                                                                                                                                                                                                               "args": [
                                                                                                                                                                                                                 {
                                                                                                                                                                                                                   "name": {
@@ -19186,6 +19199,7 @@
                       "limit": 50,
                       "when": { "$": "spaceStore.currentSpace.id" }
                     },
+                    "spaceLandmarks": { "entity": "SpaceLandmark" },
                     "focusCall": {
                       "entity": "CollectionBlock",
                       "where": {
@@ -19769,7 +19783,9 @@
                             "seeds": {
                               "source": "canvas",
                               "options": {
-                                "canvas": { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                "canvas": {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 "members": { "id": { "$": "spaceStore.root" }, "via": "children" },
                                 "contains": { "$": "shapeStore.interpretationCandidates" },
                                 "origin": "extractedFrom",
@@ -19875,7 +19891,7 @@
                             },
                             "resizable": { "$": "!local.treeMode" },
                             "empty": {
-                              "$": "(spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'"
+                              "$": "(find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'"
                             },
                             "emptyIcon": "squares-four",
                             "emptyGradient": "accent",
@@ -19887,42 +19903,54 @@
                             "onNodeDragEnd": {
                               "$invoke": "recordStore.dragOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
                             "onNodeResize": {
                               "$invoke": "recordStore.resizeOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
                             "onEdgeAnchor": {
                               "$invoke": "recordStore.anchorOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
                             "onEdgeReroute": {
                               "$invoke": "recordStore.rerouteOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
                             "onEdgeRetarget": {
                               "$invoke": "recordStore.retargetOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
                             "onDrop": {
                               "$invoke": "recordStore.dropOnCanvas",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "event" }
                               ]
                             },
@@ -19945,11 +19973,19 @@
                             ],
                             "onUndo": {
                               "$invoke": "recordStore.undoCanvas",
-                              "args": [{ "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }]
+                              "args": [
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                }
+                              ]
                             },
                             "onRedo": {
                               "$invoke": "recordStore.redoCanvas",
-                              "args": [{ "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }]
+                              "args": [
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                }
+                              ]
                             },
                             "carry": true,
                             "selectionActions": [
@@ -19987,7 +20023,9 @@
                                   "then": {
                                     "$invoke": "recordStore.setCardStyle",
                                     "args": [
-                                      { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                      {
+                                        "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                      },
                                       { "$": "event.records.map(r, r.recordId)" },
                                       "color",
                                       { "$": "event.value" }
@@ -20071,7 +20109,9 @@
                                     {
                                       "$invoke": "recordStore.placeOnCanvas",
                                       "args": [
-                                        { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        {
+                                          "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                        },
                                         { "$": "event.recordId" },
                                         { "$": "event.recordType" },
                                         { "$": "event.x" },
@@ -20118,7 +20158,9 @@
                                   "then": {
                                     "$invoke": "recordStore.setCardStyle",
                                     "args": [
-                                      { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                      {
+                                        "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                      },
                                       { "$": "event.recordId" },
                                       { "$": "event.action" },
                                       { "$": "event.value" }
@@ -20130,7 +20172,9 @@
                             "onNodeArrange": {
                               "$invoke": "recordStore.arrangeOnTree",
                               "args": [
-                                { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 { "$": "treeSpine({ value: local.spine })" },
                                 { "$": "event" }
                               ]
@@ -20138,7 +20182,9 @@
                             "onSeedSummary": { "$setLocal": "voiceSummary", "value": { "$": "event" } },
                             "onCanvasDoubleClick": {
                               "$if": {
-                                "condition": { "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                "condition": {
+                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
+                                },
                                 "then": [
                                   { "$setLocal": "newAt", "value": { "$": "event" } },
                                   { "$setLocal": "chooserOpen", "value": true }
@@ -22188,7 +22234,7 @@
                                                   "$invoke": "recordStore.createOnCanvas",
                                                   "args": [
                                                     {
-                                                      "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''"
+                                                      "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
                                                     },
                                                     { "$": "local.newAt.x" },
                                                     { "$": "local.newAt.y" }
@@ -22287,7 +22333,7 @@
                                                               "$invoke": "recordStore.createOnCanvas",
                                                               "args": [
                                                                 {
-                                                                  "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''"
+                                                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
                                                                 },
                                                                 { "$": "local.newAt.x" },
                                                                 { "$": "local.newAt.y" }
@@ -22445,7 +22491,7 @@
                                                               "$invoke": "recordStore.createOnCanvas",
                                                               "args": [
                                                                 {
-                                                                  "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''"
+                                                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
                                                                 },
                                                                 { "$": "local.newAt.x" },
                                                                 { "$": "local.newAt.y" }
@@ -22603,7 +22649,7 @@
                                                               "$invoke": "recordStore.createOnCanvas",
                                                               "args": [
                                                                 {
-                                                                  "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''"
+                                                                  "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
                                                                 },
                                                                 { "$": "local.newAt.x" },
                                                                 { "$": "local.newAt.y" }
@@ -22818,7 +22864,7 @@
                                           { "$": "arg" },
                                           {
                                             "canvas": {
-                                              "$": "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''"
+                                              "$": "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''"
                                             },
                                             "at": { "$": "local.newAt" }
                                           }
@@ -25682,7 +25728,7 @@
                                                                               "props": {
                                                                                 "placement": "top",
                                                                                 "content": {
-                                                                                  "$": "'Agreed by ' + join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')"
+                                                                                  "$": "'Agreed by ' + join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')"
                                                                                 }
                                                                               },
                                                                               "children": [
@@ -25690,7 +25736,7 @@
                                                                                   "type": "AvatarStack",
                                                                                   "props": {
                                                                                     "avatars": {
-                                                                                      "$": "step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })"
+                                                                                      "$": "step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })"
                                                                                     },
                                                                                     "size": "xs",
                                                                                     "max": 5
@@ -26951,7 +26997,9 @@
                 {
                   "type": "$if",
                   "props": {
-                    "condition": { "$": "!count(spaceStore.members)" },
+                    "condition": {
+                      "$": "!count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))"
+                    },
                     "then": {
                       "type": "we-text",
                       "props": { "variant": "footnote", "color": "text-muted", "italic": true },
@@ -26963,7 +27011,12 @@
                       "children": [
                         {
                           "type": "$each",
-                          "props": { "items": { "$": "spaceStore.members" }, "as": "person" },
+                          "props": {
+                            "items": {
+                              "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)"
+                            },
+                            "as": "person"
+                          },
                           "children": [
                             {
                               "type": "we-button",

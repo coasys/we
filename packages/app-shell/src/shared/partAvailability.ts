@@ -70,10 +70,15 @@ export function fixFor(
       return { label: 'Turn it on', go: () => deps.openShellView('settings', '/modules') };
     case 'off-in-space':
       return deps.canAdminister ? { label: 'Space features', go: () => deps.openSpaceSettings('features') } : null;
-    case 'hidden-here':
-      return deps.datasetId
-        ? { label: 'Show it here', go: () => deps.openShellView('settings', `/spaces/${deps.datasetId}`) }
+    case 'hidden-here': {
+      const id = deps.datasetId;
+      return id
+        ? {
+            label: 'Show it here',
+            go: () => deps.openShellView('settings', `/spaces/space?id=${encodeURIComponent(id)}`),
+          }
         : null;
+    }
     default:
       return null;
   }

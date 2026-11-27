@@ -1,6 +1,10 @@
 /**
  * A board comes into being with its columns — and the other board writes land as one each.
  *
+ * Making a board, adding a column and renaming one are invoked by templates as operations, with the
+ * params a template passes; the rest go through the store's board actions, which hold what is drawn
+ * ahead of a write.
+ *
  * Against the in-memory backend, the reference: the writes are declared operations now, run by the
  * real runner in one transaction, so a stand-in data layer would test the stand-in. The rule that
  * once broke this — a record created in a transaction cannot be read until it commits, so writing a
@@ -8,7 +12,7 @@
  * keep, and their conformance suites hold it on every backend.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity } from '@we/entities';
+import { getEntity, runOperation } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type BoardDeps, createBoardActions } from '../src/shared/boards';
@@ -34,6 +38,11 @@ const read = (id: string) => model('CollectionBlock').findOne(dataset, { where: 
 const ids = (value: unknown) => (Array.isArray(value) ? (value as unknown[]).map(String) : []);
 const columnSlugs = async (boardId: string) =>
   Promise.all(ids((await read(boardId))?.children).map(async (id) => (await read(id))?.slug));
+
+/** An operation, run as a template invokes it: one params object, in the space on screen. */
+const op = <T = unknown>(name: string, params: Record<string, unknown>) =>
+  runOperation(`core.${name}`, params, { dataset: dataset as never, invoker: ME }) as Promise<T>;
+const SLUGS = STATES.map((state) => state.slug);
 
 const actions = (extra: Partial<BoardDeps> = {}) =>
   createBoardActions({
@@ -66,7 +75,12 @@ beforeEach(async () => {
 
 describe('making a board', () => {
   it('gives it a column per state, in the community’s order', async () => {
-    const boardId = await actions().createBoard('Standup', 'call', { gathers: 'call' });
+    const boardId = await op<string>('createBoard', {
+      title: 'Standup',
+      states: SLUGS,
+      parent: 'call',
+      gathers: 'call',
+    });
 
     expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
     expect(ids((await read('call'))?.children)).toContain(boardId);
@@ -74,7 +88,7 @@ describe('making a board', () => {
   });
 
   it('leaves a board loose rather than failing when its container has gone', async () => {
-    const boardId = await actions().createBoard('Loose', 'nowhere');
+    const boardId = await op<string>('createBoard', { title: 'Loose', states: SLUGS, parent: 'nowhere' });
     expect(boardId).toBeTruthy();
     expect(await columnSlugs(boardId)).toEqual(['todo', 'doing', 'done']);
   });
@@ -118,12 +132,13 @@ describe('making a board', () => {
 describe('a board’s columns', () => {
   let boardId = '';
   beforeEach(async () => {
-    boardId = await actions().createBoard('Work');
+    boardId = await op<string>('createBoard', { title: 'Work', states: SLUGS });
   });
 
   it('stores no title for a bound column named as its state, and stores a lane’s', async () => {
-    await actions().addBoardColumn(boardId, 'Doing', 'doing');
-    await actions().addBoardColumn(boardId, 'Thursday');
+    await op('addBoardColumn', { board: boardId, name: 'Doing', slug: 'doing', states: STATES });
+    // A lane: the template sends no slug rather than an empty one.
+    await op('addBoardColumn', { board: boardId, name: 'Thursday', slug: null, states: STATES });
     const columns = await Promise.all(ids((await read(boardId))?.children).map(read));
     expect(columns.slice(3).map((c) => [c?.slug ?? '', c?.title ?? ''])).toEqual([
       ['doing', ''],
@@ -140,9 +155,9 @@ describe('a board’s columns', () => {
 
   it('renames a column, and a rename back to its state’s name stores nothing', async () => {
     const [todo] = ids((await read(boardId))?.children);
-    await actions().renameBoardColumn(todo, 'Backlog');
+    await op('renameBoardColumn', { column: todo, name: 'Backlog', states: STATES });
     expect((await read(todo))?.title).toBe('Backlog');
-    await actions().renameBoardColumn(todo, 'To do');
+    await op('renameBoardColumn', { column: todo, name: 'To do', states: STATES });
     expect((await read(todo))?.title).toBeFalsy();
   });
 

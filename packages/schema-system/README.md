@@ -17,7 +17,7 @@ Anything computed — a condition, a label, a count, a filtered list — is one 
 
 | Written as                                           | Answers                                  |
 | ---------------------------------------------------- | ---------------------------------------- |
-| `{ $: "spaceStore.members.count() > 0" }`            | a boolean                                |
+| `{ $: "spaceStore.memberDids.count() > 0" }`         | a boolean                                |
 | `{ $: "` `` `/space/${item.uuid}` `` `" }`           | a string                                 |
 | `{ $: "item.author == me.did ? 'mine' : 'theirs'" }` | a value                                  |
 | `{ $: "filter(local.rows, { role: 'admin' }, 5)" }`  | a list — the where-object `$query` takes |

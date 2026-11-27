@@ -1,5 +1,5 @@
 import { boardOptimism } from '@shared/boardOptimism';
-import { createBoardActions, type CreateBoardOptions } from '@shared/boards';
+import { createBoardActions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
 import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
 import { setUpForApp } from '@shared/bundles/setUpForApp';
@@ -33,6 +33,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { operationFailureMessage } from '@shared/operationFailure';
 import { pageOfPart } from '@shared/partPage';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
@@ -75,7 +76,6 @@ import {
   cannotRevoke,
   type GrantRow,
   type RoleRow,
-  rolesByPerson,
   rolesOf,
   rolesView,
   type RoleView,
@@ -145,7 +145,6 @@ import { toastService } from '@we/components/solid';
 import {
   collectionInterpretationDefaults,
   entityListOf,
-  isOperationError,
   LEGACY_INTERPRETATION_TARGETS,
   resolveCollectionAutoInterpret,
   resolveCollectionInterpretationTargets,
@@ -168,7 +167,6 @@ import {
   Policy,
   ReadMarker,
   registerEntityWriteCheck,
-  RelationshipType,
   Role,
   RoleGrant,
   SignalType,
@@ -217,24 +215,6 @@ import type {
   TaskStateView,
 } from './space/types';
 import type { StoreRegistry } from './useStore';
-/** What a reaction type is made from — the params of `core.createSignalType` beside its name. */
-const SIGNAL_TYPE_PARAMS = [
-  'slug',
-  'description',
-  'icon',
-  'iconSecondary',
-  'mode',
-  'rangeMin',
-  'rangeMax',
-  'step',
-  'aggregate',
-  'semantic',
-  'allowChange',
-] as const;
-
-/** What a kind of connection is made from — the params of `core.createRelationshipType` beside its name. */
-const RELATIONSHIP_TYPE_PARAMS = ['slug', 'description', 'icon', 'color', 'inverseName', 'directed'] as const;
-
 /**
  * Records with what an operation wrote to one of them laid over it, or that one added — held without
  * reading every record of the kind again. A record laid over is a new object of its own class, so a
@@ -247,13 +227,6 @@ function withRow<T extends { id: string }>(rows: readonly T[], written: Partial<
   return rows.map((r) =>
     r.id === id ? (Object.assign(Object.create(Object.getPrototypeOf(r) as object | null), r, written) as T) : r,
   );
-}
-
-/** The named keys of an object that hold a value. */
-function pick<T extends object, K extends keyof T>(from: T, keys: readonly K[]): Partial<Pick<T, K>> {
-  const out: Partial<Pick<T, K>> = {};
-  for (const key of keys) if (from[key] !== undefined && from[key] !== null) out[key] = from[key];
-  return out;
 }
 
 export type {
@@ -351,12 +324,13 @@ export interface SpaceStore {
   /**
    * The standings people hold across the space — admin, moderator, whatever this community names —
    * each with the people holding it: `{ id, slug, name, description, holders }`. Admin first.
+   *
+   * The host's own view, behind `myRoles`, the policy and who administers the space. A template
+   * reads the space's `Role` and `RoleGrant` records with a query.
    */
   roles: Accessor<RoleView[]>;
   /** The slugs of the roles the viewer holds here. */
   myRoles: Accessor<string[]>;
-  /** By person, the slugs of the roles they hold — for a badge beside a member. */
-  memberRoles: Accessor<Record<string, string[]>>;
   /** The space has been asked for its roles. An empty list is otherwise "not fetched yet". */
   rolesLoaded: Accessor<boolean>;
   /** Options for the per-space template override picker, including a "follow the space" entry. */
@@ -502,20 +476,14 @@ export interface SpaceStore {
    */
   createPost: (json: unknown, options?: CreatePostOptions) => Promise<string | undefined>;
   updatePost: (postId: string, json: unknown) => Promise<void>;
-  /** Make a board — a collection whose ordered children are its columns, seeded from the vocabulary. */
-  createBoard: (title: string, parentId?: string, options?: CreateBoardOptions) => Promise<string>;
   /** The board for a container, or the space's own, making it if nobody has yet. Returns its id. */
   openBoardFor: (anchorId?: string, title?: string, dataset?: string) => Promise<string>;
   /** Make sure a container has a board, but only once it holds a task. What extraction calls. */
   ensureBoardFor: (collectionId: string, dataset?: string) => Promise<string>;
-  /** Add a column — bound to a state when given a slug, a local lane when not. */
-  addBoardColumn: (boardId: string, name: string, slug?: string) => Promise<void>;
   /** Give the space's own board a column for a newly named state. Host wiring, called by createTaskState. */
   addStateToSpaceBoard: (slug: string, name: string) => Promise<void>;
   /** Take a column off a board. The column record only — never the work positioned in it. */
   removeBoardColumn: (boardId: string, columnId: string) => Promise<void>;
-  /** Rename one column on this board. Its slug — its meaning — is untouched. */
-  renameBoardColumn: (columnId: string, name: string) => Promise<void>;
   /** The order this board reads its columns in. */
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   /** Record the order somebody dragged one column's cards into. */
@@ -647,14 +615,13 @@ export interface SpaceStore {
   root: Accessor<string>;
   /**
    * The records this space names by landmark, as name → id: `landmarks.canvas` is the space's canvas. A landmark
-   * the space never named is simply absent, and a template must handle that, since a space can
-   * switch template and a template must never assume what another set up.
+   * the space never named is simply absent.
+   *
+   * The host's own read, for deciding where content made on the space's canvas lives. A template
+   * reads the `SpaceLandmark` records with a query instead, which every host answers.
    */
   landmarks: Accessor<Record<string, string>>;
-  /**
-   * The landmarks have answered for the space on screen. Until then an absent landmark means "not
-   * known yet", not "none": gate a "there is no board" on this, never on `root`, which arrives first.
-   */
+  /** The landmarks have answered for the space on screen: an absent one means "none" rather than "not yet". */
   landmarksLoaded: Accessor<boolean>;
   /**
    * `root` has answered for the space on screen — the collection's id, or '' for a space with none.
@@ -719,15 +686,6 @@ export interface SpaceStore {
   /** Drop the theme pin for the space on screen, returning it to whatever would otherwise apply. */
   clearSpaceThemePin: () => Promise<void>;
   launchModule: (moduleId: string) => void;
-  createSignalType: (config: Partial<SignalType>) => Promise<void>;
-  /**
-   * Name a kind of connection this community makes — "contradicts", "came out of".
-   *
-   * The counterpart to `createSignalType`, and the middle tier between a free-text label and a
-   * relation declared on a model. A record rather than a schema change, so any member can propose
-   * the vocabulary; identified, so a query can filter on it and an edge style can key on it.
-   */
-  createRelationshipType: (config: Partial<RelationshipType>) => Promise<void>;
   /** Withdraw a signal type from use, or bring it back. Never removes the signals given with it. */
   setSignalTypeRetired: (signalTypeId: string, retired: boolean) => Promise<void>;
   /**
@@ -766,8 +724,6 @@ export interface SpaceStore {
   addTaskStateEvidence: (slug: string, requirement: { entity: string; via?: string; min?: number }) => Promise<void>;
   /** Take away the state's evidence requirement at that position in its `evidence`. */
   removeTaskStateEvidence: (slug: string, index: number) => Promise<void>;
-  /** How a task may move between this space's states — see `setTaskWorkflowRule`. */
-  taskWorkflowRule: Accessor<'' | 'next' | 'next-and-back'>;
   /**
    * Whether this space's task states ask for agreement — some state needs more than one approval, or
    * names whose approval counts. Where they do, a card dragged into such a state waits rather than
@@ -1321,7 +1277,6 @@ export function createSpaceStore(
       const space = mySpaces().find((s) => isSpaceSelf(s, ds));
       return {
         id: ds.id,
-        uuid: ds.id,
         // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
         name: space?.name || ds.name,
         description: space?.description ?? '',
@@ -2577,13 +2532,10 @@ export function createSpaceStore(
    * write check, once, for every write.
    */
   function reportOperation(what: string, fallback: string, error: unknown): void {
-    if (isOperationError(error) && error.code === 'refused') return;
-    if (isOperationError(error) && error.class === 'precondition') {
-      toastService.error(error.message);
-      return;
-    }
+    const message = operationFailureMessage(error, fallback);
+    if (!message) return;
     console.error(`SpaceStore: could not ${what}`, error);
-    toastService.error(fallback);
+    toastService.error(message);
   }
 
   /**
@@ -2712,22 +2664,6 @@ export function createSpaceStore(
   }
 
   /**
-   * Name a kind of reaction — `core.createSignalType`, which derives the slug, refuses one the space
-   * has, fixes a toggle's and a vote's range, and reads each mode as one number its own way. Only
-   * the fields a reaction type is made from are passed: a form may hold more.
-   */
-  async function createSignalType(config: Partial<SignalType>): Promise<void> {
-    const name = config?.name?.trim() || config?.slug?.trim();
-    if (!name) return;
-    try {
-      await runCore('createSignalType', { ...pick(config, SIGNAL_TYPE_PARAMS), name });
-    } catch (error) {
-      reportOperation('create a signal type', 'Could not add that reaction', error);
-      throw error;
-    }
-  }
-
-  /**
    * Withdraw a signal type from use, or bring it back — without touching what people gave.
    *
    * ## Why this is not a delete
@@ -2768,24 +2704,6 @@ export function createSpaceStore(
     } catch (error) {
       console.error('SpaceStore: could not change whether a signal type is retired', error);
       toastService.error(retired ? 'Could not retire that reaction' : 'Could not restore that reaction');
-    }
-  }
-
-  /**
-   * Name a kind of connection — `core.createRelationshipType`, deriving and checking its slug the
-   * way a signal type's is.
-   *
-   * The slug is what a template refers to when it cares about a specific kind — "draw
-   * contradictions in red" — because the display name belongs to the community and may change,
-   * where an identifier does not.
-   */
-  async function createRelationshipType(config: Partial<RelationshipType>): Promise<void> {
-    if (!config?.name?.trim()) return;
-    try {
-      await runCore('createRelationshipType', { ...pick(config, RELATIONSHIP_TYPE_PARAMS), name: config.name });
-    } catch (error) {
-      reportOperation('create a kind of connection', 'Could not add that kind of connection', error);
-      throw error;
     }
   }
 
@@ -3886,7 +3804,6 @@ export function createSpaceStore(
   });
 
   const myRoles = createMemo<string[]>(() => rolesOf(roleViews(), mePerson() ?? session.me()?.did));
-  const memberRoles = createMemo<Record<string, string[]>>(() => rolesByPerson(roleViews()));
 
   /** The `admin` role, when the space has none yet, and its creator's grant of it — see `Role`. */
   async function writeAdminGrant(dataset: DatasetProxy): Promise<void> {
@@ -5075,7 +4992,7 @@ export function createSpaceStore(
    * left pasting whatever they had before.
    */
   async function copyShareLink(uuid: string): Promise<void> {
-    const link = spaceList().find((s) => s.uuid === uuid)?.shareLink;
+    const link = spaceList().find((s) => s.id === uuid)?.shareLink;
     if (!link) return;
     if (await copyText(link)) toastService.success('Link copied');
     else toastService.error('Could not copy the link');
@@ -5089,7 +5006,7 @@ export function createSpaceStore(
    * server URL (local executor).
    */
   async function copyGuestLink(uuid: string): Promise<void> {
-    const link = spaceList().find((s) => s.uuid === uuid)?.guestLink;
+    const link = spaceList().find((s) => s.id === uuid)?.guestLink;
     if (!link) {
       toastService.error('Guest links require a hosted node');
       return;
@@ -6244,8 +6161,6 @@ export function createSpaceStore(
     applyTheme,
     clearSpaceThemePin,
     launchModule,
-    createSignalType,
-    createRelationshipType,
     setSignalTypeRetired,
     createTaskState,
     updateTaskState,
@@ -6253,7 +6168,6 @@ export function createSpaceStore(
     taskWorkflowEnabled,
     archivedWorkflows,
     setWorkflowArchived,
-    taskWorkflowRule,
     setTaskWorkflowRule,
     addTaskStateEvidence,
     removeTaskStateEvidence,
@@ -6273,7 +6187,6 @@ export function createSpaceStore(
     canAdministerCurrentSpace,
     roles: roleViews,
     myRoles,
-    memberRoles,
     rolesLoaded,
     createRole,
     updateRole,

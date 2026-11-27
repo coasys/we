@@ -236,7 +236,7 @@ export function createSignalTypeModal(options: CreateSignalTypeModalOptions): Sc
     discardWhen: { $: 'local.name || local.slug || local.description' },
     submitLabel: 'Create',
     submit: {
-      $invoke: 'spaceStore.createSignalType',
+      $invoke: 'ops.core.createSignalType',
       args: [
         {
           name: { $: 'local.name' },
@@ -247,7 +247,7 @@ export function createSignalTypeModal(options: CreateSignalTypeModalOptions): Sc
           /*
           No `aggregate`. The form never asked for one — it carried a hidden local pinned at `count`
           and posted it with every type, so a rating's own record said it should be read as a
-          headcount. The store derives it from the mode instead, which is the only answer this form
+          headcount. The operation derives it from the mode instead, which is the only answer this form
           has the information to give; a community that wants a median has a field nobody has built a
           picker for yet, and an unauthored value is worse than an absent one.
         */

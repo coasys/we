@@ -5,10 +5,14 @@ import { defineConfig } from 'vitest/config';
 
 // Tests that mount the real RouteStore over a real jsdom history — the same reason app-shell keeps
 // a second project: the node project resolves solid-js to its SSR build, where effects never run.
-const SOLID_TESTS = ['tests/navigation.test.tsx', 'tests/render.test.tsx'];
+const SOLID_TESTS = ['tests/navigation.test.tsx', 'tests/render.test.tsx', 'tests/profiles.test.tsx'];
 // The recorder is NOT a test: `pnpm record` runs it through vitest.config.record.ts, and it must
 // not execute here or `pnpm test` would rewrite the vectors it then compares.
-const RECORD_TESTS = ['tests/record-navigation.test.tsx', 'tests/record-render.test.tsx'];
+const RECORD_TESTS = [
+  'tests/record-navigation.test.tsx',
+  'tests/record-render.test.tsx',
+  'tests/record-profiles.test.tsx',
+];
 
 // The vectors pin src, not a built dist. The recorder's mounted RouteStore imports
 // @we/schema-shared by package name, and schema-shared's own src imports @we/expressions by name;

@@ -1,5 +1,5 @@
 import type { RouteSchema, SchemaNode, SchemaProp } from '@we/schema-shared';
-import { emptyNote } from '@we/template-kit';
+import { emptyNote, MEMBERS } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { exportTranscriptButton, liveDot } from './marks.ts';
@@ -221,11 +221,11 @@ const peoplePage = groupPage({
   path: '/people',
   title: 'People',
   icon: 'users',
-  empty: { when: '!count(spaceStore.members)', note: 'Nobody here yet.' },
+  empty: { when: `!count(${MEMBERS})`, note: 'Nobody here yet.' },
   cards: [
     {
       type: '$each',
-      props: { items: { $: 'spaceStore.members' }, as: 'person' },
+      props: { items: { $: MEMBERS }, as: 'person' },
       children: [
         tile({
           lead: {

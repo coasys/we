@@ -78,6 +78,12 @@ const BOARD = 'first(local.board)';
 const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did, only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null, onlyShow: local.boardOnlyShow })`;
 
 /**
+ * The states a column's heading is read against, as the column operations take them: a bound column
+ * given its state's own name stores no title, so its heading follows the vocabulary.
+ */
+const COLUMN_STATES = 'spaceStore.offeredTaskStates.map(s, { slug: s.slug, name: s.name })';
+
+/**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
  *
  * Read by the card for its faces and its assign menu. The board's filtering reads the same rows
@@ -592,7 +598,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
@@ -849,11 +855,11 @@ const renameModal: SchemaNode = formModal({
   size: 'sm',
   localState: { renameTitle: { type: 'string', initial: { $: `${CELL}.label` } } },
   children: [field({ name: 'renameTitle', label: 'Column name', placeholder: 'In review' })],
-  disabled: { $: '!local.renameTitle' },
+  disabled: { $: '!trim(local.renameTitle)' },
   submitLabel: 'Rename',
   submit: {
-    $invoke: 'spaceStore.renameBoardColumn',
-    args: [{ $: 'col.id' }, { $: 'local.renameTitle' }],
+    $invoke: 'ops.core.renameBoardColumn',
+    args: [{ column: { $: 'col.id' }, name: { $: 'local.renameTitle' }, states: { $: COLUMN_STATES } }],
     onSuccess: [{ $setLocal: 'renameOpen', value: false }],
   },
 });
@@ -1317,8 +1323,15 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                   size: 'xs',
                   width: '100%',
                   onClick: {
-                    $invoke: 'spaceStore.addBoardColumn',
-                    args: [opts.boardId, { $: 'state.name' }, { $: 'state.slug' }],
+                    $invoke: 'ops.core.addBoardColumn',
+                    args: [
+                      {
+                        board: opts.boardId,
+                        name: { $: 'state.name' },
+                        slug: { $: 'state.slug' },
+                        states: { $: COLUMN_STATES },
+                      },
+                    ],
                   },
                 },
                 children: [
@@ -1667,11 +1680,19 @@ function addColumnModal(opts: TaskBoardOptions): SchemaNode {
         placeholder: opts.lanesOnly ? 'In progress' : 'Waiting on Ana',
       }),
     ],
-    disabled: { $: '!local.columnName' },
+    disabled: { $: '!trim(local.columnName)' },
     submitLabel: 'Add column',
     submit: {
-      $invoke: 'spaceStore.addBoardColumn',
-      args: [opts.boardId, { $: 'local.columnName' }, { $: 'local.columnSlug' }],
+      $invoke: 'ops.core.addBoardColumn',
+      args: [
+        {
+          board: opts.boardId,
+          name: { $: 'local.columnName' },
+          // No slug is a lane; an empty one is sent as none rather than stored.
+          slug: { $: 'local.columnSlug ? local.columnSlug : null' },
+          states: { $: COLUMN_STATES },
+        },
+      ],
       onSuccess: [{ $setLocal: 'addColumnOpen', value: false }],
     },
   });

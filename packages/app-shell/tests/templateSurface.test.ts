@@ -183,7 +183,7 @@ describe('what the space tier can reach', () => {
       'spaceStore.currentSpace',
       'spaceStore.createPost',
       'spaceStore.upsertSignal',
-      'spaceStore.members',
+      'spaceStore.memberDids',
       'spaceStore.unreadNodeIds',
       'spaceStore.myMentions',
       'spaceStore.uploadFile',

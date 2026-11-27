@@ -30,6 +30,7 @@ import {
 } from '@we/template-kit';
 import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner, spaceSettingsPanel } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
+import { boardsView } from '@we/template-views';
 import {
   SHOWCASE_THEME_PRESETS,
   THEME_PRESETS,
@@ -2902,7 +2903,6 @@ const spaceSettingsRows = (): Scenario => {
   const [recording, setRecording] = createSignal(false);
   const spaceRow = () => ({
     id: 'space-1',
-    uuid: 'space-1',
     ...space(),
     avatar: '',
     kind: 'shared',
@@ -2962,6 +2962,117 @@ const spaceSettingsRows = (): Scenario => {
   };
 };
 
+/**
+ * A space's People page, read from records rather than from the store's view of them.
+ *
+ * The members are the space's DIDs joined to the profiles the host holds; the roles are the space's
+ * `Role` records and who holds one its `RoleGrant` records, a revoked grant held by nobody. Cy is a
+ * member whose profile has not arrived, and is not drawn until it does.
+ */
+const spacePeople = (): Scenario => ({
+  node: { type: 'Column', props: { width: '100%', height: '900px' }, children: [spaceSettingsPanel] },
+  tables: {
+    Role: [
+      { id: 'r-mod', slug: 'moderator', name: 'Moderator', description: 'Looks after posts' },
+      { id: 'r-admin', slug: 'admin', name: 'Admin', description: '' },
+    ],
+    RoleGrant: [
+      { id: 'g1', role: 'admin', agent: 'did:test:ann' },
+      { id: 'g2', role: 'moderator', agent: 'did:test:ann' },
+      { id: 'g3', role: 'moderator', agent: 'did:test:ben', revokedAt: '2026-11-01T00:00:00.000Z' },
+    ],
+  },
+  stores: {
+    datasetStore: { currentDataset: { id: 'space-1' } },
+    shellStore: { spaceSettingsTab: 'people' },
+    profileStore: {
+      profiles: [
+        { did: 'did:test:ann', name: 'Ann Okafor', avatar: '' },
+        { did: 'did:test:ben', name: 'Ben Ruiz', avatar: '' },
+      ],
+    },
+    spaceStore: {
+      mutedDids: [],
+      memberDids: ['did:test:ann', 'did:test:ben', 'did:test:cy'],
+      spaceList: [
+        {
+          id: 'space-1',
+          name: 'Riverside',
+          description: '',
+          avatar: '',
+          kind: 'shared',
+          isWeSpace: true,
+          loading: false,
+          canAdminister: true,
+          modules: [],
+          views: [],
+          usesSections: true,
+          location: null,
+        },
+      ],
+      spaceModuleSettings: [],
+      myModuleSettings: [],
+      agentModuleSettings: [],
+      policy: { loaded: true, preset: 'community', sentences: [] },
+    },
+  },
+});
+
+/**
+ * The Boards view's list, with the space's own board named by its `board` landmark — or with no
+ * landmark, where the list offers to make one.
+ */
+const boardsList = (landmarked: boolean): Scenario => ({
+  node: { type: 'Column', props: { width: '100%' }, children: [boardsView] },
+  tables: {
+    CollectionBlock: [
+      { id: 'b-space', kind: 'board', title: 'Riverside board', createdAt: '2026-11-01T00:00:00.000Z' },
+      { id: 'b-other', kind: 'board', title: 'Garden plans', createdAt: '2026-11-02T00:00:00.000Z' },
+    ],
+    SpaceLandmark: landmarked ? [{ id: 'l-board', name: 'board', node: 'b-space' }] : [],
+  },
+  stores: { spaceStore: { mutedDids: [] } },
+});
+
+/**
+ * Making a board from the Boards view, rendered as a space template is: the "New board" sheet calls
+ * `ops.core.createBoard` with one params object, and the board it answers with opens. The operation
+ * host here writes the board where the view will read it and says what it was asked.
+ */
+const boardsCreate = (): Scenario => {
+  const tables: Record<string, Record<string, unknown>[]> = {
+    CollectionBlock: [{ id: 'b-other', kind: 'board', title: 'Garden plans', createdAt: '2026-11-02T00:00:00.000Z' }],
+    SpaceLandmark: [],
+  };
+  return {
+    node: { type: 'Column', props: { width: '100%' }, children: [boardsView] },
+    tables,
+    bag: 'space',
+    stores: {
+      spaceStore: {
+        mutedDids: [],
+        offeredTaskStates: [
+          { id: 's-todo', slug: 'todo', name: 'To do' },
+          { id: 's-review', slug: 'review', name: 'In review' },
+          { id: 's-done', slug: 'done', name: 'Done' },
+        ],
+      },
+      ops: {
+        run: async (name: string, params?: Record<string, unknown>) => {
+          document.body.setAttribute('data-op', JSON.stringify([name, params]));
+          tables.CollectionBlock.push({
+            id: 'b-new',
+            kind: 'board',
+            title: params?.title,
+            createdAt: new Date().toISOString(),
+          });
+          return 'b-new';
+        },
+      },
+    },
+  };
+};
+
 /** A Flux message card, from the Flux view itself, for an author whose name is a long DID. */
 const fluxChannels = (): Scenario => {
   // The card: the Row that opens with the author's avatar.
@@ -3005,7 +3116,7 @@ const coasysTreeSection = (): Scenario => ({
     routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
     shellStore: { collapsedLanes: [] },
     spaceStore: {
-      currentSpace: { name: 'Community', description: 'A space for the people building it.', uuid: 'space-1' },
+      currentSpace: { name: 'Community', description: 'A space for the people building it.', id: 'space-1' },
       activeModules: [],
       firstScreenOpen: true,
     },
@@ -3092,4 +3203,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:unshrinkable-box': unshrinkableBox,
   'ds:folding-section': foldingSection,
   'space:settings-rows': spaceSettingsRows,
+  'space:people': spacePeople,
+  'boards:landmark': () => boardsList(true),
+  'boards:no-landmark': () => boardsList(false),
+  'boards:create': boardsCreate,
 };

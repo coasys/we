@@ -1386,7 +1386,7 @@ const deviceSection: SchemaNode = {
  */
 function navItem(label: string, icon: string, path: string): SchemaNode {
   // Matched on the first path segment, not the whole path, so a page with sub-routes keeps its nav
-  // entry lit — `/spaces/<uuid>` is still Spaces & data. Exact equality left the nav with nothing
+  // entry lit — `/spaces/space` is still Spaces & data. Exact equality left the nav with nothing
   // selected there, which reads as having navigated out of settings altogether.
   const selected =
     path === '/' ? { $: "routeStore.currentPath == '/'" } : expr`routeStore.segments[0] == ${path.slice(1)}`;
@@ -1585,7 +1585,7 @@ export const settingsTemplate: TemplateSchema = {
     },
     // Settings for one space, keyed by the row that was clicked rather than by where the agent is
     // standing — see `spaceSettingsPage`.
-    { path: '/spaces/:uuid', ...page([spaceSettingsPage]) },
+    { path: '/spaces/space', ...page([spaceSettingsPage]) },
     { path: '/modules', ...page([modulesSection]) },
     { path: '/camera', ...page([deviceSection]) },
     { path: '/ai', ...page([runtimeError, aiSection]) },

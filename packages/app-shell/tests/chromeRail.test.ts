@@ -32,7 +32,7 @@ function conditions(node: unknown, out: string[] = []): string[] {
   return out;
 }
 
-const IN_SPACE = 'datasetStore.currentDataset';
+const IN_SPACE = 'currentDataset';
 const TEMPLATE_ON_SCREEN = '!appStore.activeAppId && !shellStore.activeShellView';
 
 describe('the rail is gated on having contents', () => {

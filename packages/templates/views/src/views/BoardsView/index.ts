@@ -1,5 +1,15 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
-import { ANCHOR_ID, anchorBanner, anchorScope, emptyState, field, formModal, taskBoard } from '@we/template-kit';
+import {
+  ANCHOR_ID,
+  anchorBanner,
+  anchorScope,
+  emptyState,
+  field,
+  formModal,
+  landmark,
+  landmarksQuery,
+  taskBoard,
+} from '@we/template-kit';
 
 /**
  * Boards — this space's work, arranged.
@@ -45,7 +55,7 @@ import { ANCHOR_ID, anchorBanner, anchorScope, emptyState, field, formModal, tas
  * A marker could not stop two boards claiming it; one name resolves to one record, and the board
  * that loses a race is simply an ordinary one in the list.
  */
-const CANONICAL = `(${ANCHOR_ID.$} ? first(local.anchorRow).board.id : spaceStore.landmarks.board)`;
+const CANONICAL = `(${ANCHOR_ID.$} ? first(local.anchorRow).board.id : ${landmark('board')})`;
 
 /** The boards to choose from. Anchored, this is one container's; otherwise the space's. */
 const boardsQuery = {
@@ -64,16 +74,23 @@ const createModal: SchemaNode = formModal({
   size: 'sm',
   localState: { boardTitle: { type: 'string', initial: '' } },
   children: [field({ name: 'boardTitle', label: 'What is this board for?', placeholder: 'Sprint 12' })],
-  disabled: { $: '!local.boardTitle' },
+  disabled: { $: '!trim(local.boardTitle)' },
   submitLabel: 'Create board',
   /*
     The anchor is passed as the parent, so a board made while the view is narrowed belongs to the
     container it was made in — otherwise it would be created into a list that does not list it. It
-    opens straight away: the new id comes back as the action's own result.
+    opens straight away: the new id comes back as the operation's own result. Its columns are the
+    states the community offers, in the community's order.
   */
   submit: {
-    $invoke: 'spaceStore.createBoard',
-    args: [{ $: 'local.boardTitle' }, ANCHOR_ID],
+    $invoke: 'ops.core.createBoard',
+    args: [
+      {
+        title: { $: 'local.boardTitle' },
+        states: { $: 'spaceStore.offeredTaskStates.map(s, s.slug)' },
+        parent: ANCHOR_ID,
+      },
+    ],
     onSuccess: [
       { $setLocal: 'createBoardOpen', value: false },
       { $setLocal: 'boardId', value: { $: 'result' } },
@@ -135,7 +152,7 @@ const boardList: SchemaNode = {
     {
       type: '$if',
       props: {
-        condition: { $: `!(${ANCHOR_ID.$}) && !spaceStore.landmarks.board` },
+        condition: { $: `!(${ANCHOR_ID.$}) && !${landmark('board')}` },
         then: {
           type: 'we-button',
           props: {
@@ -257,7 +274,7 @@ export const boardsView: TemplateSchema = {
   /*
     The boards to choose from, and which of them their container calls its own.
 
-    The space's own board is `spaceStore.landmarks.board`. `anchorRow` is the same question for the
+    The space's own board is its `board` landmark, read from `spaceLandmarks`. `anchorRow` is the same question for the
     container a narrowed view is anchored to, and is only *read* while anchored: an
     unresolved `where` is pruned rather than sent, so unanchored it answers with an arbitrary
     collection, which the `ANCHOR_ID &&` guard below keeps harmless.
@@ -265,6 +282,7 @@ export const boardsView: TemplateSchema = {
   $queries: {
     boards: boardsQuery,
     anchorRow: { entity: 'CollectionBlock', where: { id: ANCHOR_ID }, include: { board: true }, limit: 1 },
+    ...landmarksQuery(),
   },
   children: [
     {

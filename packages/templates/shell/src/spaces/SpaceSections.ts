@@ -145,7 +145,7 @@ const sectionRow: SchemaNode = {
                 // the event exists. Same trap as the module switches.
                 onChange: {
                   $invoke: 'spaceStore.setViewVisible',
-                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
+                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.id' }],
                 },
               },
             },
@@ -164,7 +164,7 @@ const sectionRow: SchemaNode = {
                 disabled: { $: '!space.canAdminister' },
                 onChange: {
                   $invoke: 'spaceStore.setViewEnabled',
-                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.uuid' }],
+                  args: [{ $: 'view.id' }, { $: 'event.detail' }, { $: 'space.id' }],
                 },
               },
             },
@@ -248,7 +248,7 @@ const sectionsCard: SchemaNode = {
         locked: { $: '!space.canAdminister' },
         // `$arg.detail` is where we-sortable puts the reordered ids. The event is `reorder`, which
         // Solid reaches from `onReorder` by lowercasing.
-        onReorder: { $invoke: 'spaceStore.reorderViews', args: [{ $: 'arg.detail' }, { $: 'space.uuid' }] },
+        onReorder: { $invoke: 'spaceStore.reorderViews', args: [{ $: 'arg.detail' }, { $: 'space.id' }] },
       },
       children: [
         {

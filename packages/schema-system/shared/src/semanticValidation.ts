@@ -21,6 +21,7 @@ import { expandDefinitions, REF_TYPE, type RefProps, unresolvedRef } from './def
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
+import { describeHostOnly, hostOnlyUses } from './profiles';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
@@ -113,6 +114,11 @@ export type ValidationContext = {
     string,
     Map<string, { key: string; categories: string[]; names: Map<string, string[]>; bare?: boolean }>
   >;
+  /**
+   * Report the store members a schema uses outside every capability profile — see
+   * {@link withHostOnlyReport}. Off unless asked for.
+   */
+  reportHostOnly?: boolean;
 };
 
 // ── Constants ──────────────────────────────────────────────────────
@@ -2789,11 +2795,25 @@ export function withOwnModule(context: ValidationContext, moduleId: string): Val
  * app and asks its own questions where it needs to. So a chrome dialog confirming a delete is the
  * only question, and is not warned about. See {@link checkSelfConfirmed}.
  */
+/**
+ * The same context, reporting every store member a schema uses that no capability profile holds:
+ * one `info` per schema, naming the neutral equivalent where there is one.
+ *
+ * Such a member works in WE and nowhere else, which is worth knowing about a template meant to
+ * travel and is no fault in one that is not, so it is advice and off by default. The schema CLI asks
+ * for it; an editing session that refuses a template for any new issue does not.
+ */
+export function withHostOnlyReport(context: ValidationContext): ValidationContext {
+  return { ...context, reportHostOnly: true };
+}
+
 export function asHostChrome(context: ValidationContext): ValidationContext {
   return { ...context, hostConfirmed: undefined };
 }
 
 export function validateSemantic(schema: unknown, context: ValidationContext): ValidationResult {
+  // The host's own members, before any the schema declares for itself below.
+  const hostMembers = context.storeMembers;
   // If the schema declares custom stores/components in meta, extend the known sets for this validation
   // meta.stores supports two formats:
   //   string[]  — just declares store names exist (original behavior)
@@ -2954,6 +2974,15 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
       }
       if (value && typeof value === 'object') walkNode(value, `meta.recordViews.${key}`, context, state, errors);
     }
+  }
+
+  /*
+    What this schema needs of a host beyond the profiles, said once for the whole schema: a host's
+    own chrome names hundreds of such members, and each is advice rather than a fault.
+  */
+  if (context.reportHostOnly) {
+    const uses = hostOnlyUses(schema, hostMembers);
+    if (uses.length) errors.push({ path: '', message: describeHostOnly(uses), severity: 'info' });
   }
 
   return {

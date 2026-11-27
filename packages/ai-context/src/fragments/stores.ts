@@ -5,13 +5,14 @@
  * `storeEntries` is the structured source of truth; the `stores` text is derived from it.
  */
 
+import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, PROFILE_MEMBERS } from '@we/schema-shared';
+
 import type { StoreEntry } from '../types.js';
 
 export const storeEntries: StoreEntry[] = [
   {
     name: 'sessionStore',
     state: {
-      me: { type: 'object', properties: ['did', 'perspective', 'directMessageLanguage'] },
       bootState: { type: 'string' },
       signInStep: { type: 'string' },
       bootError: { type: 'string' },
@@ -427,7 +428,7 @@ export const storeEntries: StoreEntry[] = [
       spaceList: {
         type: 'array',
         properties: [
-          'uuid',
+          'id',
           'name',
           'description',
           'avatar',
@@ -448,11 +449,7 @@ export const storeEntries: StoreEntry[] = [
       },
       creatingSpace: { type: 'boolean' },
       orderedSidebarItems: { type: 'array', properties: ['uuid', 'name', 'avatar', 'spaceId'] },
-      memberDids: { type: 'array', properties: ['did'] },
-      members: {
-        type: 'array',
-        properties: ['did', 'firstName', 'lastName', 'handle', 'bio', 'avatar', 'coverImage', 'location'],
-      },
+      memberDids: { type: 'array' },
       spaceDefaultTemplateId: { type: 'string' },
       spaceDefaultThemeId: { type: 'string' },
       currentSpace: { type: 'object', model: 'Space' },
@@ -493,12 +490,9 @@ export const storeEntries: StoreEntry[] = [
       root: { type: 'string' },
       rootLoaded: { type: 'boolean' },
       firstScreenOpen: { type: 'boolean' },
-      landmarks: { type: 'object' },
-      landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
-      taskWorkflowRule: { type: 'string' },
       involvementTypes: {
         type: 'array',
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
@@ -508,9 +502,7 @@ export const storeEntries: StoreEntry[] = [
         properties: ['id', 'name', 'slug', 'semantic', 'reflexive', 'appliesTo', 'icon', 'color', 'retired'],
       },
       involvementTypesLoaded: { type: 'boolean' },
-      roles: { type: 'array', properties: ['id', 'slug', 'name', 'description', 'holders'] },
       myRoles: { type: 'array' },
-      memberRoles: { type: 'object' },
       rolesLoaded: { type: 'boolean' },
       policy: { type: 'object', properties: ['loaded', 'preset', 'permissions', 'frozen', 'me', 'roles', 'sentences'] },
       unreadNodeIds: { type: 'array' },
@@ -526,11 +518,8 @@ export const storeEntries: StoreEntry[] = [
       'createPost',
       'updatePost',
       'deleteCollection',
-      'createBoard',
       'openBoardFor',
-      'addBoardColumn',
       'removeBoardColumn',
-      'renameBoardColumn',
       'reorderBoardColumns',
       'arrangeColumn',
       'moveCardToColumn',
@@ -539,7 +528,6 @@ export const storeEntries: StoreEntry[] = [
       'updateSpaceMeta',
       'setSpaceDefaultTemplate',
       'setSpaceDefaultTheme',
-      'createSignalType',
       'setSignalTypeRetired',
       'createTaskState',
       'updateTaskState',
@@ -888,7 +876,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   sessionStore: {
     state: {
       client: 'the backend client handle | undefined',
-      me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
         "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
@@ -1441,14 +1428,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — root has answered for the space on screen. Until then an empty root is not yet an answer, so gate anything that compares an address with root on it — { $: 'spaceStore.rootLoaded' } around an $if on `channel == spaceStore.root` — or the wrong branch mounts, reads, and is torn down when root arrives",
       firstScreenOpen:
         "boolean — the first screen after boot is up: the Feed's first page drawn, or the screen drawn with no Feed on it. True from then on. Put it as the `when` of a $queries read the opening screen does not draw (a sidebar's list) so the read starts after that screen rather than beside it — { when: { $: 'spaceStore.firstScreenOpen' } }",
-      landmarks:
-        "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
-      landmarksLoaded:
-        "boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first",
       starterChoices:
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
-      autoInterpret:
-        'boolean — whether a NEW collection here (a call, a channel) starts out interpreted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoInterpretFor. Readable by every member; writing it is space-settings',
       spaceModuleSettings:
         "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
       myModuleSettings:
@@ -1464,7 +1445,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
-        "{ id, uuid, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `uuid` is the dataset id, so it keys navigation and settings whether or not a Space record exists. `id` is the same id as the row's identity, which is what keeps a row drawn over the list in place while its fields change. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
+        "{ id, name, description, avatar, kind: 'shared' | 'personal' | 'foreign', isWeSpace, loading, canAdminister }[] — one row per joined dataset the agent can act on, ordered like the sidebar and excluding the system datasets. Includes datasets that are not WE spaces (kind 'foreign', isWeSpace false), which are waiting to be initialized. `loading` is true for the first seconds of a boot while a row's Space record has not been read yet — then `isWeSpace` is false without meaning the dataset is from another app, so show a placeholder rather than the initialize state. `id` is the dataset id, so it keys navigation and settings whether or not a Space record exists, and it is the row's identity, which keeps a row drawn over the list in place while its fields change. `sharing` is 'sharing' while a new shared space is still being shared (it is usable meanwhile), 'failed' when that did not work — `shareError` says why, and shareSpace tries again — and '' otherwise; a shared space has a `shareLink`",
       creatingSpace: 'boolean (true while a new space is being created)',
       joiningSpace:
         "string — the shared id of the space a join is running for, '' when none is. The id rather than a flag so a list can spin only the row being joined; a gate compares it against its own route segment. Stays set for the whole join, which outlives the network call that starts it",
@@ -1474,13 +1455,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open',
       orderedSidebarItems:
         'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
-      memberDids: 'string[] — DIDs of all members in the current space (includes own DID)',
-      members: 'AgentProfileSummary[] — cached profiles for all memberDids',
+      memberDids:
+        'string[] — DIDs of all members in the current space (includes own DID). Their profiles are profileStore.profiles: the people of the space, drawn, are spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m) — bind it once where a list needs it, and look one person up by DID with find(profileStore.profiles, { did })',
       spaceDefaultTemplateId: "string — the current space's default template ID (empty string when no space is active)",
       spaceDefaultThemeId:
         "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
       currentSpace:
-        'Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, plus id/author/createdAt)',
+        "Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, taskWorkflowRule, autoInterpret, plus id/author/createdAt). taskWorkflowRule is '' | 'next' | 'next-and-back': how a task may move between the space's states — anywhere, on to the next only, or on and back one; anything but '' runs the states as a workflow, so say so beside a picker of states. autoInterpret says whether a NEW collection here starts out interpreted (a conversation keeps its own answer, autoInterpretFor). The records the space names as its landmarks (its canvas, its board) are SpaceLandmark records { name, node }: bind $queries { spaceLandmarks: { entity: 'SpaceLandmark' } } and read find(local.spaceLandmarks, { name: 'board' }).node, gating a 'no board yet' on local.spaceLandmarksLoaded",
       foreignSpacePrefill:
         '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found',
       enabledModules:
@@ -1495,8 +1476,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the space has been asked for its states. An empty list is otherwise indistinguishable from "not fetched yet"; gate an empty state on it',
       taskWorkflowEnabled:
         'boolean — this space\u2019s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else',
-      taskWorkflowRule:
-        "'' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states",
       archivedWorkflows:
         'string[] — the names of the workflows this space has put away. An archived workflow keeps its records, which still show and can still finish, but is not offered for starting on anything new; workflowStore.workflows marks each one `archived`',
       involvementTypes:
@@ -1504,11 +1483,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       offeredInvolvementTypes:
         '{ id, name, slug, semantic, reflexive, appliesTo, icon, color, retired }[] — the same list without the withdrawn ones. What an assign menu or an RSVP control should offer',
       involvementTypesLoaded: 'boolean — the space has been asked for its kinds of involvement',
-      roles:
-        "{ id, slug, name, description, holders }[] — the standings people hold across this space, admin first: its Role records, with `holders` the people granted each. Not the same thing as an involvement kind, which is a part in one record; a role is a part in the space. `slug` is what a grant and a rule name it by. `admin` is the role administering the space takes. A role a grant names that no record describes is listed under its slug, so nobody's standing is hidden",
-      myRoles: "string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`",
-      memberRoles:
-        'Record<did, string[]> — by person, the slugs of the roles they hold, for a badge beside a member: `spaceStore.memberRoles[member.did] ?? []`. A person here is who a member speaks for, so a member on two devices holds one set of roles',
+      myRoles:
+        "string[] — the slugs of the roles the viewer holds here: `'moderator' in spaceStore.myRoles`. Everybody else's are the space's records: its roles are Role records { slug, name, description }, and who holds one its RoleGrant records { role, agent, revokedAt }, held until revokedAt is set. Bind $queries { roles: { entity: 'Role' }, roleGrants: { entity: 'RoleGrant' } } and read a member's slugs as local.roleGrants.filter(g, !g.revokedAt && g.agent == member.did).map(g, g.role). A role is a part in the space, not an involvement kind, which is a part in one record",
       rolesLoaded:
         'boolean — the space has been asked for its roles. An empty `roles` before then is not yet an answer',
       policy:
@@ -1568,8 +1544,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
       setViewVisible:
         '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
-      createRelationshipType:
-        '(config: Partial<RelationshipType>): names a kind of connection this community makes — "contradicts", "came out of". The counterpart to createSignalType; slug derived from name if blank',
       removeSpaceFromGlobal:
         "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
       createSpace:
@@ -1587,16 +1561,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present',
       deleteCollection:
         '(collectionId: string): permanently deletes a CollectionBlock and everything inside it, recursively. Kind-agnostic — a post, a call record and a board are the same shape, so this is the one delete for all of them',
-      createBoard:
-        '(title: string, parentId?: string, options?: { gathers?: string }): makes a board \u2014 a CollectionBlock whose ordered children are its columns, one per state the community uses. Returns its id. Pass parentId to put the board inside another collection (a call\u2019s record), which is where an anchored Boards view lists it. A board made this way shows only what is put on it; openBoardFor makes the ones that gather',
       openBoardFor:
         '(anchorId?: string, title?: string, dataset?: string): the board for a container \u2014 one call\u2019s, or the space\u2019s own \u2014 making it if nobody has yet. Returns its id either way. The board it makes gathers from that container, a fact the board carries in its `gathers` relation, so anything rendering it needs only the id. Call it from a click rather than on mount: creating a board writes records into a space everybody shares',
-      addBoardColumn:
-        '(boardId: string, name: string, slug?: string): adds a column. **With a slug** it IS that state on this board \u2014 matching work arrives on its own and dropping a card there changes the card\u2019s state everywhere. **Without one** it is a local lane: nothing arrives by itself and a card put there is positioned rather than reclassified. A bound column given its state\u2019s own name stores no title, so its heading follows the vocabulary when the state is renamed',
       removeBoardColumn:
         '(boardId: string, columnId: string): takes a column off a board \u2014 the column record only, never the work in it. A column arranges its cards rather than owning them, so nothing that walks children can reach them; on a made board they are handed to the board itself so they stay on it. They keep their state, so they reappear in another column bound to it or in the unplaced column',
-      renameBoardColumn:
-        '(columnId: string, name: string): renames one column on this board. Its slug \u2014 its meaning \u2014 is untouched; renaming a state everywhere is Settings \u2192 Vocabulary',
       reorderBoardColumns:
         '(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable\u2019s onReorder and pass { $: "arg.detail" }',
       arrangeColumn:
@@ -1607,12 +1575,10 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
       updateSpaceImage:
         '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
-      createSignalType:
-        '(config: Partial<SignalType>): creates a new signal type in the community; slug auto-derived from name if blank',
       setSignalTypeRetired:
         '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
       createTaskState:
-        '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
+        '(config: { name, semantic?, color?, icon? }): names a state this community\u2019s work moves through — "Blocked", "In review". The counterpart to ops.core.createSignalType one concept along. A slug the space already has is refused. The space\u2019s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards',
       updateTaskState:
         '(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, evidence? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind\u2019s slug, or empty) set what agreement the state asks for, and `evidence` ({ entity, via?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space\u2019s states into a workflow, see taskWorkflowEnabled. By slug, which is what a task and a screen both hold',
       setTaskStateRetired:
@@ -1622,7 +1588,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       withdrawTaskMove:
         '(taskId: string): takes back this agent\u2019s own vote on the move a task is waiting on, never anybody else\u2019s. Offer it where arrangedBoard(…).workflow[card.id].mine',
       setTaskWorkflowRule:
-        "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — see taskWorkflowRule. Only whoever administers the space; rejects otherwise",
+        "(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — read it as currentSpace.taskWorkflowRule ('' when unset). Only whoever administers the space; rejects otherwise",
       addTaskStateEvidence:
         "(slug: string, evidence: { entity, via?, min? }): something that must be there before a task enters the state — at least `min` of `entity`, held by the task through the relation `via` ('responses' for what was made in response to it), or anywhere when `via` is empty. `entity` is 'comment', 'call', 'task', 'file', 'link' or 'image' — a comment is a reply post, not the text inside one — or an entity name. The first evidence requirement turns the space's states into a workflow",
       removeTaskStateEvidence:
@@ -2396,6 +2362,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
     'Stores provide state (readable values) and actions (methods) for dynamic logic in schemas.',
     'Read state in an expression ({ "$": "storeName.member" }) and call actions with $invoke.',
     'For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).',
+    ...profilesIntro(),
   ];
 
   for (const entry of entries) {
@@ -2414,22 +2381,55 @@ export function generateStoresText(entries: StoreEntry[]): string {
     lines.push(`${storeName}:`);
 
     lines.push('- State:');
-    for (const key of Object.keys(entry.state)) {
+    for (const key of profileFirst(entry.name, Object.keys(entry.state))) {
       const typeDesc = desc.state[key];
       if (typeDesc === undefined) undescribedMembers.push(`${entry.name}.${key}`);
-      lines.push(`  - ${key}: ${typeDesc ?? 'unknown'}`);
+      lines.push(`  - ${memberMark(entry.name, key)}${key}: ${typeDesc ?? 'unknown'}${hostOnlyNote(entry.name, key)}`);
     }
 
     lines.push('- Actions:');
-    for (const key of entry.actions) {
+    for (const key of profileFirst(entry.name, entry.actions)) {
       const sig = desc.actions[key];
       if (sig === undefined) undescribedMembers.push(`${entry.name}.${key}()`);
-      lines.push(`  - ${key}${sig ?? '(): unknown'}`);
+      lines.push(`  - ${memberMark(entry.name, key)}${key}${sig ?? '(): unknown'}${hostOnlyNote(entry.name, key)}`);
     }
   }
 
   return lines.join('\n');
 }
+
+/*
+  The capability profiles, said before any store so a model reaches for them first.
+
+  The intro is the part of this section every lookup carries, whichever stores it asks for, so it
+  holds the profiles whole: a model choosing between two members of different stores has to see both
+  profiles to know which one travels. A member's own entry repeats its profile as a mark.
+*/
+function profilesIntro(): string[] {
+  return [
+    '',
+    'Capability profiles. A member listed with [navigation], [view-state], [presence], [identity] or [space-settings] belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.',
+    ...CAPABILITY_PROFILES.map(
+      (profile) => `- ${profile.id} ${profile.version}: ${profile.members.map((member) => member.path).join(', ')}`,
+    ),
+  ];
+}
+
+/** Profile members first, in the store's own order, then the rest in theirs. */
+function profileFirst(store: string, keys: string[]): string[] {
+  const inProfile = (key: string) => PROFILE_MEMBERS.has(`${store}.${key}`);
+  return [...keys.filter(inProfile), ...keys.filter((key) => !inProfile(key))];
+}
+
+const memberMark = (store: string, key: string): string => {
+  const held = PROFILE_MEMBERS.get(`${store}.${key}`);
+  return held ? `[${held.profile.id}] ` : '';
+};
+
+const hostOnlyNote = (store: string, key: string): string => {
+  const instead = HOST_ONLY_EQUIVALENTS[`${store}.${key}`];
+  return instead ? ` (WE-host-only; use ${instead} instead)` : '';
+};
 
 /**
  * Members that rendered as `unknown` — reachable from a schema, and with nothing saying what they do.

@@ -304,7 +304,7 @@ export function referencedRoots(expr: Expr): Set<string> {
 }
 
 /**
- * Dotted paths read from a root — `spaceStore.members`, `local.search`, `item.author.did`.
+ * Dotted paths read from a root — `spaceStore.memberDids`, `local.search`, `item.author.did`.
  *
  * Only the static prefix: `a.b[c].d` reports `a.b`, since `c` is not known until evaluation. What
  * `templateSurface`'s walker needs to classify a store reference, and what the checker needs to

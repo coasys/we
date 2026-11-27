@@ -58,9 +58,9 @@ export interface InvolvementMenuOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.offeredInvolvementTypes`. */
   types?: Kind[] | null;
-  /** `spaceStore.members`. */
-  members?: Member[] | null;
-  /** `profileStore.profiles`, for somebody who holds a part and is no longer a member. */
+  /** Who is in the space, by DID — `spaceStore.memberDids`. */
+  members?: string[] | null;
+  /** `profileStore.profiles`: who each member is, and somebody who holds a part and is no longer one. */
   profiles?: Member[] | null;
   /** The viewer's DID. */
   me?: string | null;
@@ -92,9 +92,13 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
   }).byNode[node];
   const holdersOf = (slug: string) => (on?.people ?? []).filter((p) => p.kind === slug).map((p) => p.did);
 
-  const members = new Map<string, Member>();
-  for (const member of asRows<Member>(options?.members)) if (member?.did) members.set(member.did, member);
   const profiles = new Map(asRows<Member>(options?.profiles).map((p) => [p.did, p]));
+  // A member is offered once their profile has arrived, as the space's people are listed elsewhere.
+  const members = new Map<string, Member>();
+  for (const did of asRows<string>(options?.members)) {
+    const profile = typeof did === 'string' ? profiles.get(did) : undefined;
+    if (profile) members.set(did, profile);
+  }
   // Somebody holding a part who has since left is still somebody the menu has to be able to untick.
   for (const person of on?.people ?? []) {
     if (!members.has(person.did)) members.set(person.did, profiles.get(person.did) ?? { did: person.did });

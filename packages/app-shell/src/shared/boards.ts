@@ -117,25 +117,12 @@ export interface BoardWorkflow {
   explain?: (from: string, to: string, outcome: TaskMoveOutcome) => string | null;
 }
 
-export interface CreateBoardOptions {
-  /** The dataset to write into; the space on screen when omitted. */
-  dataset?: string;
-  /**
-   * What the board draws its work from — a container's record id, or the Space record's for the
-   * space's own board. Omit for a board that shows only what somebody puts on it.
-   */
-  gathers?: string;
-}
-
 /** The board actions, as the store exposes them. */
 export interface BoardActions {
-  createBoard: (title: string, parentId?: string, options?: CreateBoardOptions) => Promise<string>;
   openBoardFor: (anchorId?: string, title?: string, dataset?: string) => Promise<string>;
   ensureBoardFor: (collectionId: string, dataset?: string) => Promise<string>;
-  addBoardColumn: (boardId: string, name: string, slug?: string) => Promise<void>;
   addStateToSpaceBoard: (slug: string, name: string) => Promise<void>;
   removeBoardColumn: (boardId: string, columnId: string) => Promise<void>;
-  renameBoardColumn: (columnId: string, name: string) => Promise<void>;
   reorderBoardColumns: (boardId: string, orderedIds: string[]) => Promise<void>;
   arrangeColumn: (columnId: string, orderedIds: string[], columnOrder?: string[]) => Promise<void>;
   moveCardToColumn: (
@@ -180,60 +167,6 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   ];
   /** The states as an operation reads a column's title against them. */
   const statesArg = () => offeredStates().map(({ slug, name }) => ({ slug, name }));
-
-  /**
-   * Make a board, with a column for each state the community uses.
-   *
-   * A `CollectionBlock` like a call or a notes collection, so it inherits comments, signals, the
-   * feed and the rest — and `mode: 'feed'` rather than `'document'`, which is the one field that
-   * must be right. `reconcileBlocks` refuses anything not `'document'` precisely because running it
-   * over a feed deletes every child the editing agent's tree omits, and on a shared board that is
-   * everyone else's cards.
-   *
-   * ## The columns are records, and they are written now rather than lazily
-   *
-   * Written at creation rather than materialised on the first drag, which was the alternative: lazy
-   * creation means two members dragging at the same moment both find no structure and both make
-   * one, and it means the first drag anybody makes rebuilds the column list under them —
-   * `taskStates` is a memo returning fresh objects and `<For>` is reference-keyed, so every column
-   * would remount and re-issue its subscription. Creating a board is already a deliberate act by one
-   * person; doing the work there costs one round trip and avoids both.
-   *
-   * A state named *later* reaches a board two ways: the space's own board gains a column for it the
-   * moment it is named (see `addStateToSpaceBoard`), and any other board offers one from its
-   * Unplaced column the first time work in that state shows up there.
-   *
-   * `parentId` puts the board inside another collection — a call's record, so the board belongs to
-   * the gathering it came out of. `gathers` says what it draws from; which board is the *canonical*
-   * one for a container is the container's `board` relation, set by `openBoardFor`. A call may hold
-   * any number of boards, all of them its children; one of them is the one it points at.
-   *
-   * One transaction, so nobody sees a board with no columns between the writes.
-   *
-   * ## The columns are made first, and handed to the board as it is created
-   *
-   * Not written onto it afterwards. A record created in a batch cannot be read back until the batch
-   * commits — the executor stages it out of every query — and a relation write by id starts with
-   * exactly that read. So `setRelation(board.id, 'children', …)` inside this transaction found no
-   * board, did nothing, and said nothing: every board came out pointed at by its call and holding no
-   * columns, while three column records sat in the space with nothing pointing at them. The columns
-   * themselves are only *named* by the board's create, never read, so making them first is safe.
-   */
-  async function createBoard(title: string, parentId?: string, options?: CreateBoardOptions): Promise<string> {
-    const p = dataset(options?.dataset);
-    if (!p || !title.trim()) return '';
-    try {
-      return await run<string>(
-        'core.createBoard',
-        { title, states: offeredSlugs(), parent: parentId, gathers: options?.gathers },
-        p,
-      );
-    } catch (error) {
-      console.error('SpaceStore: could not create board', error);
-      notify('Could not create that board');
-      return '';
-    }
-  }
 
   /**
    * The board for a container — one call's, or the space's own — making it if nobody has yet.
@@ -306,31 +239,6 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   }
 
   /**
-   * Add a column to a board — one bound to a state, or a lane of this board's own.
-   *
-   * `slug` is the whole difference, and it is two different promises:
-   *
-   * - **With one**, the column *is* that state on this board. Work in that state arrives on its own,
-   *   including work an interpretation pass wrote while nobody was looking, and dropping a card there
-   *   says the card is in that state — everywhere, on every board.
-   * - **Without one**, it is a local lane. Nothing arrives by itself, which is the price of claiming
-   *   no shared meaning, and a card put there is positioned rather than reclassified.
-   *
-   * So the caller says which, rather than this guessing from whether the name happens to match a
-   * state. A lane that turns out to matter is promoted by naming it in the space's vocabulary.
-   */
-  async function addBoardColumn(boardId: string, name: string, slug = ''): Promise<void> {
-    const p = dataset();
-    if (!p || !boardId || (!name.trim() && !slug)) return;
-    try {
-      await run('core.addBoardColumn', { board: boardId, name, slug: slug || undefined, states: statesArg() }, p);
-    } catch (error) {
-      console.error('SpaceStore: could not add that column', error);
-      notify('Could not add that column');
-    }
-  }
-
-  /**
    * Give the space's own board a column for a state, if it has a board and lacks one.
    *
    * Called when a state is named, so Everything — the catch-all — keeps up with the vocabulary
@@ -384,26 +292,6 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     } catch (error) {
       console.error('SpaceStore: could not remove that column', error);
       notify('Could not remove that column');
-    }
-  }
-
-  /**
-   * Rename one column, on this board.
-   *
-   * The label only — the slug it binds to, which is its meaning, is untouched. So two boards may
-   * call one state different things, which is a presentation difference and not a disagreement:
-   * both still write the same `status`, and `semantic` still answers "is this outstanding" for
-   * either. Renaming what a state *is* called everywhere is Settings → Vocabulary — and a bound
-   * column renamed back to its state's own name stores nothing, so it follows the vocabulary again.
-   */
-  async function renameBoardColumn(columnId: string, name: string): Promise<void> {
-    const p = dataset();
-    if (!p || !columnId || !name.trim()) return;
-    try {
-      await run('core.renameBoardColumn', { column: columnId, name, states: statesArg() }, p);
-    } catch (error) {
-      console.error('SpaceStore: could not rename that column', error);
-      notify('Could not rename that column');
     }
   }
 
@@ -707,13 +595,10 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
   }
 
   return {
-    createBoard,
     openBoardFor,
     ensureBoardFor,
-    addBoardColumn,
     addStateToSpaceBoard,
     removeBoardColumn,
-    renameBoardColumn,
     reorderBoardColumns,
     arrangeColumn,
     moveCardToColumn,

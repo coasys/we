@@ -256,7 +256,7 @@ export function createBundleStore(
    * for it and for no other.
    */
   const isSetUpIn = (source: Pick<SetUpSource, 'recordTypes' | 'sections'>, spaceId: string) => {
-    const row = spacesYouRun().find((r) => r.uuid === spaceId);
+    const row = spacesYouRun().find((r) => r.id === spaceId);
     if (!row) return false;
     const enabled = new Set(row.views.filter((view) => view.enabled).map((view) => view.id));
     if (!source.sections.every((id) => enabled.has(id))) return false;
@@ -267,7 +267,7 @@ export function createBundleStore(
 
   const setUpState = (source: SetUpSource): InstalledBundleView['setUp'] => {
     if (!needsSpace(source) || !spacesYouRun().length) return 'none';
-    return spacesYouRun().every((row) => isSetUpIn(source, row.uuid)) ? 'done' : 'available';
+    return spacesYouRun().every((row) => isSetUpIn(source, row.id)) ? 'done' : 'available';
   };
 
   const installed = createMemo<InstalledBundleView[]>(() => [
@@ -309,14 +309,14 @@ export function createBundleStore(
     const ticked = new Set(chosen());
     const here = datasetStore.currentDataset()?.id;
     return spacesYouRun().map((row) => {
-      const done = isSetUpIn(about, row.uuid);
+      const done = isSetUpIn(about, row.id);
       return {
-        id: row.uuid,
+        id: row.id,
         name: row.name,
         avatar: row.avatar,
-        chosen: !done && ticked.has(row.uuid),
+        chosen: !done && ticked.has(row.id),
         done,
-        here: row.uuid === here,
+        here: row.id === here,
       };
     });
   });
@@ -324,7 +324,7 @@ export function createBundleStore(
   /** The space on screen, ticked to start with when it is one this agent runs: where they asked from. */
   const startingChoice = () => {
     const here = datasetStore.currentDataset()?.id;
-    return here && spacesYouRun().some((row) => row.uuid === here) ? [here] : [];
+    return here && spacesYouRun().some((row) => row.id === here) ? [here] : [];
   };
 
   const toggleSpace = (spaceId: string) =>
@@ -568,7 +568,7 @@ export function createBundleStore(
 
   /** Add a bundle's record types to one space this agent runs, copy its sections in, and switch them on. */
   async function setUpSpace(source: SetUpSource, spaceId: string): Promise<string[]> {
-    if (!spacesYouRun().some((row) => row.uuid === spaceId))
+    if (!spacesYouRun().some((row) => row.id === spaceId))
       return ['only whoever runs a space can set it up for an app'];
     // A section reading a record type the space holds under another definition would draw its
     // records as though they were this app's, so a space that refused one gets no sections either.
@@ -583,7 +583,7 @@ export function createBundleStore(
         ),
       finish: async () => {
         await copySectionsInto(source, spaceId);
-        const row = spacesYouRun().find((r) => r.uuid === spaceId);
+        const row = spacesYouRun().find((r) => r.id === spaceId);
         const enabled = new Set((row?.views ?? []).filter((view) => view.enabled).map((view) => view.id));
         for (const section of source.sections)
           if (!enabled.has(section)) await spaceStore.setViewEnabled(section, true, spaceId);

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { ADMIN_ROLE, administers, cannotRevoke, rolesByPerson, rolesOf, rolesView } from '../src/shared/spaceRoles';
+import { ADMIN_ROLE, administers, cannotRevoke, rolesOf, rolesView } from '../src/shared/spaceRoles';
 
 const ANA = 'did:ana';
 const BEN = 'did:ben';
@@ -63,7 +63,7 @@ describe('rolesView', () => {
   });
 });
 
-describe('rolesOf and rolesByPerson', () => {
+describe('rolesOf', () => {
   const view = rolesView(roles, [
     { id: 'g1', role: 'admin', agent: ANA },
     { id: 'g2', role: 'moderator', agent: ANA },
@@ -75,10 +75,6 @@ describe('rolesOf and rolesByPerson', () => {
     expect(rolesOf(view, BEN)).toEqual(['moderator']);
     expect(rolesOf(view, 'did:nobody')).toEqual([]);
     expect(rolesOf(view, undefined)).toEqual([]);
-  });
-
-  it('maps each holder to what they hold', () => {
-    expect(rolesByPerson(view)).toEqual({ [ANA]: ['admin', 'moderator'], [BEN]: ['moderator'] });
   });
 });
 

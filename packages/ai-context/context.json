@@ -7332,10 +7332,6 @@
         "createAgentLoading": {
           "type": "boolean"
         },
-        "me": {
-          "type": "object",
-          "properties": ["did", "perspective", "directMessageLanguage"]
-        },
         "host": {
           "type": "object",
           "properties": [
@@ -7796,12 +7792,7 @@
       "name": "spaceStore",
       "state": {
         "memberDids": {
-          "type": "array",
-          "properties": ["did"]
-        },
-        "members": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+          "type": "array"
         },
         "spaceDefaultTemplateId": {
           "type": "string"
@@ -7828,7 +7819,7 @@
         "spaceList": {
           "type": "array",
           "properties": [
-            "uuid",
+            "id",
             "name",
             "description",
             "avatar",
@@ -7899,15 +7890,8 @@
         "involvementTypesLoaded": {
           "type": "boolean"
         },
-        "roles": {
-          "type": "array",
-          "properties": ["id", "slug", "name", "description", "holders"]
-        },
         "myRoles": {
           "type": "array"
-        },
-        "memberRoles": {
-          "type": "object"
         },
         "rolesLoaded": {
           "type": "boolean"
@@ -7992,17 +7976,8 @@
         "agentModuleSettings": {
           "type": "array"
         },
-        "autoInterpret": {
-          "type": "boolean"
-        },
         "root": {
           "type": "string"
-        },
-        "landmarks": {
-          "type": "object"
-        },
-        "landmarksLoaded": {
-          "type": "boolean"
         },
         "rootLoaded": {
           "type": "boolean"
@@ -8012,9 +7987,6 @@
         },
         "interpretationTargets": {
           "type": "array"
-        },
-        "taskWorkflowRule": {
-          "type": "string"
         },
         "taskWorkflowEnabled": {
           "type": "boolean"
@@ -8038,11 +8010,8 @@
         "removeSpace",
         "createPost",
         "updatePost",
-        "createBoard",
         "openBoardFor",
-        "addBoardColumn",
         "removeBoardColumn",
-        "renameBoardColumn",
         "reorderBoardColumns",
         "arrangeColumn",
         "moveCardToColumn",
@@ -8076,8 +8045,6 @@
         "applyTheme",
         "clearSpaceThemePin",
         "launchModule",
-        "createSignalType",
-        "createRelationshipType",
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
@@ -8126,10 +8093,7 @@
         "removeSpace",
         "createPost",
         "updatePost",
-        "createBoard",
-        "addBoardColumn",
         "removeBoardColumn",
-        "renameBoardColumn",
         "reorderBoardColumns",
         "arrangeColumn",
         "moveCardToColumn",
@@ -8162,8 +8126,6 @@
         "setSpaceThemeOverride",
         "applyTheme",
         "launchModule",
-        "createSignalType",
-        "createRelationshipType",
         "setSignalTypeRetired",
         "createTaskState",
         "updateTaskState",
@@ -8679,8 +8641,8 @@
     {
       "name": "involvementMenu",
       "params": ["options"],
-      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.members), profiles (profileStore.profiles), me (me.did), said (a name somebody said — TaskBlock.assignee).",
-      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did })"
+      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.memberDids), profiles (profileStore.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).",
+      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did })"
     },
     {
       "name": "signalTally",

@@ -120,7 +120,11 @@ reachable from any template through an expression or \`$invoke\`, so name it for
 as breaking. Before \`templateSurface.ts\` existed, all 388 members were in the bag a template rendered
 against — including \`runtimeStore.trustAgent\` and the settings holding the API key — so a template
 that merely *painted* could trust an attacker's DID. Put a new member in the narrowest group that
-works.
+works. Then decide whether another host should provide it: if so it joins a capability profile
+(\`profiles/profiles.ts\` in \`@we/schema-shared\`, with the same group, and the build regenerates
+\`docs/spec/profiles/\`); if not it is WE-host-only, which the validator reports wherever a template
+uses it. A member whose job a \`$query\`, \`record.*\` or a declared operation already does is not
+added at all.
 
 **The graph catalog entry is not bookkeeping.** Props tell an author that \`layout.type\` is a string;
 nothing in a prop list says which strings exist, so a plugin nobody can name might as well not be

@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { field, formModal, sectionCard } from '@we/template-kit';
+import { field, formModal, MEMBERS, sectionCard } from '@we/template-kit';
 
 /**
  * Who is in this space, and the standings they hold across it — its admins, its moderators, whatever
@@ -50,7 +50,7 @@ const openSpaceFirst: SchemaNode = {
         variant: 'soft',
         size: 'sm',
         alignSelf: 'start',
-        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.uuid' }] },
+        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.id' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open this space'] },
@@ -89,6 +89,20 @@ const createRoleModal: SchemaNode = formModal({
   },
 });
 
+/*
+  The space's roles and who holds them, read as its `Role` and `RoleGrant` records — bound by the
+  section below. A grant is held until it is marked revoked (see `RoleGrant`); `admin` leads, and the
+  rest follow as the community wrote them.
+*/
+const ROLES = "distinct(filter(local.roles, { slug: 'admin' }), local.roles)";
+const HELD = 'local.roleGrants.filter(g, !g.revokedAt)';
+/** Who holds the role a row draws, each once. */
+const HOLDERS = `distinct(${HELD}.filter(g, g.role == role.slug).map(g, g.agent))`;
+/** The slugs a member holds. */
+const MEMBER_HOLDS = `distinct(${HELD}.filter(g, g.agent == member.did).map(g, g.role))`;
+/** A role's name, or its slug where it has none. */
+const roleName = (role: string) => `(${role}.name ? ${role}.name : ${role}.slug)`;
+
 /** One role: its name, what it means, and how many hold it. */
 const roleRow: SchemaNode = {
   type: 'Row',
@@ -99,7 +113,7 @@ const roleRow: SchemaNode = {
       type: 'Column',
       props: { gap: '100', flex: '1' },
       children: [
-        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $: 'role.name' }] },
+        { type: 'we-text', props: { fontWeight: '600' }, children: [{ $: roleName('role') }] },
         {
           type: '$if',
           props: {
@@ -116,7 +130,7 @@ const roleRow: SchemaNode = {
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-faint' },
-      children: [{ $: "`${count(role.holders)} ${plural(count(role.holders), 'person', 'people')}`" }],
+      children: [{ $: `\`\${count(${HOLDERS})} \${plural(count(${HOLDERS}), 'person', 'people')}\`` }],
     },
   ],
 };
@@ -140,7 +154,7 @@ const rolesSection: SchemaNode = sectionCard({
     },
   },
   children: [
-    { type: '$each', props: { items: { $: 'spaceStore.roles' }, as: 'role' }, children: [roleRow] },
+    { type: '$each', props: { items: { $: ROLES }, as: 'role' }, children: [roleRow] },
     // Carries its own `$if` — see `formModal`.
     createRoleModal,
   ],
@@ -229,12 +243,12 @@ const policySection: SchemaNode = sectionCard({
 /** The roles a member holds, by name, as badges. */
 const memberBadges: SchemaNode = {
   type: '$each',
-  props: { items: { $: 'spaceStore.memberRoles[member.did] ?? []' }, as: 'held' },
+  props: { items: { $: MEMBER_HOLDS }, as: 'held' },
   children: [
     {
       type: 'we-badge',
       props: { size: 'sm' },
-      children: [{ $: 'find(spaceStore.roles, { slug: held }).name ?? held' }],
+      children: [{ $: 'find(local.roles, { slug: held }).name ? find(local.roles, { slug: held }).name : held' }],
     },
   ],
 };
@@ -243,7 +257,7 @@ const memberBadges: SchemaNode = {
 const memberRoleMenu: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'space.canAdminister && count(spaceStore.roles)' },
+    condition: { $: 'space.canAdminister && count(local.roles)' },
     then: {
       type: 'DropdownMenu',
       props: {
@@ -254,7 +268,7 @@ const memberRoleMenu: SchemaNode = {
         itemSize: 'sm',
         placement: 'bottom-end',
         items: {
-          $: "spaceStore.roles.map(r, { type: 'toggle', id: r.slug, label: r.name, checked: r.slug in (spaceStore.memberRoles[member.did] ?? []) })",
+          $: `${ROLES}.map(r, { type: 'toggle', id: r.slug, label: ${roleName('r')}, checked: r.slug in ${MEMBER_HOLDS} })`,
         },
         onSelect: {
           $if: {
@@ -286,18 +300,20 @@ const memberRow: SchemaNode = {
 const membersSection: SchemaNode = sectionCard({
   title: 'Members',
   description: 'Everyone in this space, and the roles each of them holds here.',
-  children: [{ type: '$each', props: { items: { $: 'spaceStore.members' }, as: 'member' }, children: [memberRow] }],
+  children: [{ type: '$each', props: { items: { $: MEMBERS }, as: 'member' }, children: [memberRow] }],
 });
 
 export const spacePeopleSection: SchemaNode = {
   type: '$if',
   props: {
     // The row being configured is the dataset currently open — see the docblock.
-    condition: { $: 'space.uuid == datasetStore.currentDataset.id' },
+    condition: { $: 'space.id == datasetStore.currentDataset.id' },
     then: {
       type: 'Column',
       props: { gap: '400' },
       $localState: { createRoleOpen: { type: 'boolean', initial: false } },
+      // The space's roles and grants, for every section here — curated sets, read whole.
+      $queries: { roles: { entity: 'Role' }, roleGrants: { entity: 'RoleGrant' } },
       children: [membersSection, rolesSection, policySection],
     },
     else: openSpaceFirst,

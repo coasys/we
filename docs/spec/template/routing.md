@@ -51,8 +51,9 @@ empty path are the route's parent itself.
 When more than one route of a list matches, the more specific wins: a literal segment over a param, a
 param over the rest of the address.
 
-**Params** are readable by expressions through the host's navigation profile (in WE,
-`routeStore.params.<name>`), with the address's query parameters beside them, as text.
+**Params** are readable by expressions through the
+[navigation profile](../profiles/members.md#navigation) (`routeStore.params.<name>`), with the
+address's query parameters beside them, as text.
 
 **A record's id belongs in the query, not the path.** A writer SHOULD put a record's id in a query
 parameter (`?id=…`), never in a path segment: an id may itself contain `/` and `:`, and a path

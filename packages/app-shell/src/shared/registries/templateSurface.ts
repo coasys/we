@@ -36,6 +36,13 @@
  * `templateSurface.test.ts` asserts that every member of every store interface appears here. A new
  * store member fails that test until it is classified, so this cannot quietly fall behind the code
  * it describes — the failure mode an allowlist beside the thing it allows usually has.
+ *
+ * ## What another host provides
+ *
+ * This file is WE's bag. Which of its members a template may expect of any host is a separate
+ * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): five versioned
+ * member lists, each member keeping the group it has here. `capabilityProfiles.test.ts` holds the
+ * two together. A member outside every profile is WE-host-only, and the validator says so.
  */
 import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
@@ -238,7 +245,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     loginLoading: state('session'),
     createAgentError: state('session'),
     createAgentLoading: state('session'),
-    me: state('identity'),
+    // The person signed in. Templates read the neutral host value `me`, which every host provides.
+    me: WIRING,
     host: state('session'),
     hostAccount: state('session'),
     isGuest: state('session'),
@@ -535,7 +543,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // ── content ──
     currentSpace: state('content'),
     memberDids: state('identity'),
-    members: state('identity'),
+    // The host's own join of the two below; a template joins them itself.
+    members: WIRING,
     createPost: action('content'),
     updatePost: action('content'),
     deleteCollection: destructive('content'),
@@ -551,8 +560,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     root: state('content'),
     rootLoaded: state('content'),
     firstScreenOpen: state('content'),
-    landmarks: state('content'),
-    landmarksLoaded: state('content'),
+    // The host's own read. A template asks for the space's `SpaceLandmark` records with a query.
+    landmarks: WIRING,
+    landmarksLoaded: WIRING,
     taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
@@ -566,9 +576,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     involvementTypesLoaded: state('content'),
     // Who holds which standing in the space — read by any template that shows a member's badge, so
     // `content` for the reason the space's vocabulary is.
-    roles: state('content'),
+    // The host's own view of the roles; a template queries the `Role` and `RoleGrant` records.
+    roles: WIRING,
     myRoles: state('content'),
-    memberRoles: state('content'),
     rolesLoaded: state('content'),
     // What the space's policy allows — read by any template deciding what to offer, through `can()`.
     policy: state('content'),
@@ -580,8 +590,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     exportCallTranscript: action('content'),
     exportInterpretationLog: action('content'),
     // A board is a collection like a call, and arranging one is content work rather than
-    // administration: any member may make one and drag cards on it.
-    createBoard: action('content'),
+    // administration: any member may open one and drag cards on it.
     openBoardFor: action('content'),
     /*
       Extraction's hook, and host wiring rather than a template's business: a template that wanted a
@@ -591,11 +600,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     ensureBoardFor: WIRING,
     // The other half of naming a state: the space's own board grows a column for it. Reached from
-    // `createTaskState`, never from a schema, which has `addBoardColumn` for a board it can see.
+    // `createTaskState`, never from a schema, which has `ops.core.addBoardColumn` for a board it can see.
     addStateToSpaceBoard: WIRING,
-    addBoardColumn: action('content'),
     removeBoardColumn: action('content'),
-    renameBoardColumn: action('content'),
     reorderBoardColumns: action('content'),
     arrangeColumn: action('content'),
     moveCardToColumn: action('content'),
@@ -603,18 +610,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     withdrawTaskMove: action('content'),
     archivedWorkflows: state('content'),
     setWorkflowArchived: action('space-settings'),
-    taskWorkflowRule: state('content'),
     setTaskWorkflowRule: action('space-settings'),
     addTaskStateEvidence: action('signals'),
     removeTaskStateEvidence: action('signals'),
     addTaskToColumn: action('content'),
 
     // ── signals ──
-    createSignalType: action('signals'),
     setSignalTypeRetired: action('signals'),
-    // The vocabulary of connections, alongside the vocabulary of reactions — same tier, same act:
-    // a community naming what it means by something.
-    createRelationshipType: action('signals'),
     upsertSignal: action('signals'),
     withdrawSignal: action('signals'),
     /*
@@ -711,7 +713,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       Exactly the check working: an unreadable member fell out as a failing test rather than as an
       indicator that silently never rendered.
     */
-    autoInterpret: state('space-settings'),
+    // Templates read the field off the space record: `spaceStore.currentSpace.autoInterpret`.
+    autoInterpret: WIRING,
     /*
       `content`, not `space-settings`, and the difference is who may press it.
 

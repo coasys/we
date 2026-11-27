@@ -216,7 +216,7 @@ as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $ea
 array (rendered as text), a where value, an $invoke argument.
 
 References — what a name starts from:
-  spaceStore.members             a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  spaceStore.memberDids          a store member (any store in the Stores section; modules.<id>.<key> for a module)
   local.searchText               a $localState or $queries field; dot paths read into object fields
   post.title                     a name bound by $each / $single / $agent through "as" — the default is item
   index, prev                    $each's row position, and the previous row
@@ -343,15 +343,15 @@ OR/AND/NOT cost a query nothing in sort pushdown: a filter with an OR and a sort
 other.
 
 Examples:
-{ "$": "filter(spaceStore.members, { role: 'admin' })" }
-{ "$": "filter(spaceStore.members, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(local.tasks, { status: 'done' })" }
+{ "$": "filter(profileStore.profiles, { location: { exists: true }, handle: { contains: local.searchText } })" }
 { "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
 { "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
 { "$": "item.author == me.did ? 'mine' : 'theirs'" }
-{ "$": "\`\${count(spaceStore.members)} \${plural(count(spaceStore.members), 'Member', 'Members')}\`" }
-{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "\`\${count(spaceStore.memberDids)} \${plural(count(spaceStore.memberDids), 'Member', 'Members')}\`" }
+{ "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.did != me.did).map(m, m.handle).join(', ')" }
 { "$": "post.author in spaceStore.mutedDids" }
 
 Rules:

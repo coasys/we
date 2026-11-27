@@ -48,9 +48,9 @@ surface; a host's space tier SHOULD grant no more than reading and taking part i
 > **Why absent.** An error says "this exists and you may not have it", which a hostile template can
 > probe. Absence says nothing, and matches what an uninstalled module already looks like.
 
-> **Planned.** Versioned capability profiles (navigation, view state, presence, identity, space
-> settings), each a member list with its own version, so a template can say what it needs and
-> another host can provide exactly that ([Catalogs](catalogs.md#profiles)).
+What any host provides, member by member and each with its group, is the
+[capability profiles](../profiles/README.md): five versioned member lists another host can provide
+exactly.
 
 ---
 

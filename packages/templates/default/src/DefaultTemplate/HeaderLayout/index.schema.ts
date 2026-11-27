@@ -34,7 +34,7 @@ export const headerLayout: TemplateSchema = {
           // isn't a WE space yet, so it gets the "Initialize as WE space" gate instead.
           type: '$if',
           props: {
-            condition: { $: 'datasetStore.currentDataset' },
+            condition: { $: 'currentDataset' },
             then: {
               type: '$if',
               props: {

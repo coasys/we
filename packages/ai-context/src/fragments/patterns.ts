@@ -470,7 +470,7 @@ unresolved id does not widen it to every image in the space:
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$": "spaceStore.members.map(m, { image: m.avatar, hash: m.did })" },
+        "avatars": { "$": "spaceStore.memberDids.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -478,8 +478,8 @@ unresolved id does not widen it to every image in the space:
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.members)" }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.members), 'Member', 'Members')" }] }
+        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.memberDids)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.memberDids), 'Member', 'Members')" }] }
       ]
     }
   ]

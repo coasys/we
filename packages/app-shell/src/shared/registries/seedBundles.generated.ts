@@ -1895,7 +1895,9 @@ export const seedBundles: Bundle[] = [
                               value: 'group|people',
                               open: { $: "'group|people' in local.openRows" },
                               onOpenChange: { $toggleLocalIn: 'openRows', value: 'group|people' },
-                              expandable: { $: 'count(spaceStore.members) > 0' },
+                              expandable: {
+                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)) > 0',
+                              },
                             },
                             children: [
                               {
@@ -1915,11 +1917,17 @@ export const seedBundles: Bundle[] = [
                                       {
                                         type: '$if',
                                         props: {
-                                          condition: { $: 'count(spaceStore.members)' },
+                                          condition: {
+                                            $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                          },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(spaceStore.members)' }],
+                                            children: [
+                                              {
+                                                $: 'count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                                              },
+                                            ],
                                           },
                                         },
                                       },
@@ -1929,7 +1937,12 @@ export const seedBundles: Bundle[] = [
                               },
                               {
                                 type: '$each',
-                                props: { items: { $: 'spaceStore.members' }, as: 'person' },
+                                props: {
+                                  items: {
+                                    $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                                  },
+                                  as: 'person',
+                                },
                                 children: [
                                   {
                                     type: 'we-tree-item',
@@ -5107,7 +5120,7 @@ export const seedBundles: Bundle[] = [
                                                       searchable: true,
                                                       searchPlaceholder: 'Find a member',
                                                       items: {
-                                                        $: 'involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })',
+                                                        $: 'involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })',
                                                       },
                                                       onSelect: {
                                                         $invoke: 'spaceStore.setInvolvement',
@@ -7522,7 +7535,7 @@ export const seedBundles: Bundle[] = [
                                                                       variant: 'solid',
                                                                       disabled: { $: '!local.name' },
                                                                       onClick: {
-                                                                        $invoke: 'spaceStore.createSignalType',
+                                                                        $invoke: 'ops.core.createSignalType',
                                                                         args: [
                                                                           {
                                                                             name: { $: 'local.name' },
@@ -10245,7 +10258,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                           onClick:
                                                                                                                             {
                                                                                                                               $invoke:
-                                                                                                                                'spaceStore.createSignalType',
+                                                                                                                                'ops.core.createSignalType',
                                                                                                                               args: [
                                                                                                                                 {
                                                                                                                                   name: {
@@ -13281,7 +13294,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                     onClick:
                                                                                                                                       {
                                                                                                                                         $invoke:
-                                                                                                                                          'spaceStore.createSignalType',
+                                                                                                                                          'ops.core.createSignalType',
                                                                                                                                         args: [
                                                                                                                                           {
                                                                                                                                             name: {
@@ -16618,7 +16631,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                   onClick:
                                                                                                                                                                                                     {
                                                                                                                                                                                                       $invoke:
-                                                                                                                                                                                                        'spaceStore.createSignalType',
+                                                                                                                                                                                                        'ops.core.createSignalType',
                                                                                                                                                                                                       args: [
                                                                                                                                                                                                         {
                                                                                                                                                                                                           name: {
@@ -20055,7 +20068,7 @@ export const seedBundles: Bundle[] = [
                                                                                                                                                                                                                                                             onClick:
                                                                                                                                                                                                                                                               {
                                                                                                                                                                                                                                                                 $invoke:
-                                                                                                                                                                                                                                                                  'spaceStore.createSignalType',
+                                                                                                                                                                                                                                                                  'ops.core.createSignalType',
                                                                                                                                                                                                                                                                 args: [
                                                                                                                                                                                                                                                                   {
                                                                                                                                                                                                                                                                     name: {
@@ -21484,6 +21497,7 @@ export const seedBundles: Bundle[] = [
                         limit: 50,
                         when: { $: 'spaceStore.currentSpace.id' },
                       },
+                      spaceLandmarks: { entity: 'SpaceLandmark' },
                       focusCall: {
                         entity: 'CollectionBlock',
                         where: {
@@ -22034,7 +22048,9 @@ export const seedBundles: Bundle[] = [
                               seeds: {
                                 source: 'canvas',
                                 options: {
-                                  canvas: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  canvas: {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   members: { id: { $: 'spaceStore.root' }, via: 'children' },
                                   contains: { $: 'shapeStore.interpretationCandidates' },
                                   origin: 'extractedFrom',
@@ -22140,7 +22156,7 @@ export const seedBundles: Bundle[] = [
                               },
                               resizable: { $: '!local.treeMode' },
                               empty: {
-                                $: "(spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
+                                $: "(find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? '') ? 'Nothing on this canvas yet. Double-click anywhere to add a card, or start a call: what it commits to appears here on its own.' : 'This space has no canvas of its own. Spaces made with a starter kit have one.'",
                               },
                               emptyIcon: 'squares-four',
                               emptyGradient: 'accent',
@@ -22152,42 +22168,54 @@ export const seedBundles: Bundle[] = [
                               onNodeDragEnd: {
                                 $invoke: 'recordStore.dragOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onNodeResize: {
                                 $invoke: 'recordStore.resizeOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeAnchor: {
                                 $invoke: 'recordStore.anchorOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeReroute: {
                                 $invoke: 'recordStore.rerouteOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onEdgeRetarget: {
                                 $invoke: 'recordStore.retargetOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
                               onDrop: {
                                 $invoke: 'recordStore.dropOnCanvas',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'event' },
                                 ],
                               },
@@ -22210,11 +22238,19 @@ export const seedBundles: Bundle[] = [
                               ],
                               onUndo: {
                                 $invoke: 'recordStore.undoCanvas',
-                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                                args: [
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
+                                ],
                               },
                               onRedo: {
                                 $invoke: 'recordStore.redoCanvas',
-                                args: [{ $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" }],
+                                args: [
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
+                                ],
                               },
                               carry: true,
                               selectionActions: [
@@ -22243,7 +22279,9 @@ export const seedBundles: Bundle[] = [
                                     then: {
                                       $invoke: 'recordStore.setCardStyle',
                                       args: [
-                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        {
+                                          $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                        },
                                         { $: 'event.records.map(r, r.recordId)' },
                                         'color',
                                         { $: 'event.value' },
@@ -22321,7 +22359,9 @@ export const seedBundles: Bundle[] = [
                                       {
                                         $invoke: 'recordStore.placeOnCanvas',
                                         args: [
-                                          { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                          {
+                                            $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                          },
                                           { $: 'event.recordId' },
                                           { $: 'event.recordType' },
                                           { $: 'event.x' },
@@ -22368,7 +22408,9 @@ export const seedBundles: Bundle[] = [
                                     then: {
                                       $invoke: 'recordStore.setCardStyle',
                                       args: [
-                                        { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                        {
+                                          $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                        },
                                         { $: 'event.recordId' },
                                         { $: 'event.action' },
                                         { $: 'event.value' },
@@ -22380,7 +22422,9 @@ export const seedBundles: Bundle[] = [
                               onNodeArrange: {
                                 $invoke: 'recordStore.arrangeOnTree',
                                 args: [
-                                  { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   { $: 'treeSpine({ value: local.spine })' },
                                   { $: 'event' },
                                 ],
@@ -22388,7 +22432,9 @@ export const seedBundles: Bundle[] = [
                               onSeedSummary: { $setLocal: 'voiceSummary', value: { $: 'event' } },
                               onCanvasDoubleClick: {
                                 $if: {
-                                  condition: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
+                                  condition: {
+                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
+                                  },
                                   then: [
                                     { $setLocal: 'newAt', value: { $: 'event' } },
                                     { $setLocal: 'chooserOpen', value: true },
@@ -24403,7 +24449,7 @@ export const seedBundles: Bundle[] = [
                                                     $invoke: 'recordStore.createOnCanvas',
                                                     args: [
                                                       {
-                                                        $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                        $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                       },
                                                       { $: 'local.newAt.x' },
                                                       { $: 'local.newAt.y' },
@@ -24498,7 +24544,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -24649,7 +24695,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -24800,7 +24846,7 @@ export const seedBundles: Bundle[] = [
                                                                 $invoke: 'recordStore.createOnCanvas',
                                                                 args: [
                                                                   {
-                                                                    $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                                    $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                                                   },
                                                                   { $: 'local.newAt.x' },
                                                                   { $: 'local.newAt.y' },
@@ -25012,7 +25058,7 @@ export const seedBundles: Bundle[] = [
                                             { $: 'arg' },
                                             {
                                               canvas: {
-                                                $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''",
+                                                $: "find(sortBy(local.spaceLandmarks, 'createdAt', 'desc'), { name: 'canvas' }).node ?? ''",
                                               },
                                               at: { $: 'local.newAt' },
                                             },
@@ -27784,7 +27830,7 @@ export const seedBundles: Bundle[] = [
                                                                                 props: {
                                                                                   placement: 'top',
                                                                                   content: {
-                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(spaceStore.members, { did: d }).name ?? 'Someone'), ', ')",
+                                                                                    $: "'Agreed by ' + join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')",
                                                                                   },
                                                                                 },
                                                                                 children: [
@@ -27792,7 +27838,7 @@ export const seedBundles: Bundle[] = [
                                                                                     type: 'AvatarStack',
                                                                                     props: {
                                                                                       avatars: {
-                                                                                        $: 'step.approvers.map(d, { image: find(spaceStore.members, { did: d }).avatar, hash: d, initials: find(spaceStore.members, { did: d }).name })',
+                                                                                        $: 'step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })',
                                                                                       },
                                                                                       size: 'xs',
                                                                                       max: 5,
@@ -29024,7 +29070,9 @@ export const seedBundles: Bundle[] = [
                   {
                     type: '$if',
                     props: {
-                      condition: { $: '!count(spaceStore.members)' },
+                      condition: {
+                        $: '!count(spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m))',
+                      },
                       then: {
                         type: 'we-text',
                         props: { variant: 'footnote', color: 'text-muted', italic: true },
@@ -29036,7 +29084,12 @@ export const seedBundles: Bundle[] = [
                         children: [
                           {
                             type: '$each',
-                            props: { items: { $: 'spaceStore.members' }, as: 'person' },
+                            props: {
+                              items: {
+                                $: 'spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m)',
+                              },
+                              as: 'person',
+                            },
                             children: [
                               {
                                 type: 'we-button',

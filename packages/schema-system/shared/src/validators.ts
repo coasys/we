@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { readTemplate, templateVersionProblem } from './templateFormat';
 import { zSchemaNode, zTemplateSchema } from './zodSchemas';
 
-export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' };
+/**
+ * `info` is advice that is neither wrong nor risky — a WE-host-only member, say. It never makes a
+ * schema invalid and never refuses an edit.
+ */
+export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' | 'info' };
 export type ValidationResult = { valid: boolean; errors: ValidationError[] };
 
 type Issue = z.core.$ZodIssue;

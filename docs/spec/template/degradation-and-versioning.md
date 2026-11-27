@@ -82,6 +82,7 @@ node.
 | A `$slot` in a template                                                     | The missing marker ([`$slot`](blocks.md#slot)).                                                                                             |
 | An unknown prop on a known component                                        | Reported by a validator. A renderer passes it to the component or drops it, and MUST NOT fail.                                              |
 | A store member, a module or a host value outside the bag                    | No value; an action does nothing ([Capability grants](safety.md#capability-grants)).                                                        |
+| A member outside every profile, on a host that does not offer it            | The same as outside the bag. A validator reports such a member as [host-only](../profiles/README.md#we-host-only) without refusing it.      |
 | A host function the host does not provide                                   | No value ([Host functions](expressions.md#host-functions)).                                                                                 |
 | An expression that does not parse, or reads something absent                | No value where it stands.                                                                                                                   |
 | A query the backend cannot run                                              | Refused: `[]`, and the reason reported ([Refusal](query.md#refusal)).                                                                       |

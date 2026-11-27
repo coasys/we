@@ -70,8 +70,8 @@ or `onError` after it rejects, with `result` bound to the error (its `message` r
 runs after either. When the action answers with anything other than a promise, no callback runs.
 Callbacks run as part of the gesture that started the call ([Gestures](safety.md#gestures)).
 
-What actions exist, what they take and what they answer are the bag's: the host's profiles and the
-modules' stores ([Catalogs](catalogs.md)). Two families of action are neutral and specified
+What actions exist, what they take and what they answer are the bag's: the host's
+[profiles](../profiles/README.md) and the modules' stores ([Catalogs](catalogs.md)). Two families of action are neutral and specified
 elsewhere: `record.create`, `record.update` and `record.delete`, which write one record of the data
 model, and `ops.<namespace>.<name>`, which runs a declared operation
 ([Operations](../operations/README.md)).

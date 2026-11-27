@@ -52,7 +52,7 @@ import \`@coasys/*\` — which is why a template, a component or a feature modul
 without knowing what holds the data.
 
 Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in schemas):
-- **Agent / DID** — a user identity; addressed by a DID (\`sessionStore.me.did\`).
+- **Agent / DID** — a user identity; addressed by a DID (\`me.did\` in a template).
 - **Perspective** — a local knowledge graph (links/triples). Each Space is backed by one;
   \`datasetStore.currentDataset\` is the active one, \`datasetStore.rootDataset\` holds we-root (the app's
   configuration), and \`datasetStore.personalDataset\` holds we-personal (the agent's notes and Pocket).

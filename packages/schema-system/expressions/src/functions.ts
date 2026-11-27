@@ -202,7 +202,7 @@ defineFunction({
   category: 'list',
   params: ['items'],
   doc: 'How many entries a list has. Anything that is not a list counts as 0.',
-  example: 'count(spaceStore.members)',
+  example: 'count(spaceStore.memberDids)',
   impl: ([items]) => asList(items).length,
 });
 
@@ -260,7 +260,7 @@ defineFunction({
   category: 'list',
   params: ['items', 'where', 'limit?'],
   doc: 'The entries matching a where-object — the same grammar $query takes. `limit` keeps the first N. Prefer the comprehension `items.filter(x, …)` when the test is not a where-object.',
-  example: "filter(spaceStore.members, { role: 'admin' }, 5)",
+  example: "filter(local.tasks, { status: 'done' }, 5)",
   impl: ([items, where, limit]) => {
     const matched = isRecord(where) ? asList(items).filter((entry) => matchesWhere(entry, where)) : asList(items);
     return typeof limit === 'number' && limit >= 0 ? matched.slice(0, limit) : matched;
@@ -451,7 +451,7 @@ defineFunction({
   category: 'text',
   params: ['count', 'one', 'other'],
   doc: '`one` when count is exactly 1, otherwise `other`.',
-  example: "plural(count(spaceStore.members), 'Member', 'Members')",
+  example: "plural(count(spaceStore.memberDids), 'Member', 'Members')",
   impl: ([n, one, other]) => (Number(n) === 1 ? one : other),
 });
 

@@ -238,6 +238,47 @@ describe('selecting a card, and adding a column', () => {
     expect(json.match(/"\$setLocal":"addColumnOpen","value":true/g)?.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('adds and renames a column through the column operations, one params object each', () => {
+    const calls: { $invoke: string; args: unknown[] }[] = [];
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (value && typeof value === 'object') {
+        const node = value as Record<string, unknown>;
+        if (typeof node.$invoke === 'string' && node.$invoke.startsWith('ops.core.'))
+          calls.push(node as { $invoke: string; args: unknown[] });
+        Object.values(node).forEach(walk);
+      }
+    };
+    walk(board);
+    const named = (name: string) => calls.filter((call) => call.$invoke === `ops.core.${name}`);
+    const states = { $: 'spaceStore.offeredTaskStates.map(s, { slug: s.slug, name: s.name })' };
+
+    // From Unplaced, a column bound to the state whose work turned up there; from the form, a lane
+    // unless a state was picked — an empty pick is sent as no slug, not stored as an empty one.
+    const adds = named('addBoardColumn').map((call) => call.args);
+    expect(adds).toHaveLength(2);
+    expect(adds).toEqual(
+      expect.arrayContaining([
+        [{ board: { $: 'local.boardId' }, name: { $: 'state.name' }, slug: { $: 'state.slug' }, states }],
+        [
+          {
+            board: { $: 'local.boardId' },
+            name: { $: 'local.columnName' },
+            slug: { $: 'local.columnSlug ? local.columnSlug : null' },
+            states,
+          },
+        ],
+      ]),
+    );
+    // The rename sheet is drawn wherever a column's menu is, each the same call.
+    const renames = named('renameBoardColumn');
+    expect(renames.length).toBeGreaterThan(0);
+    for (const call of renames)
+      expect(call.args).toEqual([{ column: { $: 'col.id' }, name: { $: 'local.renameTitle' }, states }]);
+    expect(json).not.toContain('spaceStore.addBoardColumn');
+    expect(json).not.toContain('spaceStore.renameBoardColumn');
+  });
+
   it('draws nobody on a card as a dashed face the size of a real one', () => {
     const people = JSON.stringify(
       taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true }),

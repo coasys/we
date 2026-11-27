@@ -1,0 +1,4455 @@
+{
+  "version": 1,
+  "profiles": {
+    "navigation": "1.0.0",
+    "view-state": "1.0.0",
+    "presence": "1.0.0",
+    "identity": "1.0.0",
+    "space-settings": "1.0.0"
+  },
+  "worlds": {
+    "community": {
+      "me": "did:example:me",
+      "profiles": [
+        {
+          "did": "did:example:me",
+          "firstName": "Mae",
+          "lastName": "Rivers",
+          "handle": "mae"
+        },
+        {
+          "did": "did:example:ada",
+          "firstName": "Ada",
+          "lastName": "Lind",
+          "handle": "ada",
+          "bio": "Grows beans."
+        },
+        {
+          "did": "did:example:bo",
+          "handle": "bo"
+        }
+      ],
+      "spaces": [
+        {
+          "id": "garden",
+          "name": "Garden",
+          "shared": true,
+          "members": ["did:example:ada", "did:example:bo"],
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-garden",
+              "fields": {
+                "name": "Garden",
+                "description": "Plots and seeds",
+                "enabledViews": ["about", "cards", "boards"],
+                "moduleSettings": {
+                  "reader": {
+                    "density": "roomy"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "orchard",
+          "name": "Orchard",
+          "shared": true,
+          "members": ["did:example:ada"],
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-orchard",
+              "fields": {
+                "name": "Orchard",
+                "description": "Trees",
+                "enabledViews": ["about", "cards"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "notebook",
+          "name": "Notebook",
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-notebook",
+              "fields": {
+                "name": "Notebook",
+                "description": "Mine alone",
+                "enabledViews": ["about"]
+              }
+            }
+          ]
+        }
+      ],
+      "own": [
+        {
+          "entity": "MutedAgent",
+          "id": "urn:example:muted-bo",
+          "fields": {
+            "did": "did:example:bo"
+          }
+        },
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:read-post",
+          "fields": {
+            "nodeId": "urn:example:post",
+            "spaceUuid": "garden",
+            "lastReadAt": "2026-11-01T10:00:00.000Z"
+          }
+        }
+      ],
+      "peers": [
+        {
+          "did": "did:example:ada",
+          "availability": "busy",
+          "focus": {
+            "space": "garden",
+            "path": "/space/garden/cards"
+          }
+        },
+        {
+          "did": "did:example:bo",
+          "availability": "available",
+          "focus": {
+            "space": "garden",
+            "path": "/space/garden/about"
+          },
+          "activities": [
+            {
+              "type": "typing",
+              "id": "urn:example:post"
+            }
+          ]
+        }
+      ],
+      "modules": [
+        {
+          "id": "reader",
+          "name": "Reader",
+          "settings": [
+            {
+              "key": "compact",
+              "label": "Compact rows",
+              "type": "boolean",
+              "default": false,
+              "levels": ["agent-in-space"]
+            },
+            {
+              "key": "density",
+              "label": "Density",
+              "type": "enum",
+              "options": [
+                {
+                  "label": "Roomy",
+                  "value": "roomy"
+                },
+                {
+                  "label": "Tight",
+                  "value": "tight"
+                }
+              ],
+              "default": "tight",
+              "levels": ["space", "agent-in-space"]
+            }
+          ]
+        }
+      ],
+      "panels": [
+        {
+          "id": "inspector",
+          "title": "Inspector",
+          "home": "side",
+          "order": 0,
+          "node": {
+            "type": "span"
+          }
+        },
+        {
+          "id": "outline",
+          "title": "Outline",
+          "home": "side",
+          "order": 1,
+          "node": {
+            "type": "span"
+          }
+        }
+      ]
+    },
+    "unnamed": {
+      "me": "did:example:me",
+      "profiles": [
+        {
+          "did": "did:example:me"
+        }
+      ],
+      "spaces": [
+        {
+          "id": "notebook",
+          "name": "Notebook",
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-notebook",
+              "fields": {
+                "name": "Notebook",
+                "description": "Mine alone",
+                "enabledViews": ["about"]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "entities": {
+    "MutedAgent": {
+      "properties": {
+        "description": {
+          "type": "string",
+          "default": ""
+        },
+        "did": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "ReadMarker": {
+      "properties": {
+        "lastReadAt": {
+          "type": "string",
+          "default": ""
+        },
+        "nodeId": {
+          "type": "string",
+          "default": ""
+        },
+        "spaceUuid": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    },
+    "Space": {
+      "properties": {
+        "archivedWorkflows": {
+          "type": "json"
+        },
+        "autoInterpret": {
+          "type": "boolean",
+          "default": true
+        },
+        "avatar": {
+          "type": "string"
+        },
+        "coverImage": {
+          "type": "string"
+        },
+        "defaultTemplateId": {
+          "type": "string",
+          "default": ""
+        },
+        "defaultThemeId": {
+          "type": "string",
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "default": ""
+        },
+        "discovery": {
+          "type": "string",
+          "default": "hidden"
+        },
+        "enabledModules": {
+          "type": "json"
+        },
+        "enabledViews": {
+          "type": "json"
+        },
+        "extractionTargets": {
+          "type": "json"
+        },
+        "moduleSettings": {
+          "type": "json"
+        },
+        "name": {
+          "type": "string",
+          "default": ""
+        },
+        "taskWorkflowRule": {
+          "type": "string",
+          "default": ""
+        },
+        "threadMode": {
+          "type": "string",
+          "default": "fractal"
+        },
+        "url": {
+          "type": "string"
+        },
+        "uuid": {
+          "type": "string",
+          "default": ""
+        }
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "navigation.read-address",
+      "profile": "navigation",
+      "note": "The address read apart: its path, segments, the segments below the space, its query.",
+      "world": "community",
+      "address": "/space/garden/cards?sort=new&id=urn:example:post",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav",
+        "spaceStore.mySpaces"
+      ],
+      "state": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "id": "urn:example:post",
+          "sort": "new"
+        },
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ],
+        "spaceStore.mySpaces": [
+          {
+            "id": "urn:example:space-garden",
+            "name": "Garden"
+          },
+          {
+            "id": "urn:example:space-notebook",
+            "name": "Notebook"
+          },
+          {
+            "id": "urn:example:space-orchard",
+            "name": "Orchard"
+          }
+        ]
+      }
+    },
+    {
+      "id": "navigation.read-outside-a-space",
+      "profile": "navigation",
+      "note": "Outside a space the template segments are the whole path, and there is no space path.",
+      "world": "community",
+      "address": "/settings",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath"
+      ],
+      "state": {
+        "routeStore.currentPath": "/settings",
+        "routeStore.segments": ["settings"],
+        "routeStore.templateSegments": ["settings"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": ""
+      }
+    },
+    {
+      "id": "navigation.navigate-from-root",
+      "profile": "navigation",
+      "note": "\"~/x\" goes from the template’s root, the space it is mounted under.",
+      "world": "community",
+      "address": "/space/garden/about",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.navigate",
+      "args": ["~/cards"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/about",
+        "routeStore.segments": ["space", "garden", "about"],
+        "routeStore.templateSegments": ["about"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "events": {
+        "navigation": ["address"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-with-query",
+      "profile": "navigation",
+      "note": "A record id goes in the query, written so it reads back exactly.",
+      "world": "community",
+      "address": "/space/garden/about",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.navigate",
+      "args": [
+        "~/record/CollectionBlock",
+        {
+          "query": {
+            "id": "urn:example:post"
+          }
+        }
+      ],
+      "before": {
+        "routeStore.currentPath": "/space/garden/about",
+        "routeStore.segments": ["space", "garden", "about"],
+        "routeStore.templateSegments": ["about"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/record/CollectionBlock",
+        "routeStore.segments": ["space", "garden", "record", "CollectionBlock"],
+        "routeStore.templateSegments": ["record", "CollectionBlock"],
+        "routeStore.params": {
+          "id": "urn:example:post"
+        }
+      },
+      "events": {
+        "navigation": ["address"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-query-only",
+      "profile": "navigation",
+      "note": "\"?q\" is the page on screen with that query.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.navigate",
+      "args": ["?sort=old"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "old"
+        }
+      },
+      "events": {
+        "navigation": ["address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-up",
+      "profile": "navigation",
+      "note": "\"..\" from the root route stays at the root: a template cannot climb out of its space that way.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.navigate",
+      "args": [".."],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden",
+        "routeStore.segments": ["space", "garden"],
+        "routeStore.templateSegments": [],
+        "routeStore.params": {}
+      },
+      "events": {
+        "navigation": ["address"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-absolute",
+      "profile": "navigation",
+      "note": "An absolute path leaves the template.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "routeStore.navigate",
+      "args": ["/settings"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/settings",
+        "routeStore.segments": ["settings"],
+        "routeStore.templateSegments": ["settings"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-to-where-it-is",
+      "profile": "navigation",
+      "note": "Going to the page on screen changes nothing and says nothing.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.navigate",
+      "args": ["/space/garden/cards"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "events": {}
+    },
+    {
+      "id": "navigation.set-param",
+      "profile": "navigation",
+      "note": "One query parameter written; the path is unchanged.",
+      "world": "community",
+      "address": "/space/garden/cards?sort=new",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.setParam",
+      "args": ["type", "posts"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "new"
+        }
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "new",
+          "type": "posts"
+        }
+      },
+      "events": {
+        "navigation": ["address"]
+      }
+    },
+    {
+      "id": "navigation.set-param-null",
+      "profile": "navigation",
+      "note": "null removes the parameter.",
+      "world": "community",
+      "address": "/space/garden/cards?sort=new&type=posts",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.setParam",
+      "args": ["sort", null],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "new",
+          "type": "posts"
+        }
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "type": "posts"
+        }
+      },
+      "events": {
+        "navigation": ["address"]
+      }
+    },
+    {
+      "id": "navigation.set-param-same",
+      "profile": "navigation",
+      "note": "Writing the value a parameter already holds changes nothing and says nothing.",
+      "world": "community",
+      "address": "/space/garden/cards?sort=new",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.setParam",
+      "args": ["sort", "new"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "new"
+        }
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "sort": "new"
+        }
+      },
+      "events": {}
+    },
+    {
+      "id": "navigation.set-param-push",
+      "profile": "navigation",
+      "note": "With push, the write is a history entry of its own: Back returns to the query before it.",
+      "world": "community",
+      "address": "/space/garden/cards?type=posts",
+      "setup": [
+        {
+          "action": "routeStore.setParam",
+          "args": [
+            "type",
+            "events",
+            {
+              "push": true
+            }
+          ]
+        }
+      ],
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "routeStore.back",
+      "args": [],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "type": "events"
+        }
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {
+          "type": "posts"
+        }
+      },
+      "events": {
+        "navigation": ["address"]
+      }
+    },
+    {
+      "id": "navigation.back",
+      "profile": "navigation",
+      "note": "Back goes to the entry before, query and all.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "history": ["/space/garden/about?tab=people"],
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "routeStore.back",
+      "args": [],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/about",
+        "routeStore.segments": ["space", "garden", "about"],
+        "routeStore.templateSegments": ["about"],
+        "routeStore.params": {
+          "tab": "people"
+        },
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "navigation.navigate-to-space",
+      "profile": "navigation",
+      "note": "Going to another space carries the section across when that space has it, and its sections follow.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "spaceStore.navigateToSpace",
+      "args": ["orchard"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/orchard",
+        "routeStore.segments": ["space", "orchard"],
+        "routeStore.templateSegments": [],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/orchard",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "navigation.navigate-to-space-without-the-section",
+      "profile": "navigation",
+      "note": "A section the destination does not have is not carried: the space itself is opened.",
+      "world": "community",
+      "address": "/space/garden/boards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "spaceStore.navigateToSpace",
+      "args": ["orchard"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/boards",
+        "routeStore.segments": ["space", "garden", "boards"],
+        "routeStore.templateSegments": ["boards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/orchard",
+        "routeStore.segments": ["space", "orchard"],
+        "routeStore.templateSegments": [],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/orchard",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "navigation.navigate-to-space-section",
+      "profile": "navigation",
+      "note": "A named section is always taken.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "spaceStore.navigateToSpace",
+      "args": ["orchard", "about"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/orchard/about",
+        "routeStore.segments": ["space", "orchard", "about"],
+        "routeStore.templateSegments": ["about"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/orchard",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "navigation.open-record-ref",
+      "profile": "navigation",
+      "note": "A record reference opens its space, and the record’s own page in it.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "spaceStore.openRecordRef",
+      "args": ["we:n:orchard/CollectionBlock/urn:example:post"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/orchard/record/CollectionBlock",
+        "routeStore.segments": ["space", "orchard", "record", "CollectionBlock"],
+        "routeStore.templateSegments": ["record", "CollectionBlock"],
+        "routeStore.params": {
+          "id": "urn:example:post"
+        },
+        "spaceStore.spacePath": "/space/orchard",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "navigation.open-dataset-ref",
+      "profile": "navigation",
+      "note": "A reference naming only a space opens the space.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": [
+        "routeStore.currentPath",
+        "routeStore.segments",
+        "routeStore.templateSegments",
+        "routeStore.params",
+        "spaceStore.spacePath",
+        "spaceStore.viewNav"
+      ],
+      "action": "spaceStore.openRecordRef",
+      "args": ["we:n:orchard"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/garden",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "routeStore.currentPath": "/space/orchard",
+        "routeStore.segments": ["space", "orchard"],
+        "routeStore.templateSegments": [],
+        "routeStore.params": {},
+        "spaceStore.spacePath": "/space/orchard",
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "navigation.open-person-ref",
+      "profile": "navigation",
+      "note": "A reference naming a person goes nowhere.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["routeStore.currentPath", "routeStore.segments", "routeStore.templateSegments", "routeStore.params"],
+      "action": "spaceStore.openRecordRef",
+      "args": ["we:agent/did:example:ada"],
+      "before": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "after": {
+        "routeStore.currentPath": "/space/garden/cards",
+        "routeStore.segments": ["space", "garden", "cards"],
+        "routeStore.templateSegments": ["cards"],
+        "routeStore.params": {}
+      },
+      "events": {}
+    },
+    {
+      "id": "view-state.read-declared",
+      "profile": "view-state",
+      "note": "A template’s declared panels, untouched: nothing moved, no extra instances, no lane folded.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "state": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      }
+    },
+    {
+      "id": "view-state.close-template-panel",
+      "profile": "view-state",
+      "note": "Closing a declared panel is a change to the layout the template declared.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.closeTemplatePanel",
+      "args": ["inspector"],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.open-template-panel",
+      "profile": "view-state",
+      "note": "Putting a closed declared panel back.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.closeTemplatePanel",
+          "args": ["inspector"]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.openTemplatePanel",
+      "args": ["inspector"],
+      "before": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.open-panel",
+      "profile": "view-state",
+      "note": "Another instance of a declared panel, with what it was opened with.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.openPanel",
+      "args": [
+        "inspector",
+        {
+          "record": "urn:example:post"
+        },
+        {
+          "title": "The post"
+        }
+      ],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [
+          {
+            "inputs": {
+              "record": "urn:example:post"
+            },
+            "panel": "inspector",
+            "title": "The post"
+          }
+        ],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.open-panel-again",
+      "profile": "view-state",
+      "note": "The same inputs again bring the open instance forward rather than opening a second.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.openPanel",
+          "args": [
+            "inspector",
+            {
+              "record": "urn:example:post"
+            }
+          ]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.openPanel",
+      "args": [
+        "inspector",
+        {
+          "record": "urn:example:post"
+        }
+      ],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [
+          {
+            "inputs": {
+              "record": "urn:example:post"
+            },
+            "panel": "inspector"
+          }
+        ],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [
+          {
+            "inputs": {
+              "record": "urn:example:post"
+            },
+            "panel": "inspector"
+          }
+        ],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {}
+    },
+    {
+      "id": "view-state.close-panel",
+      "profile": "view-state",
+      "note": "Closing an instance by the id the host gave it, read from panelInstances.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.openPanel",
+          "args": [
+            "inspector",
+            {
+              "record": "urn:example:post"
+            }
+          ]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.closePanel",
+      "args": [
+        {
+          "$read": ["shellStore.panelInstances", 0, "id"]
+        }
+      ],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [
+          {
+            "inputs": {
+              "record": "urn:example:post"
+            },
+            "panel": "inspector"
+          }
+        ],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.toggle-lane",
+      "profile": "view-state",
+      "note": "Folding a lane away.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.toggleLane",
+      "args": ["side"],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.toggle-lane-back",
+      "profile": "view-state",
+      "note": "Toggling a folded lane brings it back.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.toggleLane",
+          "args": ["side"]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.toggleLane",
+      "args": ["side"],
+      "before": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.set-lane-collapsed",
+      "profile": "view-state",
+      "note": "Folding a lane as said rather than flipped.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.setLaneCollapsed",
+      "args": ["side", true],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.set-lane-collapsed-same",
+      "profile": "view-state",
+      "note": "Saying a folded lane is folded changes nothing.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.setLaneCollapsed",
+          "args": ["side", true]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.setLaneCollapsed",
+      "args": ["side", true],
+      "before": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "after": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "events": {}
+    },
+    {
+      "id": "view-state.reset-template-layout",
+      "profile": "view-state",
+      "note": "Reset puts back every declared panel and unfolds every lane.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "shellStore.closeTemplatePanel",
+          "args": ["inspector"]
+        },
+        {
+          "action": "shellStore.setLaneCollapsed",
+          "args": ["side", true]
+        }
+      ],
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.resetTemplateLayout",
+      "args": [],
+      "before": {
+        "shellStore.layoutDirty": true,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": ["side"]
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {
+        "view-state": ["panels"]
+      }
+    },
+    {
+      "id": "view-state.scroll-to-id",
+      "profile": "view-state",
+      "note": "Scrolling is not state: nothing a profile reads changes.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["shellStore.layoutDirty", "shellStore.panelInstances", "shellStore.collapsedLanes"],
+      "action": "shellStore.scrollToId",
+      "args": ["urn:example:post"],
+      "before": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "after": {
+        "shellStore.layoutDirty": false,
+        "shellStore.panelInstances": [],
+        "shellStore.collapsedLanes": []
+      },
+      "events": {}
+    },
+    {
+      "id": "view-state.configure",
+      "profile": "view-state",
+      "note": "A clock named for the first time, given a range.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.configure",
+      "args": [
+        "main",
+        {
+          "from": "2026-01-01T00:00:00.000Z",
+          "to": "2026-01-02T00:00:00.000Z",
+          "speed": 2
+        }
+      ],
+      "before": {
+        "clockStore.clocks": {}
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": false,
+            "from": null,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 2,
+            "to": null
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.play",
+      "profile": "view-state",
+      "note": "Playing from no moment starts at the range’s start. Time does not pass in a case.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.play",
+      "args": ["main"],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 0,
+            "atIso": "1970-01-01T00:00:00.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": true,
+            "progress": 0,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.play-without-a-range",
+      "profile": "view-state",
+      "note": "With no range to cross, play does nothing.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.setLoop",
+          "args": ["main", false]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.play",
+      "args": ["main"],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": false,
+            "from": null,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": null
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": false,
+            "from": null,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": null
+          }
+        }
+      },
+      "events": {}
+    },
+    {
+      "id": "view-state.pause",
+      "profile": "view-state",
+      "note": "Pausing stops the clock where it is.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        },
+        {
+          "action": "clockStore.play",
+          "args": ["main"]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.pause",
+      "args": ["main"],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 0,
+            "atIso": "1970-01-01T00:00:00.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": true,
+            "progress": 0,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 0,
+            "atIso": "1970-01-01T00:00:00.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 0,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.toggle",
+      "profile": "view-state",
+      "note": "Toggling a stopped clock plays it.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.toggle",
+      "args": ["main"],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 0,
+            "atIso": "1970-01-01T00:00:00.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": true,
+            "progress": 0,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.seek",
+      "profile": "view-state",
+      "note": "Seeking shows a moment, kept inside the range.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.seek",
+      "args": ["main", 90000],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 60000,
+            "atIso": "1970-01-01T00:01:00.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.seek-iso",
+      "profile": "view-state",
+      "note": "A moment may be given as an ISO date.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": "2026-01-01",
+              "to": "2026-12-31"
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.seek",
+      "args": ["main", "2026-06-01T12:00:00.000Z"],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": false,
+            "from": null,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": null
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 1780315200000,
+            "atIso": "2026-06-01T12:00:00.000Z",
+            "canPlay": false,
+            "from": null,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": null
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.seek-null",
+      "profile": "view-state",
+      "note": "null shows everything again.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        },
+        {
+          "action": "clockStore.seek",
+          "args": ["main", 30000]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.seek",
+      "args": ["main", null],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 30000,
+            "atIso": "1970-01-01T00:00:30.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 0.5,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.seek-progress",
+      "profile": "view-state",
+      "note": "A fraction of the way through the range.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.seekProgress",
+      "args": ["main", 0.25],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": 15000,
+            "atIso": "1970-01-01T00:00:15.000Z",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 0.25,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.set-speed",
+      "profile": "view-state",
+      "note": "Speed is a multiple of the clock’s own pace.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.setSpeed",
+      "args": ["main", 4],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 4,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "view-state.set-loop",
+      "profile": "view-state",
+      "note": "Looping is a setting the clock reports.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "clockStore.configure",
+          "args": [
+            "main",
+            {
+              "from": 0,
+              "to": 60000
+            }
+          ]
+        }
+      ],
+      "observe": ["clockStore.clocks"],
+      "action": "clockStore.setLoop",
+      "args": ["main", true],
+      "before": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": false,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "after": {
+        "clockStore.clocks": {
+          "main": {
+            "at": null,
+            "atIso": "",
+            "canPlay": true,
+            "from": 0,
+            "loop": true,
+            "playing": false,
+            "progress": 1,
+            "speed": 1,
+            "to": 60000
+          }
+        }
+      },
+      "events": {
+        "view-state": ["clock"]
+      }
+    },
+    {
+      "id": "presence.read-roster",
+      "profile": "presence",
+      "note": "Who is here: everyone present in the space on screen, the viewing person included, and who is on this page.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "state": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      }
+    },
+    {
+      "id": "presence.read-personal-space",
+      "profile": "presence",
+      "note": "A personal space has nobody to be present to.",
+      "world": "community",
+      "address": "/space/notebook",
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "state": {
+        "presenceStore.available": false,
+        "presenceStore.peers": [],
+        "presenceStore.online": [],
+        "presenceStore.onlineHere": []
+      }
+    },
+    {
+      "id": "presence.set-availability",
+      "profile": "presence",
+      "note": "The status said with this person’s presence.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.setAvailability",
+      "args": ["away"],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "away",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "away",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "away",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.set-availability-invisible",
+      "profile": "presence",
+      "note": "Invisible stops saying anything.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.setAvailability",
+      "args": ["invisible"],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "invisible",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "invisible",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "invisible",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.set-activity",
+      "profile": "presence",
+      "note": "Saying what this person is doing.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.setActivity",
+      "args": [
+        {
+          "type": "editing",
+          "id": "urn:example:post"
+        }
+      ],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.replace-activity",
+      "profile": "presence",
+      "note": "An activity of the same type and id replaces the one said before.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "setup": [
+        {
+          "action": "presenceStore.setActivity",
+          "args": [
+            {
+              "type": "editing",
+              "id": "urn:example:post",
+              "field": "title"
+            }
+          ]
+        }
+      ],
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.setActivity",
+      "args": [
+        {
+          "type": "editing",
+          "id": "urn:example:post",
+          "field": "body"
+        }
+      ],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "title",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "title",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "title",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "body",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "body",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "field": "body",
+                "id": "urn:example:post",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.clear-activity",
+      "profile": "presence",
+      "note": "Withdrawing one activity by type and id.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "setup": [
+        {
+          "action": "presenceStore.setActivity",
+          "args": [
+            {
+              "type": "editing",
+              "id": "urn:example:post"
+            }
+          ]
+        },
+        {
+          "action": "presenceStore.setActivity",
+          "args": [
+            {
+              "type": "editing",
+              "id": "urn:example:note"
+            }
+          ]
+        }
+      ],
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.clearActivity",
+      "args": ["editing", "urn:example:post"],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.clear-activity-type",
+      "profile": "presence",
+      "note": "With no id, every activity of that type.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "setup": [
+        {
+          "action": "presenceStore.setActivity",
+          "args": [
+            {
+              "type": "editing",
+              "id": "urn:example:post"
+            }
+          ]
+        },
+        {
+          "action": "presenceStore.setActivity",
+          "args": [
+            {
+              "type": "editing",
+              "id": "urn:example:note"
+            }
+          ]
+        }
+      ],
+      "observe": ["presenceStore.available", "presenceStore.peers", "presenceStore.online", "presenceStore.onlineHere"],
+      "action": "presenceStore.clearActivity",
+      "args": ["editing"],
+      "before": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "editing"
+              },
+              {
+                "id": "urn:example:note",
+                "type": "editing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.available": true,
+        "presenceStore.peers": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.online": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ],
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "presence.move-page",
+      "profile": "presence",
+      "note": "Moving to another page changes who shares it.",
+      "world": "community",
+      "address": "/space/garden/cards",
+      "observe": ["presenceStore.onlineHere"],
+      "action": "routeStore.navigate",
+      "args": ["~/about"],
+      "before": {
+        "presenceStore.onlineHere": [
+          {
+            "activities": [],
+            "availability": "busy",
+            "did": "did:example:ada",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Ada Lind",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/cards"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "after": {
+        "presenceStore.onlineHere": [
+          {
+            "activities": [
+              {
+                "id": "urn:example:post",
+                "type": "typing"
+              }
+            ],
+            "availability": "available",
+            "did": "did:example:bo",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "bo",
+            "tone": "success"
+          },
+          {
+            "activities": [],
+            "availability": "available",
+            "did": "did:example:me",
+            "focus": {
+              "path": "/space/garden/about"
+            },
+            "name": "Mae Rivers",
+            "tone": "success"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address"],
+        "presence": ["roster", "address"]
+      }
+    },
+    {
+      "id": "identity.read",
+      "profile": "identity",
+      "note": "Profiles as people published them, who is in the space, whom this person muted and what they read.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": [
+        "profileStore.ownProfile",
+        "profileStore.ownProfileLoaded",
+        "profileStore.profiles",
+        "spaceStore.memberDids",
+        "spaceStore.mutedDids",
+        "spaceStore.readMarkers"
+      ],
+      "state": {
+        "profileStore.ownProfile": {
+          "bio": "",
+          "did": "did:example:me",
+          "firstName": "Mae",
+          "handle": "mae",
+          "lastName": "Rivers",
+          "name": "Mae Rivers"
+        },
+        "profileStore.ownProfileLoaded": true,
+        "profileStore.profiles": [
+          {
+            "bio": "Grows beans.",
+            "did": "did:example:ada",
+            "firstName": "Ada",
+            "handle": "ada",
+            "lastName": "Lind",
+            "name": "Ada Lind"
+          },
+          {
+            "bio": "",
+            "did": "did:example:bo",
+            "firstName": "",
+            "handle": "bo",
+            "lastName": "",
+            "name": "bo"
+          },
+          {
+            "bio": "",
+            "did": "did:example:me",
+            "firstName": "Mae",
+            "handle": "mae",
+            "lastName": "Rivers",
+            "name": "Mae Rivers"
+          }
+        ],
+        "spaceStore.memberDids": ["did:example:me", "did:example:ada", "did:example:bo"],
+        "spaceStore.mutedDids": ["did:example:bo"],
+        "spaceStore.readMarkers": [
+          {
+            "lastReadAt": "2026-11-01T10:00:00.000Z",
+            "nodeId": "urn:example:post"
+          }
+        ]
+      }
+    },
+    {
+      "id": "identity.read-unnamed",
+      "profile": "identity",
+      "note": "Somebody who published no name is still named: the name is assembled and never empty.",
+      "world": "unnamed",
+      "address": "/space/notebook",
+      "observe": ["profileStore.ownProfile", "profileStore.ownProfileLoaded", "spaceStore.memberDids"],
+      "state": {
+        "profileStore.ownProfile": {
+          "bio": "",
+          "did": "did:example:me",
+          "firstName": "",
+          "handle": "",
+          "lastName": "",
+          "name": "Anonymous"
+        },
+        "profileStore.ownProfileLoaded": true,
+        "spaceStore.memberDids": ["did:example:me"]
+      }
+    },
+    {
+      "id": "identity.members-follow-the-space",
+      "profile": "identity",
+      "note": "Another space on screen, other members; the person’s own mutes and read markers go with them.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.memberDids", "spaceStore.mutedDids", "spaceStore.readMarkers"],
+      "action": "spaceStore.navigateToSpace",
+      "args": ["orchard"],
+      "before": {
+        "spaceStore.memberDids": ["did:example:me", "did:example:ada", "did:example:bo"],
+        "spaceStore.mutedDids": ["did:example:bo"],
+        "spaceStore.readMarkers": [
+          {
+            "lastReadAt": "2026-11-01T10:00:00.000Z",
+            "nodeId": "urn:example:post"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.memberDids": ["did:example:me", "did:example:ada"],
+        "spaceStore.mutedDids": ["did:example:bo"],
+        "spaceStore.readMarkers": [
+          {
+            "lastReadAt": "2026-11-01T10:00:00.000Z",
+            "nodeId": "urn:example:post"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["address", "space"],
+        "presence": ["roster", "address"],
+        "identity": ["members"],
+        "space-settings": ["space", "settings"]
+      }
+    },
+    {
+      "id": "space-settings.read",
+      "profile": "space-settings",
+      "note": "The space on screen, whether this person may change it, its defaults and this person’s settings.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": [
+        "spaceStore.currentSpace",
+        "spaceStore.canAdministerCurrentSpace",
+        "spaceStore.spaceDefaultTemplateId",
+        "spaceStore.spaceDefaultThemeId",
+        "spaceStore.myModuleSettings"
+      ],
+      "state": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.canAdministerCurrentSpace": true,
+        "spaceStore.spaceDefaultTemplateId": "",
+        "spaceStore.spaceDefaultThemeId": "",
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      }
+    },
+    {
+      "id": "space-settings.read-outside-a-space",
+      "profile": "space-settings",
+      "note": "Outside a space there is no space, and nothing to administer.",
+      "world": "community",
+      "address": "/settings",
+      "observe": [
+        "spaceStore.currentSpace",
+        "spaceStore.canAdministerCurrentSpace",
+        "spaceStore.spaceDefaultTemplateId",
+        "spaceStore.spaceDefaultThemeId"
+      ],
+      "state": {
+        "spaceStore.currentSpace": null,
+        "spaceStore.canAdministerCurrentSpace": false,
+        "spaceStore.spaceDefaultTemplateId": "",
+        "spaceStore.spaceDefaultThemeId": ""
+      }
+    },
+    {
+      "id": "space-settings.set-default-template",
+      "profile": "space-settings",
+      "note": "The template members see on entering.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": [
+        "spaceStore.currentSpace",
+        "spaceStore.canAdministerCurrentSpace",
+        "spaceStore.spaceDefaultTemplateId",
+        "spaceStore.spaceDefaultThemeId"
+      ],
+      "action": "spaceStore.setSpaceDefaultTemplate",
+      "args": ["workshop"],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.canAdministerCurrentSpace": true,
+        "spaceStore.spaceDefaultTemplateId": "",
+        "spaceStore.spaceDefaultThemeId": ""
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "workshop",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.canAdministerCurrentSpace": true,
+        "spaceStore.spaceDefaultTemplateId": "workshop",
+        "spaceStore.spaceDefaultThemeId": ""
+      },
+      "events": {
+        "space-settings": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.set-default-theme",
+      "profile": "space-settings",
+      "note": "The theme members see on entering.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": [
+        "spaceStore.currentSpace",
+        "spaceStore.canAdministerCurrentSpace",
+        "spaceStore.spaceDefaultTemplateId",
+        "spaceStore.spaceDefaultThemeId"
+      ],
+      "action": "spaceStore.setSpaceDefaultTheme",
+      "args": ["paper"],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.canAdministerCurrentSpace": true,
+        "spaceStore.spaceDefaultTemplateId": "",
+        "spaceStore.spaceDefaultThemeId": ""
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "paper",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.canAdministerCurrentSpace": true,
+        "spaceStore.spaceDefaultTemplateId": "",
+        "spaceStore.spaceDefaultThemeId": "paper"
+      },
+      "events": {
+        "space-settings": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.update-avatar",
+      "profile": "space-settings",
+      "note": "An image the person chose, stored and set as the avatar.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.currentSpace"],
+      "action": "spaceStore.updateSpaceImage",
+      "args": [
+        "avatar",
+        {
+          "$file": {
+            "name": "avatar.png",
+            "type": "image/png",
+            "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          }
+        }
+      ],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        }
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "avatar": {
+            "$image": true
+          },
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        }
+      },
+      "events": {
+        "space-settings": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.update-cover-image",
+      "profile": "space-settings",
+      "note": "The same, as the cover image.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.currentSpace"],
+      "action": "spaceStore.updateSpaceImage",
+      "args": [
+        "coverImage",
+        {
+          "$file": {
+            "name": "cover.png",
+            "type": "image/png",
+            "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          }
+        }
+      ],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        }
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "coverImage": {
+            "$image": true
+          },
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        }
+      },
+      "events": {
+        "space-settings": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.hide-view",
+      "profile": "space-settings",
+      "note": "Hiding a section for this person only: the space keeps it, navigation drops it.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.currentSpace", "spaceStore.viewNav"],
+      "action": "spaceStore.setViewVisible",
+      "args": ["cards", false],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.show-view",
+      "profile": "space-settings",
+      "note": "Showing a hidden section again.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "spaceStore.setViewVisible",
+          "args": ["cards", false]
+        }
+      ],
+      "observe": ["spaceStore.viewNav"],
+      "action": "spaceStore.setViewVisible",
+      "args": ["cards", true],
+      "before": {
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.viewNav": [
+          {
+            "id": "about",
+            "path": "./about",
+            "segment": "about"
+          },
+          {
+            "id": "cards",
+            "path": "./cards",
+            "segment": "cards"
+          },
+          {
+            "id": "boards",
+            "path": "./boards",
+            "segment": "boards"
+          }
+        ]
+      },
+      "events": {
+        "navigation": ["space"]
+      }
+    },
+    {
+      "id": "space-settings.hide-module",
+      "profile": "space-settings",
+      "note": "Hiding a module for this person only.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.currentSpace", "spaceStore.myModuleSettings"],
+      "action": "spaceStore.setModuleVisible",
+      "args": ["reader", false],
+      "before": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.currentSpace": {
+          "defaultTemplateId": "",
+          "defaultThemeId": "",
+          "description": "Plots and seeds",
+          "enabledViews": ["about", "cards", "boards"],
+          "id": "urn:example:space-garden",
+          "moduleSettings": {
+            "reader": {
+              "density": "roomy"
+            }
+          },
+          "name": "Garden"
+        },
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      },
+      "events": {}
+    },
+    {
+      "id": "space-settings.set-my-setting",
+      "profile": "space-settings",
+      "note": "This person’s own value decides over the space’s.",
+      "world": "community",
+      "address": "/space/garden",
+      "observe": ["spaceStore.myModuleSettings"],
+      "action": "spaceStore.setMyModuleSetting",
+      "args": ["reader", "density", "tight"],
+      "before": {
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": true,
+            "source": "agent-in-space",
+            "type": "enum",
+            "value": "tight"
+          }
+        ]
+      },
+      "events": {
+        "space-settings": ["settings"]
+      }
+    },
+    {
+      "id": "space-settings.clear-my-setting",
+      "profile": "space-settings",
+      "note": "With no value, this person’s own is withdrawn and the next level decides again.",
+      "world": "community",
+      "address": "/space/garden",
+      "setup": [
+        {
+          "action": "spaceStore.setMyModuleSetting",
+          "args": ["reader", "compact", true]
+        }
+      ],
+      "observe": ["spaceStore.myModuleSettings"],
+      "action": "spaceStore.setMyModuleSetting",
+      "args": ["reader", "compact"],
+      "before": {
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": true,
+            "source": "agent-in-space",
+            "type": "boolean",
+            "value": true
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      },
+      "after": {
+        "spaceStore.myModuleSettings": [
+          {
+            "group": "reader",
+            "key": "compact",
+            "locked": false,
+            "set": false,
+            "source": "default",
+            "type": "boolean",
+            "value": false
+          },
+          {
+            "group": "reader",
+            "key": "density",
+            "locked": false,
+            "set": false,
+            "source": "space",
+            "type": "enum",
+            "value": "roomy"
+          }
+        ]
+      },
+      "events": {
+        "space-settings": ["settings"]
+      }
+    }
+  ]
+}
