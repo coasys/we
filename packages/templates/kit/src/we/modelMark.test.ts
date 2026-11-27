@@ -43,14 +43,14 @@ describe('the model mark', () => {
   });
 
   it('takes a caller’s wider reading too, for what came out of a conversation with no run on it', () => {
-    const wide = condition({ as: 'card', extracted: 'card.extractedFrom' });
-    expect(run(wide, { card: { extractedFrom: 'call-1' } })).toBe(true);
+    const wide = condition({ as: 'card', interpreted: 'card.interpretedFrom' });
+    expect(run(wide, { card: { interpretedFrom: 'call-1' } })).toBe(true);
     expect(run(wide, { card: { generatedBy: 'run-1' } })).toBe(true);
     expect(run(wide, { card: {} })).toBe(false);
   });
 
   it('says it was interpreted where the record came out of a conversation, and written by AI otherwise', () => {
-    expect(run(words('card'), { card: { extractedFrom: 'call-1' }, author, me })).toBe(
+    expect(run(words('card'), { card: { interpretedFrom: 'call-1' }, author, me })).toBe(
       'Interpreted from the conversation · run by you',
     );
     expect(run(words('card'), { card: {}, author: { did: 'did:sam', name: 'Sam' }, me })).toBe(

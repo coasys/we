@@ -104,8 +104,8 @@ describe('generated classes carry the manifest prose', () => {
 describe('what a pass wrote, as a relation', () => {
   it('is declared untyped, so a shape defined this morning is included without being named', () => {
     const source = readFileSync(resolve(SRC, 'CollectionBlock.ts'), 'utf8');
-    expect(source).toContain("@HasMany({ through: 'we://extracted', polymorphic: true })");
-    expect(source).toContain('extracted: string[] = [];');
+    expect(source).toContain("@HasMany({ through: 'we://interpreted', polymorphic: true })");
+    expect(source).toContain('interpreted: string[] = [];');
   });
 
   it('is not ordered, where containment is', () => {
@@ -115,7 +115,7 @@ describe('what a pass wrote, as a relation', () => {
       was made, which is the sequence a reader actually wants.
     */
     const source = readFileSync(resolve(SRC, 'CollectionBlock.ts'), 'utf8');
-    const extracted = source.slice(source.indexOf("through: 'we://extracted'"));
+    const extracted = source.slice(source.indexOf("through: 'we://interpreted'"));
     expect(extracted.slice(0, 200)).not.toContain('ordering');
   });
 });

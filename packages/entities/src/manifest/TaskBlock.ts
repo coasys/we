@@ -39,8 +39,8 @@ export const TaskBlock: CoreEntityDef = {
     flag: { predicate: 'we://flag', value: 'we://task_block' },
     // One of the two core entities extraction may write, and the reason the flag exists at all:
     // this list used to be a constant in the transcribe module, so no shape a community defined
-    // could join it. See `EntitySchema.extractable` for why it is opt-in rather than derived.
-    extractable: true,
+    // could join it. See `EntitySchema.interpretable` for why it is opt-in rather than derived.
+    interpretable: true,
     // Title first because it is the task; everything else qualifies it. `version` is bookkeeping.
     authoring: { fields: ['title', 'description', 'status', 'priority', 'dueDate', 'assignee'] },
     properties: {
@@ -53,7 +53,7 @@ export const TaskBlock: CoreEntityDef = {
        * fresh copies of everything it finds. Without this, pressing Interpret twice on one call
        * produced two of every task.
        *
-       * It is not what admits a class to extraction — `extractable` on the entity is (a class
+       * It is not what admits a class to extraction — `interpretable` on the entity is (a class
        * without an identity property still extracts, it merely duplicates). Which is why an
        * authoring surface offering the one should warn about the absence of the other.
        *

@@ -2480,7 +2480,7 @@ describe('what the stores actually wrote', () => {
       // The starter's `input` lands on the space collection itself, where the messages typed outside
       // calls are decided — not on the space, which holds only what new collections start with.
       const rootRecord = await CollectionBlock.findOne(ref.handle as never, { where: { id: root!.id } } as never);
-      expect((rootRecord as unknown as { autoExtract?: boolean }).autoExtract).toBe(true);
+      expect((rootRecord as unknown as { autoInterpret?: boolean }).autoInterpret).toBe(true);
 
       const holder = await CollectionBlock.findOne(
         ref.handle as never,
@@ -3276,7 +3276,7 @@ describe('following a space from the rows its live queries push', () => {
     const { stores, handle } = await openSpace('Settings Watch Fails');
     const root = stores.spaces.root();
     // The space's default is on; this collection is stored off.
-    await CollectionBlock.update(handle, root, { autoExtract: false } as never);
+    await CollectionBlock.update(handle, root, { autoInterpret: false } as never);
     const isSettings = (query: unknown) => Array.isArray((query as { where?: { id?: unknown } })?.where?.id);
     const failing = await reenterWithFailingWatch(stores, 'CollectionBlock', isSettings);
     await vi.waitFor(() => expect(stores.spaces.root()).toBe(root));
@@ -3305,12 +3305,12 @@ describe('following a space from the rows its live queries push', () => {
     const before = stores.spaces.autoInterpretFor(root);
     // Only the two fields the settings are made of: a collection's children are the whole space.
     for (const call of [...reads.mock.calls, ...asked.mock.calls].filter(isSettingsRead)) {
-      expect((call[1] as { properties?: string[] }).properties).toEqual(['autoExtract', 'extractionTargets']);
+      expect((call[1] as { properties?: string[] }).properties).toEqual(['autoInterpret', 'interpretationTargets']);
     }
     const settingsReads = () => reads.mock.calls.filter(isSettingsRead).length;
     const readsBefore = settingsReads();
 
-    await CollectionBlock.update(handle, root, { autoExtract: !before } as never);
+    await CollectionBlock.update(handle, root, { autoInterpret: !before } as never);
     await vi.waitFor(() => expect(stores.spaces.autoInterpretFor(root)).toBe(!before));
     expect(settingsReads()).toBe(readsBefore);
     reads.mockRestore();
@@ -3868,8 +3868,8 @@ describe('what a collection interprets', () => {
   /** A record's stored extraction fields, as the next reader sees them. */
   const stored = async (handle: never, id: string) =>
     (await CollectionBlock.findOne(handle, { where: { id } } as never)) as unknown as {
-      autoExtract?: boolean;
-      extractionTargets?: string;
+      autoInterpret?: boolean;
+      interpretationTargets?: string;
     };
 
   it('runs the messages outside calls on the space collection’s own switch', async () => {
@@ -3880,12 +3880,12 @@ describe('what a collection interprets', () => {
     const root = stores.spaces.root();
 
     // Made with the space's default — on — and watched for it.
-    expect((await stored(handle, root)).autoExtract).toBe(true);
+    expect((await stored(handle, root)).autoInterpret).toBe(true);
     await vi.waitFor(() => expect(port.watched).toContain(watchId(root)));
 
     // Off, for this collection: stored on it, and the watch removed.
     await stores.spaces.setAutoInterpretFor(root, false);
-    expect((await stored(handle, root)).autoExtract).toBe(false);
+    expect((await stored(handle, root)).autoInterpret).toBe(false);
     await vi.waitFor(() => expect(port.removed).toContain(watchId(root)));
     expect(stores.spaces.autoInterpretFor(root)).toBe(false);
     // The space's default — what the next collection starts with — is untouched.
@@ -4167,7 +4167,7 @@ describe('what a collection interprets', () => {
     await ready(stores);
     const handle = await enterSpace(stores, 'Theirs', 'shared');
     const root = stores.spaces.root();
-    const call = await CollectionBlock.create(handle, { kind: 'call', mode: 'feed', autoExtract: true } as never);
+    const call = await CollectionBlock.create(handle, { kind: 'call', mode: 'feed', autoInterpret: true } as never);
 
     // A space somebody else administers: they hold its admin role, and this agent no longer does.
     await vi.waitFor(() => expect(stores.spaces.myRoles()).toEqual(['admin']));
@@ -4182,11 +4182,11 @@ describe('what a collection interprets', () => {
     await stores.spaces.setAutoInterpretFor(root, false);
     expect(refused).toHaveBeenCalled();
     // Refused before anything was written.
-    expect((await stored(handle, root)).autoExtract).toBe(true);
+    expect((await stored(handle, root)).autoInterpret).toBe(true);
 
     // A call is its participants' to decide.
     await stores.spaces.setAutoInterpretFor(call.id, false);
-    expect((await stored(handle, call.id)).autoExtract).toBe(false);
+    expect((await stored(handle, call.id)).autoInterpret).toBe(false);
     refused.mockRestore();
   }, 15000);
 
@@ -4202,15 +4202,15 @@ describe('what a collection interprets', () => {
     const stores = mountShell();
     await ready(stores);
     const handle = await enterSpace(stores, 'Overlapping');
-    const rawBefore = (await Space.findAll(handle))[0]?.extractionTargets ?? '';
+    const rawBefore = (await Space.findAll(handle))[0]?.interpretationTargets ?? '';
     const before = (rawBefore ? (JSON.parse(rawBefore) as string[]) : ['TaskBlock', 'EventBlock']).slice();
 
     const writes: { released: boolean; release: () => void }[] = [];
     const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
     const update = Entity.update.bind(Entity);
     const spy = vi.spyOn(Entity, 'update').mockImplementation(async (...args: unknown[]) => {
-      const fields = args[2] as { extractionTargets?: string } | undefined;
-      if (!fields || !('extractionTargets' in fields)) return update(...args);
+      const fields = args[2] as { interpretationTargets?: string } | undefined;
+      if (!fields || !('interpretationTargets' in fields)) return update(...args);
       await new Promise<void>((resolve) => {
         const write = {
           released: false,
@@ -4250,11 +4250,11 @@ describe('what a collection interprets', () => {
     }
 
     expect(await saving).toEqual({});
-    const stored = JSON.parse((await Space.findAll(handle))[0]?.extractionTargets || '[]') as string[];
+    const stored = JSON.parse((await Space.findAll(handle))[0]?.interpretationTargets || '[]') as string[];
     const wanted = [...new Set([...before, 'Decision', 'Task'])];
     expect(stored).toEqual(expect.arrayContaining(wanted));
     expect(stored).toHaveLength(wanted.length);
-    const shown = JSON.parse(stores.spaces.currentSpace()?.extractionTargets || '[]') as string[];
+    const shown = JSON.parse(stores.spaces.currentSpace()?.interpretationTargets || '[]') as string[];
     expect(shown).toEqual(expect.arrayContaining(['Decision', 'Task']));
   }, 15000);
 
@@ -4349,8 +4349,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
 
     // Elsewhere's answers differ on both counts — off for the space, events for the list.
@@ -4378,8 +4378,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: false,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: false,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4446,14 +4446,14 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
     const other = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4531,8 +4531,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
     callId = call.id;
     const interpretation = kernel();
@@ -4564,7 +4564,7 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      extractionTargets: '["TaskBlock"]',
+      interpretationTargets: '["TaskBlock"]',
     } as never);
 
     await enterSpace(stores, 'Elsewhere');
@@ -4606,8 +4606,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["EventBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["EventBlock"]',
     } as never);
 
     await kernel().runOnCollection(call.id);
@@ -4637,8 +4637,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["EventBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["EventBlock"]',
     } as never);
     const Entity = getEntity('CollectionBlock') as unknown as {
       findAll: (handle: unknown, q?: { properties?: readonly string[] }) => Promise<unknown[]>;
@@ -4656,7 +4656,7 @@ describe('what a collection interprets', () => {
     expect(requests).toHaveLength(0);
     const [row] = (await CollectionBlock.findAll(handleA, {
       where: { id: [call.id] },
-      include: { runs: { where: { kind: 'extraction' } } },
+      include: { runs: { where: { kind: 'interpretation' } } },
     } as never)) as unknown as { runs?: { outcome?: string; error?: string; detail?: string }[] }[];
     expect(row.runs).toHaveLength(1);
     expect(row.runs![0]).toMatchObject({ outcome: 'failed', error: 'settings unreadable' });
@@ -4680,8 +4680,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["TaskBlock"]',
+      autoInterpret: true,
+      interpretationTargets: '["TaskBlock"]',
     } as never);
     // The call's own list — tasks only — is what a caller's open picker would already have read.
     const interpretation = kernel();
@@ -4756,14 +4756,14 @@ describe('what a collection interprets', () => {
         kind: 'call',
         mode: 'feed',
         title: 'the call',
-        autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        autoInterpret: true,
+        interpretationTargets: '["TaskBlock"]',
       } as never);
       // A pass, or the log is empty and nothing is written.
       await ModelRun.create(
         handleA,
         {
-          kind: 'extraction',
+          kind: 'interpretation',
           outcome: 'done',
           recordCount: 0,
           detail: '{"targets":["TaskBlock"]}',
@@ -4846,8 +4846,8 @@ describe('what a collection interprets', () => {
         kind: 'call',
         mode: 'feed',
         title: 'the call',
-        autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        autoInterpret: true,
+        interpretationTargets: '["TaskBlock"]',
       } as never);
       heldCall = call.id;
       const Entity = getEntity('CollectionBlock') as unknown as {
@@ -4867,7 +4867,7 @@ describe('what a collection interprets', () => {
       await ModelRun.create(
         handleA,
         {
-          kind: 'extraction',
+          kind: 'interpretation',
           outcome: 'done',
           recordCount: 0,
           detail: '{"targets":["TaskBlock"]}',
@@ -4961,7 +4961,7 @@ describe('what a collection interprets', () => {
     const manifest: EntityManifest = {
       version: '1',
       entities: {
-        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+        Sighting: { interpretable: true, properties: { note: { type: 'string' } }, relations: {} },
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
@@ -4969,8 +4969,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["Sighting"]',
+      autoInterpret: true,
+      interpretationTargets: '["Sighting"]',
     } as never);
     await enterSpace(stores, 'Elsewhere');
     expect(stores.shapes.interpretationCandidates()).not.toContain('Sighting');
@@ -5027,8 +5027,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["Heron"]',
+      autoInterpret: true,
+      interpretationTargets: '["Heron"]',
     } as never);
     await enterSpace(stores, 'Elsewhere');
     provideModuleHostServices({
@@ -5062,13 +5062,13 @@ describe('what a collection interprets', () => {
         kind: 'call',
         mode: 'feed',
         title: 'the call',
-        autoExtract: true,
-        extractionTargets: '["TaskBlock"]',
+        autoInterpret: true,
+        interpretationTargets: '["TaskBlock"]',
       } as never);
       await ModelRun.create(
         handleA,
         {
-          kind: 'extraction',
+          kind: 'interpretation',
           outcome: 'done',
           recordCount: 0,
           detail: '{"targets":["TaskBlock"]}',
@@ -5097,7 +5097,7 @@ describe('what a collection interprets', () => {
   }, 15000);
 
   /*
-    Resolvable is not extractable: an adopted model whose manifest does not say it may be extracted
+    Resolvable is not interpretable: an adopted model whose manifest does not say it may be extracted
     into still registers a class in the dataset, so a check that only asks "does the name resolve"
     keeps it — where the live list, which intersects the candidates, does not. A call that kept such
     a class in its stored list registers it when its space is off screen, and extracts noise into a
@@ -5128,8 +5128,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["Ledger"]',
+      autoInterpret: true,
+      interpretationTargets: '["Ledger"]',
     } as never);
     await vi.waitFor(() => expect(looksFor(interpretation, call.id, 'Ledger')).not.toBe(true));
 
@@ -5161,7 +5161,7 @@ describe('what a collection interprets', () => {
     const manifest: EntityManifest = {
       version: '1',
       entities: {
-        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+        Sighting: { interpretable: true, properties: { note: { type: 'string' } }, relations: {} },
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
@@ -5195,7 +5195,7 @@ describe('what a collection interprets', () => {
     const manifest: EntityManifest = {
       version: '1',
       entities: {
-        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+        Sighting: { interpretable: true, properties: { note: { type: 'string' } }, relations: {} },
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
@@ -5224,7 +5224,7 @@ describe('what a collection interprets', () => {
     const manifest: EntityManifest = {
       version: '1',
       entities: {
-        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+        Sighting: { interpretable: true, properties: { note: { type: 'string' } }, relations: {} },
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
@@ -5263,11 +5263,11 @@ describe('what a collection interprets', () => {
     await ready(stores);
     const handleA = await enterSpace(stores, 'Here');
     const a = stores.datasets.currentDataset()!.id;
-    // Here's own extractable model — a candidate here and in no other space's list.
+    // Here's own interpretable model — a candidate here and in no other space's list.
     const manifest: EntityManifest = {
       version: '1',
       entities: {
-        Sighting: { extractable: true, properties: { note: { type: 'string' } }, relations: {} },
+        Sighting: { interpretable: true, properties: { note: { type: 'string' } }, relations: {} },
       },
     };
     expect(await stores.shapes.addRecordTypes('test', [{ name: 'Sighting', manifest }])).toEqual([]);
@@ -5275,8 +5275,8 @@ describe('what a collection interprets', () => {
     const call = await CollectionBlock.create(handleA, {
       kind: 'call',
       mode: 'feed',
-      autoExtract: true,
-      extractionTargets: '["Sighting"]',
+      autoInterpret: true,
+      interpretationTargets: '["Sighting"]',
     } as never);
 
     // From is on screen, so switching to Here leaves its record up: Here's own record read is

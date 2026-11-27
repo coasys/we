@@ -156,7 +156,7 @@ export function toRendererEntity(Model: Ad4mEntityClass): RendererEntityClass {
  * that compares it with `'TaskBlock'` reads the same answer from either executor.
  *
  * A union is where an undeclared reverse relation goes missing most often: one read over WE's
- * classes and a bot's, where the executor answers `extractedFrom` for the first and leaves it off
+ * classes and a bot's, where the executor answers `interpretedFrom` for the first and leaves it off
  * the second. `withUndeclaredReverse` fills only the rows that came back without it.
  */
 export function toRendererUnion(Models: Ad4mEntityClass[]): RendererEntityClass {

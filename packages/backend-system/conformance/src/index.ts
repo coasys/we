@@ -83,7 +83,7 @@ const SIGHTING_MANIFEST = {
       flag: { predicate: 'we://flag', value: 'we://module/shape/conformance-sighting/sighting' },
       description: 'A bird somebody saw',
       interpretationHint: 'Somebody saying they saw a bird',
-      extractable: true,
+      interpretable: true,
       authoring: { fields: ['species', 'count', 'notes'] },
       display: { title: 'species', summary: 'notes', media: 'photo', fields: ['count', 'seenAt'] },
       properties: {

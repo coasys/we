@@ -73,7 +73,7 @@ export type InterpretationPhase =
    */
   | 'writing'
   /** Finished, and {@link InterpretationActivity.ids} says what it wrote. May be empty — a
-   *  conversation with nothing extractable in it is an ordinary outcome, not a failure. */
+   *  conversation with nothing interpretable in it is an ordinary outcome, not a failure. */
   | 'done'
   /**
    * The pass correctly decided there was nothing to do: no turns, or a class shape that has not

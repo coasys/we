@@ -18,7 +18,7 @@ import { Ad4mModel, Flag, Model, Property } from '@coasys/ad4m';
  *
  * ## One entity for every kind of run
  *
- * `kind` says what the model was doing (`extraction`, `transcription`, `chat`, `agent`, more as
+ * `kind` says what the model was doing (`interpretation`, `transcription`, `chat`, `agent`, more as
  * writers appear),
  * and everything else is common: the model, what started it, how it ended. What only one kind
  * carries goes in {@link detail}, read whole by the surface that knows that kind. So a new writer
@@ -50,7 +50,7 @@ export class ModelRun extends Ad4mModel {
   @Flag({ through: 'we://flag', value: 'we://model_run' })
   flag: string = '';
 
-  /** What the model was doing: `extraction`, `transcription`, `chat`, `agent`. */
+  /** What the model was doing: `interpretation`, `transcription`, `chat`, `agent`. */
   @Property({ through: 'we://model_run_kind' })
   kind: string = '';
 

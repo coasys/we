@@ -207,7 +207,7 @@ describe('the feed window', () => {
         title: 'Brief',
         createdAt: t(2),
         author: 'did:ann',
-        extractedFrom: 'monday',
+        interpretedFrom: 'monday',
       },
       {
         entity: 'TaskBlock',
@@ -216,7 +216,7 @@ describe('the feed window', () => {
         title: 'Venue',
         createdAt: t(2),
         author: 'did:ann',
-        extractedFrom: 'monday',
+        interpretedFrom: 'monday',
       },
       {
         entity: 'EventBlock',
@@ -225,7 +225,7 @@ describe('the feed window', () => {
         title: 'Launch',
         createdAt: t(2),
         author: 'did:ann',
-        extractedFrom: { id: 'monday' },
+        interpretedFrom: { id: 'monday' },
       },
       { entity: 'TaskBlock', id: 'h1', in: ROOT, title: 'By hand', createdAt: t(3), author: 'did:ben' },
     ]);
@@ -249,7 +249,7 @@ describe('the feed window', () => {
 
   it('reads where a record came from as an id, never hydrating the source', async () => {
     /*
-      `extractedFrom` is usually the call, a collection holding every line said in it. Including it
+      `interpretedFrom` is usually the call, a collection holding every line said in it. Including it
       hydrated that whole collection into every row: 18 KB a row, 926 KB for one page of
       connections, re-read on every refresh. The row carries the relation's id unasked, and the
       title comes from the calls this window reads anyway.
@@ -263,7 +263,7 @@ describe('the feed window', () => {
         title: 'Brief',
         createdAt: t(2),
         author: 'did:ann',
-        extractedFrom: 'monday',
+        interpretedFrom: 'monday',
       },
     ]);
     const { rows: drawn } = await readFeedWindow(find, {
@@ -333,7 +333,7 @@ describe('the feed of one call', () => {
     of its own. What extraction found is kept in the space, so it is read there and kept by origin.
   */
   const callRows: StoredRow[] = [
-    // What its passes wrote, linked from the call — `extractedFrom` on each record read backwards.
+    // What its passes wrote, linked from the call — `interpretedFrom` on each record read backwards.
     {
       entity: 'CollectionBlock',
       id: 'standup',
@@ -341,7 +341,7 @@ describe('the feed of one call', () => {
       kind: 'call',
       title: 'Standup',
       createdAt: t(0),
-      extracted: ['k1'],
+      interpreted: ['k1'],
     },
     {
       entity: 'TextBlock',
@@ -364,8 +364,8 @@ describe('the feed of one call', () => {
     { entity: 'TextBlock', id: 'b1', in: 'standup', text: 'a bot', author: 'did:bot', createdAt: t(3) },
     // Typed into the space, outside the call: not this call's.
     { entity: 'TextBlock', id: 'loose', in: ROOT, text: 'elsewhere', source: 'typed', createdAt: t(4) },
-    { entity: 'TaskBlock', id: 'k1', in: ROOT, title: 'Ship', createdAt: t(5), extractedFrom: 'standup' },
-    { entity: 'TaskBlock', id: 'k2', in: ROOT, title: 'Other', createdAt: t(5), extractedFrom: 'monday' },
+    { entity: 'TaskBlock', id: 'k1', in: ROOT, title: 'Ship', createdAt: t(5), interpretedFrom: 'standup' },
+    { entity: 'TaskBlock', id: 'k2', in: ROOT, title: 'Other', createdAt: t(5), interpretedFrom: 'monday' },
   ];
 
   it('draws every line said and typed in the call, and nothing typed outside it', async () => {
@@ -410,7 +410,7 @@ describe('the feed of one call', () => {
       in: ROOT,
       title: `Later ${i}`,
       createdAt: t(30 + (i % 20)),
-      extractedFrom: 'friday',
+      interpretedFrom: 'friday',
     }));
     const { find } = store([...callRows, ...later]);
     const { rows: drawn } = await readFeedWindow(find, {
@@ -431,14 +431,14 @@ describe('the feed of one call', () => {
       lines and one row — and, counting rows, said it held everything. The other two were never read.
     */
     const found = ['k1', 'k3', 'k4', 'k5', 'k6', 'k7'];
-    const rows = callRows.map((row) => (row.id === 'standup' ? { ...row, extracted: found } : row));
+    const rows = callRows.map((row) => (row.id === 'standup' ? { ...row, interpreted: found } : row));
     const tasks = found.slice(1).map((id) => ({
       entity: 'TaskBlock',
       id,
       in: ROOT,
       title: id,
       createdAt: t(5),
-      extractedFrom: 'standup',
+      interpretedFrom: 'standup',
     }));
     const { find } = store([...rows, ...tasks]);
     const read = (shown: number) =>
@@ -464,8 +464,8 @@ describe('grouping and naming', () => {
   it('starts a new group after a quiet spell, even from the same source', () => {
     const groups = groupActivity(
       [
-        { row: { id: 'a', createdAt: t(0), extractedFrom: 'c' }, entity: 'TaskBlock' },
-        { row: { id: 'b', createdAt: t(5), extractedFrom: 'c' }, entity: 'TaskBlock' },
+        { row: { id: 'a', createdAt: t(0), interpretedFrom: 'c' }, entity: 'TaskBlock' },
+        { row: { id: 'b', createdAt: t(5), interpretedFrom: 'c' }, entity: 'TaskBlock' },
       ],
       new Map(),
     );

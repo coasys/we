@@ -6,7 +6,7 @@
  * running an extraction pass (`run` on the interpretation port) — and `kind` on the run says what
  * kind of writing it was.
  *
- * Lineage is a separate question with its own links: `extractedFrom` says which call a record came
+ * Lineage is a separate question with its own links: `interpretedFrom` says which call a record came
  * out of, and is not read here. A record extracted by hand-review or by a standing watch can come
  * from a call without a run naming it.
  *

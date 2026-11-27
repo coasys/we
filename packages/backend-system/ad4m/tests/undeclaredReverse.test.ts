@@ -1,7 +1,7 @@
 /**
  * Where a record came from, for a record whose class does not say.
  *
- * A bot installs its own classes, and they do not declare `extractedFrom`, so a call's action items
+ * A bot installs its own classes, and they do not declare `interpretedFrom`, so a call's action items
  * read as coming from nowhere: the canvas dimmed every one of them with that call selected. The
  * link is there, owned by the call, and these pin that it is read from that side.
  */
@@ -27,7 +27,7 @@ type Row = Record<string, unknown>;
 
 const CALL = { id: 'call-1', title: 'Monday' };
 
-/** The space's `we://extracted` links: call-1 produced item-1 and task-1. */
+/** The space's `we://interpreted` links: call-1 produced item-1 and task-1. */
 const LINKS: LinkPair[] = [
   { from: 'call-1', to: 'item-1' },
   { from: 'call-1', to: 'task-1' },
@@ -63,10 +63,10 @@ describe('the reverse relations a node carries that can be read from their forwa
   it('are the ones a particular class owns the link for', () => {
     const reads = reverseReadsOf();
     expect(reads).toContainEqual({
-      relation: 'extractedFrom',
+      relation: 'interpretedFrom',
       holder: 'CollectionBlock',
-      via: 'extracted',
-      predicate: 'we://extracted',
+      via: 'interpreted',
+      predicate: 'we://interpreted',
     });
     expect(reads).toContainEqual({
       relation: 'partOf',
@@ -87,9 +87,9 @@ describe('a row without a reverse relation it asked to include', () => {
   it('is given the collection that links to it', async () => {
     const { deps, asked, looked } = space();
     const rows: Row[] = [{ id: 'item-1' }];
-    await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, deps);
-    expect(rows[0].extractedFrom).toEqual(CALL);
-    expect(looked).toEqual([{ predicate: 'we://extracted', ids: ['item-1'] }]);
+    await fillUndeclaredReverse(rows, { include: { interpretedFrom: true } }, {}, deps);
+    expect(rows[0].interpretedFrom).toEqual(CALL);
+    expect(looked).toEqual([{ predicate: 'we://interpreted', ids: ['item-1'] }]);
     // The holders are read by id: the few calls the links come from, never a scan for them.
     expect(asked).toHaveLength(1);
     expect(asked[0].where).toEqual({ id: ['call-1'] });
@@ -98,39 +98,39 @@ describe('a row without a reverse relation it asked to include', () => {
 
   it('is asked about in two reads for the whole page, and only where the class left it off', async () => {
     const { deps, asked, looked } = space();
-    const declaredEmpty: Row = { id: 'task-2', extractedFrom: null };
-    const declared: Row = { id: 'task-3', extractedFrom: { id: 'call-9' } };
+    const declaredEmpty: Row = { id: 'task-2', interpretedFrom: null };
+    const declared: Row = { id: 'task-3', interpretedFrom: { id: 'call-9' } };
     const rows: Row[] = [{ id: 'item-1' }, { id: 'task-1' }, { id: 'item-2' }, declaredEmpty, declared];
-    await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, deps);
+    await fillUndeclaredReverse(rows, { include: { interpretedFrom: true } }, {}, deps);
     expect(looked).toHaveLength(1);
     expect(looked[0].ids).toEqual(['item-1', 'task-1', 'item-2']);
     // Two rows from one call: the call is read once.
     expect(asked).toHaveLength(1);
     expect(asked[0].where).toEqual({ id: ['call-1'] });
-    expect(rows[0].extractedFrom).toEqual(CALL);
-    expect(rows[1].extractedFrom).toEqual(CALL);
+    expect(rows[0].interpretedFrom).toEqual(CALL);
+    expect(rows[1].interpretedFrom).toEqual(CALL);
     // Nothing points at it: what the relation reads as on a record made by hand.
-    expect(rows[2].extractedFrom).toBeNull();
-    expect(declaredEmpty.extractedFrom).toBeNull();
-    expect(declared.extractedFrom).toEqual({ id: 'call-9' });
+    expect(rows[2].interpretedFrom).toBeNull();
+    expect(declaredEmpty.interpretedFrom).toBeNull();
+    expect(declared.interpretedFrom).toEqual({ id: 'call-9' });
   });
 
   it('reads nothing more when no link points at the page', async () => {
     const { deps, asked } = space([CALL], []);
     const rows: Row[] = [{ id: 'item-1' }];
-    await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, deps);
-    expect(rows[0].extractedFrom).toBeNull();
+    await fillUndeclaredReverse(rows, { include: { interpretedFrom: true } }, {}, deps);
+    expect(rows[0].interpretedFrom).toBeNull();
     expect(asked).toEqual([]);
   });
 
   it("reads a holder's own fields, never its relations or its files", async () => {
     const { deps, asked } = space();
-    await fillUndeclaredReverse([{ id: 'item-1' }], { include: { extractedFrom: true } }, {}, deps);
+    await fillUndeclaredReverse([{ id: 'item-1' }], { include: { interpretedFrom: true } }, {}, deps);
     const properties = asked[0].properties as string[];
     expect(properties).toContain('title');
     // Relations come back as id lists, and a call's `children` is its whole transcript.
     expect(properties).not.toContain('children');
-    expect(properties).not.toContain('extracted');
+    expect(properties).not.toContain('interpreted');
     // Held as a file: reading it would fetch the file for every call.
     expect(properties).not.toContain('editorState');
   });
@@ -139,7 +139,7 @@ describe('a row without a reverse relation it asked to include', () => {
     const { deps, asked } = space();
     await fillUndeclaredReverse(
       [{ id: 'item-1' }],
-      { include: { extractedFrom: { properties: ['title'], include: { signals: true } } } },
+      { include: { interpretedFrom: { properties: ['title'], include: { signals: true } } } },
       {},
       deps,
     );
@@ -150,9 +150,9 @@ describe('a row without a reverse relation it asked to include', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { deps } = space(new Error('offline'));
     const rows: Row[] = [{ id: 'item-1' }];
-    await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, deps);
+    await fillUndeclaredReverse(rows, { include: { interpretedFrom: true } }, {}, deps);
     // Enough for a canvas, which only asks where a card came from.
-    expect(rows[0].extractedFrom).toEqual({ id: 'call-1' });
+    expect(rows[0].interpretedFrom).toEqual({ id: 'call-1' });
     warn.mockRestore();
   });
 
@@ -160,24 +160,24 @@ describe('a row without a reverse relation it asked to include', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { deps } = space([CALL], new Error('offline'));
     const rows: Row[] = [{ id: 'item-1' }];
-    await fillUndeclaredReverse(rows, { include: { extractedFrom: true } }, {}, deps);
-    expect(rows[0].extractedFrom).toBeNull();
+    await fillUndeclaredReverse(rows, { include: { interpretedFrom: true } }, {}, deps);
+    expect(rows[0].interpretedFrom).toBeNull();
     warn.mockRestore();
   });
 
   it('is filled a level down, for the records a read included: a placed card', async () => {
     const { deps, looked } = space();
     const placed: Row = { id: 'item-1' };
-    const own: Row = { id: 'task-2', extractedFrom: null };
+    const own: Row = { id: 'task-2', interpretedFrom: null };
     const rows: Row[] = [
       { id: 'placement-1', node: placed },
       { id: 'placement-2', node: own },
     ];
     const wrapped = withUndeclaredReverse({ query: vi.fn(), findAll: async () => rows }, deps);
-    await wrapped.findAll({}, { include: { node: { include: { extractedFrom: true } } } });
-    expect(placed.extractedFrom).toEqual(CALL);
-    expect(own.extractedFrom).toBeNull();
-    expect(looked).toEqual([{ predicate: 'we://extracted', ids: ['item-1'] }]);
+    await wrapped.findAll({}, { include: { node: { include: { interpretedFrom: true } } } });
+    expect(placed.interpretedFrom).toEqual(CALL);
+    expect(own.interpretedFrom).toBeNull();
+    expect(looked).toEqual([{ predicate: 'we://interpreted', ids: ['item-1'] }]);
   });
 });
 
@@ -190,11 +190,11 @@ describe('looking links up by their ends', () => {
         return [{ from: 'ad4m://obj/call', to: 'ad4m://obj/item' }];
       },
     };
-    expect(await linksEndingAt(store, 'we://extracted', ['ad4m://obj/item'])).toEqual([
+    expect(await linksEndingAt(store, 'we://interpreted', ['ad4m://obj/item'])).toEqual([
       { from: 'ad4m://obj/call', to: 'ad4m://obj/item' },
     ]);
     expect(queries).toEqual([
-      'SELECT ?from ?to WHERE { VALUES ?to { <ad4m://obj/item> } ?from <we://extracted> ?to . }',
+      'SELECT ?from ?to WHERE { VALUES ?to { <ad4m://obj/item> } ?from <we://interpreted> ?to . }',
     ]);
   });
 
@@ -202,14 +202,14 @@ describe('looking links up by their ends', () => {
     const queries: string[] = [];
     const store = { querySparql: async (query: string) => (queries.push(query), []) };
     const ids = Array.from({ length: 700 }, (_, i) => `ad4m://obj/${i}`);
-    await linksEndingAt(store, 'we://extracted', ids);
+    await linksEndingAt(store, 'we://interpreted', ids);
     expect(queries).toHaveLength(3);
   });
 
   it('leaves out an id that cannot be written as an IRI, rather than splicing it into the query', async () => {
     const queries: string[] = [];
     const store = { querySparql: async (query: string) => (queries.push(query), []) };
-    await linksEndingAt(store, 'we://extracted', ['ad4m://obj/ok', 'x> } DELETE {', 'no scheme']);
+    await linksEndingAt(store, 'we://interpreted', ['ad4m://obj/ok', 'x> } DELETE {', 'no scheme']);
     expect(queries).toHaveLength(1);
     expect(queries[0]).toContain('<ad4m://obj/ok>');
     expect(queries[0]).not.toContain('DELETE');
@@ -260,7 +260,7 @@ describe('a model handle that answers undeclared reverse relations', () => {
     };
     const wrapped = withUndeclaredReverse(Model, deps);
     const seen: string[] = [];
-    wrapped.query({}, { include: { extractedFrom: true } }).subscribe((snapshot) => {
+    wrapped.query({}, { include: { interpretedFrom: true } }).subscribe((snapshot) => {
       seen.push((snapshot.data!.results as Row[]).map((row) => row.id).join(','));
     });
     emit([{ id: 'item-1' }]);

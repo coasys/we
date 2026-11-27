@@ -161,7 +161,7 @@ function toolInputToDraft(input: ToolInput): ShapeDraft {
     // rows into a model is the author's decision and not a property of the description they typed —
     // the wizard offers the switch beside the hint the generation just wrote, which is where the
     // question belongs. `generateShapeFields` merges over an existing draft and leaves this alone.
-    extractable: false,
+    interpretable: false,
     members,
   };
 }

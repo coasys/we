@@ -204,7 +204,7 @@ const INTERPRETABLE = { $: 'shapeStore.interpretationCandidates' };
  * Off unless somebody turns it on — opening a call must never quietly narrow the space's views, or
  * per-call scoping comes back by the back door and the canvas changes with whichever panel is open.
  *
- * Matched on where each record came from (`extractedFrom`), which is the conversation that made it:
+ * Matched on where each record came from (`interpretedFrom`), which is the conversation that made it:
  * one a conversation only recognised belongs to the one that made it. Something made by hand comes
  * from no conversation, so it is outside every scope.
  */
@@ -2385,9 +2385,9 @@ const kanbanRoute: RouteSchema = {
                         template is built around. A mark on the card and a line in its people hovercard,
                         rather than the author's name in heading type: on an interpreted task the author is
                         whichever member's node ran the pass, not who proposed the work. Each card says
-                        where it came from itself (`extractedFrom`), whichever call that was.
+                        where it came from itself (`interpretedFrom`), whichever call that was.
                       */
-                      extracted: 'card.extractedFrom',
+                      interpreted: 'card.interpretedFrom',
                       /*
                             And who is doing it — the other half of the same question. A call commits
                             people to things as often as it commits to things, and a board that could
@@ -2492,7 +2492,7 @@ const FILTERING = 'count(local.calendarPeople)';
  * is what keeps a busy week looking busy.
  */
 /** Whether an event is one the call on screen produced — the "this call" lens. See `FROM_PARAM`. */
-const FROM_CALL_EVENT = (as: string) => `(${as}.id in first(local.calendarFrom).extracted)`;
+const FROM_CALL_EVENT = (as: string) => `(${as}.id in first(local.calendarFrom).interpreted)`;
 
 const VISIBLE_EVENTS =
   `${withoutHiddenSuggestions('local.events')}` +
@@ -2867,7 +2867,7 @@ const eventList: SchemaNode = {
                               children: [
                                 { type: 'we-text', props: { fontWeight: 'semibold', text: { $: 'event.title' } } },
                                 // Where it came from, as the board's cards say it.
-                                modelMark({ as: 'event', extracted: 'event.extractedFrom' }),
+                                modelMark({ as: 'event', interpreted: 'event.interpretedFrom' }),
                                 {
                                   type: '$if',
                                   props: {

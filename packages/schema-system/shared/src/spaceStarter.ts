@@ -99,7 +99,7 @@ export interface SpaceStarter {
   policy?: 'open' | 'community';
   /**
    * Whether the space collection — the messages typed outside any call — is interpreted as it grows.
-   * Written onto that collection when it is made (`CollectionBlock.autoExtract`); absent, it starts
+   * Written onto that collection when it is made (`CollectionBlock.autoInterpret`); absent, it starts
    * with the space's default like any other new collection.
    */
   input?: boolean;
@@ -172,7 +172,7 @@ export function starterSettings(starter: SpaceStarter | undefined): Record<strin
   const fields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(starter.settings ?? {})) {
     if (IDENTITY_FIELDS.has(key) || isReferenceValue(value)) continue;
-    // `enabledModules`, `enabledViews` and `extractionTargets` hold their list as one JSON string.
+    // `enabledModules`, `enabledViews` and `interpretationTargets` hold their list as one JSON string.
     fields[key] = Array.isArray(value) ? JSON.stringify(value) : value;
   }
   return fields;

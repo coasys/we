@@ -344,7 +344,7 @@ export interface EntitySchema {
    * Absent means no, which is the right default: an entity becomes an extraction target by
    * somebody deciding it should be one.
    */
-  extractable?: boolean;
+  interpretable?: boolean;
 
   /**
    * A person can author one of these inline, as a unit of content inside a composed document.
@@ -484,7 +484,7 @@ const entitySchema = z.object({
   abstract: z.boolean().optional(),
   interpretationHint: z.string().optional(),
   description: z.string().optional(),
-  extractable: z.boolean().optional(),
+  interpretable: z.boolean().optional(),
   blockable: z.boolean().optional(),
   authoring: z.object({ fields: z.array(z.string()) }).optional(),
   composed: z.boolean().optional(),
@@ -556,9 +556,9 @@ export function validateManifest(
     // Nothing is ever *of* an abstract entity, so nothing could be minted as one — and a target
     // list built by collecting the flag would carry a name the executor cannot resolve to a shape,
     // failing the whole pass rather than the one entry.
-    if (entity.extractable && entity.abstract) {
+    if (entity.interpretable && entity.abstract) {
       errors.push({
-        path: `entities.${entityName}.extractable`,
+        path: `entities.${entityName}.interpretable`,
         message: 'an abstract entity cannot be an interpretation target — nothing is ever an instance of it',
       });
     }
@@ -661,7 +661,7 @@ export function getRelation(manifest: EntityManifest, entity: string, relation: 
 }
 
 /**
- * Names of the entities a manifest declares an LLM may mint — see {@link EntitySchema.extractable}.
+ * Names of the entities a manifest declares an LLM may mint — see {@link EntitySchema.interpretable}.
  *
  * Sorted, because the answer becomes an `AutoProcessorConfig`'s class list and two peers computing
  * a different order for the same set would each see the other's registration as a change worth
@@ -673,7 +673,7 @@ export function getRelation(manifest: EntityManifest, entity: string, relation: 
  */
 export function interpretableEntities(manifest: EntityManifest): string[] {
   return Object.entries(manifest.entities)
-    .filter(([, entity]) => entity.extractable && !entity.abstract)
+    .filter(([, entity]) => entity.interpretable && !entity.abstract)
     .map(([name]) => name)
     .sort();
 }

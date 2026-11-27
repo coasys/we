@@ -35,7 +35,7 @@ const SIGHTING: EntityManifest = {
       flag: { predicate: 'we://flag', value: 'we://module/shape/x/sighting' },
       description: 'A bird somebody saw',
       interpretationHint: 'Somebody saying they saw a bird',
-      extractable: true,
+      interpretable: true,
       authoring: { fields: ['species', 'count', 'notes'] },
       display: { title: 'species', summary: 'notes', media: 'photo', fields: ['count', 'seenAt'] },
       properties: {

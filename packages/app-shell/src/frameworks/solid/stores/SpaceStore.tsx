@@ -900,7 +900,7 @@ const SPACE_AVATAR_PX = 512;
 const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
 /** What a collection's extraction settings are read from — see `autoInterpretFor`. */
-const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
+const COLLECTION_SETTINGS_FIELDS = ['autoInterpret', 'interpretationTargets'] as const;
 
 /**
  * The one rule for a live query that cannot open: read the stored rows once and apply them, and let
@@ -1731,7 +1731,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       mode: 'feed',
       title: '',
       ...defaults,
-      ...(starter?.input !== undefined && { autoExtract: starter.input }),
+      ...(starter?.input !== undefined && { autoInterpret: starter.input }),
     });
     await space.setRoot({ id: root.id });
 
@@ -4498,7 +4498,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     `moduleSettings.ts` owns the resolution and the reasoning; this owns only the reading.
 
     A capability could be switched on and off four ways here and could not carry a single *value*,
-    which is why `autoInterpret` and `extractionTargets` are columns on the core `Space` entity.
+    which is why `autoInterpret` and `interpretationTargets` are columns on the core `Space` entity.
     Those two stay where they are — they are interpretation's configuration, and where that lands is a
     question about wires rather than about settings — but nothing new joins them.
   */
@@ -4606,7 +4606,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     space reads false: a decision nobody has made is not a decision to spend somebody's LLM budget.
 
     A default and nothing more. Each collection holds its own answer, copied from this when it was
-    made (`CollectionBlock.autoExtract`); see `collectionInterpretation` in `@we/entities` for why a copy.
+    made (`CollectionBlock.autoInterpret`); see `collectionInterpretation` in `@we/entities` for why a copy.
   */
   const autoInterpret = createMemo<boolean>(() => currentSpace()?.autoInterpret === true);
 
@@ -4615,14 +4615,14 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     Intersected with the candidates rather than trusted as stored, and that is load bearing: a name
     the perspective has no shape for fails `assertShapesInstalled` and takes the whole pass down, so
-    a list naming a model since deleted — or one whose `extractable` was withdrawn in a release —
+    a list naming a model since deleted — or one whose `interpretable` was withdrawn in a release —
     has to narrow quietly instead of breaking extraction for the space.
 
     Order follows the candidates, so a settings list reads the same way every time rather than in
     whatever order somebody happened to tick things.
   */
   const interpretationTargets = createMemo<string[]>(() =>
-    resolveSpaceInterpretationTargets(shapeStore.interpretationCandidates(), currentSpace()?.extractionTargets),
+    resolveSpaceInterpretationTargets(shapeStore.interpretationCandidates(), currentSpace()?.interpretationTargets),
   );
 
   /**
@@ -4638,7 +4638,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * watch for a call its participants had switched off for the moment it took to read.
    */
   const [collectionSettings, setCollectionSettings] = createSignal<
-    Record<string, { autoExtract?: boolean; extractionTargets?: string }>
+    Record<string, { autoInterpret?: boolean; interpretationTargets?: string }>
   >({});
   const [loadedCollections, setLoadedCollections] = createSignal<ReadonlySet<string>>(new Set());
   const [askedCollections, setAskedCollections] = createSignal<string[]>([]);
@@ -4685,7 +4685,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCollectionSettings((current) => {
         const next = { ...current };
         for (const row of rows) {
-          next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
+          next[row.id] = { autoInterpret: row.autoInterpret, interpretationTargets: row.interpretationTargets };
         }
         return next;
       });
@@ -4724,7 +4724,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!collectionId) return false;
     askCollection(collectionId);
     if (!loadedCollections().has(collectionId)) return false;
-    return resolveCollectionAutoInterpret(autoInterpret(), collectionSettings()[collectionId]?.autoExtract);
+    return resolveCollectionAutoInterpret(autoInterpret(), collectionSettings()[collectionId]?.autoInterpret);
   };
 
   /** The models one collection extracts: its own list, else the space's default, narrowed to the candidates. */
@@ -4732,8 +4732,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     askCollection(collectionId);
     return resolveCollectionInterpretationTargets(
       shapeStore.interpretationCandidates(),
-      currentSpace()?.extractionTargets,
-      collectionSettings()[collectionId]?.extractionTargets,
+      currentSpace()?.interpretationTargets,
+      collectionSettings()[collectionId]?.interpretationTargets,
     );
   };
 
@@ -4749,7 +4749,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   async function writeCollectionSettings(
     collectionId: string,
-    fields: { autoExtract?: boolean; extractionTargets?: string },
+    fields: { autoInterpret?: boolean; interpretationTargets?: string },
     what: string,
   ): Promise<void> {
     const dataset = datasetStore.currentDataset();
@@ -4778,7 +4778,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * Does not stop a pass already running: those tokens are spent.
    */
   const setAutoInterpretFor = (collectionId: string, on: boolean): Promise<void> =>
-    writeCollectionSettings(collectionId, { autoExtract: on }, 'whether this is interpreted as it happens');
+    writeCollectionSettings(collectionId, { autoInterpret: on }, 'whether this is interpreted as it happens');
 
   /**
    * Add or remove one model from what a collection extracts, for everyone in it.
@@ -4792,7 +4792,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     else next.delete(entity);
     await writeCollectionSettings(
       collectionId,
-      { extractionTargets: JSON.stringify([...next]) },
+      { interpretationTargets: JSON.stringify([...next]) },
       'what this interprets',
     );
   }
@@ -4844,10 +4844,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     const liveCandidates =
       onScreen && shapeStore.interpretationCandidatesLoaded() ? shapeStore.interpretationCandidates() : undefined;
     const space = shownSpace ?? (ds ? (await Space.findAll(handle, { where: spaceSelfWhere(ds) }))[0] : undefined);
-    const own = liveSettings ?? { autoExtract: row?.autoExtract, extractionTargets: row?.extractionTargets };
+    const own = liveSettings ?? {
+      autoInterpret: row?.autoInterpret,
+      interpretationTargets: row?.interpretationTargets,
+    };
     /*
       Narrowed by candidacy — the same rule the live list intersects, read for this dataset —
-      not by resolvability: an adopted model whose manifest is not extractable resolves in the
+      not by resolvability: an adopted model whose manifest is not interpretable resolves in the
       registry all the same, and a check that only asks "does the name resolve" kept it. The
       resolvable check stays: a candidate whose class is not installed in this dataset yet has no
       shape there and would take the whole pass down.
@@ -4865,16 +4868,16 @@ export function SpaceStoreProvider(props: ParentProps) {
       installed.includes(entity) || getEntityForDataset(entity, handle) !== undefined;
     return {
       spaceName: space?.name,
-      spaceTargets: resolveSpaceInterpretationTargets(candidates, space?.extractionTargets).filter(resolvable),
+      spaceTargets: resolveSpaceInterpretationTargets(candidates, space?.interpretationTargets).filter(resolvable),
       // A record that could not be read has not said it inherits: the space's default must not start
       // a watch the record's own switch may forbid, and nothing re-registers it once the record arrives.
       auto:
         (liveSettings !== undefined || row !== undefined) &&
-        resolveCollectionAutoInterpret(space?.autoInterpret === true, own.autoExtract),
+        resolveCollectionAutoInterpret(space?.autoInterpret === true, own.autoInterpret),
       classes: resolveCollectionInterpretationTargets(
         candidates,
-        space?.extractionTargets,
-        own.extractionTargets,
+        space?.interpretationTargets,
+        own.interpretationTargets,
       ).filter(resolvable),
     };
   }
@@ -5824,23 +5827,23 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const save = defaultSaveFor(ds, 'extractionTargets');
+    const save = defaultSaveFor(ds, 'interpretationTargets');
     const isNewest = save.ops.begin();
-    const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
+    const base = save.pending > 0 && save.value !== undefined ? save.value : space.interpretationTargets;
     const current = parseEntityList(base) ?? LEGACY_INTERPRETATION_TARGETS;
     const next = new Set(current);
     if (on) next.add(entity);
     else next.delete(entity);
-    const extractionTargets = JSON.stringify([...next]);
-    save.value = extractionTargets;
+    const interpretationTargets = JSON.stringify([...next]);
+    save.value = interpretationTargets;
     save.pending += 1;
     try {
-      publishSpaceFields(ds, { extractionTargets });
-      await queueDefaultWrite(save, async () => writeSpaceFields(ds, space, { extractionTargets }, isNewest));
-      save.confirmed = extractionTargets;
+      publishSpaceFields(ds, { interpretationTargets });
+      await queueDefaultWrite(save, async () => writeSpaceFields(ds, space, { interpretationTargets }, isNewest));
+      save.confirmed = interpretationTargets;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { extractionTargets: save.confirmed });
+      if (isNewest()) publishSpaceFields(ds, { interpretationTargets: save.confirmed });
       throw error;
     } finally {
       save.pending -= 1;
@@ -6120,14 +6123,14 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   const pendingDefaults = (ds: AppDataset): Partial<Space> => {
     const fields: Partial<Space> = {};
-    for (const field of ['defaultTemplateId', 'defaultThemeId', 'extractionTargets'] as const) {
+    for (const field of ['defaultTemplateId', 'defaultThemeId', 'interpretationTargets'] as const) {
       const save = defaultSaves.get(`${ds.id}:${field}`);
       if (save) fields[field] = save.value;
     }
     return fields;
   };
 
-  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId' | 'extractionTargets') => {
+  const defaultSaveFor = (ds: AppDataset, field: 'defaultTemplateId' | 'defaultThemeId' | 'interpretationTargets') => {
     const key = `${ds.id}:${field}`;
     let save = defaultSaves.get(key);
     if (!save) {

@@ -98,7 +98,7 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
   inThread: { target: '', cardinality: 'one', predicate: 'we://thread', reverseOf: 'thread' },
   /**
    * The collection this node is part of — `CollectionBlock.children` read backwards, exactly as
-   * `extractedFrom` reads `extracted`. Empty on a response, which is a child of nothing.
+   * `interpretedFrom` reads `interpreted`. Empty on a response, which is a child of nothing.
    *
    * Where a response was said is worked out from it: the `partOf` of its thread's subject. One link
    * a node does not own, read in one batched query for a page of them.
@@ -106,7 +106,7 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
   partOf: { target: '', cardinality: 'one', predicate: CONTAINMENT_PREDICATE, reverseOf: 'children' },
   /**
    * Where this record was interpreted from — the call (or the space collection, for loose messages)
-   * whose `extracted` links to it. `CollectionBlock.extracted` read backwards, exactly as
+   * whose `interpreted` links to it. `CollectionBlock.interpreted` read backwards, exactly as
    * `respondsTo` reads `responses`.
    *
    * Provenance, not containment: an interpreted item lives in the space collection and records where
@@ -118,7 +118,7 @@ export const WE_NODE_RELATIONS: EntitySchema['relations'] = {
    * but a typed reverse on the base every collection extends would be a class importing its own
    * subclass.
    */
-  extractedFrom: { target: '', cardinality: 'one', predicate: 'we://extracted', reverseOf: 'extracted' },
+  interpretedFrom: { target: '', cardinality: 'one', predicate: 'we://interpreted', reverseOf: 'interpreted' },
   /**
    * Every time a model was asked to do something about this record — read a call, edit a template.
    * See `ModelRun`.

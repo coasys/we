@@ -199,7 +199,7 @@ const CHANGE_PROPOSALS = `${PROPOSALS}.filter(p, p.kind == 'update')`;
 /**
  * Everything the passes wrote here, newest first — one subscription, whatever the types.
  *
- * Read through `CollectionBlock.extracted` rather than through `children`, which is the difference
+ * Read through `CollectionBlock.interpreted` rather than through `children`, which is the difference
  * between a question the graph can answer and one it cannot. `children` holds the transcript too and
  * an untyped include carries no class constraint, so "what did this call produce" through it means
  * fetching every utterance and sorting them out afterwards. The provenance link *is* the answer, so
@@ -209,10 +209,11 @@ const CHANGE_PROPOSALS = `${PROPOSALS}.filter(p, p.kind == 'update')`;
  * awaiting a decision is not a property of it, and there is nothing in the graph to ask. The list of
  * pending ids is in hand and is a handful.
  */
-const EXTRACTED_ROWS = 'first(local.extractedFrom).extracted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))';
+const INTERPRETED_ROWS =
+  'first(local.interpretedFrom).interpreted.filter(r, !(r.id in modules.transcribe.unconfirmedIds))';
 
 /** How many of them, for the badge beside the heading. The list is small by construction. */
-const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
+const INTERPRETED_COUNT = `count(${INTERPRETED_ROWS})`;
 
 /**
  * The changes to already-agreed records that somebody kept — the fourth quadrant of this panel.
@@ -223,20 +224,20 @@ const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
  * account of it at all, and the record itself with a new value and no provenance.
  *
  * `Amendment` is that account, and this is the list of them. No filter, unlike
- * {@link EXTRACTED_ROWS}: an amendment exists only because somebody accepted one, so there is no
+ * {@link INTERPRETED_ROWS}: an amendment exists only because somebody accepted one, so there is no
  * unconfirmed state to take back out.
  */
 /**
  * What this conversation found that was already in the space — another call's, the space's own, or
  * somebody's typed by hand. See `CollectionBlock.recognised`.
  *
- * Its own list rather than more of {@link EXTRACTED_ROWS}: a pass that matches last week's task did
+ * Its own list rather than more of {@link INTERPRETED_ROWS}: a pass that matches last week's task did
  * not make it here, and it must not sit under "Accepted" as though somebody had just kept it. No filter for suggestions, since a pass recognising something stages nothing new.
  */
-const RECOGNISED_ROWS = 'first(local.extractedFrom).recognised';
+const RECOGNISED_ROWS = 'first(local.interpretedFrom).recognised';
 const RECOGNISED_COUNT = `count(${RECOGNISED_ROWS})`;
 
-const AMENDMENT_ROWS = 'first(local.extractedFrom).amendments';
+const AMENDMENT_ROWS = 'first(local.interpretedFrom).amendments';
 const AMENDMENT_COUNT = `count(${AMENDMENT_ROWS})`;
 
 /** What the store says can be interpreted from that call — see `interpretationFor` on the store. */
@@ -2221,7 +2222,7 @@ const interpretationHistory: SchemaNode = {
  * Keep commits — and a record on this list has already been written, so changing one is an ordinary
  * record edit that belongs where records are edited rather than in a read-back of a call.
  */
-const extractedCard: SchemaNode = {
+const interpretedCard: SchemaNode = {
   type: 'Column',
   props: {
     bg: 'surface',
@@ -2247,8 +2248,8 @@ const extractedCard: SchemaNode = {
 /**
  * A record this conversation recognised: what it is, and the conversation that made it.
  *
- * The maker is asked per card — the conversation whose `extracted` holds it — rather than included
- * with the list, because nesting `extractedFrom` under the untyped `recognised` relation fails the
+ * The maker is asked per card — the conversation whose `interpreted` holds it — rather than included
+ * with the list, because nesting `interpretedFrom` under the untyped `recognised` relation fails the
  * whole read once any member has one. The list is a handful, and the question is native.
  *
  * A neutral edge rather than the accepted cards' green: nothing was decided here.
@@ -2268,7 +2269,7 @@ const recognisedCard: SchemaNode = {
   $queries: {
     madeIn: {
       entity: 'CollectionBlock',
-      where: { extracted: { some: { id: { $: 'item.id' } } } },
+      where: { interpreted: { some: { id: { $: 'item.id' } } } },
       select: ['title', 'kind'],
       limit: 1,
       subscribe: false,
@@ -2295,7 +2296,7 @@ const recognisedRows: SchemaNode = {
   children: [recognisedCard],
 };
 
-const extractedRows: SchemaNode = {
+const interpretedRows: SchemaNode = {
   type: '$each',
   props: {
     /*
@@ -2307,7 +2308,7 @@ const extractedRows: SchemaNode = {
       call's children are mostly transcript — so "everything this call produced" was unaskable and
       the panel asked "all the tasks, then all the events" instead.
 
-      `CollectionBlock.extracted` makes it askable. A pass writes that link beside the containment
+      `CollectionBlock.interpreted` makes it askable. A pass writes that link beside the containment
       one, so the relation *is* the answer, and an include over it comes back polymorphically: every
       record the passes wrote, whatever its type, hydrated as the class it actually is. One round
       trip, no utterances in the payload, and a community shape extracted this morning arrives
@@ -2315,16 +2316,16 @@ const extractedRows: SchemaNode = {
 
       Which also buys the two things the grouped version could not have. The rows sort by when they
       were made rather than by which model they happen to be, and there is a number to put beside
-      the heading — see `EXTRACTED_COUNT`.
+      the heading — see `INTERPRETED_COUNT`.
 
       Staged suggestions are filtered rather than excluded by the query, for the reason they always
       were: "is this still awaiting a decision" is not a property of the record and there is nothing
       in the graph to ask it about. The list of pending ids is right here, and it is a handful.
     */
-    items: { $: EXTRACTED_ROWS },
+    items: { $: INTERPRETED_ROWS },
     as: 'item',
   },
-  children: [extractedCard],
+  children: [interpretedCard],
 };
 
 /**
@@ -4013,7 +4014,7 @@ export const interpretationPanel: SchemaNode = {
                 $localState: {
                   proposalsOpen: { type: 'boolean', initial: true, persist: 'transcribe.proposalsOpen' },
                   changesListOpen: { type: 'boolean', initial: true, persist: 'transcribe.changesListOpen' },
-                  extractedOpen: { type: 'boolean', initial: true, persist: 'transcribe.extractedOpen' },
+                  interpretedOpen: { type: 'boolean', initial: true, persist: 'transcribe.interpretedOpen' },
                   amendmentsOpen: { type: 'boolean', initial: true, persist: 'transcribe.amendmentsOpen' },
                   // Folded to begin with: it is context, where the sections above are decisions.
                   recognisedOpen: { type: 'boolean', initial: false, persist: 'transcribe.recognisedOpen' },
@@ -4050,7 +4051,7 @@ export const interpretationPanel: SchemaNode = {
                   passes: {
                     entity: 'ModelRun',
                     scope: { anchor: 'CollectionBlock', via: 'runs', anchorId: INTERPRETATION_SUBJECT },
-                    where: { kind: 'extraction' },
+                    where: { kind: 'interpretation' },
                     order: { createdAt: 'desc' },
                     limit: 50,
                     when: INTERPRETATION_SUBJECT,
@@ -4154,7 +4155,7 @@ export const interpretationPanel: SchemaNode = {
                         /*
                       One query for the whole section, and it is what makes the section knowable.
 
-                      The call record, with its `extracted` relation hydrated. Everything the heading
+                      The call record, with its `interpreted` relation hydrated. Everything the heading
                       and the grid need comes off that one row: the count for the badge, and the
                       records themselves, already ordered by the backend. Before the relation existed
                       this was a query per model, which is why the section could neither be counted
@@ -4171,7 +4172,7 @@ export const interpretationPanel: SchemaNode = {
                       that could not say what it wanted.
                     */
                         $queries: {
-                          extractedFrom: {
+                          interpretedFrom: {
                             entity: 'CollectionBlock',
                             where: { id: INTERPRETATION_SUBJECT },
                             limit: 1,
@@ -4183,7 +4184,7 @@ export const interpretationPanel: SchemaNode = {
                               whether this call has been asked about yet.
                             */
                             include: {
-                              extracted: { order: { createdAt: 'desc' } },
+                              interpreted: { order: { createdAt: 'desc' } },
                               recognised: { order: { createdAt: 'desc' } },
                               amendments: { order: { createdAt: 'desc' } },
                             },
@@ -4200,7 +4201,7 @@ export const interpretationPanel: SchemaNode = {
                             whether any of them had found anything, so it fell back to gating on
                             whether the call had any models ticked. One list has one count.
                           */
-                              condition: { $: EXTRACTED_COUNT },
+                              condition: { $: INTERPRETED_COUNT },
                               then: {
                                 type: 'Column',
                                 props: { gap: '200', width: '100%' },
@@ -4212,7 +4213,7 @@ export const interpretationPanel: SchemaNode = {
                                   competing with its own background.
 
                                   "Accepted", not "Extracted", though the rows come off the
-                                  `extracted` relation — because {@link EXTRACTED_ROWS} takes
+                                  `interpreted` relation — because {@link INTERPRETED_ROWS} takes
                                   `unconfirmedIds` back out of it, so what is drawn here is not what
                                   a pass wrote but what somebody agreed to keep. The old name was a
                                   description of the query rather than of the list, and it named the
@@ -4223,17 +4224,17 @@ export const interpretationPanel: SchemaNode = {
                                 */
                                   foldingSectionLabel({
                                     label: 'Accepted',
-                                    count: EXTRACTED_COUNT,
+                                    count: INTERPRETED_COUNT,
                                     tone: 'success',
-                                    open: { field: 'extractedOpen' },
+                                    open: { field: 'interpretedOpen' },
                                   }),
                                   foldingBody({
-                                    open: { field: 'extractedOpen' },
+                                    open: { field: 'interpretedOpen' },
                                     children: [
                                       {
                                         type: 'Grid',
                                         props: { minChildWidth: '240px', gap: '200', width: '100%' },
-                                        children: [extractedRows],
+                                        children: [interpretedRows],
                                       },
                                     ],
                                   }),

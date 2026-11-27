@@ -172,10 +172,10 @@ export const CollectionBlock: CoreEntityDef = {
        * On every collection rather than on a subclass for collections that are extracted, because
        * any collection can be extracted, and one that never is simply never has it written.
        */
-      autoExtract: { type: 'boolean', predicate: 'we://auto_extract' },
+      autoInterpret: { type: 'boolean', predicate: 'we://auto_interpret' },
       /**
        * The models this collection looks for, as a JSON array of entity names — copied from the
-       * space's default (`Space.extractionTargets`) when the collection is made, for `autoExtract`'s
+       * space's default (`Space.interpretationTargets`) when the collection is made, for `autoInterpret`'s
        * reason.
        *
        * **`'[]'` means none, and that is different from unset.** Unset is a collection made without
@@ -188,7 +188,7 @@ export const CollectionBlock: CoreEntityDef = {
        * lose one edit — the trade `Space.enabledModules` makes, and the right one for a list somebody
        * presses occasionally.
        */
-      extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
+      interpretationTargets: { type: 'string', predicate: 'we://interpretation_targets', default: '' },
     },
     relations: {
       // ── Membership ────────────────────────────────────────────────────────────────────
@@ -302,37 +302,37 @@ export const CollectionBlock: CoreEntityDef = {
        * matters is when each record was made and `createdAt` already says that — where `children`
        * is ordered because somebody arranged it.
        */
-      extracted: { target: '', cardinality: 'many', predicate: 'we://extracted' },
+      interpreted: { target: '', cardinality: 'many', predicate: 'we://interpreted' },
       /**
        * Records a pass found in this conversation that another had already made — "Already in the
-       * space", where {@link extracted} is "made here".
+       * space", where {@link interpreted} is "made here".
        *
        * A pass that recognises something already in the space writes nothing new, which is right,
-       * and used to link it here as `extracted` all the same — so a review panel listed a task from
-       * last week's call as accepted in this one, and the record carried a second `extracted` link
+       * and used to link it here as `interpreted` all the same — so a review panel listed a task from
+       * last week's call as accepted in this one, and the record carried a second `interpreted` link
        * that made "where did this come from" ambiguous. The two facts are different: this
        * conversation mentioned it; another one made it. Kept, rather than dropped, because the
        * mention is worth knowing — it is how a conversation's own view shows everything it touched.
        *
-       * Untyped and unordered, for `extracted`'s reasons.
+       * Untyped and unordered, for `interpreted`'s reasons.
        */
       recognised: { target: '', cardinality: 'many', predicate: 'we://recognised' },
       /**
        * Changes a pass suggested to records that already existed, and somebody kept — see
        * {@link Amendment}.
        *
-       * The counterpart to {@link extracted} for the other kind of suggestion a pass makes, and it
+       * The counterpart to {@link interpreted} for the other kind of suggestion a pass makes, and it
        * is a separate relation rather than more entries in that one because the two are about
-       * different things. `extracted` names *records* the call produced; this names *amendments*,
+       * different things. `interpreted` names *records* the call produced; this names *amendments*,
        * which are their own records and whose subject is usually something the call did not create
        * — a task somebody had already written down, which the conversation then moved on.
        *
        * That difference is also why an amendment could not be reported by marking the extracted
-       * record instead. A change accepted on a record no pass here wrote has nothing in `extracted`
+       * record instead. A change accepted on a record no pass here wrote has nothing in `interpreted`
        * to mark, and that is the ordinary case rather than the edge: a change proposal targets an
        * already-agreed record by definition.
        *
-       * Typed, unlike `extracted`, because an amendment is always the same entity — there is no
+       * Typed, unlike `interpreted`, because an amendment is always the same entity — there is no
        * open vocabulary here, only whatever the amended record happens to be, which the amendment
        * itself points at.
        */

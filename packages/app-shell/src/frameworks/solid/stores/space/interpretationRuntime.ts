@@ -18,8 +18,8 @@ import { untrack } from 'solid-js';
   Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
   stored: how a relation is stored is the backend's business.
 
-  - `runs` — a `ModelRun` for each pass, `kind: 'extraction'`, hung off the collection it read.
-  - `extracted` — a record a model proposed from reading the collection. Written beside containment
+  - `runs` — a `ModelRun` for each pass, `kind: 'interpretation'`, hung off the collection it read.
+  - `interpreted` — a record a model proposed from reading the collection. Written beside containment
     rather than instead of it: `children` is ownership, and the call's board gathers through it, so a
     record that stopped being a child would vanish from the board it exists to appear on. This is the
     other fact about the same record: a model proposed it from the conversation, rather than somebody
@@ -31,9 +31,9 @@ import { untrack } from 'solid-js';
   same reason it takes `parent` as one — a backend that hard-coded them would be deciding what a
   relation in somebody else's graph is called.
 */
-const extractedFrom = (collectionId: string) => ({
+const interpretedFrom = (collectionId: string) => ({
   id: collectionId,
-  relation: 'extracted',
+  relation: 'interpreted',
   entity: 'CollectionBlock',
 });
 const recognisedBy = (collectionId: string) => ({
@@ -55,7 +55,7 @@ type PassRecord = {
 };
 
 const passFields = (pass: PassRecord) => ({
-  kind: 'extraction',
+  kind: 'interpretation',
   outcome: pass.outcome,
   recordCount: pass.recordCount,
   detail: JSON.stringify({ targets: pass.targets }),
@@ -66,7 +66,7 @@ const passFields = (pass: PassRecord) => ({
 });
 
 /**
- * Write down that a pass happened, as a `ModelRun` of kind `extraction` — see {@link ModelRun}.
+ * Write down that a pass happened, as a `ModelRun` of kind `interpretation` — see {@link ModelRun}.
  *
  * Best effort, and deliberately so: the pass is the thing that mattered and it has already run,
  * so a failed *note* about it must not turn a successful extraction into a rejected one. Logged
@@ -204,7 +204,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
    *
    * Always intersected with the candidates, and that is not tidiness: a name the perspective has no
    * shape for fails `assertShapesInstalled` and takes the whole pass down, so a space default naming
-   * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
+   * a model since deleted, or a call list naming one whose `interpretable` was withdrawn, has to
    * narrow the request rather than break it.
    */
   const targetsForCollection = (collectionId: string): string[] => {
@@ -249,7 +249,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
         watchId: watchIdFor(collectionId),
         classes,
         parent: await filedUnder(handle, collectionId),
-        provenance: extractedFrom(collectionId),
+        provenance: interpretedFrom(collectionId),
         recognised: recognisedBy(collectionId),
       });
     });
@@ -338,7 +338,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
         const result = await port.interpret(handle, turns, {
           classes,
           parent: await filedUnder(handle, collectionId),
-          provenance: extractedFrom(collectionId),
+          provenance: interpretedFrom(collectionId),
           recognised: recognisedBy(collectionId),
           ...(run ? { run } : {}),
         });
@@ -404,7 +404,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       return port.proposals(dataset, {
         parent: await filedUnder(dataset, collectionId),
         // The conversation, which is what narrows once every call files into one collection.
-        provenance: extractedFrom(collectionId),
+        provenance: interpretedFrom(collectionId),
       });
     },
 
@@ -439,7 +439,7 @@ export function createInterpretationRuntime(deps: InterpretationRuntimeDeps): In
       return port.reconcile(handle, {
         classes: targetsForCollection(collectionId),
         parent: await filedUnder(handle, collectionId),
-        provenance: extractedFrom(collectionId),
+        provenance: interpretedFrom(collectionId),
         recognised: recognisedBy(collectionId),
       });
     },

@@ -23,7 +23,7 @@
  *
  * What extraction found is drawn among the messages as it arrives, grouped: one row per conversation
  * and pass — "3 tasks and 1 event, from Monday sync" — rather than one per record. The record is the
- * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
+ * event (its `createdAt`, its author), and `interpretedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
 import { lineContent, repliesInclude, SPOKEN, threadLines } from '@we/messages';
@@ -97,7 +97,7 @@ export interface FeedWindowOptions {
   /**
    * Where what extraction found is kept, when that is not `root` — the space collection, for the
    * Feed of one call. Then only what was interpreted from `root` is drawn: the same groups the space's
-   * Feed draws for that call, read by the ids the call's own `extracted` names.
+   * Feed draws for that call, read by the ids the call's own `interpreted` names.
    */
   activityRoot?: string;
   /** What an activity row calls `root` — "the space", or "this call". */
@@ -193,7 +193,7 @@ export function groupActivity(
   const sorted = [...records].sort((a, b) => timeOf(a.row) - timeOf(b.row));
   const groups: { key: string; last: number; rows: { row: Row; entity: string }[] }[] = [];
   for (const record of sorted) {
-    const origin = idOf(record.row.extractedFrom);
+    const origin = idOf(record.row.interpretedFrom);
     const key = origin ? `from:${origin}` : `by:${text(record.row.author)}`;
     const at = timeOf(record.row);
     const open = groups.find((g) => g.key === key && at - g.last <= ACTIVITY_GROUP_MS);
@@ -204,7 +204,7 @@ export function groupActivity(
   }
   return groups.map(({ rows }) => {
     const first = rows[0].row;
-    const origin = idOf(first.extractedFrom);
+    const origin = idOf(first.interpretedFrom);
     const items = rows.map(({ row, entity }) => ({
       id: text(row.id),
       entity,
@@ -266,23 +266,23 @@ export async function readFeedWindow(
   });
 
   /*
-    Of one call, what its passes wrote, by id — the call's own `extracted`, which each record's
-    `extractedFrom` reads backwards. Asked of the call rather than kept from the space's newest page:
+    Of one call, what its passes wrote, by id — the call's own `interpreted`, which each record's
+    `interpretedFrom` reads backwards. Asked of the call rather than kept from the space's newest page:
     that page is the newest records of every call, so an older call's were behind a later one's and
     never reached the window. `null` for the space's own window, which reads them all.
   */
   const foundIn: Promise<string[] | null> =
     activityRoot === root || !options.activityTypes.length
       ? Promise.resolve(null)
-      : find('CollectionBlock', { where: { id: root }, select: ['extracted'], limit: 1 }).then(
-          ([call]) => [call?.extracted ?? []].flat().map(idOf).filter(Boolean),
+      : find('CollectionBlock', { where: { id: root }, select: ['interpreted'], limit: 1 }).then(
+          ([call]) => [call?.interpreted ?? []].flat().map(idOf).filter(Boolean),
           (error: unknown) => {
             console.warn('[feed] could not read what the call found', error);
             return [];
           },
         );
 
-  const [loose, calls, ...extracted] = await Promise.all([
+  const [loose, calls, ...interpreted] = await Promise.all([
     find('TextBlock', page(root)),
     /*
       The calls in the space collection itself — a call about nothing. A call held about something
@@ -300,7 +300,7 @@ export async function readFeedWindow(
       select: CALL_FIELDS,
     }),
     /*
-      What extraction found, per kind. No `include`: a row carries `extractedFrom` as the source's
+      What extraction found, per kind. No `include`: a row carries `interpretedFrom` as the source's
       id unasked, which is all an activity row reads — its title comes from `calls` above. Including
       it hydrated the source into every row, and the source is usually a call holding every line said
       in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
@@ -341,7 +341,7 @@ export async function readFeedWindow(
     A source that filled its page may hold more than it answered with — a kind of record too: a
     pass's records draw as one row, so a full page of them leaves the window looking roomy.
   */
-  let filled = loose.length >= shown || extracted.some((kind) => kind.length >= shown);
+  let filled = loose.length >= shown || interpreted.some((kind) => kind.length >= shown);
   /*
     A spoken line this reader keeps hidden goes here, before the cut — only what the window can
     draw counts toward filling it (and toward a later call being out of reach). A reply stays: its
@@ -374,7 +374,7 @@ export async function readFeedWindow(
     );
   }
 
-  const activity = groupActivity(extracted.flat(), titles, options.pending);
+  const activity = groupActivity(interpreted.flat(), titles, options.pending);
   const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
   return { rows: merged.slice(0, shown), hasMore };

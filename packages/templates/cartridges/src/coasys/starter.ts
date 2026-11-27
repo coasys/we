@@ -21,7 +21,7 @@ export const coasysStarter: SpaceStarter = {
     defaultThemeId: 'glow',
     autoInterpret: true,
     // Tasks stand for action items; the rest is Coasys's conversation DNA (`conversation.ts`).
-    extractionTargets: [
+    interpretationTargets: [
       'TaskBlock',
       'EventBlock',
       'Relationship',

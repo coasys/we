@@ -4275,7 +4275,7 @@ export const seedBundles: Bundle[] = [
                                                                 type: 'we-icon',
                                                                 props: {
                                                                   name: {
-                                                                    $: "(generatedRun({ record: row }) || row.extractedFrom || row.id in first(local.inspectedCall).extracted) ? 'sparkle' : 'pencil-simple-line'",
+                                                                    $: "(generatedRun({ record: row }) || row.interpretedFrom || row.id in first(local.inspectedCall).interpreted) ? 'sparkle' : 'pencil-simple-line'",
                                                                   },
                                                                   size: 'xs',
                                                                   color: 'text-faint',
@@ -4293,7 +4293,7 @@ export const seedBundles: Bundle[] = [
                                                             },
                                                             children: [
                                                               {
-                                                                $: "row.extractedFrom || row.id in first(local.inspectedCall).extracted ? `Interpreted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+                                                                $: "row.interpretedFrom || row.id in first(local.inspectedCall).interpreted ? `Interpreted from the conversation · run by ${author.name} · ` : generatedRun({ record: row }) ? `Written by AI · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
                                                               },
                                                               {
                                                                 type: 'we-timestamp',
@@ -22037,7 +22037,7 @@ export const seedBundles: Bundle[] = [
                                   canvas: { $: "spaceStore.landmarks.canvas ? spaceStore.landmarks.canvas : ''" },
                                   members: { id: { $: 'spaceStore.root' }, via: 'children' },
                                   contains: { $: 'shapeStore.interpretationCandidates' },
-                                  origin: 'extractedFrom',
+                                  origin: 'interpretedFrom',
                                   madeBy: 'generatedBy',
                                   connections: 'Relationship',
                                   routes: 'EdgeRoute',
@@ -32674,7 +32674,7 @@ export const seedBundles: Bundle[] = [
               description: 'One part of a call, as its agenda gave it or as it came up',
               interpretationHint:
                 "One line of the call's agenda: a high-level part of the call such as 'Check in' or 'Pricing'. A one-hour call has 4 to 8. When someone states the agenda, in speech or in a chat message, create one AgendaItem per line, in the words used. When no agenda was stated and the conversation moves to a subject that none of the `existing` AgendaItems covers, create one for it; name it for the whole part of the call, not for the first point made in it. Never create a second AgendaItem for a part that is already in `existing`. Keep `status` up to date: when the turns show the call moving on to another part, emit the AgendaItem that starts with status `current` and the one that ended with status `done`, each with its `id`.",
-              extractable: true,
+              interpretable: true,
               properties: {
                 title: {
                   type: 'string',
@@ -32719,7 +32719,7 @@ export const seedBundles: Bundle[] = [
               description: 'One thread a conversation goes back and forth on',
               interpretationHint:
                 "One thread of discussion: a single question, proposal or problem that people go back and forth on for several turns. Keep topics narrow: 'Whether to buy drip irrigation' and 'Who pays the water bill' are two topics, not one 'Garden watering'. A 30-minute working call usually has 5-8 topics. Not small talk, audio problems, greetings or scheduling. If the thread is already in `existing`, do not emit it again unless its summary or clarity changed; then emit it with its `id`. When the turns open a new thread inside the area of an existing broad topic, create a new DiscussionTopic for it. Give every new topic its place: `agendaItem` for the part of the call it belongs to, or `subTopicOf` when it is one aspect of a topic already in `existing`.",
-              extractable: true,
+              interpretable: true,
               properties: {
                 title: {
                   type: 'string',
@@ -32774,7 +32774,7 @@ export const seedBundles: Bundle[] = [
               description: 'A view one person states on a topic',
               interpretationHint:
                 'A view one participant states on a topic: a proposal, support, doubt or objection. Write the view in the field `statement` (never `title`). Every participant who says something substantive about a topic gets their own Position, so a topic discussed by three people usually has two to four Positions. Always link it to its DiscussionTopic with `about`.',
-              extractable: true,
+              interpretable: true,
               properties: {
                 statement: {
                   type: 'string',
@@ -32820,7 +32820,7 @@ export const seedBundles: Bundle[] = [
               description: 'A question the group leaves open',
               interpretationHint:
                 'A question the group raises and leaves open: something they say they do not know yet or must decide later. Not rhetorical questions and not questions answered a few turns later. Write it in the field `text`.',
-              extractable: true,
+              interpretable: true,
               properties: {
                 text: {
                   type: 'string',
@@ -32966,7 +32966,7 @@ export const seedBundles: Bundle[] = [
           defaultTemplateId: 'space',
           defaultThemeId: 'glow',
           autoInterpret: true,
-          extractionTargets: [
+          interpretationTargets: [
             'TaskBlock',
             'EventBlock',
             'Relationship',

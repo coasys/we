@@ -106,7 +106,7 @@ const findingsQuery = {
   order: { createdAt: 'asc' },
   /*
     Bounded for the same reason the transcript above is, and more so: this is one query per
-    extractable model PER CARD, so a space with eight models and twenty recorded calls holds a
+    interpretable model PER CARD, so a space with eight models and twenty recorded calls holds a
     hundred and sixty live subscriptions to draw a list of titles. An hour of six people talking
     produced thirty-five records in the conversation that prompted this; the card is a sign that a
     conversation produced something, and the whole of it is a press away on the call's own page.
@@ -123,7 +123,7 @@ const findingsQuery = {
  * off, and a card that hid it would be reporting the setting rather than the conversation.
  *
  * Each group hoists its own subscription and renders only when it has members, so a call nobody
- * extracted from looks exactly as it did before, and a space with no extractable models grows
+ * extracted from looks exactly as it did before, and a space with no interpretable models grows
  * nothing at all.
  *
  * How a record is drawn comes from its own declaration (`recordStore.displays`), with the entity

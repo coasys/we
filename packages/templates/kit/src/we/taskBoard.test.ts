@@ -190,7 +190,7 @@ describe('a board read by who is on the work', () => {
 
   it('gives each stack a hovercard of its own, and keeps where the card came from off them', () => {
     const extracted = JSON.stringify(
-      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true, extracted: 'card.x' }),
+      taskBoard({ boardId: { $: 'local.boardId' }, empty: { type: 'Column' }, people: true, interpreted: 'card.x' }),
     );
     // One hovercard per stack, each listing only its own people.
     expect(extracted.match(/"slot":"content"/g)?.length).toBeGreaterThanOrEqual(3);

@@ -62,12 +62,12 @@ export interface CanvasSeedOptions {
    * everything a feed reads. So the placements stay the canvas's own (`canvas`, `via`) and the
    * members are read from here: any record and any relation, so the same seed can draw a space
    * (`{ id: <space collection>, via: 'children' }`) or one call's finds (`{ id: <call>, via:
-   * 'extracted' }`).
+   * 'interpreted' }`).
    */
   members?: { id: string; via: string };
   /**
    * The relation saying where each record came from, read onto its card as `origin` — WE passes
-   * `extractedFrom`, so a card knows which conversation produced it.
+   * `interpretedFrom`, so a card knows which conversation produced it.
    *
    * For whatever draws or groups by source: a badge in the colour of the call a card came from, a
    * lens picking out one call's finds, a list of unplaced cards grouped by call. Read in the same query

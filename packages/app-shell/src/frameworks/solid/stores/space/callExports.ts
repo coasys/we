@@ -147,24 +147,24 @@ export function createCallExports(deps: CallExportDeps) {
           const call = await CollectionBlock.findOne(p, {
             where: { id: callId },
             /*
-              `polymorphic` said here rather than trusted to the declaration. `extracted` names no
+              `polymorphic` said here rather than trusted to the declaration. `interpreted` names no
               target class — a pass writes whatever models the call looks for — and the class this
               store reads through does not carry the flag, so the executor would refuse to hydrate it.
             */
             include: {
-              runs: { where: { kind: 'extraction' } },
-              extracted: { polymorphic: true },
+              runs: { where: { kind: 'interpretation' } },
+              interpreted: { polymorphic: true },
               amendments: true,
             },
           } as never);
           const row = call as unknown as {
             title?: string;
             runs?: unknown;
-            extracted?: unknown;
+            interpreted?: unknown;
             amendments?: unknown;
           } | null;
           const passes = (Array.isArray(row?.runs) ? row.runs : []) as PassEntry[];
-          const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
+          const records = Array.isArray(row?.interpreted) ? (row.interpreted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
           const meta = await settings;

@@ -74,7 +74,7 @@ async function alreadyResolvedIsFalse(decide: () => Promise<boolean>): Promise<b
 const DEFAULT_BASE_PREFIX = 'we://interpreted/';
 
 /** Where a standing watch keeps its filing: beside its processor config, never on it. */
-const FILING_PREDICATE = 'we://extraction_filing';
+const FILING_PREDICATE = 'we://interpretation_filing';
 const filingNode = (watchId: string) => `ad4m://autoprocessor/${watchId}/filing`;
 
 /** Where a turn's words live, and what marks a child as one rather than any other block. */
@@ -490,7 +490,7 @@ const CONNECTION_ENTITY = 'Relationship';
  * choosing what the model proposes. WE never sees those values before committing them: `accept`
  * hands the overlay's id to the executor and the executor writes what it staged.
  *
- * Most of that is bounded already. The class list is the intersection of extractable, the space's
+ * Most of that is bounded already. The class list is the intersection of interpretable, the space's
  * targets and the call's, and a scalar an attacker chooses is a scalar in a record somebody clicked
  * Accept on — visible, wrong, and removable. `Relationship` is the exception, because its `source`
  * and `target` are untyped references: a proposal can name **any base in the dataset**, so a

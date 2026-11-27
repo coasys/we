@@ -59,7 +59,7 @@ export const ANNOTATION = {
   description: `${RDFS}comment`,
   extends: `${RDFS}subClassOf`,
   abstract: `${DASH}abstract`,
-  extractable: 'we://extractable',
+  interpretable: 'we://interpretable',
   blockable: 'we://blockable',
   composed: 'we://composed',
   authoring: 'we://authoring',
@@ -199,7 +199,7 @@ export function annotationLinks(shape: ShapeInput, shapeLinks: readonly LinkLike
   if (entity.description !== undefined) on(shapeUri, ANNOTATION.description, encode(entity.description));
   if (entity.extends) on(shapeUri, ANNOTATION.extends, encode(entity.extends));
   if (entity.abstract !== undefined) on(shapeUri, ANNOTATION.abstract, encode(entity.abstract));
-  if (entity.extractable !== undefined) on(shapeUri, ANNOTATION.extractable, encode(entity.extractable));
+  if (entity.interpretable !== undefined) on(shapeUri, ANNOTATION.interpretable, encode(entity.interpretable));
   if (entity.blockable !== undefined) on(shapeUri, ANNOTATION.blockable, encode(entity.blockable));
   if (entity.composed !== undefined) on(shapeUri, ANNOTATION.composed, encode(entity.composed));
   if (entity.authoring !== undefined) on(shapeUri, ANNOTATION.authoring, encode(entity.authoring));
@@ -390,7 +390,7 @@ export function readShape({ shape, links }: HeldShape): ReadShape | null {
   // A type with no flag field is known by its required fields; a minted flag reads back as declared.
   if (!flag && !entity.abstract) entity.flag = false;
   if (namespace && namespace !== 'we://') entity.namespace = namespace;
-  set('extractable', ANNOTATION.extractable);
+  set('interpretable', ANNOTATION.interpretable);
   set('blockable', ANNOTATION.blockable);
   set('composed', ANNOTATION.composed);
   set('authoring', ANNOTATION.authoring);

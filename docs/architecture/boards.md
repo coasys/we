@@ -88,7 +88,7 @@ were one card set with different column headings.
 | **One somebody made**   | nothing                             | only what somebody put on it                    |
 
 Interpretation files what every call finds into the space collection, with the call as its provenance
-(`extractedFrom`), so a call's finds are on **Everything** and a call needs no board of its own. A
+(`interpretedFrom`), so a call's finds are on **Everything** and a call needs no board of its own. A
 view that wants one call's work picks it out of Everything by provenance rather than by board. A space
 made before spaces had a collection keeps an Everything that gathers from the `Space` record, which a
 board reads as the whole space.

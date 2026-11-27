@@ -1511,7 +1511,7 @@ describe('a canvas over another record’s members', () => {
       name: 'TaskBlock',
       identityProperty: 'title',
       properties: [{ name: 'title', type: 'string' }],
-      relations: [{ name: 'extractedFrom', target: '', cardinality: 'one' }],
+      relations: [{ name: 'interpretedFrom', target: '', cardinality: 'one' }],
     },
   ];
 
@@ -1528,7 +1528,7 @@ describe('a canvas over another record’s members', () => {
           const card = {
             id: 't1',
             title: 'Placed',
-            extractedFrom: 'call-2',
+            interpretedFrom: 'call-2',
             generatedBy: 'run-2',
             author: 'did:ada',
             [NODE_TYPE_KEY]: 'TaskBlock',
@@ -1537,8 +1537,8 @@ describe('a canvas over another record’s members', () => {
         }
         if (entities.includes('TaskBlock') && request.scope?.anchorId === 'root' && request.scope.via === 'children') {
           return tagged('TaskBlock', [
-            { id: 't1', title: 'Placed', extractedFrom: 'call-2', generatedBy: 'run-2', author: 'did:ada' },
-            { id: 't2', title: 'Loose', extractedFrom: { id: 'call-1' } },
+            { id: 't1', title: 'Placed', interpretedFrom: 'call-2', generatedBy: 'run-2', author: 'did:ada' },
+            { id: 't2', title: 'Loose', interpretedFrom: { id: 'call-1' } },
           ]);
         }
         return [];
@@ -1554,7 +1554,7 @@ describe('a canvas over another record’s members', () => {
     canvas: 'canvas-1',
     members: { id: 'root', via: 'children' },
     contains: ['TaskBlock'],
-    origin: 'extractedFrom',
+    origin: 'interpretedFrom',
   };
 
   it('reads the members from the record named, and the placements from the canvas itself', async () => {
@@ -1567,7 +1567,7 @@ describe('a canvas over another record’s members', () => {
     ]);
     expect(asked.filter((a) => a.entities.includes('Placement')).map((a) => a.anchor)).toEqual(['canvas-1']);
     // Where each came from rides in the read the canvas makes anyway.
-    expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ extractedFrom: true });
+    expect(asked.find((a) => a.anchor === 'root')?.include).toMatchObject({ interpretedFrom: true });
   });
 
   it('says which run made a card, placed or not, and nothing for a card a person made', async () => {
@@ -1986,7 +1986,7 @@ describe('canvasSeed — model relations', () => {
         { id: 'm2', title: 'Second call', about: 't1' },
       ],
       Signal: [{ id: 's1', value: 5, __Minute_signals: 'm1' }],
-      ModelRun: [{ id: 'run1', summary: 'extracted', __Minute_runs: 'm1' }],
+      ModelRun: [{ id: 'run1', summary: 'interpreted', __Minute_runs: 'm1' }],
     });
     const ctx = { ...base, models: () => shapes } as ExpanderContext;
 
@@ -2017,7 +2017,7 @@ describe('canvasSeed — model relations', () => {
           id: 'pos1',
           text: 'Ship it',
           about: 't1',
-          extractedFrom: 'call-1',
+          interpretedFrom: 'call-1',
           generatedBy: 'run-1',
           signals: [{ signalTypeId: 'rate', value: 5, author: 'did:a', createdAt: '2026-01-01' }],
           $responsesCount: 3,
@@ -2029,7 +2029,7 @@ describe('canvasSeed — model relations', () => {
       {
         canvas: 'b1',
         relations: { children: true },
-        origin: 'extractedFrom',
+        origin: 'interpretedFrom',
         madeBy: 'generatedBy',
         counts: ['responses'],
         pending: ['pos1'],
@@ -2105,18 +2105,18 @@ describe('canvasSeed — model relations', () => {
     */
     const tables: Record<string, Record<string, unknown>[]> = {
       Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
-      DiscussionTopic: [{ id: 't1', title: 'Roadmap', extractedFrom: { id: 'call-1' } }],
-      Position: [{ id: 'pos1', text: 'Ship it', about: 't1', extractedFrom: { id: 'call-1' } }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap', interpretedFrom: { id: 'call-1' } }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1', interpretedFrom: { id: 'call-1' } }],
     };
     const ctx = {
       query: async (request: ExpanderQuery) => {
         const include = request.include as Record<string, unknown> | undefined;
         const askedForOrigin =
-          Boolean(include?.extractedFrom) ||
-          Boolean((include?.node as { include?: Record<string, unknown> } | undefined)?.include?.extractedFrom);
+          Boolean(include?.interpretedFrom) ||
+          Boolean((include?.node as { include?: Record<string, unknown> } | undefined)?.include?.interpretedFrom);
         const found = answer(tables, request, 'b1');
         // A relation comes back only when the read asked for it — as a link record, not a field.
-        return askedForOrigin ? found : found.map(({ extractedFrom: _dropped, ...row }) => row);
+        return askedForOrigin ? found : found.map(({ interpretedFrom: _dropped, ...row }) => row);
       },
       defaultDataset: () => 'ds',
       models: () => SHAPES,
@@ -2127,7 +2127,7 @@ describe('canvasSeed — model relations', () => {
       {
         canvas: 'b1',
         relations: { children: true },
-        origin: 'extractedFrom',
+        origin: 'interpretedFrom',
         hideWhere: { 'data.origin': { not: 'call-1' } },
       },
       ctx,

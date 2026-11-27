@@ -59,7 +59,7 @@ vertical('V3 social DNA: install, shapes, targets, wizard', (v) => {
     );
     const Space = getEntityForDataset('Space', perspective);
     const targets = await until(
-      async () => String((await Space.findAll(perspective))[0]?.extractionTargets ?? ''),
+      async () => String((await Space.findAll(perspective))[0]?.interpretationTargets ?? ''),
       (t) => DNA.classes.every((c) => t.includes(c.name)),
       { timeout: 60_000, what: "the space's interpretation targets" },
     );

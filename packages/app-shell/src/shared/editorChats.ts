@@ -87,7 +87,7 @@ export async function chatMessages(dataset: DatasetProxy, chatId: string): Promi
       `polymorphic` said here, not left to the declaration: `children` names no target class, and
       AD4M refuses to hydrate one asked for as `true` ("the relation declares no target class"). The
       `$query` layer adds it for a template; a model read has to say it. SpaceStore's read of a
-      call's `extracted` is the same case.
+      call's `interpreted` is the same case.
     */
     include: { children: { polymorphic: true } },
   } as never)) as unknown as Row | null;

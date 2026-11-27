@@ -4,7 +4,7 @@
  *
  * Every other capability setting in WE resolves by *who is asking* — deployment, agent everywhere,
  * community here, agent here — which `moduleSettings.ts` implements. `autoInterpret` and
- * `extractionTargets` are different in kind: the space holds defaults a new collection copies, and
+ * `interpretationTargets` are different in kind: the space holds defaults a new collection copies, and
  * the answer that counts is then the collection's own, belonging to whoever is in that conversation.
  *
  * That has no natural guard. `Space.moduleSettings` is the obvious home for these two settings, so
@@ -93,7 +93,7 @@ describe("the collection level — a collection's own list is the answer", () =>
   });
 });
 
-describe('autoExtract on a collection', () => {
+describe('autoInterpret on a collection', () => {
   it('defers to the space only when the collection holds no answer', () => {
     expect(resolveCollectionAutoInterpret(true, undefined)).toBe(true);
     expect(resolveCollectionAutoInterpret(false, null)).toBe(false);
@@ -107,9 +107,9 @@ describe('autoExtract on a collection', () => {
 
 describe('the copy a new collection is made with', () => {
   it("copies the space's defaults as they stand", () => {
-    expect(collectionInterpretationDefaults({ autoInterpret: true, extractionTargets: '["Sighting"]' })).toEqual({
-      autoExtract: true,
-      extractionTargets: '["Sighting"]',
+    expect(collectionInterpretationDefaults({ autoInterpret: true, interpretationTargets: '["Sighting"]' })).toEqual({
+      autoInterpret: true,
+      interpretationTargets: '["Sighting"]',
     });
   });
 
@@ -117,8 +117,8 @@ describe('the copy a new collection is made with', () => {
     // Copying '' would leave the collection unset, and it would then follow the space's later
     // changes — the live inheritance the copy exists to avoid.
     expect(collectionInterpretationDefaults({ autoInterpret: false })).toEqual({
-      autoExtract: false,
-      extractionTargets: JSON.stringify(LEGACY_INTERPRETATION_TARGETS),
+      autoInterpret: false,
+      interpretationTargets: JSON.stringify(LEGACY_INTERPRETATION_TARGETS),
     });
   });
 

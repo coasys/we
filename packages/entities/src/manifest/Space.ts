@@ -62,11 +62,11 @@ export const Space: CoreEntityDef = {
        * Which candidate models a new collection here starts out interpreting — a call, a channel, the
        * space's own collection — as a JSON array of entity names.
        *
-       * The middle of three layers. `EntitySchema.extractable` says what is a candidate at all —
+       * The middle of three layers. `EntitySchema.interpretable` says what is a candidate at all —
        * a question about whether an LLM *could* mint one, answered by the codebase; this says which
        * of them a new conversation here begins with, which is a question about what this community
        * talks about and is nobody else's to answer. Each collection then holds its own list
-       * (`CollectionBlock.extractionTargets`), copied from this when it is made.
+       * (`CollectionBlock.interpretationTargets`), copied from this when it is made.
        *
        * **A default, not a live setting.** Changing it changes what the *next* collection starts
        * with; a call already under way keeps the list its participants have, so nobody's meeting
@@ -83,11 +83,11 @@ export const Space: CoreEntityDef = {
        * A JSON string rather than a relation because the values are entity *names* — there is
        * nothing in the perspective to point at. Same shape as `enabledModules` and `enabledViews`.
        */
-      extractionTargets: { type: 'string', predicate: 'we://extraction_targets', default: '' },
+      interpretationTargets: { type: 'string', predicate: 'we://interpretation_targets', default: '' },
       /**
        * Whether a new collection here is interpreted as it grows — a call as it happens, a channel as
        * messages arrive. A default, copied onto each collection when it is made
-       * (`CollectionBlock.autoExtract`), for the reason `extractionTargets` gives.
+       * (`CollectionBlock.autoInterpret`), for the reason `interpretationTargets` gives.
        *
        * On by default. It was off, on the reasoning that a pass spends somebody's LLM budget and a
        * community should opt in — which reads well and played badly: extraction is the feature, and
@@ -131,7 +131,7 @@ export const Space: CoreEntityDef = {
        * What this community decides about each capability's settings, as JSON.
        *
        * `{ "<group>": { "<key>": value } }`, where a group is a module id or a capability the host
-       * declares. One field rather than one per setting: `autoInterpret` and `extractionTargets` are
+       * declares. One field rather than one per setting: `autoInterpret` and `interpretationTargets` are
        * here as bespoke columns already, and every capability that wanted an opinion added another — a core entity accreting a field on behalf of a module is
        * the shape this replaces.
        *
@@ -144,9 +144,9 @@ export const Space: CoreEntityDef = {
        *
        * This field replaced the *shape*, not the instances of it. This resolver answers along one axis, **who is asking**: deployment → agent
        * everywhere → community here → agent here, most specific wins. `autoInterpret` and
-       * `extractionTargets` are not answers along that axis at all: they are the defaults a new
+       * `interpretationTargets` are not answers along that axis at all: they are the defaults a new
        * collection copies, and the decision that matters is then the collection's own — held on the
-       * collection (`CollectionBlock.autoExtract`) and belonging to whoever is in that conversation.
+       * collection (`CollectionBlock.autoInterpret`) and belonging to whoever is in that conversation.
        * Migrating them here would typecheck, pass, and silently turn a starting point into a setting
        * that overrules every conversation.
        *
@@ -224,7 +224,7 @@ export const Space: CoreEntityDef = {
        *
        * The host makes it in every space, in `createSpace`, before anything else. It is a
        * `CollectionBlock` (the root channel, `kind: 'channel'`) rather than containment on this record because the
-       * machinery extraction needs — passes, `extracted`, a board, `mode` — already lives there, and
+       * machinery extraction needs — passes, `interpreted`, a board, `mode` — already lives there, and
        * because this record is identity and settings and is copied to the discovery space, which the
        * space's contents must never be.
        *

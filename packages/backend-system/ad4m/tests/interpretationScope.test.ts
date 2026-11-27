@@ -94,7 +94,7 @@ describe('proposals, scoped to one conversation', () => {
     // call's suggestions at once. Named as provenance, the call is what narrows — by the link it
     // writes to what it produced, and by the namespace it minted under.
     const SPACE = 'we://collection/space';
-    const EXTRACTED = 'we://extracted';
+    const INTERPRETED = 'we://interpreted';
     const p = perspectiveWith(
       [
         { base: 'we://task/from-this-call', kind: 'create' },
@@ -107,12 +107,12 @@ describe('proposals, scoped to one conversation', () => {
     const scoped = await idsOf(
       port.proposals(p.handle, {
         parent: { id: SPACE, relation: 'children' },
-        provenance: { id: CALL, relation: 'extracted' },
+        provenance: { id: CALL, relation: 'interpreted' },
       }),
     );
 
     expect(scoped).toEqual(['we://task/from-this-call', mintedUnder(CALL, 'task-2')]);
-    expect(p.queried).toEqual([{ source: CALL, predicate: EXTRACTED }]);
+    expect(p.queried).toEqual([{ source: CALL, predicate: INTERPRETED }]);
   });
 
   it('answers for the whole dataset when no scope is given', async () => {
