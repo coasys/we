@@ -254,7 +254,8 @@ a set; order does not matter.
 > **Planned.** A conditional commit: the backend commits only if no `expect` find's answer has
 > changed, atomically with the commit. A backend that can only re-read before commit, as the
 > reference runner does, leaves a window between the re-read and the commit, and MUST list that as a
-> capability gap in its conformance results.
+> capability gap in its conformance results. This is also the cross-device fix that
+> [`serial`](#serial) is not.
 
 ## Ids
 
@@ -400,8 +401,20 @@ finished, whether that one succeeded or failed. Invocations with different keys,
 ordered by this. An invocation whose args fail the [args check](#args) has no key; its run fails
 anyway.
 
-The key orders the runs one host starts. It says nothing about another agent's runs, which
-[Atomicity](#atomicity)'s rule on preconditions still covers.
+The key orders the runs **one host** starts, and nothing more. It is a queue in that host, not a
+lock in the dataset: another agent's runs, and the same agent's runs on another device, are not in
+it, and [Atomicity](#atomicity)'s rule on preconditions is all that covers them. Two devices pressing
+"react" at once can each find no reaction and each make one.
+
+Across hosts the guarantee is the operations', not the queue's: an operation that must leave one
+record of a kind (one reaction per person, one read marker) is written to heal a duplicate when it
+meets one — it finds every match and keeps the oldest — rather than to assume the duplicate cannot
+happen.
+
+> **Why.** What closes the gap is a conditional commit, the one planned under [`expect`](#expect):
+> the backend commits only if the finds still answer as they did, atomically with the commit. A
+> store can have that internally without letting a client ask for it; until a client can, `serial`
+> narrows the window on one host, and healing covers the rest.
 
 Implemented by: [`run.ts`](../../../packages/entities/src/operations/run.ts) (`serialKey`),
 [`invokeOperation.ts`](../../../packages/app-shell/src/shared/invokeOperation.ts) (the queue).

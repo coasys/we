@@ -35,6 +35,7 @@
  */
 import {
   datasetKey,
+  onSpeculationMiss,
   predict,
   predictionLanded,
   runOperation,
@@ -70,6 +71,22 @@ export interface InvokeOptions {
 
 /** The tail of each queue, by dataset and key. */
 const queues = new Map<string, Promise<unknown>>();
+/*
+  In a development build, and outside tests, a read a speculation sends past the rows on screen is
+  logged the first time and at each doubling, per operation, entity and query, with the count. A
+  gesture listed here draws its prediction a round trip late. Production and tests stay silent.
+*/
+if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+  const seen = new Map<string, number>();
+  onSpeculationMiss(({ operation, entity, query }) => {
+    const key = `${operation} ${entity} ${JSON.stringify(query ?? {})}`;
+    const count = (seen.get(key) ?? 0) + 1;
+    seen.set(key, count);
+    if (count === 1 || Number.isInteger(Math.log2(count)))
+      console.info(`[speculation] ${operation} read ${entity} past the held rows (${count}×)`, query ?? {});
+  });
+}
+
 /** The tail of each dataset's speculations. */
 const speculations = new Map<unknown, Promise<unknown>>();
 

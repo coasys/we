@@ -228,6 +228,29 @@ matcher) and `@we/schema-shared` depends on it and re-exports it. It must not im
 because `@we/entities` evaluates expressions in declared operations and depends only on the backend
 contract.
 
+## A backend's gaps
+
+**A gap in a backend never blocks WE.** When a backend's own software (the store, its SDK) does
+not do what the contract says, WE does not wait for it and does not paper over it silently. Three
+things, together:
+
+1. **An issue on the backend's repo**, saying what happens, what is expected and how to reproduce
+   it. Until it is filed, code cites it by a slug, `ad4m-issue:<slug>`, replaced by
+   `coasys/ad4m#N` once it is.
+2. **A marked workaround, only where WE needs one.** `// Workaround for coasys/ad4m#N` at the
+   code, with a line saying when to delete it. Machinery any backend would need is not a
+   workaround and is not marked.
+3. **A known-gap entry citing the issue**, in the backend's conformance harness (`knownGaps`,
+   `REFUSED_QUERY_VECTORS`, `EXECUTOR_QUERY_VECTORS`), or an inverted live case of its own where
+   the gap is below the contract. Each runs **inverted**: it passes while the gap is there, and goes
+   red the day a pinned release fixes it, which is the signal to delete the entry and the
+   workaround. A gap that shows only some of the time is `knownIntermittent` (retried), never
+   inverted, since an inverted case that sometimes passes fails CI at random.
+
+Where the adapter cannot send something the backend would answer wrongly, it refuses the query
+rather than answering it wrong, and the refusal is the gap entry's subject. A limitation of the
+adapter itself is WE's to fix, not a backend gap.
+
 ## Packages that carry assets are consumed as source
 
 A package whose source imports assets (`.jpg`, `.glb`, `.svg`) must export `src/` and have **no build

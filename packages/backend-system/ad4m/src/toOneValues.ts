@@ -52,6 +52,8 @@ export function toOneValue(entity: string, relation: string, value: unknown): st
   return undefined;
 }
 
+// Workaround for ad4m-issue:to-one-held-as-list. Delete this file once a pin of `@coasys/ad4m`
+// holds a to-one as its id after a write: `tests/live/toOneHeldAsList.live.ts` fails then.
 /** Install on `Ad4mModel.prototype.save`. Idempotent. */
 export function installToOneValues(model: typeof Ad4mModel): void {
   const prototype = model.prototype as unknown as Record<string | symbol, unknown>;

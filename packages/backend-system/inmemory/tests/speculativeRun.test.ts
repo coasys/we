@@ -6,6 +6,7 @@
 import {
   clearPredictions,
   getEntity,
+  onSpeculationMiss,
   predict,
   predictionLanded,
   runOperation,
@@ -101,5 +102,19 @@ describe('speculateOperation', () => {
     const [row] = live.getSnapshot().data?.results ?? [];
     expect(row).toMatchObject({ id, value: 1, author: ME });
     live.dispose();
+  });
+
+  it('reports a read nothing held answered, to a listener only while one is set', async () => {
+    const misses: unknown[] = [];
+    onSpeculationMiss((miss) => misses.push(miss));
+    try {
+      await speculateOperation('core.upsertSignal', { node: post.id, signalType: 'like', value: 1 }, invocation('i1'));
+    } finally {
+      onSpeculationMiss(null);
+    }
+    expect(misses).toContainEqual(expect.objectContaining({ operation: 'core.upsertSignal', entity: 'Signal' }));
+    const before = misses.length;
+    await speculateOperation('core.upsertSignal', { node: post.id, signalType: 'like', value: 1 }, invocation('i2'));
+    expect(misses).toHaveLength(before);
   });
 });
