@@ -37,6 +37,8 @@ export const REFUSED_QUERY_VECTORS: Record<string, string> = {
 };
 
 export const EXECUTOR_QUERY_VECTORS: Record<string, string> = {
+  'query.core.order-absent-last-desc':
+    'with no `limit` the executor sorts in memory, and `sort_instances` reverses the whole comparison for `desc`, the rule that puts no value last included, so a record with no value comes first; the SPARQL sort, taken with a `limit`, keeps it last both ways (ad4m-issue:desc-null-order)',
   'query.core.projection-first':
     "a projection's `order` honours only `id`/`base` and drops any other key, so `stars` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
 };
