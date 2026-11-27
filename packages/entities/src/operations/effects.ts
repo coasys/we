@@ -14,7 +14,7 @@ import type { OneOfEntry, OperationCategory, OperationDefinition, OperationStep 
 
 import { stepParts } from './values';
 
-export type OperationEffectVerb = 'create' | 'edit' | 'delete' | `add:${string}` | `remove:${string}`;
+export type OperationEffectVerb = 'create' | 'edit' | 'delete' | 'deleteOwn' | `add:${string}` | `remove:${string}`;
 
 export interface OperationEffects {
   /**
@@ -83,7 +83,9 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
           addChosen(body, 'edit', inLoop);
           break;
         case 'delete':
-          addChosen(body, 'delete', inLoop);
+          // Only the invoker's own record, which the run refuses to go beyond: taking back what one
+          // gave is not destroying anything of anybody else's.
+          addChosen(body, body.own ? 'deleteOwn' : 'delete', inLoop);
           break;
         case 'link':
         case 'unlink': {
@@ -92,7 +94,8 @@ export function effectSummary(op: OperationDefinition, opts: EffectOptions = {})
         }
         case 'setRelation':
           addChosen(body, `add:${relationName(body)}`, inLoop);
-          addChosen(body, `remove:${relationName(body)}`, inLoop);
+          // One that keeps what it leaves out only orders and adds.
+          if (!body.keep) addChosen(body, `remove:${relationName(body)}`, inLoop);
           break;
         case 'forEach':
           visit(body.steps as OperationStep[], true);

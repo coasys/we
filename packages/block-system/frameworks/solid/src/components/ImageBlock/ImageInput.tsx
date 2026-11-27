@@ -1,7 +1,7 @@
 import type { ImageCropRef } from '@we/components/solid';
 import { Column, ImageCrop, Row } from '@we/components/solid';
 import type { FileData } from '@we/entities';
-import { compressImageToFileData } from '@we/entities';
+import { canvasImageCodec, compressImageToFileData } from '@we/entities';
 import { createSignal, For, Show } from 'solid-js';
 import { Portal } from 'solid-js/web';
 
@@ -75,7 +75,7 @@ export function ImageInput(props: ImageInputProps) {
   async function handleCropSave() {
     if (!cropRef) return;
     const file = await cropRef.getCroppedFile();
-    const fileData = await compressImageToFileData(file, 'image-block');
+    const fileData = await compressImageToFileData(canvasImageCodec, file, 'image-block');
     props.onChange('src', fileData);
     if (altText().trim()) props.onChange('altText', altText().trim());
     setRawUrl(null);

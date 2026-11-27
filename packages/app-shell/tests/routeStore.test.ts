@@ -4,35 +4,31 @@
  * push-vs-replace writes, and the per-path search memory that keeps a
  * kept-alive route's URL truthful after leaving and returning.
  *
- * A plain store test, run once under each reactivity port: Solid's, and the test port that runs a
- * new effect at once where Solid defers it. Nothing is mounted; jsdom is here for `window.history`.
+ * A plain store test, run once under each engine (Solid, the test port, Vue). Nothing is mounted:
+ * the address and its history are the test platform's.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createRouteStore, type RouteStore } from '../src/shared/stores/RouteStore';
+import { reactivityPorts } from './support/engines';
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('routeStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('routeStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
+  let platform: TestPlatform;
   const disposers: (() => void)[] = [];
 
   /** The store inside a root of its own, as the host builds it; disposed after each test. */
   function mountStore(): RouteStore {
     let store!: RouteStore;
-    disposers.push(port.root(() => (store = createRouteStore({ reactivity: port }))));
+    disposers.push(port.root(() => (store = createRouteStore({ reactivity: port, platform }))));
     return store;
   }
 
   beforeEach(() => {
     port = makePort();
-    window.history.replaceState(null, '', '/cards');
+    platform = createTestPlatform({ url: '/cards' });
   });
 
   afterEach(() => {
@@ -85,8 +81,8 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
       const store = mountStore();
       disposers.splice(0).forEach((dispose) => dispose());
 
-      window.history.replaceState(null, '', '/cards?sort=new');
-      window.dispatchEvent(new window.PopStateEvent('popstate'));
+      platform.setUrl('/cards?sort=new');
+      platform.emit('popstate', {} as PopStateEvent);
       expect(store.params()).toEqual({});
     });
   });
@@ -96,11 +92,11 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
       const store = mountStore();
 
       store.setParam('sort', 'likes');
-      expect(window.location.search).toBe('?sort=likes');
+      expect(platform.location().search).toBe('?sort=likes');
       expect(store.params()).toEqual({ sort: 'likes' });
 
       store.setParam('sort', null);
-      expect(window.location.search).toBe('');
+      expect(platform.location().search).toBe('');
       expect(store.params()).toEqual({});
     });
 
@@ -111,7 +107,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
 
       store.setParam('call', 'ad4m://obj/x');
 
-      expect(window.location.search).toBe('?call=ad4m://obj/x');
+      expect(platform.location().search).toBe('?call=ad4m://obj/x');
       expect(store.params()).toEqual({ call: 'ad4m://obj/x' });
     });
 
@@ -121,13 +117,13 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
       store.setParam('q', 'a&b=c #d');
 
       expect(store.params()).toEqual({ q: 'a&b=c #d' });
-      expect(window.location.search).not.toContain('&b=');
+      expect(platform.location().search).not.toContain('&b=');
     });
 
     it('replace by default, push on request', () => {
       const store = mountStore();
-      const pushSpy = vi.spyOn(window.history, 'pushState');
-      const replaceSpy = vi.spyOn(window.history, 'replaceState');
+      const pushSpy = vi.spyOn(platform.history, 'push');
+      const replaceSpy = vi.spyOn(platform.history, 'replace');
 
       store.setParam('sort', 'likes');
       expect(replaceSpy).toHaveBeenCalled();
@@ -144,7 +140,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
 
       // Set a param on /cards, leave, come back bare.
       store.setParam('sort', 'likes');
-      window.history.replaceState(null, '', '/about');
+      platform.setUrl('/about');
       store.setCurrentPath('/about');
 
       store.navigate('/cards');
@@ -166,7 +162,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
       store.setNavigateFunction(nav as never);
 
       store.setParam('sort', 'likes');
-      window.history.replaceState(null, '', '/about');
+      platform.setUrl('/about');
       store.setCurrentPath('/about');
 
       store.navigate('/cards', { fresh: true });
@@ -235,7 +231,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
     out would show everybody on any board as here.
   */
     it('page is the path and the record it is about, and nothing else in the query', () => {
-      window.history.replaceState(null, '', '/space/x/board?id=ad4m://obj/a&sort=new');
+      platform.setUrl('/space/x/board?id=ad4m://obj/a&sort=new');
       const store = mountStore();
       store.setCurrentPath('/space/x/board', '?id=ad4m://obj/a&sort=new');
       expect(store.page()).toBe('/space/x/board?id=ad4m://obj/a');
@@ -252,7 +248,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
     (the base the renderer hands over), or from the template's root, which is the space.
   */
     it('resolves a relative path from the route it was written in, or from the template’s root', () => {
-      window.history.replaceState(null, '', '/space/abc/board?id=x');
+      platform.setUrl('/space/abc/board?id=x');
       const store = mountStore();
       const nav = vi.fn();
       store.setNavigateFunction(nav as never);
@@ -272,7 +268,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
     });
 
     it('resolve gives the address navigate would go to, without going there', () => {
-      window.history.replaceState(null, '', '/space/abc/board');
+      platform.setUrl('/space/abc/board');
       const store = mountStore();
       const nav = vi.fn();
       store.setNavigateFunction(nav as never);
@@ -290,7 +286,7 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
 
       store.setParam('sort', 'likes');
       store.setParam('sort', null); // back to default
-      window.history.replaceState(null, '', '/about');
+      platform.setUrl('/about');
       store.setCurrentPath('/about');
 
       store.navigate('/cards');
@@ -304,38 +300,38 @@ describe.each(ports)('routeStore, under %s', (_name, makePort) => {
     the call the canvas was about went with it.
   */
     it('setParam extends the router’s location, not a stale address bar', () => {
-      window.history.replaceState(null, '', '/space/x/canvas?call=c1&card=k1');
+      platform.setUrl('/space/x/canvas?call=c1&card=k1');
       const store = mountStore();
       store.setCurrentPath('/space/x/canvas', '?call=c1&card=k1');
 
-      window.history.replaceState(null, '', '/space/x/about'); // the stray write
+      platform.setUrl('/space/x/about'); // the stray write
       store.setParam('card', null);
 
-      expect(window.location.pathname).toBe('/space/x/canvas');
-      expect(window.location.search).toBe('?call=c1');
+      expect(platform.location().pathname).toBe('/space/x/canvas');
+      expect(platform.location().search).toBe('?call=c1');
       expect(store.params()).toEqual({ call: 'c1' });
     });
 
     it('navigate is not refused for the page a stale address bar names', () => {
-      window.history.replaceState(null, '', '/space/x/canvas');
+      platform.setUrl('/space/x/canvas');
       const store = mountStore();
       const nav = vi.fn();
       store.setNavigateFunction(nav as never);
       store.setCurrentPath('/space/x/canvas', '');
 
-      window.history.replaceState(null, '', '/space/x/about');
+      platform.setUrl('/space/x/about');
       store.navigate('/space/x/about');
       expect(nav).toHaveBeenCalledWith('/space/x/about', undefined);
     });
 
     it('params arriving via a shared link are remembered from arrival', () => {
-      window.history.replaceState(null, '', '/cards?type=users');
+      platform.setUrl('/cards?type=users');
       const store = mountStore();
       const nav = vi.fn();
       store.setNavigateFunction(nav as never); // takes the function itself now; it does its own wrapping
       store.setCurrentPath('/cards'); // the router reporting arrival
 
-      window.history.replaceState(null, '', '/about');
+      platform.setUrl('/about');
       store.setCurrentPath('/about');
 
       store.navigate('/cards');

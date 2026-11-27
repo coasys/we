@@ -6,9 +6,8 @@
  * port is the one under test. The store is built inside a root, as a composition root builds it.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 
+import { createTestPlatform, type TestPlatform } from '../../src/shared/platform/testPlatform';
 import { createAppFrame } from '../../src/shared/registries/appFrame';
 import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { createPanelInstances } from '../../src/shared/registries/panelInstances';
@@ -20,13 +19,34 @@ import { createShellTemplatePanels } from '../../src/shared/stores/shell/templat
 import { createShellViews } from '../../src/shared/stores/shell/views';
 import { createShellStore, type ShellStore, type ShellStoreDeps } from '../../src/shared/stores/ShellStore';
 
-export const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+/**
+ * A key press as the window delivers one, for a test platform to send: what a store's key handler
+ * reads, and `preventDefault` remembered as `defaultPrevented`.
+ */
+export function keydown(init: Partial<Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>>) {
+  let prevented = false;
+  return {
+    key: '',
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    target: null,
+    ...init,
+    get defaultPrevented() {
+      return prevented;
+    },
+    preventDefault: () => {
+      prevented = true;
+    },
+    stopPropagation: () => {},
+  } as unknown as KeyboardEvent;
+}
 
 export interface BuiltShell {
   store: ShellStore;
+  /** The window the store was built in: a test platform, unless the test gave its own. */
+  platform: ShellStoreDeps['platform'];
   host: ShellStoreDeps['host'] & ReturnType<typeof createAppFrame> & ReturnType<typeof createPanelInstances>;
   dispose: () => void;
 }
@@ -41,14 +61,18 @@ export function buildShell(
     ...createPanelInstances(reactivity),
   };
   let store!: ShellStore;
+  const platform = deps.platform ?? createTestPlatform();
   const dispose = reactivity.root(() => {
-    store = createShellStore({ reactivity, host, ...deps });
+    store = createShellStore({ reactivity, host, ...deps, platform });
   });
-  return { store, host, dispose };
+  return { store, platform, host, dispose };
 }
 
 /** Each part built on its own, in the order the store composes them — for the parts' own tests. */
-export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps['platform']) {
+export function buildParts(
+  reactivity: ReactivityPort,
+  platform: TestPlatform & Pick<ShellStoreDeps['platform'], 'screenSources'> = createTestPlatform(),
+) {
   const host = {
     ...createAppFrame(reactivity),
     ...createLaneFrames(reactivity),
@@ -63,13 +87,13 @@ export function buildParts(reactivity: ReactivityPort, platform?: ShellStoreDeps
     templatePanels: ReturnType<typeof createShellTemplatePanels>;
   };
   const dispose = reactivity.root(() => {
-    const views = createShellViews({ reactivity });
+    const views = createShellViews({ reactivity, platform });
     const prompts = createShellPrompts({ reactivity, platform });
-    const arrangement = createShellArrangement({ reactivity, host });
-    const docks = createShellDocks({ reactivity, host, views, arrangement });
-    const drag = createShellDockDrag({ reactivity, arrangement, docks });
+    const arrangement = createShellArrangement({ reactivity, platform, host });
+    const docks = createShellDocks({ reactivity, platform, host, views, arrangement });
+    const drag = createShellDockDrag({ reactivity, platform, arrangement, docks });
     const templatePanels = createShellTemplatePanels({ reactivity, views, arrangement, docks });
     parts = { views, prompts, arrangement, docks, drag, templatePanels };
   });
-  return { ...parts, host, dispose };
+  return { ...parts, platform, host, dispose };
 }

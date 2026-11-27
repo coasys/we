@@ -35,7 +35,8 @@ export default defineConfig({
   test: {
     projects: [
       {
-        resolve: { alias: SRC },
+        // `@shared` for the profile vectors' host with no framework, which composes app-shell's stores.
+        resolve: { alias: { ...SRC, '@shared': RENDER_ALIASES['@shared'] } },
         test: {
           name: 'node',
           globals: true,

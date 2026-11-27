@@ -105,7 +105,7 @@ const CELL = `${VIEW}.contents[col.id]`;
  * that gathers nothing has no anchor, and its pool is the whole space so the add-card picker can
  * bring anything in. An empty anchor is what the renderer reads as "do not narrow".
  */
-const ANCHOR = `(${BOARD}.gathers && ${BOARD}.gathers != spaceStore.currentSpace.id) ? ${BOARD}.gathers : ''`;
+const ANCHOR = `(${BOARD}.gathers && ${BOARD}.gathers != spaceSettings.currentSpace.id) ? ${BOARD}.gathers : ''`;
 
 export interface TaskCardOptions {
   /** Controls shown at the end of the card's meta row — usually {@link moveTaskMenu}. */
@@ -201,7 +201,7 @@ export interface TaskCardOptions {
 
 /** How a card is selected: which card is, and what pressing one does. */
 export interface CardSelection {
-  /** An expression for the id of the selected card, or empty — `routeStore.params.card`. */
+  /** An expression for the id of the selected card, or empty — `navigation.params.card`. */
   selected: string;
   /**
    * What pressing a card does, with the card in scope under its context key. Usually writes where
@@ -511,7 +511,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
   const faces = `${on}.people.filter(p, !p.reflexive)`;
   const doing = `${on}.people.filter(p, !p.reflexive && p.semantic != 'reviewing')`;
   const checking = `${on}.people.filter(p, !p.reflexive && p.semantic == 'reviewing')`;
-  const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+  const face = (did: string) => `find(identity.profiles, { did: ${did} })`;
 
   /** A tooltip whose content is nodes — see `peopleTooltip` for why the slot is on a native div. */
   const hovercard = (content: SchemaNode[], trigger: SchemaNode): SchemaNode => ({
@@ -598,7 +598,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did, said: ${as}.assignee })`,
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
@@ -674,7 +674,7 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
       items: { $: `${VIEW}.choices.map(k, { id: k.id, label: \`Move to \${k.label}\` })` },
       onSelect: {
         $invoke: 'spaceStore.moveCardToColumn',
-        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, [], { $: `${VIEW}.contents[arg.id].slug` }],
+        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, []],
       },
     },
   };
@@ -837,7 +837,7 @@ const addTaskModal: SchemaNode = formModal({
       condition: { $: 'local.addExisting' },
       then: {
         $invoke: 'spaceStore.moveCardToColumn',
-        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
+        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, []],
       },
       else: {
         $invoke: 'spaceStore.addTaskToColumn',
@@ -962,7 +962,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
             type: 'AvatarStack',
             props: {
               avatars: {
-                $: 'wait.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })',
+                $: 'wait.approvers.map(d, { image: find(identity.profiles, { did: d }).avatar, hash: d })',
               },
               max: 3,
               size: 'xs',
@@ -1050,27 +1050,19 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
       flex: '1',
       width: '100%',
       /*
-        The column's whole order goes with the drop, as the third argument. A column showing all of
+        The column's whole order goes with the drop, as `order`. A column showing all of
         itself hands over the same list and nothing changes; one showing part — people hidden, or one
         person's row — would otherwise send every card it is not showing to the bottom, for everybody.
       */
       onReorder: {
-        $invoke: 'spaceStore.arrangeColumn',
-        args: [{ $: 'col.id' }, { $: 'arg.detail' }, { $: `${VIEW}.contents[col.id].order` }],
+        $invoke: 'ops.core.arrangeColumn',
+        args: [{ $: `{ column: col.id, ids: arg.detail, order: ${VIEW}.contents[col.id].order }` }],
       },
       /*
         `ids` is the target column's whole new order, with the card already at the index it was
         dropped at — so a cross-column drop seats it where the pointer put it. Without it the store
         can only append, which is what "move to that column" means from the menu and not what a drag
         means.
-      */
-      /*
-        The fifth argument is the state the target column stands for, and it is there for the
-        *drawing* rather than for the write. A drop writes an order and a state; the store cannot
-        know the state without reading the column, and until it does the card cannot be drawn in the
-        column it was dropped into — the stale-hint rule would throw it straight back out. The board
-        has the slug on screen already, so it says so and the card lands instantly. The store still
-        reads the column for the write itself, so a stale hint costs a frame and never a wrong write.
       */
       onMoved: {
         $invoke: 'spaceStore.moveCardToColumn',
@@ -1079,7 +1071,6 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
           { $: 'arg.detail.to' },
           { $: 'arg.detail.id' },
           { $: 'arg.detail.ids' },
-          { $: `${VIEW}.contents[arg.detail.to].slug` },
           { $: `${VIEW}.contents[arg.detail.to].order` },
         ],
       },
@@ -1377,7 +1368,6 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                   { $: 'arg.detail.to' },
                   { $: 'arg.detail.id' },
                   { $: 'arg.detail.ids' },
-                  { $: `${VIEW}.contents[arg.detail.to].slug` },
                   { $: `${VIEW}.contents[arg.detail.to].order` },
                 ],
               },
@@ -1474,7 +1464,7 @@ const NOBODY = "'nobody'";
  */
 function personRows(opts: TaskBoardOptions): SchemaNode {
   const gutter = '180px';
-  const name = 'find(profileStore.profiles, { did: person }).name';
+  const name = 'find(identity.profiles, { did: person }).name';
   return {
     type: 'Column',
     props: { gap: '300', ay: 'start' },
@@ -1492,7 +1482,10 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
               group: 'board-columns',
               gap: 'var(--we-space-400)',
               ay: 'start',
-              onReorder: { $invoke: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
+              onReorder: {
+                $invoke: 'ops.core.reorderBoardColumns',
+                args: [{ board: opts.boardId, ids: { $: 'arg.detail' } }],
+              },
             },
             children: [
               { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
@@ -1522,7 +1515,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                         type: 'we-avatar',
                         props: {
                           size: 'sm',
-                          image: { $: 'find(profileStore.profiles, { did: person }).avatar' },
+                          image: { $: 'find(identity.profiles, { did: person }).avatar' },
                           hash: { $: 'person' },
                         },
                       },
@@ -1904,8 +1897,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           gap: 'var(--we-space-400)',
                           ay: 'start',
                           onReorder: {
-                            $invoke: 'spaceStore.reorderBoardColumns',
-                            args: [opts.boardId, { $: 'arg.detail' }],
+                            $invoke: 'ops.core.reorderBoardColumns',
+                            args: [{ board: opts.boardId, ids: { $: 'arg.detail' } }],
                           },
                         },
                         children: [

@@ -748,7 +748,7 @@ describe('picking a call back up', () => {
       a surface showing a live call usually has none, and reading it alone blanked the control for
       the whole of every call. The fallback is the one every other surface about a call uses.
     */
-    expect(json()).toContain('routeStore.params.call ? routeStore.params.call : modules.call.callRecordId');
+    expect(json()).toContain('navigation.params.call ? navigation.params.call : modules.call.callRecordId');
   });
 
   it('marks the call you are in red, the way the calls list marks its live row', () => {
@@ -1011,7 +1011,7 @@ describe('naming a call', () => {
   const json = () => JSON.stringify(part('renameCallButton'));
 
   it('is about the call on screen, and says so for a placer to substitute', () => {
-    const subject = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
+    const subject = 'navigation.params.call ? navigation.params.call : modules.call.callRecordId';
     expect((callModule.contributes?.parts?.renameCallButton as ModulePart).subject).toBe(subject);
     // Every place the call is named is the whole subject token, so a placer's subject replaces them all.
     expect(json().split(`{"$":"${subject}"}`).length - 1).toBe(3);

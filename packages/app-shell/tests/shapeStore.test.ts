@@ -2,24 +2,17 @@
  * shapeStore: the space's models read and adopted on a switch, the wizard's draft and its guards,
  * a save, and the hint editor.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it. The backend is a stand-in schema port that keeps models in a
- * map and records what it installs.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue). The backend is a
+ * stand-in schema port that keeps models in a map and records what it installs.
  */
 import type { EntityHintState, EntityManifest, StoredShape } from '@we/backend-shared';
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { draftMember, draftToManifest, emptyShapeDraft } from '../src/shared/shapes/shapeDraft';
 import type { AppDataset } from '../src/shared/stores/DatasetStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const flush = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));

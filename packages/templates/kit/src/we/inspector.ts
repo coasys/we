@@ -203,7 +203,7 @@ export function vocabularyEditLink(cardType: string): SchemaNode {
 }
 
 /** The model the selected card is of — the inspector's whole subject, named once. */
-const CARD_TYPE = 'routeStore.params.cardType';
+const CARD_TYPE = 'navigation.params.cardType';
 
 /**
  * The fields with something in them, as details — the rows the panel is mostly made of.
@@ -349,7 +349,7 @@ const relationshipKind: SchemaNode = {
                           $invoke: 'recordStore.updateRecordField',
                           args: [
                             'Relationship',
-                            { $: 'routeStore.params.card' },
+                            { $: 'navigation.params.card' },
                             'relationshipTypeId',
                             {
                               $: 'event.detail',
@@ -378,7 +378,7 @@ const relationshipKind: SchemaNode = {
                                 // property".
                                 onClick: {
                                   $invoke: 'recordStore.updateRecordField',
-                                  args: ['Relationship', { $: 'routeStore.params.card' }, 'relationshipTypeId', ''],
+                                  args: ['Relationship', { $: 'navigation.params.card' }, 'relationshipTypeId', ''],
                                 },
                               },
                               children: [{ type: 'we-icon', props: { name: 'x' } }],
@@ -534,7 +534,7 @@ const emptyFields: SchemaNode = {
             {
               type: 'Column',
               props: { gap: '300', pb: '100' },
-              children: [fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, EMPTY_FIELDS)],
+              children: [fieldEditor({ $: CARD_TYPE }, { $: 'navigation.params.card' }, EMPTY_FIELDS)],
             },
           ],
         }),
@@ -544,7 +544,7 @@ const emptyFields: SchemaNode = {
 };
 
 /** The selected record's id — what the connection queries ask about. */
-const CARD_ID = 'routeStore.params.card';
+const CARD_ID = 'navigation.params.card';
 
 /**
  * What to call the record at one end of a connection, as an expression over that end and its type.
@@ -635,8 +635,8 @@ const LINK_END_ROWS = [
  */
 export function openRecord(id: string, type: SchemaProp): SchemaProp[] {
   return [
-    { $invoke: 'routeStore.setParam', args: ['cardType', type] },
-    { $invoke: 'routeStore.setParam', args: ['card', { $: id }] },
+    { $invoke: 'navigation.setParam', args: ['cardType', type] },
+    { $invoke: 'navigation.setParam', args: ['card', { $: id }] },
   ];
 }
 
@@ -911,7 +911,7 @@ const peopleSection: SchemaNode = {
                   searchable: true,
                   searchPlaceholder: 'Find a member',
                   items: {
-                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did, said: row.assignee })`,
                   },
                   onSelect: {
                     $invoke: 'spaceStore.setInvolvement',
@@ -957,7 +957,7 @@ const peopleSection: SchemaNode = {
                                   props: {
                                     size: 'xs',
                                     avatars: {
-                                      $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                      $: '[{ image: find(identity.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
                                     },
                                   },
                                 },
@@ -969,7 +969,7 @@ const peopleSection: SchemaNode = {
                                     minWidth: '0',
                                     truncate: true,
                                     text: {
-                                      $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                      $: "holder.did == me.did ? find(identity.profiles, { did: holder.did }).name + ' (you)' : find(identity.profiles, { did: holder.did }).name",
                                     },
                                   },
                                 },
@@ -998,7 +998,10 @@ const peopleSection: SchemaNode = {
                                             onClick: {
                                               $if: {
                                                 condition: { $: 'holder.reflexive' },
-                                                then: { $invoke: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                then: {
+                                                  $invoke: 'ops.core.respond',
+                                                  args: [{ node: { $: 'row.id' } }],
+                                                },
                                                 else: {
                                                   $invoke: 'spaceStore.setInvolvement',
                                                   args: [
@@ -1143,7 +1146,7 @@ const originLine: SchemaNode = {
  * unbound value is the trap this codebase keeps rediscovering; here it is client-side and safe, and
  * written positively so the reading is the same either way.
  */
-const FRACTAL_THREADS = "spaceStore.currentSpace.threadMode != 'flat'";
+const FRACTAL_THREADS = "spaceSettings.currentSpace.threadMode != 'flat'";
 
 /** The connection section for whatever is selected — a card's connections, or a line's two ends. */
 const connectionsSection: SchemaNode = {
@@ -1394,8 +1397,8 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
       settling.
     */
       card: {
-        entity: { $: 'routeStore.params.cardType' },
-        where: { id: { $: 'routeStore.params.card' } },
+        entity: { $: 'navigation.params.cardType' },
+        where: { id: { $: 'navigation.params.card' } },
         limit: 1,
         /*
         The reactions, hydrated — what `signalDisplay` filters by type.
@@ -1432,7 +1435,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
         is the whole query. Until it arrives there is nothing to ask, so nothing is asked and the
         panel says what it says when nothing is selected.
       */
-        when: { $: 'routeStore.params.card' },
+        when: { $: 'navigation.params.card' },
       },
       /*
       The kinds of connection this community has named — see `relationshipKind`.
@@ -1606,7 +1609,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                       */
                         onClick: {
                           $invoke: 'record.delete',
-                          args: [{ $: CARD_TYPE }, { $: 'routeStore.params.card' }],
+                          args: [{ $: CARD_TYPE }, { $: 'navigation.params.card' }],
                         },
                       },
                       children: [{ type: 'we-icon', props: { name: 'trash' } }],
@@ -1763,7 +1766,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                         type: '$if',
                         props: {
                           condition: { $: 'local.editing' },
-                          then: fieldEditor({ $: CARD_TYPE }, { $: 'routeStore.params.card' }, SET_FIELDS),
+                          then: fieldEditor({ $: CARD_TYPE }, { $: 'navigation.params.card' }, SET_FIELDS),
                           else: {
                             type: 'Column',
                             props: { gap: '300' },
@@ -1900,7 +1903,7 @@ export function inspectorPanel(opts: InspectorPanelOptions = {}): SchemaNode {
                       workflowsSection({
                         type: CARD_TYPE,
                         open: { field: 'workflowsOpen' },
-                        workflowsPath: { $: '`${spaceStore.spacePath}/workflows`' },
+                        workflowsPath: { $: '`${navigation.spacePath}/workflows`' },
                       }),
                       // After the disclosure: that is about this record's own fields, and connections
                       // are about other records.

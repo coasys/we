@@ -28,9 +28,11 @@ describe('isSchemaChild', () => {
 });
 
 describe('nodePropsOf', () => {
-  it("names $if's then and else, and nothing for any other type", () => {
+  it("names $if's then and else, a component's element-typed props, and nothing for any other type", () => {
     expect(nodePropsOf('$if')).toEqual(['then', 'else']);
-    for (const type of ['Column', 'FlipCard', 'GraphView', 'we-button', '$each', 'constructor', undefined])
+    expect(nodePropsOf('FlipCard')).toEqual(['front', 'back']);
+    expect(nodePropsOf('GraphView')).toEqual(['emptyAction']);
+    for (const type of ['Column', 'Card', 'we-button', '$each', 'constructor', undefined])
       expect(nodePropsOf(type), String(type)).toEqual([]);
   });
 

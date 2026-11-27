@@ -24,7 +24,7 @@
  * `kit.test.ts` in that package enforces it twice: it walks every expansion for a `$store` a fragment
  * introduced itself, and it reads this package's own source for the same thing. The second check is
  * what the first could not do — the collection fragments (`collectionFeed`, `commentThread`,
- * `channelRail`, `mediaGrid`) all filter on `spaceStore.mutedDids` and came within one commit of
+ * `channelRail`, `mediaGrid`) all filter on `identity.mutedDids` and came within one commit of
  * being moved here, because no fixture covered them.
  *
  * ## Why a module may depend on it

@@ -98,16 +98,8 @@ export interface AppFrame {
 
 export const DEFAULT_APP_FRAME: AppFrame = { left: SIDEBAR_PX, right: CHROME_RAIL_PX, top: 0, bottom: 0 };
 
-/**
- * The frame every function here measures against. Set by the shell when the app template changes —
- * which is rare, so it is configuration rather than a parameter threaded through every function in
- * this file, as `SIDEBAR_PX` was configuration before it.
- */
-let frame: AppFrame = DEFAULT_APP_FRAME;
-
-export function setGeometryFrame(next: AppFrame): void {
-  frame = next;
-}
+/** The frame a viewport is measured within: its own, or the built-in furniture. */
+const frameOf = (viewport: Viewport): AppFrame => viewport.frame ?? DEFAULT_APP_FRAME;
 
 /**
  * How far down the module rail sits when it has nothing to clear — `ChromeRail`'s own `16px`.
@@ -205,6 +197,13 @@ export interface ContentInset {
 export interface Viewport {
   width: number;
   height: number;
+  /**
+   * The bands the app's chrome holds within it (`AppFrame`), which every position here clears. It
+   * rides on the viewport rather than being set beside the functions, so each answer depends only on
+   * what it is given: the shell's viewport carries the app template's frame, and a vector names its
+   * own. Absent, the built-in app's furniture.
+   */
+  frame?: AppFrame;
 }
 
 /**
@@ -1117,8 +1116,9 @@ export const NO_INSET: ContentInset = { left: 0, right: 0, top: 0, bottom: 0 };
 export function edgeLaneBox(
   edge: Exclude<DockEdge, null>,
   inset: ContentInset,
+  frame: AppFrame = DEFAULT_APP_FRAME,
 ): { top?: number; right?: number; bottom?: number; left?: number } {
-  const region = contentRegion({ width: 0, height: 0 });
+  const region = contentRegion({ width: 0, height: 0, frame });
   if (edge === 'left') return { left: region.left, top: region.top, bottom: region.bottom };
   if (edge === 'right') return { right: region.right, top: region.top, bottom: region.bottom };
   const sides = { left: region.left + inset.left, right: region.right + inset.right };
@@ -1126,6 +1126,7 @@ export function edgeLaneBox(
 }
 
 function contentRegion(viewport: Viewport, occupied: ContentInset = NO_INSET) {
+  const frame = frameOf(viewport);
   const left = frame.left + occupied.left;
   const right = RAIL_PX + occupied.right;
   const top = frame.top + occupied.top;
@@ -1293,6 +1294,32 @@ export function placementFromDeclaration(
     ...(declared.home !== undefined ? { home: declared.home } : {}),
     ...(declared.grow !== undefined ? { grow: declared.grow } : {}),
   };
+}
+
+/**
+ * A panel's placement, in three rungs: what the reader last put it at (the disposition), then what
+ * the interface declared, then the panel's own opening bid (the suggestion).
+ *
+ * The middle rung is resolved live and never written, so switching template or view is
+ * non-destructive, switching back restores what was there, and an author improving a layout is not
+ * overruled forever by one stray drag. Pure, and the one place the order is decided, so a second
+ * host can be held to it by the panel vectors.
+ *
+ * One refusal: a home lane holds only the panels the interface declared for it. A disposition into a
+ * lane for a panel the declaration does not home there is not honoured — it came from stacking onto
+ * a section, and an undeclared panel's disposition outlives every template, so it would follow its
+ * owner into every space. Read as no disposition, the panel goes back to the rungs below.
+ */
+export function resolvePlacement(input: {
+  disposition?: FloatPlacement;
+  declared?: Parameters<typeof placementFromDeclaration>[0];
+  request: DockRequest;
+  viewport: Viewport;
+}): FloatPlacement {
+  const { disposition, declared, request, viewport } = input;
+  if (disposition && !(disposition.snap === 'home' && !declared?.home)) return disposition;
+  if (declared) return placementFromDeclaration(declared, viewport);
+  return seedPlacement(request, viewport);
 }
 
 /** How thick a displacing panel is, falling back to the card's matching dimension. */
@@ -2028,21 +2055,6 @@ export function shareSeatBox(resolved: Record<string, DockGeometry>, follows: Re
       padBottom,
     };
   }
-}
-
-/**
- * The floating panels sharing one edge, in the order they sit along it — one lane, the one that
- * covers rather than displaces.
- *
- * Kept as its own name because most callers want exactly this and should not have to filter for it.
- * See {@link edgeGroups} for the arrangement rule itself.
- */
-export function columnMembers<T extends { placement: FloatPlacement }>(
-  panels: T[],
-  edge: Exclude<DockEdge, null>,
-  viewport: Viewport,
-): T[] {
-  return edgeGroups(panels, edge, viewport).find((group) => !group.displacing)?.members ?? [];
 }
 
 /**
@@ -2939,6 +2951,7 @@ export function displacingLanes(requests: DockRequest[], viewport: Viewport): Di
  */
 export function railBand(viewport: Viewport, inset: ContentInset, topChrome: TopChrome = NO_TOP_CHROME): number {
   if (topChrome.height <= 0 || topChrome.width <= 0) return 0;
+  const frame = frameOf(viewport);
   // An app with no rail has nothing for the rail to dodge.
   if (frame.right <= 0) return 0;
 
@@ -3566,7 +3579,7 @@ export function edgeLaneLayout(
   return {
     lanes,
     covers,
-    boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all)])) as EdgeLaneBoxes,
+    boxes: Object.fromEntries(EDGES.map((edge) => [edge, edgeLaneBox(edge, all, frameOf(viewport))])) as EdgeLaneBoxes,
   };
 }
 
@@ -3862,13 +3875,19 @@ export function stackDropSlots(boxes: readonly Rect[]): DropSlot[] {
  * A home lane's targets: the seams between its sections (a row lane's run across, a column's down),
  * or, for an empty lane, its whole box — at least 24px each way — which is how a lane gets its first
  * section by dragging.
+ *
+ * Only once the panel has been carried to it: the outlet's box, grown by half of `EDGE_REACH_PX` on
+ * every side, stands in for an edge's band, so a lane's seams are not lit by a drag across the other
+ * side of the screen.
  */
 export function homeDropSlots(
   lane: string,
   direction: 'row' | 'column',
   sections: readonly Rect[],
   outlet: Rect,
+  carried: Rect,
 ): DropSlot[] {
+  if (overlapArea(carried, grown(outlet, EDGE_REACH_PX / 2)) <= 0) return [];
   const slots =
     sections.length > 0
       ? columnSlots(direction === 'row' ? 'top' : 'left', [...sections], outlet)
@@ -3903,5 +3922,178 @@ export function arrangedPanel(panel: TemplatePanel, placement: FloatPlacement): 
     ...(placement.tab !== undefined ? { tab: placement.tab } : {}),
     ...(placement.grow !== undefined ? { grow: placement.grow } : {}),
     ...(placement.displace ? { displace: true } : {}),
+  };
+}
+
+/*
+  ── One moment of a drag, answered whole ───────────────────────────────────────────────────────
+
+  What a drag asks at each pointer move and at the drop, each as one question: which targets are
+  free, which slots are offered, which of them the pointer means, and what a drop on a snap or onto
+  another card writes. The pieces above (the snap candidate, the taken snaps, the slots per family,
+  the arbitration between a slot and a snap, the seat order on an edge) are how these are worked out;
+  combined here rather than by the host, so the combining is part of what a second host agrees with.
+*/
+
+/** What a drag is over at one moment, as the host holds it. */
+export interface DragMoment {
+  /** Every panel and what it asks for, each with the placement it has now. */
+  requests: DockRequest[];
+  /** The panel being carried, or `null` between drags. */
+  moving: string | null;
+  /** The seat-mates riding with it, by id. */
+  seat: readonly string[];
+  /** The tabs not in front of their seat — see {@link LaneSeating.hidden}. */
+  hidden: Record<string, boolean>;
+  viewport: Viewport;
+  /** A tab is carried as an outline, out of a seat it has not left yet — see {@link occupiedById}. */
+  carryingTab: boolean;
+  /** The chrome floating panels clear. */
+  chrome: ContentInset;
+}
+
+const occupiedIn = (moment: DragMoment): ContentInset =>
+  occupiedById(moment.requests, moment.moving, moment.viewport, moment.carryingTab);
+
+/** The snaps refused to this drag: held by another card, the carried panel and its mates excepted. */
+const takenIn = (moment: DragMoment): SnapPoint[] =>
+  takenSnapsOf(moment.requests, moment.hidden, moment.moving ? [moment.moving, ...moment.seat] : []);
+
+/**
+ * The snap targets a drag is offered, as boxes to draw: the eight, measured against what the carried
+ * panel clears, less the ones another card already holds — a target drawn over the card being aimed
+ * at hides the seams and the seat behind it, and a drop there would be refused anyway.
+ */
+export function dragSnapTargets(moment: DragMoment): (Rect & { id: SnapPoint })[] {
+  const taken = takenIn(moment);
+  return snapTargetRects(moment.viewport, occupiedIn(moment), moment.chrome).filter(
+    (target) => !taken.includes(target.id),
+  );
+}
+
+/** A `$panels` outlet on screen that would take the carried panel, as the host measured it. */
+export interface HomeOutlet {
+  lane: string;
+  direction: 'row' | 'column';
+  /** The sections drawn in it, the carried one left out. */
+  sections: Rect[];
+  box: Rect;
+}
+
+/** What the slots of a drag are offered against, besides the moment. */
+export interface DragSlotsInput extends DragMoment {
+  /** Each panel's box as it is drawn, by dock id. */
+  boxes: Record<string, Rect>;
+  /** What the content gives up to the panels, per edge. */
+  inset: ContentInset;
+  /** The box being carried: the panel's own on a titlebar drag, the outline on a tab drag. */
+  carried: Rect | null;
+  /** The home lanes that would take the panel — none for a panel no interface homes in one. */
+  homes: readonly HomeOutlet[];
+}
+
+/**
+ * Every slot a drag is offered, in the order a tie between them goes: the home lanes it has been
+ * carried to, the gaps along each edge it has reached, and the floating cards it could stack onto.
+ */
+export function dragDropSlots(input: DragSlotsInput): DropSlot[] {
+  const { requests, moving, boxes, hidden, viewport, carried } = input;
+  if (!moving) return [];
+  const homes = carried
+    ? input.homes.flatMap((outlet) =>
+        homeDropSlots(outlet.lane, outlet.direction, outlet.sections, outlet.box, carried),
+      )
+    : [];
+  const edges = edgeDropSlots({
+    requests,
+    moving,
+    boxes,
+    hidden,
+    viewport,
+    inset: input.inset,
+    occupied: occupiedIn(input),
+    carried,
+  });
+  const stacks = stackDropSlots(stackCandidates(requests, hidden, moving).map((index) => boxes[requests[index].id]));
+  return [...homes, ...edges, ...stacks];
+}
+
+/** Where a drag is pointing, for the targeting question. */
+export interface DragAim extends DragMoment {
+  /** The slots on offer — {@link dragDropSlots}. */
+  slots: readonly DropSlot[];
+  pointer: { x: number; y: number };
+  /** The box the panel would have, there. */
+  rect: Rect;
+}
+
+/**
+ * Which slot or snap a drag means right now — at most one of the two, or neither.
+ *
+ * Arbitrated in two steps: the slot it means (`chooseTarget`: the pointer first, then the smallest
+ * box it is inside) and the snap it means (`snapCandidate`, refused where another card holds it),
+ * then the two weighed against each other (`snapBeatsSlot`): the more specific answer under the
+ * pointer is the one being pointed at. A slot with no snap behind it stands; a snap with no slot does.
+ */
+export function dragTarget(aim: DragAim): { insert: string | null; snap: SnapPoint | null } {
+  const { pointer, rect, viewport, chrome } = aim;
+  const slot = chooseTarget(aim.slots, pointer, rect);
+  const occupied = occupiedIn(aim);
+  const candidate = snapCandidate(rect, viewport, occupied, chrome, pointer);
+  const free = candidate && !takenIn(aim).includes(candidate) ? candidate : null;
+  const hit = snapTargetRects(viewport, occupied, chrome).find((target) => target.id === free) ?? null;
+  const snap = hit?.id ?? null;
+  const snapWins = snapBeatsSlot(hit, slot?.hit ?? null, pointer);
+  return {
+    insert: snapWins ? null : (slot?.key ?? null),
+    snap: snapWins || !slot ? snap : null,
+  };
+}
+
+/**
+ * What a drop on a snap writes for the panel that led the drag.
+ *
+ * On an edge, a card in that edge's floating lane, at the seat it held if it is free there and after
+ * the last otherwise (`edgeSeatOrder`); the loose seat key carried through the air goes, because on
+ * an edge a seat is the lane and the `order` again. In a corner, off every lane: a stack carried
+ * whole stays a stack, and a panel taken out of one does not, or parking a torn-out tab in a corner
+ * would put it straight back. Displacing is not restored either way — pulling a panel off its edge
+ * is the gesture for "stop taking room".
+ */
+export function snapDrop(
+  moment: Pick<DragMoment, 'requests' | 'seat'> & { moving: string },
+  placement: FloatPlacement,
+  snap: SnapPoint,
+): FloatPlacement {
+  const { seat: _seat, ...bare } = placement;
+  if (edgeOfSnap(snap)) {
+    const order = edgeSeatOrder(moment.requests, [moment.moving, ...moment.seat], snap, placement.order);
+    return { ...bare, snap, displace: false, order };
+  }
+  return moment.seat.length > 0 ? { ...placement, snap, displace: false } : unlaned(placement, snap);
+}
+
+/**
+ * What a drop onto the `position`th floating card a drag is offered writes, by dock id: the card it
+ * lands on names its seat when it has none — after itself, so the name survives the newcomer being
+ * dragged out again — and the newcomer joins that seat (`followSeat`). A seat already named keeps its
+ * key, so a third panel joins the stack rather than pairing off with whichever tab was showing.
+ * Empty when there is no such card.
+ */
+export function stackDrop(
+  moment: Pick<DragMoment, 'requests' | 'hidden' | 'viewport'>,
+  joiner: string,
+  position: number,
+): Record<string, FloatPlacement> {
+  const { requests, hidden, viewport } = moment;
+  const target = requests[stackCandidates(requests, hidden, joiner)[position] ?? -1];
+  const joining = requests.find((request) => request.id === joiner);
+  if (!target || !joining) return {};
+  const placed = (request: DockRequest) => request.placement ?? seedPlacement(request, viewport);
+  const held = placed(target);
+  const seat = held.seat ?? target.id;
+  return {
+    ...(held.seat === undefined ? { [target.id]: { ...held, seat } } : {}),
+    [joiner]: followSeat(placed(joining), { ...held, seat }),
   };
 }

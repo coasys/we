@@ -13,10 +13,12 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';
 import { appearanceOf } from './support/spaceAppearance';
+import { createVueReactivity } from './support/vueReactivity';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnType<typeof plainLiveTemplates> }][] = [
   ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates })],
@@ -24,6 +26,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnT
     'the test port',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],
@@ -102,6 +111,7 @@ describe.each(hosts)('the template store across a switch of space, under %s', (_
     dispose = reactivity.root(() => {
       store = createTemplateStore({
         reactivity,
+        platform: createTestPlatform(),
         toasts,
         liveTemplates,
         sessionStore: sessionStub as never,

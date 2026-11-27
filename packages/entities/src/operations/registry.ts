@@ -14,11 +14,13 @@ import {
   type OperationCategory,
   type OperationDefinition,
   operationsSchema,
+  type OperationStep,
 } from '@we/backend-shared';
 
 import { CORE_MANIFEST } from '../manifest';
 import { staticError } from './errors';
 import { splitName } from './validate';
+import { stepParts } from './values';
 
 interface Registered {
   operations: Record<string, OperationDefinition>;
@@ -110,3 +112,28 @@ registerOperations('core', CORE_MANIFEST.operations, {
   version: CORE_MANIFEST.version,
   entities: CORE_MANIFEST.entities,
 });
+
+/**
+ * The identity a registered operation keys `entity`'s records by (`identity` on a create naming it),
+ * or undefined when none does. What lets a write made outside an operation (a space's starter
+ * records) give a task state the id its `createTaskState` would, so the two name one record.
+ */
+export function identityOf(entity: string): readonly string[] | undefined {
+  const walk = (steps: readonly OperationStep[]): readonly string[] | undefined => {
+    for (const step of steps) {
+      const { verb, body } = stepParts(step);
+      if (verb === 'create' && body.entity === entity && Array.isArray(body.identity)) return body.identity as string[];
+      if (verb === 'forEach') {
+        const inner = walk(body.steps as OperationStep[]);
+        if (inner) return inner;
+      }
+    }
+    return undefined;
+  };
+  for (const { operations } of registry.values())
+    for (const op of Object.values(operations)) {
+      const found = walk(op.steps);
+      if (found) return found;
+    }
+  return undefined;
+}

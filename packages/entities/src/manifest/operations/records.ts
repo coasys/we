@@ -58,7 +58,7 @@ export const RECORD_OPERATIONS: Record<string, OperationDefinition> = {
       fields: {
         type: 'object',
         required: true,
-        description: 'Its fields, relations among them as lists of ids (a to-one as a one-element list).',
+        description: 'Its fields, relations among them as ids: a to-many as a list of ids, a to-one as the one id.',
       },
       home: { type: 'string', description: 'The collection it is made inside.' },
     },

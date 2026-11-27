@@ -10,7 +10,7 @@
  *
  * What stays here reads WE's own stores (`profileStore`, `runtimeStore`, `datasetStore`) or its
  * schema machinery (`$agent`). That is the tier whose real dependency is the host's store surface,
- * which no `package.json` can express — a fragment naming `spaceStore.mutedDids` resolves to nothing
+ * which no `package.json` can express — a fragment naming `identity.mutedDids` resolves to nothing
  * on a deployment without that store, silently. Keeping the two apart is how a consumer can tell
  * which fragments will work for them, and it is now a package boundary rather than a directory one.
  *
@@ -34,7 +34,7 @@
 export * from '@we/schema-kit';
 
 // Collections — the container-shaped surfaces. All of these read `CollectionBlock.kind` and filter
-// muted authors through `spaceStore.mutedDids`, which is what keeps them on this side of the line
+// muted authors through `identity.mutedDids`, which is what keeps them on this side of the line
 // despite being ordinary list arrangements otherwise.
 export { channelRail } from './lists/channelRail.ts';
 export type { ChannelRailOptions } from './lists/channelRail.ts';
@@ -50,6 +50,7 @@ export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from
 export type { AnchorBannerOptions } from './we/anchor.ts';
 export { landmark, LANDMARKS, LANDMARKS_LOADED, landmarksQuery } from './we/landmarks.ts';
 export { MEMBERS } from './we/members.ts';
+export { spaceImageChange } from './we/spaceImage.ts';
 export {
   answerButton,
   CHANGED,
@@ -152,7 +153,7 @@ export {
   LIKE_COUNT_TYPE,
   OFFERED_SIGNAL_TYPES,
 } from './we/signalTypes.ts';
-export { signalDisplay } from './we/signalDisplay.ts';
+export { giveSignal, signalDisplay } from './we/signalDisplay.ts';
 export {
   evidenceModal,
   type EvidenceModalOptions,

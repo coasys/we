@@ -203,6 +203,40 @@ Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/framework
 Pinned by: render vectors `render.local.initial`, `render.local.initial-expression`,
 `render.local.initial-dollar-text`, `render.local.shadowing`, `render.local.per-row`.
 
+### Scope across passes
+
+Scope is **lexical**: what a node sees is decided by where it is written, never by where a host draws
+it. A template is drawn in several passes — the root, each route body at its parent's outlet, each
+panel's node wherever it is docked — and the passes share one scope:
+
+- A **route body** sees the local state (`$localState` fields and `$queries` entries) of the node that
+  lists it and of every node above that one, up to the root. A route's own declaration adds to them
+  and shadows them as any nested declaration does.
+- A **panel's node** sees the root's local state.
+- Both draw the root's [shared shapes](nodes.md#shared-shapes-defs-and-ref).
+- Names an `$each`, `$single` or `$agent` binds are not lexically above a route or a panel (neither
+  may sit inside one), and neither is anything declared between a node and its `$routes` outlet.
+- A field is one field however many passes read it: a write in a route or a panel is read by the
+  root, and the other way round. `$touch` and `$resetLocal` reach the nearest enclosing scope by the
+  same rule, so in a route that declares nothing they reach the root's fields.
+
+What each pass gets from the host stays its own: its [surface](blocks.md#surface), its place in the
+address, and `panel` in a panel.
+
+> **Why lexical.** A template reads as one document, so a name it can see should be readable off the
+> document. Drawn scope would make what a route sees depend on which node its host put the outlet
+> in, and what a panel sees on where a reader docked it.
+
+---
+
+Implemented by: [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
+(`RenderSchema`, `PassScope`), [`TemplatePanelBody.tsx`](../../../packages/app-shell/src/frameworks/solid/components/TemplatePanelBody.tsx),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts) (`checkRoutes`, panels).
+Pinned by: render vectors `render.routes.root-local`, `render.routes.nested-local`,
+`render.routes.outlet-scope-not-lexical`, `render.panels.root-scope`;
+[`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts)
+(local scope across a route boundary).
+
 ### Persistence: `syncParam` and `persist`
 
 Two opt-in mirrors, for two kinds of state:

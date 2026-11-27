@@ -69,6 +69,34 @@ entities it writes, `operationGroups.ts` maps those to the narrowest capability 
 them, and a destructive one (a delete, an unlink) is confirmed by the host as `record.delete` is. An
 operation that writes counts as a write for the gesture rule; one that only reads does not.
 
+An entity the operation **chooses when it is called** (`oneOf` with a category: any record type, any
+block type) is not in that group, because nothing knows it before the call. The bag hands the runner
+a judgement instead (`admitsChosen`), asked with the entity actually passed, from the same table and
+the template's own grants: `core.deleteRecords` held by a template granted only `content` deletes a
+post and is refused a task state (`notGranted`), and no space template reaches the agent's own
+records through it, whatever the operation names. A category never stands for the widest group it
+might reach, which would make a generic delete need settings permission to delete a post.
+
+Every one of those callers reaches the runner through the host's `invokeOperation`
+(`app-shell/src/shared/invokeOperation.ts`), which does three things for every operation, so no
+store wraps one to do them:
+
+- **It draws the writes before they land.** The operation is run once speculatively, over the
+  dataset as the host sees it, recording its writes instead of making them; those writes are laid
+  over every read the host makes (the entity proxies' reads, and the renderer's data bindings through
+  `predictedBindings.ts`) until the real run, made with the same invocation id, has written rows of
+  the same ids and they have arrived. A failed run withdraws what was drawn. This replaced the
+  per-store holds (a board's, an involvement's, a reaction's): one mechanism, built on
+  `@we/optimism`'s rules for when to stop believing a held value, judged per read.
+- **It queues by the operation's `serial` key**, so two presses that both read before either wrote
+  run one after another, whatever called them.
+- **It says a failure once**: an error the operation declares in its own words, a refusal not at all
+  (the write check said it), anything else in the caller's.
+
+A store action that wraps an operation is kept only for host work around it that data cannot do:
+asking a workflow, settling a staged suggestion, keeping an undo history, an upload. See the
+[operations spec](../spec/operations/execution.md#running-speculatively) for what a host may draw.
+
 Reach for one when a store method would otherwise be a sequence of writes with a precondition
 between them. Do not reach for one for behaviour the step set cannot say — a device, the clock, a
 model call — which stays a store action.

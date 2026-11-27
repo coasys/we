@@ -20,11 +20,11 @@ import { CANVAS_MAX_CARDS, vocabularyMap } from '@we/template-kit';
 
 /** Which cards are open, by node address, comma-separated — like the fold, in the address. */
 export const OPEN_PARAM = 'open';
-export const OPEN_NODES = `split(routeStore.params.${OPEN_PARAM})`;
+export const OPEN_NODES = `split(navigation.params.${OPEN_PARAM})`;
 
 /** Open a card or close it — from the graph's own report, for the reason `FOLD_FROM_GRAPH` gives. */
 export const OPEN_FROM_GRAPH: SchemaProp = {
-  $invoke: 'routeStore.setParam',
+  $invoke: 'navigation.setParam',
   args: [
     OPEN_PARAM,
     { $: `join(event.open ? distinct(${OPEN_NODES}, [event.id]) : ${OPEN_NODES}.filter(k, k != event.id), ',')` },
@@ -32,11 +32,11 @@ export const OPEN_FROM_GRAPH: SchemaProp = {
 };
 
 /** The open set, ready to append to a query string the template builds — see `FOLD_QUERY`. */
-export const OPEN_QUERY = `\${routeStore.params.${OPEN_PARAM} ? '&${OPEN_PARAM}=' + routeStore.params.${OPEN_PARAM} : ''}`;
+export const OPEN_QUERY = `\${navigation.params.${OPEN_PARAM} ? '&${OPEN_PARAM}=' + navigation.params.${OPEN_PARAM} : ''}`;
 
 /** The vocabulary map is on. In the address, so a link to it is a link to it. */
 export const VOCAB_PARAM = 'vocab';
-export const VOCAB_ON = `routeStore.params.${VOCAB_PARAM} == '1'`;
+export const VOCAB_ON = `navigation.params.${VOCAB_PARAM} == '1'`;
 export const VOCAB_QUERY = `\${${VOCAB_ON} ? '&${VOCAB_PARAM}=1' : ''}`;
 
 /**
@@ -71,7 +71,7 @@ export const FIELD_NODE_RULE = {
 export const vocabularyCanvas: SchemaNode = vocabularyMap({
   open: { $: OPEN_NODES },
   onNodeOpen: OPEN_FROM_GRAPH,
-  focus: { $: 'routeStore.params.card' },
+  focus: { $: 'navigation.params.card' },
   onNodeClick: [
     { $setLocal: 'inspecting', value: { $: "event.recordId ?? ''" } },
     { $setLocal: 'inspectingType', value: { $: "event.recordType ?? ''" } },
@@ -92,7 +92,7 @@ export const vocabularyToggle: SchemaNode = {
       type: 'we-button',
       props: {
         variant: { $: `${VOCAB_ON} ? 'soft' : 'ghost'` },
-        onClick: { $invoke: 'routeStore.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
+        onClick: { $invoke: 'navigation.setParam', args: [VOCAB_PARAM, { $: `${VOCAB_ON} ? null : '1'` }] },
       },
       children: [
         { type: 'we-icon', props: { name: 'book-open-text' } },

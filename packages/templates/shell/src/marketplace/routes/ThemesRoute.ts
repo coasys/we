@@ -11,7 +11,7 @@ export const themesRoute: SchemaNode = marketplaceList({
   include: { screenshots: true },
   card: {
     mode: 'marketplace',
-    installed: { $: 'find(themeStore.installedThemes, { name: theme.name }).version' },
+    installed: { $: 'find(appearance.installedThemes, { name: theme.name }).version' },
     onInstall: { $invoke: 'themeStore.installFromMarketplace', args: [{ $: 'theme.id' }] },
     onDelete: { $invoke: 'themeStore.deleteMarketplaceTheme', args: [{ $: 'theme.id' }] },
     // Namespaced, so one row's spinner does not appear on every row.

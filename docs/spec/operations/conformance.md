@@ -9,9 +9,14 @@ The vectors are authoritative where this prose and they disagree ([Conventions](
 They were recorded on the reference implementation and are re-recorded only on purpose, so a change
 to one is a change to the contract.
 
+Beside them, five suites need no backend: the [core-subset expression
+vectors](#the-core-subset-expression-vectors), the [static checks](#the-static-check-vectors), the
+[effect summary](#the-effect-summary-vectors), the [id derivation](#the-id-vectors) and the [RDF
+reading](#the-rdf-vectors). A conforming implementation passes all six.
+
 ## The file
 
-One JSON file:
+The operations vectors are one JSON file:
 
 ```json
 { "version": 2, "entities": { … }, "protectedEntities": [ … ], "policy": { … }, "cases": [ … ] }
@@ -36,10 +41,13 @@ Each case:
 | `dataset`      | The records the dataset starts with: a list of `{ "entity", "id", "fields", "relations"? }`.                                                                                                                        |
 | `operation`    | The bare name of the operation to run; it runs as `conformance.<operation>`.                                                                                                                                        |
 | `args`         | The invocation's `args`.                                                                                                                                                                                            |
-| `invoker`      | The invocation's `invoker`. Every case uses `did:example:invoker`.                                                                                                                                                  |
+| `invoker`      | The invocation's `invoker`: `did:example:invoker`, or another name for a case about a record somebody else made ([below](#running-a-vector)).                                                                       |
 | `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                    |
 | `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                       |
 | `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                     |
+| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)), or `{ "arriving": true }` for one whose domain has not arrived. Absent: the dataset has none.                                  |
+| `version`      | Optional. The invocation's `version`. Absent: none is passed.                                                                                                                                                       |
+| `deniedChosen` | Optional. Entities the host refuses this caller when a step chooses them at call time ([Chosen entities](execution.md#chosen-entities)). Absent: every entity the `oneOf` admits is written.                        |
 | `observe`      | What to read back afterwards: a list of `{ "entity", "fields", "relations" }`. `fields` may name `author`.                                                                                                          |
 | `outcome`      | `{ "result": … }` when the operation succeeds, or `{ "error": { "class", "code" } }` when it fails.                                                                                                                 |
 | `records`      | What the reads in `observe` produce: an object of entity name to a list of observed records.                                                                                                                        |
@@ -55,14 +63,21 @@ invoker's name. The agent writes the seed records, so they are the invoker's, an
 invoked as that agent, so what it creates is the invoker's too ([Invocation](execution.md#invocation):
 the invoker is the agent making the call).
 
+A case whose `invoker` is another name (`did:example:visitor`) is about what may be done to a record
+somebody else made: the seeds are still written by the runner's agent, as `did:example:invoker`'s,
+and the operation is invoked with `invoker` set to that other name as it is written. Such a case
+fails before it writes anything, so the runner's agent remains the only writer.
+
 1. **Seed.** As that agent, and with no write check, create every record in `dataset`, with the `id`
    given and its `fields`. Then, once all exist, set each record's `relations`: each key a to-many
    relation, its value the members' ids in order. Seeding is not part of the operation and is not
    judged by anything the case observes.
-2. **Register.** Register `manifest.operations` under `conformance`, and each entry of `calls` under
-   its own namespace.
+2. **Register.** Register `manifest.operations` under `conformance`, at `manifest.version`, and each
+   entry of `calls` under its own namespace.
 3. **Invoke** `conformance.<operation>` with `args`, `invoker`, `invocationId`, `invokedAt` and the
-   dataset, under the file's policy. Pass no `version`. When the case has `concurrent`, commit those
+   dataset, under the file's policy. The dataset's identity domain is `domain`, and it has none when the
+   case gives none. Pass `version` only when the case gives one. When the case has `deniedChosen`,
+   the host refuses each entity it lists when a step chooses it (static `notGranted`). When the case has `concurrent`, commit those
    records outside the operation's transaction, as another writer, once the operation's first
    `expect` find has read and before the operation re-reads it.
 4. **Outcome.** If the operation succeeds, its result is `{ "result": r }`, with `r` the
@@ -74,10 +89,13 @@ the invoker is the agent making the call).
    - `id`;
    - each field in `fields` that has a value (absent, `null` and `''` are left out), `author`
      included;
-   - each relation in `relations` that has members, as the list of its members' ids: in the order the
-     backend reads them when the schema in `entities` says the relation is `ordered`, and sorted by
-     code point when it does not, since a set has no order to compare (a relation with none is left
-     out).
+   - each to-many relation in `relations` that has members, as the list of its members' ids: in the
+     order the backend reads them when the schema in `entities` says the relation is `ordered`, and
+     sorted by code point when it does not, since a set has no order to compare (a relation with none
+     is left out);
+   - each to-one relation in `relations` that has a value, as the record reads it without `include`:
+     the one id ([Relation](README.md#the-data-model)), so a backend holding it any other way fails
+     the comparison.
 
    Under `records[entity]`, list these sorted by `id`, by code point.
 
@@ -135,6 +153,7 @@ mostly made of:
 | ------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `core-upsert-signal`           | `upsertSignal`      | With no reaction yet, makes one under the record and answers with its id.                                    |
 | `core-respond-replaces`        | `respond`           | Removes the invoker's earlier answer on this record only, and makes the new one.                             |
+| `core-set-involvement-to-one`  | `setInvolvement`    | Finds the pair on this record by its to-one in a `where`, and writes the new record's `node` as one id.      |
 | `core-create-post-reply`       | `createPost`        | A reply: in its subject's responses and thread, a child of nothing, its block under it. Calls `core.thread`. |
 | `core-move-card`               | `moveCard`          | A card leaves one column, joins another where dropped, and takes the bound column's state.                   |
 | `core-remove-board-column`     | `removeBoardColumn` | A column's cards go to the board, and the column is deleted, never a card.                                   |
@@ -146,21 +165,123 @@ mostly made of:
 
 **The rules the cases above leave open**, over more of the suite's own operations:
 
-| Case                    | What it shows                                                                                                                          |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `expect-holds`          | An `expect` find that reads the same at the end lets the operation land.                                                               |
-| `expect-changed`        | A record another writer commits after the `expect` find read fails the operation as `expectChanged`; nothing lands.                    |
-| `find-scope-levels`     | A `scope` walk with `levels: [10, 10]` reaches children and grandchildren and stops; the anchor is not in it.                          |
-| `find-scope-transitive` | A `transitive` walk reaches everything under the anchor.                                                                               |
-| `not-absent`            | `NOT` over a comparison matches a record with no value for the field.                                                                  |
-| `refused-write`         | A write the policy refuses fails as `refused`, and the record made before it does not land.                                            |
-| `author-deletes-own`    | A record the operation made is the invoker's, so an author-only delete of it is allowed.                                               |
-| `call-derived-id`       | A record made inside a `call` takes its id from the call's path (`0`, `c=conformance.note`, `0`); its author is the invoker.           |
-| `when-false-create`     | A create whose `when` is false writes nothing, and its `as` reads as no value afterwards.                                              |
-| `forEach-replay`        | `create-and-link` replayed onto a dataset holding its done column: the same id for that key, refused as `recordExists`, nothing added. |
-| `create-onto-held-id`   | A derived id a record of another entity already holds is refused as `recordExists`.                                                    |
-| `protected-entity`      | A write to an access-control entity chosen at run time fails as static `protectedEntity`; nothing lands.                               |
-| `relation-order`        | An ordered relation keeps the order written, an unordered one compares as a set, and records list in code-point order.                 |
+| Case                           | What it shows                                                                                                                          |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `expect-holds`                 | An `expect` find that reads the same at the end lets the operation land.                                                               |
+| `expect-changed`               | A record another writer commits after the `expect` find read fails the operation as `expectChanged`; nothing lands.                    |
+| `find-scope-levels`            | A `scope` walk with `levels: [10, 10]` reaches children and grandchildren and stops; the anchor is not in it.                          |
+| `find-scope-transitive`        | A `transitive` walk reaches everything under the anchor.                                                                               |
+| `not-absent`                   | `NOT` over a comparison matches a record with no value for the field.                                                                  |
+| `refused-write`                | A write the policy refuses fails as `refused`, and the record made before it does not land.                                            |
+| `author-deletes-own`           | A record the operation made is the invoker's, so an author-only delete of it is allowed.                                               |
+| `call-derived-id`              | A record made inside a `call` takes its id from the call's path (`0`, `c=conformance.note`, `0`); its author is the invoker.           |
+| `when-false-create`            | A create whose `when` is false writes nothing, and its `as` reads as no value afterwards.                                              |
+| `forEach-replay`               | `create-and-link` replayed onto a dataset holding its done column: the same id for that key, refused as `recordExists`, nothing added. |
+| `create-onto-held-id`          | A derived id a record of another entity already holds is refused as `recordExists`.                                                    |
+| `protected-entity`             | A write to an access-control entity chosen at run time fails as static `protectedEntity`; nothing lands.                               |
+| `relation-order`               | An ordered relation keeps the order written, an unordered one compares as a set, and records list in code-point order.                 |
+| `identity-id`                  | A create keyed by `identity` takes its id from the entity and the slug, not the invocation.                                            |
+| `identity-id-other-invocation` | Another invocation naming the same identity gets the same id as `identity-id`.                                                         |
+| `identity-id-in-space`         | In a dataset with an identity domain (a space), the same identity gets another id, derived within it.                                  |
+| `identity-space-not-ready`     | In a dataset whose identity domain has not arrived, an identity create fails as `spaceNotReady`; nothing lands.                        |
+| `identity-twice`               | A second create of the same identity is refused as `recordExists`; nothing lands.                                                      |
+| `identity-not-invocation`      | A record keyed by identity and one keyed by the invocation get different ids.                                                          |
+
+**Every error code**, one case each where the cases above do not already end in it:
+
+| Case                 | What it shows                                                                            |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| `update-missing`     | An `update` of a record that is not there fails as `notFound`.                           |
+| `find-one-ambiguous` | A `find` with `one` that matches two records fails as `ambiguous`.                       |
+| `strict-unlink`      | A strict `unlink` of a record that is not a member fails as `notLinked`.                 |
+| `bad-args`           | Args missing a required param fail as `badArgs`.                                         |
+| `unbound-name`       | An expression reading a name nothing binds fails as `unboundName` when it runs.          |
+| `unknown-entity`     | A create of an entity the dataset has no type for fails as `unknownEntity`.              |
+| `outside-one-of`     | A chosen entity its `oneOf` does not admit fails as `outsideOneOf`; nothing lands.       |
+| `not-granted`        | A chosen entity the host refuses this caller fails as `notGranted`; nothing lands.       |
+| `forEach-no-key`     | A `forEach` item with no key fails as `forEachKey`.                                      |
+| `not-a-list`         | A `forEach` over a value that is not a list fails as `notAList`.                         |
+| `call-depth`         | Calls nested seventeen deep fail as `callDepth`; the record at the bottom does not land. |
+| `malformed-limit`    | A `limit` that is not a whole number fails as `malformed`.                               |
+| `unknown-operation`  | A `call` to an operation nobody registered fails as `unknownOperation`.                  |
+| `version-mismatch`   | An invocation for another version of the namespace fails as `versionMismatch`.           |
+
+## The core-subset expression vectors
+
+An operation's expressions are the core subset ([Expressions](expressions.md)), which the template
+format's expression language contains. Its vectors are the template suite's, in
+[`expressions.json`](../../../packages/schema-system/conformance/vectors/expressions.json) and
+[`functions.json`](../../../packages/schema-system/conformance/vectors/functions.json), and every case
+there says whether it is core: `"core": true` is a case an operations-only host MUST pass, and
+`"core": false` one only a template host runs.
+
+A case is core when it is a case of the grammar, of evaluation or of the printer (`op.*`, `eval.*`,
+`print.*`), over no env or an env of plain names (one with only `context`), and calls only core
+functions; in `functions.json`, a case of a core function with no form `context`. To run a core
+expression case, bind each name of the env's `context` to its value, read every other name as no
+value, evaluate `source`, and compare with `result` (or, for a case with `error: "syntax"`, refuse it
+as not parsing); `print` is the template suite's and MAY be skipped. To run a core function case, call
+`fn` with `args` and compare with `result`. A value `{ "$undefined": true }` is no value.
+
+## The static-check vectors
+
+[`static-checks.json`](../../../packages/backend-system/conformance/vectors/operations/static-checks.json)
+holds manifests to refuse ([Static checks](format.md#static-checks)):
+
+```json
+{ "version": 1, "namespace": "conformance", "protectedEntities": [ … ], "entities": { … }, "cases": [ … ] }
+```
+
+Each case is `{ "id", "check", "note", "operations", "refused", "paths" }`. `check` is the number of
+the check it shows in the spec's list (`0` for a case that passes them all). Register `operations`,
+with the file's `entities` and under its `namespace`, as one manifest: an implementation conforms when
+it refuses every case whose `refused` is true and accepts every other. `paths` are the places the
+reference reports, sorted by code point; an implementation SHOULD report the same. A manifest broken
+in its structure (check 1) is reported for its structure alone, before the other checks look at it.
+
+## The effect-summary vectors
+
+[`effects.json`](../../../packages/backend-system/conformance/vectors/operations/effects.json) holds
+definitions and what they may write ([The effect summary](execution.md#the-effect-summary)):
+
+```json
+{ "version": 1, "groups": { "default", "width", "entities" }, "cases": [ … ] }
+```
+
+Each case is `{ "id", "note", "operation", "calls"?, "summary", "permission" }`. Compute the summary
+of `operation`, resolving a `call` from `calls` and from WE's core operations, and compare with
+`summary`. `permission` is what invoking it needs under one host's table, `groups` (WE's): `group` is
+the widest group, in the order `width` lists them, that an entity under `summary.entities` reaches (an
+entity the table does not list is in `default`); `chosen` lists the categories under
+`summary.categories`, each an entity chosen at call time and judged then ([Permission and
+confirmation](execution.md#permission-and-confirmation)), never part of `group`; `destructive` is the
+summary's; `writes` is whether the operation writes at all. Every core operation has a case
+(`effects.core-*`).
+
+## The id vectors
+
+[`ids.json`](../../../packages/backend-system/conformance/vectors/operations/ids.json) holds the id
+derivation on its own ([Ids](execution.md#ids)). Each case is an invocation's,
+`{ "kind": "invocation", "invocationId", "path" }`, or an identity's,
+`{ "kind": "identity", "entity", "identity", "domain"? }` with `identity` a list of
+`[field, value as text]`, and carries `framed`, the text hashed (as its UTF-8 bytes), and `result`,
+the id. Derive the id and compare; `framed` says whether a disagreement is in the framing or after it.
+
+## The RDF vectors
+
+[`rdf.json`](../../../packages/backend-system/conformance/vectors/operations/rdf.json) holds the RDF
+reading ([RDF reading](rdf.md)). Each case is `{ "id", "note", "document", "nquads", "summaries" }`:
+`document` is a manifest's `version` and `operations`; `nquads` its triples under the
+[context](context.jsonld), canonical N-Quads sorted; `summaries`, per operation, the triples of its
+effect summary with the operation named `conformance.<name>`. Read `document` and compare with
+`nquads`, read `nquads` back and compare with `document` as JSON values, and build each summary's
+graph and compare.
+
+## Coverage
+
+The suite covers the spec, and a test holds it to that: every verb runs in some operations vector,
+every error code in [Errors](execution.md#errors) is some vector's outcome, every static check has a
+refused static-check vector, and every core function and every comprehension has a core-subset case.
 
 ## What a vector does not carry
 
@@ -179,10 +300,21 @@ Implemented by: [`operations.ts`](../../../packages/backend-system/conformance/s
 (the cases, `runVector`, `describeOperations`),
 [`recordOperationVectors.ts`](../../../packages/backend-system/conformance/scripts/recordOperationVectors.ts)
 (recording, on the in-memory backend).
-The vectors: [`vectors/operations/operations.json`](../../../packages/backend-system/conformance/vectors/operations/operations.json).
+[`suites/`](../../../packages/backend-system/conformance/src/suites) (the static-check, effect, id
+and RDF cases, and what records them).
+The vectors: [`vectors/operations/`](../../../packages/backend-system/conformance/vectors/operations),
+and the core-subset cases of the template suite's
+[`expressions.json`](../../../packages/schema-system/conformance/vectors/expressions.json) and
+[`functions.json`](../../../packages/schema-system/conformance/vectors/functions.json).
 Pinned by: every backend's conformance suite, which runs the vectors —
 [`portsConformance.test.ts`](../../../packages/backend-system/inmemory/tests/portsConformance.test.ts)
 for the in-memory backend, and
 [`operationVectors.test.ts`](../../../packages/backend-system/inmemory/tests/operationVectors.test.ts),
 which runs every vector on a backend built from the file's `entities` alone, with only each
 vector's `calls` registered.
+[`operationSuites.test.ts`](../../../packages/backend-system/conformance/tests/operationSuites.test.ts)
+(every static-check, effect, id and RDF vector run from its file, and every core operation read back
+from its triples, e.g. `static.identity`, `effects.per-call-any`, `ids.identity-in-space`,
+`rdf.make-board`), [`operationsCoverage.test.ts`](../../../packages/backend-system/conformance/tests/operationsCoverage.test.ts)
+(the coverage rule), and [`operationGroups.test.ts`](../../../packages/app-shell/tests/operationGroups.test.ts)
+(WE's permission table and its reading of every effect vector).

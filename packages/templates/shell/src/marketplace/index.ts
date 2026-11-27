@@ -18,7 +18,7 @@ const tabs = [
 const tabBar = {
   type: 'we-tabs',
   props: {
-    selectedKey: { $: 'routeStore.segments[0]' },
+    selectedKey: { $: 'navigation.segments[0]' },
     gap: '300',
   },
   children: tabs.map((tab) => ({
@@ -26,7 +26,7 @@ const tabBar = {
     props: {
       key: tab.key,
       label: tab.label,
-      onClick: { $invoke: 'routeStore.navigate', args: [tab.path] },
+      onClick: { $invoke: 'navigation.navigate', args: [tab.path] },
     },
   })),
 };

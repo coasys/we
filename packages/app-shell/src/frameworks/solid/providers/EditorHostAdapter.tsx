@@ -1,7 +1,7 @@
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { viewRegistry } from '@shared/registries/viewRegistry';
 import { type EditorHost, EditorHostProvider } from '@we/editor/runtime';
-import { compressImageToFileData, ImageBlock } from '@we/entities';
+import { canvasImageCodec, compressImageToFileData, ImageBlock } from '@we/entities';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { ParentProps } from 'solid-js';
 
@@ -132,7 +132,7 @@ export function EditorHostAdapter(props: ParentProps) {
         if (!handle) throw new Error('no dataset to upload into');
         // Standalone in the current dataset — no parent CollectionBlock, so it is reusable by
         // future browse pickers exactly like a post-authored ImageBlock.
-        const fileData = await compressImageToFileData(file, 'bg-image');
+        const fileData = await compressImageToFileData(canvasImageCodec, file, 'bg-image');
         const block = await ImageBlock.create(handle, { src: fileData });
         return block.src;
       },

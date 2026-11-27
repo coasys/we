@@ -15,6 +15,7 @@ import { type ComponentRegistry, RenderSchema } from '@we/schema-solid';
 import { describe, expect, it } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createEditorStore } from '../src/shared/stores/EditorStore';
 import { createEditTarget } from '../src/shared/stores/editTarget';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';
@@ -76,6 +77,7 @@ describe('an edit in the editor, drawn by Solid', () => {
       const quiet = () => undefined;
       editor = createEditorStore({
         reactivity,
+        platform: createTestPlatform(),
         toasts: { info: quiet, success: quiet, warning: quiet, error: quiet },
         firstScreen: { open: () => false },
         sessionStore: { backendPorts: () => null as never },

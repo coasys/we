@@ -7,7 +7,7 @@ export interface PeopleRowOptions {
   items: SchemaProp;
   /**
    * The items are DIDs rather than profiles, so pictures and names are joined from
-   * `profileStore.profiles`.
+   * `identity.profiles`.
    *
    * The join happens per row rather than as a filter over the cache, because the order has to
    * follow *this* list — and because `$filter` has no set-membership operator to express "profiles
@@ -60,7 +60,7 @@ export function peopleRow(opts: PeopleRowOptions): SchemaNode {
    * join runs in two scopes: the stack's comprehension addresses a person as `m`, the roster rows
    * as `<as>`.
    */
-  const lookup = (did: string, field: string) => `find(profileStore.profiles, { did: ${did} }).${field}`;
+  const lookup = (did: string, field: string) => `find(identity.profiles, { did: ${did} }).${field}`;
   const count = expr`count(${opts.items})`;
 
   return peopleTooltip({

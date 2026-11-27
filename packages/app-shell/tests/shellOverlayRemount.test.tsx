@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
 import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
 import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';
 import type { ShellStore } from '../src/shared/stores/ShellStore';
@@ -37,7 +38,7 @@ function mountOverlay() {
   const [routeKey, setRouteKey] = createSignal(1);
 
   render(() => {
-    shell = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    shell = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     return (
       <StoreRegistryContext.Provider value={{ shellStore: shell }}>
         {/* The key is taken as an argument, mirroring `TemplateProvider`'s `{(_key) => …}`. A child

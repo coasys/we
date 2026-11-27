@@ -10,7 +10,7 @@
  * A query parameter rather than a route segment, for two reasons. It is view state by the routing
  * conventions' own test — send somebody the link and they should see what you see — and a segment
  * would make the shell's route tree learn about anchors, which is a fact about a view rather than
- * about where views live. Read straight from `routeStore.params` rather than declared as
+ * about where views live. Read straight from `navigation.params` rather than declared as
  * `$localState` with a `syncParam`, because a view does not *own* this value: it is written by
  * whoever linked here — a call card offering "the work from this call" — and a view that declared
  * it would clear it on mount whenever its own initial disagreed.
@@ -38,7 +38,7 @@ import type { QueryStateField, SchemaNode } from '@we/schema-shared';
 export const ANCHOR_PARAM = 'anchor';
 
 /** The anchor a view is narrowed to, as an expression — empty when there is none. */
-export const ANCHOR_ID = { $: `routeStore.params.${ANCHOR_PARAM}` };
+export const ANCHOR_ID = { $: `navigation.params.${ANCHOR_PARAM}` };
 
 /**
  * The `scope` clause narrowing a query to the anchored container's children.
@@ -119,7 +119,7 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
               ml: 'auto',
               // `null` clears the parameter; `push: true` because leaving a narrowed view is a
               // navigation somebody may want to undo with Back.
-              onClick: { $invoke: 'routeStore.setParam', args: [ANCHOR_PARAM, null, { push: true }] },
+              onClick: { $invoke: 'navigation.setParam', args: [ANCHOR_PARAM, null, { push: true }] },
             },
             children: ['Show all'],
           },
@@ -141,7 +141,7 @@ export function anchorBanner(opts: AnchorBannerOptions): SchemaNode {
  * the same call serves both cases. Pass an expression naming a different anchor where a template has
  * one of its own — the Workshop names the call it is about rather than a URL parameter.
  */
-export function anchorParent(anchorExpr = `routeStore.params.${ANCHOR_PARAM}`): { $: string } {
+export function anchorParent(anchorExpr = `navigation.params.${ANCHOR_PARAM}`): { $: string } {
   return {
     $: `(${anchorExpr}) ? { parent: { id: ${anchorExpr}, relation: 'children', entity: 'CollectionBlock' } } : {}`,
   };

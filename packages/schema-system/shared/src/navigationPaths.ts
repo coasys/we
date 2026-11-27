@@ -4,7 +4,7 @@
  * A template is mounted under a prefix it does not choose (`/space/<id>`), and a section of one is
  * mounted wherever a space puts it, so it cannot write absolute addresses to its own screens. It
  * writes them relative, and this decides relative to what. One function, so a link a template draws
- * (`href`) and a press it handles (`routeStore.navigate`) cannot mean two different things, and
+ * (`href`) and a press it handles (`navigation.navigate`) cannot mean two different things, and
  * neither can the main router and the shell overlay's.
  *
  * ## The rule

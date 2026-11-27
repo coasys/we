@@ -41,15 +41,20 @@ function renderMarkdown(profiles: readonly CapabilityProfile[]): string {
     'events it is part of. The normative rules for reading this listing are in [the README](README.md);',
     'the same data, for tooling, is [`profiles.json`](profiles.json).',
     '',
-    '| Profile | Version | Members |',
-    '| --- | --- | --- |',
-    ...profiles.map((p) => `| [${p.title}](#${p.id}) | ${p.version} | ${p.members.length} |`),
+    '| Profile | Namespace | Version | Members |',
+    '| --- | --- | --- | --- |',
+    ...profiles.map((p) => `| [${p.title}](#${p.id}) | ${code(p.namespace)} | ${p.version} | ${p.members.length} |`),
   ];
 
   for (const profile of profiles) {
     const state = profile.members.filter((m) => m.kind === 'state');
     const actions = profile.members.filter((m) => m.kind === 'action');
-    lines.push('', `## ${profile.id}`, '', `**${profile.title}, version ${profile.version}.** ${profile.description}`);
+    lines.push(
+      '',
+      `## ${profile.id}`,
+      '',
+      `**${profile.title}, version ${profile.version}, written under ${code(profile.namespace)}.** ${profile.description}`,
+    );
     if (state.length) {
       lines.push('', '### State', '');
       lines.push(

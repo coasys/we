@@ -30,13 +30,7 @@
  * Holders who have left the space are still listed, from their cached profile where there is one,
  * so a card never ticks somebody the menu cannot untick.
  */
-import {
-  involvement,
-  type InvolvementKindInput,
-  type InvolvementRowInput,
-  type PendingInvolvement,
-  TONE_BY_SEMANTIC,
-} from './involvement';
+import { involvement, type InvolvementKindInput, type InvolvementRowInput, TONE_BY_SEMANTIC } from './involvement';
 
 interface Member {
   did: string;
@@ -58,15 +52,14 @@ export interface InvolvementMenuOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.offeredInvolvementTypes`. */
   types?: Kind[] | null;
-  /** Who is in the space, by DID — `spaceStore.memberDids`. */
+  /** Who is in the space, by DID — `identity.memberDids`. */
   members?: string[] | null;
-  /** `profileStore.profiles`: who each member is, and somebody who holds a part and is no longer one. */
+  /** `identity.profiles`: who each member is, and somebody who holds a part and is no longer one. */
   profiles?: Member[] | null;
   /** The viewer's DID. */
   me?: string | null;
   /** A name somebody said for who should do it — `TaskBlock.assignee`. See above. */
   said?: string | null;
-  pending?: readonly PendingInvolvement[] | null;
 }
 
 const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
@@ -88,7 +81,6 @@ export function involvementMenu(options: InvolvementMenuOptions | null | undefin
   const on = involvement({
     rows: options?.rows ?? null,
     types: options?.types ?? null,
-    pending: options?.pending ?? null,
   }).byNode[node];
   const holdersOf = (slug: string) => (on?.people ?? []).filter((p) => p.kind === slug).map((p) => p.did);
 

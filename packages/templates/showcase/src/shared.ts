@@ -17,6 +17,7 @@ import {
   composerModal as kitComposerModal,
   field,
   formModal,
+  giveSignal,
   HAS_OFFERED_SIGNAL_TYPES,
   OFFERED_SIGNAL_TYPES,
 } from '@we/template-kit';
@@ -143,7 +144,7 @@ export function newContainerModal(opts: {
         { parent: { id: opts.parentId ?? { $: 'spaceStore.root' }, relation: 'children', entity: 'CollectionBlock' } },
       ],
       ...(opts.navigateTo && {
-        onSuccess: [{ $invoke: 'routeStore.navigate', args: [opts.navigateTo, { $: '{ query: { id: result.id } }' }] }],
+        onSuccess: [{ $invoke: 'navigation.navigate', args: [opts.navigateTo, { $: '{ query: { id: result.id } }' }] }],
       }),
     },
   });
@@ -210,10 +211,7 @@ export function signalRow(nodeRef: string): SchemaNode {
                       signalType: { $: 'sig' },
                       signals: { $: `filter(${nodeRef}.signals, { signalTypeId: sig.id })` },
                       myDid: { $: 'me.did' },
-                      onSignal: {
-                        $invoke: 'spaceStore.upsertSignal',
-                        args: [{ $: `${nodeRef}.id` }, { $: 'sig.id' }, { $: 'arg' }],
-                      },
+                      onSignal: giveSignal(`${nodeRef}.id`, 'sig.id'),
                     },
                   },
                 },

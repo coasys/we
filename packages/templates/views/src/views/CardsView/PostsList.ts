@@ -165,14 +165,14 @@ export const postsList: SchemaNode = {
                       type: '$if',
                       props: {
                         condition: {
-                          $: "count(presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)))",
+                          $: "count(presence.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)))",
                         },
                         then: {
                           type: 'we-badge',
                           props: { tone: 'warning', size: 'sm' },
                           children: [
                             {
-                              $: "`${presenceStore.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
+                              $: "`${presence.online.filter(p, p.did != me.did && p.activities.exists(a, a.type == 'edit' && a.nodeId == post.id)).map(p, p.name).join(', ')} editing`",
                             },
                           ],
                         },
@@ -206,7 +206,7 @@ export const postsList: SchemaNode = {
                                     onClick: [
                                       { $setLocal: 'editPostOpen', value: true },
                                       {
-                                        $invoke: 'presenceStore.setActivity',
+                                        $invoke: 'presence.setActivity',
                                         args: [{ type: 'edit', nodeId: { $: 'post.id' } }],
                                       },
                                     ],
@@ -225,9 +225,7 @@ export const postsList: SchemaNode = {
                                     args: [{ $: 'post.id' }, { $: 'arg' }],
                                   },
                                   saveLabel: 'Save',
-                                  onClose: [
-                                    { $invoke: 'presenceStore.clearActivity', args: ['edit', { $: 'post.id' }] },
-                                  ],
+                                  onClose: [{ $invoke: 'presence.clearActivity', args: ['edit', { $: 'post.id' }] }],
                                 }),
                                 {
                                   type: 'we-button',
@@ -271,7 +269,7 @@ export const postsList: SchemaNode = {
                         variant: 'ghost',
                         size: 'xs',
                         alignSelf: 'start',
-                        onClick: { $invoke: 'spaceStore.openRecordRef', args: [{ $: 'post.sourceRef' }] },
+                        onClick: { $invoke: 'navigation.openRecordRef', args: [{ $: 'post.sourceRef' }] },
                       },
                       children: [
                         {

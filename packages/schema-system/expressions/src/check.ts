@@ -17,6 +17,12 @@ export interface ExpressionScope {
   storeNames: ReadonlySet<string>;
   /** Known members per store. A store absent here has an open member set (a module store, say). */
   storeMembers: ReadonlyMap<string, ReadonlySet<string>>;
+  /**
+   * Members a host keeps in a store but a template reaches only under another name, by the store
+   * path — a capability profile's member, `routeStore.params` → `navigation.params`. Named under the
+   * store, the member is absent, so it is an error that says what to write.
+   */
+  movedMembers?: ReadonlyMap<string, string>;
   /** Fields `local.*` may name, or null when the scope is not knowable (a fragment judged alone). */
   locals: ReadonlySet<string> | null;
   /** Names bound by the enclosing nodes — `$each`'s `as`, `$agent`'s `as` — beyond the well-known set. */
@@ -51,6 +57,14 @@ export interface ExpressionIssue {
   span: Span;
 }
 
+/**
+ * What a template is told when it names a member under a store that holds it but does not expose it
+ * there — a capability profile's member, written under its profile's namespace only.
+ */
+export function movedMessage(written: string, name: string): string {
+  return `${written} is not reachable under its store: it is a profile member, written ${name}`;
+}
+
 export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionIssue[] {
   const issues: ExpressionIssue[] = [];
 
@@ -80,7 +94,23 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
     // This used to read `as: 'model'` over the AI models, which was the same rule demonstrated on a
     // genuine collision: `model` meant both an LLM and a WE type. That is what the entity/record
     // naming settled — the shadowing rule stays, the ambiguity it was illustrating does not.
-    if (scope.contextNames.has(root)) continue;
+    if (scope.contextNames.has(root)) {
+      /*
+        A bound name that is also a store or a namespace hides it below the node that bound it —
+        `$each … as: 'layout'` over a list of layouts, then `layout.collapsedLanes`, reads the row's
+        own field and finds nothing. Said only where the member read is one the hidden name has, so
+        a row's own fields (`layout.name`) pass.
+      */
+      const [member] = path;
+      if (member !== undefined && scope.storeNames.has(root) && scope.storeMembers.get(root)?.has(member)) {
+        issues.push({
+          message: `"${root}" here is the name an enclosing node bound, so ${root}.${member} reads its field rather than ${root}.${member} of the host — bind it under another name to reach both`,
+          severity: 'warning',
+          span,
+        });
+      }
+      continue;
+    }
 
     /*
       `modules.<id>.<member>` — a feature module's store, one segment deeper than a host store's.
@@ -125,6 +155,11 @@ export function checkExpression(expr: Expr, scope: ExpressionScope): ExpressionI
           severity: 'error',
           span,
         });
+        continue;
+      }
+      const moved = scope.movedMembers?.get(`${root}.${path[0]}`);
+      if (moved) {
+        issues.push({ message: movedMessage(`${root}.${path[0]}`, moved), severity: 'error', span });
         continue;
       }
       const members = scope.storeMembers.get(root);

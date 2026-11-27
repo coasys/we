@@ -1523,13 +1523,13 @@ function groupRoute(group: (typeof groups)[number]): RouteSchema {
 /** Build a nav tab for a group */
 function navTab(group: (typeof groups)[number]): SchemaNode {
   const navPath = tokensBasePath + group.path;
-  const isActive = expr`routeStore.currentPath == ${navPath}`;
+  const isActive = expr`navigation.currentPath == ${navPath}`;
 
   return {
     type: 'we-button',
     props: {
       variant: expr`${isActive} ? 'solid' : 'soft'`,
-      onClick: { $invoke: 'routeStore.navigate', args: [navPath] },
+      onClick: { $invoke: 'navigation.navigate', args: [navPath] },
     },
     children: [group.label],
   };

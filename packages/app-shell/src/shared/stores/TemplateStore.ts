@@ -54,6 +54,7 @@ import { ensureNodeIds, hasViewsMarker, TEMPLATE_SCHEMA_VERSION, templateThemeId
 import { distinctSignal } from '../distinctSignal';
 import { followLive } from '../followLive';
 import type { LiveTemplates } from '../liveTemplate';
+import type { PlatformPort } from '../platform/port';
 import { CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
 import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../safeMode';
 import { overrideOptions, overrideTemplateId, type SpaceAppearance } from '../spaceAppearance';
@@ -379,6 +380,8 @@ const SPACE_PREFIX = 'space::';
 /** What the template store reads off the stores composed before it, and the renderer's live documents. */
 export interface TemplateStoreDeps {
   reactivity: ReactivityPort;
+  /** The window, whose name and icon follow the app's. */
+  platform: Pick<PlatformPort, 'document' | 'images'>;
   toasts: Toasts;
   /**
    * How a template being drawn is held: the renderer adapter's live documents. The template on
@@ -401,7 +404,7 @@ export interface TemplateStoreDeps {
 }
 
 export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
-  const { reactivity, toasts } = deps;
+  const { reactivity, toasts, platform } = deps;
   const { memo, effect, untrack } = reactivity;
   /** A signal that skips a write equal to what it holds, as every signal here did under Solid. */
   const signal = <T>(initial: T) => distinctSignal<T>(reactivity, initial);
@@ -751,17 +754,14 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   });
 
   // The window's name and icon, and the name code that is not a template reads.
-  if (typeof document !== 'undefined') {
-    const baseTitle = document.title;
-    const iconLink = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
-    const baseIcon = iconLink?.getAttribute('href') ?? null;
-    effect(() => {
-      const { active, name, mark } = brand();
-      setCurrentProductName(name);
-      document.title = active ? name : baseTitle;
-      if (iconLink && baseIcon !== null) iconLink.setAttribute('href', active && mark ? mark : baseIcon);
-    });
-  }
+  const baseTitle = platform.document.title();
+  const baseIcon = platform.document.iconHref();
+  effect(() => {
+    const { active, name, mark } = brand();
+    setCurrentProductName(name);
+    platform.document.setTitle(active ? name : baseTitle);
+    if (baseIcon !== null) platform.document.setIconHref(active && mark ? mark : baseIcon);
+  });
 
   /*
     The sign-in screen: the app's own when it brings one that still passes — accepted at the chrome
@@ -1973,6 +1973,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   const flow = createLibraryFlow<Template, PendingInstall>({
     reactivity,
     toasts,
+    images: platform.images,
     entity: Template as unknown as LibraryEntity<Template>,
     noun: 'template',
     marketplace: () => datasetStore.marketplaceDataset()?.handle,

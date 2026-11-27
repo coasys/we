@@ -28,6 +28,7 @@ import {
   extractDestructiveMembers,
   type ExtractedStore,
   extractHostSources,
+  extractProfileHomes,
   extractRegisteredComponents,
   extractStores,
   extractWiringMembers,
@@ -49,8 +50,9 @@ import { routing } from './fragments/routing.js';
 import { rules } from './fragments/rules.js';
 import { schemaOperators } from './fragments/schema-operators.js';
 import { storePatterns } from './fragments/store-patterns.js';
-import { actionsNeedingArgs, generateStoresText, storeEntries, undescribedMembers } from './fragments/stores.js';
+import { actionsNeedingArgs, generateStoresText, storeEntries } from './fragments/stores.js';
 import { theming } from './fragments/theming.js';
+import { profileNamespaces } from './profileNamespaces.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // From src/generate.ts: up to ai-context/, up to packages/, up to repo root
@@ -273,12 +275,19 @@ async function main() {
   // Discover and extract context from all workspace packages
   const fragments = await discoverFragments();
   const contextData = aggregateFragments(fragments);
+  // Every member the stores section renders as `unknown`; the build fails on any, at the end.
+  const undescribedMembers: string[] = [];
 
   // Names come from the source, meaning comes from the fragment. See `extractors/appShell.ts`.
-  contextData.storeEntries = mergeStoreEntries(
-    extractStores([resolve(repoRoot, 'packages/app-shell/src/shared/stores')]),
-    storeEntries,
-    extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
+  // Then the profile members move to their namespaces, which is the only place the bag puts them.
+  const surfaceFile = resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts');
+  contextData.storeEntries = profileNamespaces(
+    mergeStoreEntries(
+      extractStores([resolve(repoRoot, 'packages/app-shell/src/shared/stores')]),
+      storeEntries,
+      extractWiringMembers(surfaceFile),
+    ),
+    extractProfileHomes(surfaceFile),
   );
   // Which actions may run with nobody asking — the rest need a press. See `MemberSpec.ambient`.
   const ambient = extractAmbientMembers(
@@ -289,10 +298,12 @@ async function main() {
     resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts'),
   );
   for (const store of contextData.storeEntries) {
-    const names = ambient.get(store.name);
-    if (names) store.ambient = store.actions.filter((action) => names.has(action));
-    const asked = destructive.get(store.name);
-    if (asked) store.destructive = store.actions.filter((action) => asked.has(action));
+    // A namespace's member is classified where its store holds it.
+    const home = (action: string) => store.homes?.[action] ?? store.name;
+    store.ambient = store.actions.filter((action) => ambient.get(home(action))?.has(action));
+    if (!store.ambient.length) delete store.ambient;
+    store.destructive = store.actions.filter((action) => destructive.get(home(action))?.has(action));
+    if (!store.destructive.length) delete store.destructive;
     // Which need arguments — what the validator warns about when an `$invoke` passes none.
     const needed = new Set(actionsNeedingArgs(store.name));
     const needsArgs = store.actions.filter((action) => needed.has(action));
@@ -399,7 +410,7 @@ async function main() {
       panels,
       // Rebuilt from the merged entries rather than reusing the fragment's own text, so the prose in
       // the reference lists exactly the members the validator accepts.
-      stores: generateStoresText(contextData.storeEntries ?? []),
+      stores: generateStoresText(contextData.storeEntries ?? [], undescribedMembers),
       storePatterns,
       patterns,
       rules,
@@ -547,6 +558,39 @@ async function main() {
   console.log(`  Written: ${elementTagsPath}`);
 
   /*
+    The props each component declares as holding a node: every prop its own types give as an element
+    (`front?: JSX.Element`), other than `children`, which is the node's children.
+
+    Read from the component's declaration because that is where the fact lives: a component that
+    takes an element there draws whatever it is handed, so the renderer must hand it a drawn node,
+    and every walk over a template must count the value as a child. Written beside the element tags,
+    small, for the same reason — the renderer and every walk import it, and none of them should carry
+    the catalogue to learn it.
+  */
+  const nodePropsPath = resolve(packageRoot, '../schema-system/shared/src/generated/componentNodeProps.ts');
+  const componentNodeProps = Object.fromEntries(
+    (contextJson.components ?? [])
+      .map((c) => [
+        c.name,
+        c.props
+          .filter((p) => p.name !== 'children' && /^JSX\.Element(\s*\|\s*undefined)?$/.test(p.type.trim()))
+          .map((p) => p.name),
+      ])
+      .filter(([, names]) => names.length > 0)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  ) as Record<string, string[]>;
+  const nodePropsContent = [
+    '// AUTO-GENERATED by packages/ai-context/src/generate.ts',
+    '// Do not edit manually. Run: pnpm --filter @we/ai-context generate-context',
+    '',
+    '/** The props each component declares as holding a node, by component: the element-typed props of its declaration. */',
+    `export const COMPONENT_NODE_PROPS: Readonly<Record<string, readonly string[]>> = ${JSON.stringify(componentNodeProps)};`,
+    '',
+  ].join('\n');
+  await writeFormatted(nodePropsPath, nodePropsContent);
+  console.log(`  Written: ${nodePropsPath}`);
+
+  /*
     An example teaching a spelling the validator rejects fails the build.
 
     ## Why this is a check and not a review note
@@ -581,9 +625,18 @@ async function main() {
   /*
     A member a template can name with nothing saying what it means fails the build.
 
+    Members that rendered as `unknown` — reachable from a schema, and with nothing saying what they
+    do. The architecture plan's rule is that an undescribed member fails the build, and the
+    generator's own count was the wrong measure of one: it counted members missing from
+    `storeEntries`, a merge input, while what an author reads is the description table, whose misses
+    render as the literal word `unknown` in the reference an LLM is handed. As a count, three
+    `ShapeStore` members regressed to `unknown` after the PR that reported "zero unknown remain", and
+    nobody looked. Wiring never reaches here — `mergeStoreEntries` drops it first — so everything on
+    this list is vocabulary a template can name.
+
     Last, after everything is written, so a run that fails still leaves the reference regenerated —
     the fix is to describe the member, and having the file on disk is what lets you see what it
-    currently says. See `undescribedMembers` in `fragments/stores.ts`.
+    currently says.
   */
   if (undescribedMembers.length) {
     console.error(

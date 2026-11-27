@@ -19,24 +19,40 @@ import { fileURLToPath } from 'node:url';
 // agree wherever they run; the vitest configs pin it for the test side the same way.
 process.env.TZ = 'UTC';
 
-import { evaluateExpression, getFunction, parseExpression, printExpression } from '@we/expressions';
+import {
+  evaluateExpression,
+  type Expr,
+  getFunction,
+  isCoreFunction,
+  parseExpression,
+  printExpression,
+  walkExpr,
+} from '@we/expressions';
 
+import { resolvePlacement } from '../../../app-shell/src/shared/dockGeometry.ts';
+import { activePanels } from '../../../app-shell/src/shared/panelScope.ts';
 import { hostSourceBag } from '../../../app-shell/src/shared/sources/index.ts';
 import {
+  buildValidationContext,
+  type ContextData,
   isRelativePath,
   pruneUnresolvedWhere,
   resolvePath,
   resolveQueryProp,
   scopeIsAnchored,
+  validateSchema,
 } from '../../shared/src/index.ts';
 import { EXPRESSION_CASES, EXPRESSION_ENVS } from './cases/expressions';
 import { FUNCTION_CASES } from './cases/functions';
 import { HOST_FUNCTION_CASES } from './cases/hostFunctions';
+import { PANEL_CASES } from './cases/panels';
 import { PATH_CASES } from './cases/paths';
 import { QUERY_CASES } from './cases/queryCompile';
 import { STYLE_CASES } from './cases/style';
+import { VALIDATE_CASES } from './cases/validate';
 import { decodeValue, encodeValue } from './encode';
 import { envFor } from './evalEnv';
+import { recordRdf } from './rdf';
 import { resolveStyleCase, type TokenTable } from './styleResolve';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -70,6 +86,25 @@ const EXPR_NOTES: [RegExp, string][] = [
 const noteFor = (id: string, table: [RegExp, string][], fallback: string) =>
   table.find(([re]) => re.test(id))?.[1] ?? fallback;
 
+/**
+ * Whether a case is in the core subset an operation is written in (the operations spec's
+ * expressions.md): the grammar and the core functions over names bound to plain data. So a case of
+ * the grammar, evaluation or the printer, over no env or an env of plain names only, calling no
+ * function outside the core library. A case reading a store, a local or a callback value, or calling
+ * a host's function, is the template language's alone.
+ */
+function isCoreCase(id: string, envName: string | undefined, ast: Expr | undefined): boolean {
+  if (!/^(op|eval|print)\./.test(id)) return false;
+  const spec = envName ? EXPRESSION_ENVS[envName] : undefined;
+  if (spec && (spec.stores || spec.local)) return false;
+  let core = true;
+  if (ast)
+    walkExpr(ast, (node) => {
+      if (node.kind === 'call' && !isCoreFunction(node.callee)) core = false;
+    });
+  return core;
+}
+
 export function recordExpressions() {
   return {
     version: 1,
@@ -87,10 +122,17 @@ export function recordExpressions() {
         ast = parseExpression(c.source);
       } catch (error) {
         const e = error as Error & { span?: number[] };
-        return { ...base, error: 'syntax', message: e.message, span: e.span ?? null };
+        return {
+          ...base,
+          core: isCoreCase(c.id, c.env, undefined),
+          error: 'syntax',
+          message: e.message,
+          span: e.span ?? null,
+        };
       }
       return {
         ...base,
+        core: isCoreCase(c.id, c.env, ast),
         result: encodeValue(evaluateExpression(ast, env)),
         print: printExpression(ast),
       };
@@ -115,6 +157,8 @@ export function recordFunctions() {
         id: c.id,
         note: `the ${c.name} built-in${c.context ? ' with $localMeta context' : ''}`,
         fn: c.name,
+        // A core function called with no form context: what an operation can call, as it would.
+        core: isCoreFunction(c.name) && !c.context,
         args: c.args,
         ...(c.context ? { context: c.context } : {}),
         result: encodeValue(result),
@@ -221,6 +265,59 @@ function styleNote(c: { id: string; theme: string }): string {
   return 'a raw CSS value; var()s substituted from the dark token table';
 }
 
+/**
+ * A validator's path as the segments it names, keys as text and list positions as numbers — so a
+ * path compares the same however an implementation spells it (`children.0` and `.children[0]`).
+ */
+function pathSegments(path: string): (string | number)[] {
+  return path
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .filter((part) => part !== '')
+    .map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+}
+
+/**
+ * The validator's verdicts, against WE's catalog — the one the cases' core vocabulary is listed in.
+ * Only errors are recorded: a warning is advice, which a validator may word or withhold as it likes.
+ */
+export function recordValidate() {
+  const catalog = JSON.parse(
+    readFileSync(join(HERE, '..', '..', '..', 'ai-context', 'context.json'), 'utf8'),
+  ) as ContextData;
+  const context = buildValidationContext(catalog);
+  return {
+    version: 1,
+    cases: VALIDATE_CASES.map((c) => {
+      const result = validateSchema(structuredClone(c.document), context);
+      const errors = result.errors
+        .filter((e) => e.severity === 'error')
+        .map((e) => ({ at: pathSegments(e.path), message: e.message }));
+      return { id: c.id, note: c.note, document: c.document, valid: errors.length === 0, errors };
+    }),
+  };
+}
+
+/** Which declared panels are present, and where each one is, through the host's own resolution. */
+export function recordPanels() {
+  return {
+    version: 1,
+    cases: PANEL_CASES.map((c) => {
+      if (c.op === 'active') {
+        const present = activePanels(c.shell as never, c.view as never, c.segments, (c.app ?? []) as never);
+        return { ...c, present: present.map((p) => ({ id: p.id, ...(p.title ? { title: p.title } : {}) })) };
+      }
+      const placement = resolvePlacement({
+        disposition: c.disposition as never,
+        declared: c.declared,
+        request: c.request as never,
+        viewport: c.viewport,
+      });
+      return { ...c, placement: encodeValue(placement) };
+    }),
+  };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   write('expressions.json', recordExpressions());
   write('functions.json', recordFunctions());
@@ -228,4 +325,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   write('query-compile.json', recordQueryCompile());
   write('host-functions.json', recordHostFunctions());
   write('style.json', recordStyle());
+  write('validate.json', recordValidate());
+  write('panels.json', recordPanels());
+  write('rdf.json', await recordRdf());
 }

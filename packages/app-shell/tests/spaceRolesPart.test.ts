@@ -6,16 +6,18 @@
  * Run once under each reactivity port, against the in-memory backend.
  */
 import { describeRefusal } from '@we/backend-shared';
-import { getEntity, Role, RoleGrant, Space } from '@we/entities';
+import { CollectionBlock, getEntity, Role, RoleGrant, Space } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ADMIN_ROLE, ADMIN_ROLE_RECORD } from '../src/shared/spaceRoles';
-import { createSpaceRoles, type SpaceRoles } from '../src/shared/stores/space/roles';
+import { ADMIN_ROLE, ADMIN_ROLE_RECORD, cannotRevoke } from '../src/shared/spaceRoles';
+import { createSpaceRoles, type SpaceRoles, writeAdminGrant } from '../src/shared/stores/space/roles';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const SOMEBODY = 'did:key:z6MkSomebodyElse';
+const later = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -28,12 +30,15 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     spaces: SpaceList;
     roles: SpaceRoles;
     setOnScreen: Setter<Space | null>;
+    dispose: () => void;
   }
 
   async function build(): Promise<Built> {
     const h = await spaceHarness(makePort(), [
       { id: 'ds-a', name: 'Allotment' },
       { id: 'ds-p', name: 'Notebook' },
+      // Open here, but holding no space record: not known to be a space.
+      { id: 'ds-x', name: 'Scratch' },
     ]);
     await Space.create((await h.datasets.get('ds-a')).handle, {
       uuid: 'ds-a',
@@ -45,8 +50,9 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     let spaces!: SpaceList;
     let roles!: SpaceRoles;
     let setOnScreen!: Setter<Space | null>;
+    let dispose!: () => void;
     disposers.push(
-      reactivity.root(() => {
+      (dispose = reactivity.root(() => {
         const [onScreen, writeOnScreen] = reactivity.signal<Space | null>(null);
         setOnScreen = writeOnScreen;
         spaces = createSpaceList({
@@ -54,17 +60,12 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: (dataset) => roles.writeAdminGrant(dataset),
-            writeStartingPolicy: (dataset, starter) => roles.writeStartingPolicy(dataset, starter),
-          },
         });
-        roles = createSpaceRoles({ ...h.ctx, spaces, navigation: { members: { currentSpace: onScreen } } });
-      }),
+        roles = createSpaceRoles({ ...h.ctx, spaces, onScreen: { currentSpace: onScreen } });
+      })),
     );
     await spaces.members.loadSpaces();
-    return { h, spaces, roles, setOnScreen };
+    return { h, spaces, roles, setOnScreen, dispose };
   }
 
   async function enter(built: Built, id: string) {
@@ -118,7 +119,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   it('gives a new space its first admin, then answers from the grant', async () => {
     const built = await build();
     const { h, roles } = built;
-    await roles.writeAdminGrant((await h.datasets.get('ds-a')).handle);
+    await writeAdminGrant(h.ctx.sessionStore, (await h.datasets.get('ds-a')).handle);
     await enter(built, 'ds-a');
     expect(roles.members.myRoles()).toEqual([ADMIN_ROLE]);
     expect(roles.members.canAdministerCurrentSpace()).toBe(true);
@@ -152,14 +153,168 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await expect(Role.create(handle, { slug: 'steward', name: 'Steward' })).resolves.toBeTruthy();
   });
 
+  const failRead = (entity: string) =>
+    vi
+      .spyOn(getEntity(entity) as unknown as { findAll: (...a: unknown[]) => Promise<unknown> }, 'findAll')
+      .mockRejectedValue(new Error('backend unreachable'));
+
+  it.each(['Role', 'RoleGrant'])(
+    'refuses a write to another space whose %s records cannot be read, rather than judging it with no admins',
+    async (entity) => {
+      const built = await build();
+      const { h } = built;
+      await enter(built, 'ds-p');
+      const handle = (await h.datasets.get('ds-a')).handle;
+      const failing = failRead(entity);
+      await expect(CollectionBlock.create(handle, { kind: 'post' })).rejects.toMatchObject({
+        refusal: { reason: 'unreadable', action: 'CollectionBlock.create' },
+      });
+      failing.mockRestore();
+      await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+    },
+  );
+
+  it('refuses a write to a dataset known to be a space whose own record cannot be read', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const failing = failRead('Space');
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).rejects.toMatchObject({
+      refusal: { reason: 'unreadable' },
+    });
+    failing.mockRestore();
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+  });
+
+  it('does not judge a write to a dataset not known to be a space when its record cannot be read', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-x')).handle;
+    const failing = failRead('Space');
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+    failing.mockRestore();
+  });
+
   it('forgets the last space’s roles on leaving it', async () => {
     const built = await build();
     const { h, roles } = built;
-    await roles.writeAdminGrant((await h.datasets.get('ds-a')).handle);
+    await writeAdminGrant(h.ctx.sessionStore, (await h.datasets.get('ds-a')).handle);
     await enter(built, 'ds-a');
     expect(roles.members.myRoles()).toEqual([ADMIN_ROLE]);
     await enter(built, 'ds-p');
     expect(roles.members.myRoles()).toEqual([]);
     expect(roles.members.rolesLoaded()).toBe(true);
+  });
+
+  /**
+   * The allotment under the community rules with SOMEBODY its admin and this agent a plain member,
+   * holding one post of each of theirs. Set up while this agent still administers it — the creator
+   * does, until somebody holds the role — so every step is a write the rules allow.
+   */
+  async function asMember(built: Built) {
+    const { h, roles } = built;
+    const handle = (await h.datasets.get('ds-a')).handle;
+    await writeAdminGrant(h.ctx.sessionStore, handle);
+    await enter(built, 'ds-a');
+    await roles.members.setPolicyPreset('community');
+    // A version is judged by the roles held when it was written, by the millisecond: step past it.
+    await later();
+    await roles.members.grantRole(ADMIN_ROLE, SOMEBODY);
+    await roles.members.revokeRole(ADMIN_ROLE, ME);
+    await flush();
+    const mine = await CollectionBlock.create(handle, { kind: 'post' });
+    const theirs = await h.as(SOMEBODY, () => CollectionBlock.create(handle, { kind: 'post' }));
+    await flush();
+    return { handle, mine, theirs };
+  }
+
+  it('under the community rules, lets a member edit their own record and refuses someone else’s, said once', async () => {
+    const built = await build();
+    const { h, roles } = built;
+    const { handle, mine, theirs } = await asMember(built);
+    expect(roles.members.myRoles()).toEqual([]);
+    expect(roles.members.policy()).toMatchObject({ preset: 'community', roles: [] });
+    h.toasts.said.length = 0;
+    await expect(CollectionBlock.update(handle, mine.id, { kind: 'reply' })).resolves.toBeDefined();
+    await expect(CollectionBlock.update(handle, theirs.id, { kind: 'reply' })).rejects.toMatchObject({
+      refusal: { action: 'CollectionBlock.edit' },
+    });
+    expect(h.toasts.said).toHaveLength(1);
+    expect(h.toasts.said[0]).toMatch(/^error: /);
+  });
+
+  it('keeps a plain member from changing the rules or handing out roles', async () => {
+    const built = await build();
+    const { h, roles } = built;
+    await asMember(built);
+    h.toasts.said.length = 0;
+    await expect(roles.members.grantRole('moderator', ME)).rejects.toThrow(/administers/);
+    await expect(roles.members.createRole({ name: 'Gardener' })).rejects.toThrow(/administers/);
+    // Not refused by the store: the write check judges `Policy.edit` like any other write.
+    await expect(roles.members.setPolicyPreset('open')).rejects.toMatchObject({ refusal: { action: 'Policy.edit' } });
+    await flush();
+    expect(roles.members.policy().preset).toBe('community');
+  });
+
+  it('refuses to take the last admin away, in the roles’ own sentence', async () => {
+    const built = await build();
+    const { h, roles } = built;
+    await writeAdminGrant(h.ctx.sessionStore, (await h.datasets.get('ds-a')).handle);
+    await enter(built, 'ds-a');
+    await roles.members.revokeRole(ADMIN_ROLE, ME);
+    await flush();
+    expect(h.toasts.said).toEqual([`error: ${cannotRevoke(roles.members.roles(), ADMIN_ROLE, ME)}`]);
+    expect(roles.members.myRoles()).toEqual([ADMIN_ROLE]);
+  });
+
+  it('renames a role and keeps who holds it', async () => {
+    const built = await build();
+    const { roles } = built;
+    await enter(built, 'ds-a');
+    await roles.members.createRole({ name: 'Moderator' });
+    await roles.members.grantRole('moderator', SOMEBODY);
+    await roles.members.updateRole('moderator', { name: 'Steward', description: 'Tends the beds' });
+    await flush();
+    expect(roles.members.roles().find((role) => role.slug === 'moderator')).toMatchObject({
+      name: 'Steward',
+      description: 'Tends the beds',
+      holders: [SOMEBODY],
+    });
+  });
+
+  it('judges a write to the space on screen by the rules it has loaded, without reading them again', async () => {
+    const built = await build();
+    const { h, roles } = built;
+    await enter(built, 'ds-a');
+    expect(roles.members.policy().loaded).toBe(true);
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const read = vi.spyOn(getEntity('Policy') as unknown as { findAll: () => Promise<unknown> }, 'findAll');
+    await CollectionBlock.create(handle, { kind: 'post' });
+    await CollectionBlock.create(handle, { kind: 'post' });
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+  });
+
+  it('reads another space’s rules once for several writes close together', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const read = vi.spyOn(getEntity('Policy') as unknown as { findAll: () => Promise<unknown> }, 'findAll');
+    await CollectionBlock.create(handle, { kind: 'post' });
+    await CollectionBlock.create(handle, { kind: 'post' });
+    await CollectionBlock.create(handle, { kind: 'post' });
+    expect(read).toHaveBeenCalledTimes(1);
+    read.mockRestore();
+  });
+
+  it('stops judging writes once its root is disposed', async () => {
+    const built = await build();
+    const { theirs, handle } = await asMember(built);
+    await expect(CollectionBlock.update(handle, theirs.id, { kind: 'reply' })).rejects.toBeDefined();
+    built.dispose();
+    await expect(CollectionBlock.update(handle, theirs.id, { kind: 'reply' })).resolves.toBeDefined();
   });
 });

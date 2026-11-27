@@ -711,7 +711,7 @@ const hero: SchemaNode = {
             {
               type: 'we-button',
               // As on the site: down to what the app is, where its own film and the way in are.
-              props: { variant: 'outline', size: 'lg', onClick: { $invoke: 'shellStore.scrollToId', args: ['app'] } },
+              props: { variant: 'outline', size: 'lg', onClick: { $invoke: 'viewState.scrollToId', args: ['app'] } },
               children: ['See the app'],
             },
           ],

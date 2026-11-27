@@ -14,7 +14,7 @@
  * utterance, so its absence is exactly "nothing has been said here", which is the question
  * `captureStatus` is already answering. A call with a record and no words is not a transcript.
  */
-export const SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId';
+export const SUBJECT_EXPR = 'navigation.params.call ? navigation.params.call : modules.transcribe.collectionId';
 
 /**
  * Whether the call on screen is the one being recorded, as opposed to one being looked back at.
@@ -39,4 +39,4 @@ export const SUBJECT_EXPR = 'routeStore.params.call ? routeStore.params.call : m
  * rewrite an expression that merely mentions the subject: a `$part` pointed at another call is
  * expected to be on a route that names it, which is what `SUBJECT_EXPR` already assumes.
  */
-export const VIEWING_LIVE_EXPR = '!routeStore.params.call || routeStore.params.call == modules.transcribe.callId';
+export const VIEWING_LIVE_EXPR = '!navigation.params.call || navigation.params.call == modules.transcribe.callId';

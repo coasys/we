@@ -59,8 +59,8 @@ describe('core.placeCard', () => {
   });
 
   it('removes the duplicates the drawn placement outranks, in the same write', async () => {
-    const drawn = await model('Placement').create(dataset, { node: ['n1'], x: 1, y: 1 }, onCanvas);
-    await model('Placement').create(dataset, { node: ['n1'], x: 9, y: 9 }, { ...onCanvas, id: 'stray' });
+    const drawn = await model('Placement').create(dataset, { node: 'n1', x: 1, y: 1 }, onCanvas);
+    await model('Placement').create(dataset, { node: 'n1', x: 9, y: 9 }, { ...onCanvas, id: 'stray' });
 
     await run('core.placeCard', {
       canvas: CANVAS,
@@ -87,8 +87,8 @@ describe('core.placeCard', () => {
 
 describe('core.rankCards', () => {
   it('writes a row’s ranks together', async () => {
-    const a = await model('Placement').create(dataset, { node: ['a'], rank: 1024 }, onCanvas);
-    const b = await model('Placement').create(dataset, { node: ['b'], rank: 2048 }, onCanvas);
+    const a = await model('Placement').create(dataset, { node: 'a', rank: 1024 }, onCanvas);
+    const b = await model('Placement').create(dataset, { node: 'b', rank: 2048 }, onCanvas);
 
     await run('core.rankCards', {
       ranks: [

@@ -228,8 +228,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
           previousValue,
           newValue,
           nodeType: entity,
-          node: [id],
-          run: [options.run],
+          node: id,
+          run: options.run,
         });
       } catch (error) {
         console.warn(`agent tools: changed "${property}" on ${entity} ${id} but could not record it`, error);
@@ -375,9 +375,8 @@ export function createDataToolset(options: DataToolsetOptions): SessionToolset {
       name === 'CollectionBlock' && fields.mode === 'feed'
         ? withInterpretationDefaults(name, fields, await spaceRecord())
         : fields;
-    // Marked in the same write, so the record is never seen without it. A to-one relation is
-    // written as the single-entry list the model layer takes.
-    const marked = options.run ? { ...stamped, generatedBy: [options.run] } : stamped;
+    // Marked in the same write, so the record is never seen without it.
+    const marked = options.run ? { ...stamped, generatedBy: options.run } : stamped;
     const created = await Model.create(dataset, marked, placed.parent ? { parent: placed.parent } : undefined);
     if (placed.parent?.relation === 'responses') await completeResponse(dataset, created.id, String(placed.parent.id));
     return {

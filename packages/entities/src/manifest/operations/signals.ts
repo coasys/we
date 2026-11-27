@@ -24,8 +24,12 @@ const target = {
   signalType: { type: 'string', required: true, description: 'The SignalType’s id.' },
 } as const;
 
-/** Whether a row `r` is about `node` — a to-one relation reads back as the id, or as the one-entry list it was written as. */
-const ON_NODE = '(r.node == node || node in r.node)';
+/*
+  One reaction write at a time per record and type, giving and withdrawing alike. Both read before
+  they write, so two presses racing would both find the same stored reaction and each make a
+  replacement — one person listed twice under one type.
+*/
+const signalQueue = { $: "'signal ' + node + ' ' + signalType" };
 
 export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
   upsertSignal: {
@@ -39,6 +43,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         description: 'What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal.',
       },
     },
+    serial: signalQueue,
     steps: [
       findMine,
       /*
@@ -64,7 +69,7 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         forEach: {
           in: { $: 'slice(mine, 1)' },
           as: 'extra',
-          steps: [{ delete: { entity: 'Signal', id: { $: 'extra' } } }],
+          steps: [{ delete: { entity: 'Signal', id: { $: 'extra' }, own: true } }],
         },
       },
     ],
@@ -75,9 +80,16 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
     description:
       'Take back the invoker’s reaction of one type on a record — every copy of it, so a doubled one does not survive the withdrawal.',
     params: target,
+    serial: signalQueue,
     steps: [
       findMine,
-      { forEach: { in: { $: 'mine' }, as: 'signal', steps: [{ delete: { entity: 'Signal', id: { $: 'signal' } } }] } },
+      {
+        forEach: {
+          in: { $: 'mine' },
+          as: 'signal',
+          steps: [{ delete: { entity: 'Signal', id: { $: 'signal' }, own: true } }],
+        },
+      },
     ],
   },
 
@@ -91,9 +103,6 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
     Every write names its own agent and its own pair, so two members assigning two different people
     at once cannot drop each other. Two toggling the same pair at the same instant can leave a
     duplicate; it reads as one involvement, and the next write removes both.
-
-    The node is matched on the rows rather than in the where: "everything this agent is on" is the
-    native question, and the node is narrowed from it.
   */
   setInvolvement: {
     description:
@@ -104,13 +113,14 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
       kind: { type: 'string', required: true, description: 'The InvolvementType’s slug.' },
       on: { type: 'boolean', required: true, description: 'The state wanted, so pressing twice cannot undo itself.' },
     },
+    // On, off and on again, each reading what the one before it left.
+    serial: { $: "'involve ' + node + ' ' + agent + ' ' + kind" },
     errors: {
       unknownKind: 'That is not a kind of involvement this space has.',
       notYours: 'Only the person it is about can give that answer.',
     },
     steps: [
-      // Two records with one slug are one kind to everything holding it; the earliest speaks for it.
-      { find: { as: 'kinds', entity: 'InvolvementType', where: { slug: { $: 'kind' } }, order: { createdAt: 'asc' } } },
+      { find: { as: 'kinds', entity: 'InvolvementType', where: { slug: { $: 'kind' } }, limit: 1 } },
       { check: { condition: { $: 'count(kinds) > 0' }, error: 'unknownKind' } },
       { check: { condition: { $: '!first(kinds).reflexive || agent == invoker' }, error: 'notYours' } },
       {
@@ -118,20 +128,24 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         when: { $: 'first(kinds).reflexive' },
       },
       {
-        find: { as: 'held', entity: 'Involvement', where: { agent: { $: 'agent' }, kind: { $: 'kind' } } },
+        find: {
+          as: 'held',
+          entity: 'Involvement',
+          where: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: { $: 'node' } },
+        },
         when: { $: '!first(kinds).reflexive' },
       },
       {
         create: {
           entity: 'Involvement',
-          fields: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: [{ $: 'node' }] },
+          fields: { agent: { $: 'agent' }, kind: { $: 'kind' }, node: { $: 'node' } },
         },
-        when: { $: `!first(kinds).reflexive && on && !held.exists(r, ${ON_NODE})` },
+        when: { $: '!first(kinds).reflexive && on && count(held) == 0' },
       },
       // Every copy, not the first: a duplicate must not survive the person who meant to remove it.
       {
         forEach: {
-          in: { $: `held.filter(r, ${ON_NODE})` },
+          in: { $: 'held' },
           as: 'row',
           steps: [{ delete: { entity: 'Involvement', id: { $: 'row' } } }],
         },
@@ -146,6 +160,8 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
       node: { type: 'string', required: true, description: 'The record answered.' },
       kind: { type: 'string', description: 'A reflexive InvolvementType’s slug; absent withdraws the answer.' },
     },
+    // One answer per record, rewritten in the order it was given.
+    serial: { $: "'answer ' + node" },
     errors: { notAnAnswer: 'That is not an answer anybody can give to this.' },
     steps: [
       { find: { as: 'answers', entity: 'InvolvementType', where: { reflexive: true } } },
@@ -159,22 +175,22 @@ export const SIGNALS_OPERATIONS: Record<string, OperationDefinition> = {
         find: {
           as: 'held',
           entity: 'Involvement',
-          where: { agent: { $: 'invoker' }, kind: { $: 'answers.map(t, t.slug)' } },
+          where: { agent: { $: 'invoker' }, kind: { $: 'answers.map(t, t.slug)' }, node: { $: 'node' } },
         },
       },
       {
         forEach: {
-          in: { $: `held.filter(r, ${ON_NODE} && r.kind != kind)` },
+          in: { $: 'held.filter(r, r.kind != kind)' },
           as: 'stale',
-          steps: [{ delete: { entity: 'Involvement', id: { $: 'stale' } } }],
+          steps: [{ delete: { entity: 'Involvement', id: { $: 'stale' }, own: true } }],
         },
       },
       {
         create: {
           entity: 'Involvement',
-          fields: { agent: { $: 'invoker' }, kind: { $: 'kind' }, node: [{ $: 'node' }] },
+          fields: { agent: { $: 'invoker' }, kind: { $: 'kind' }, node: { $: 'node' } },
         },
-        when: { $: `kind && !held.exists(r, ${ON_NODE} && r.kind == kind)` },
+        when: { $: 'kind && !held.exists(r, r.kind == kind)' },
       },
     ],
   },

@@ -404,6 +404,23 @@ function selectAsProperties(query: Record<string, unknown>): Record<string, unkn
 }
 
 /**
+ * Where a projection (a `$`-key reading `from` a relation) asks for a field list, at any depth.
+ *
+ * The model takes no field list on a projection, so `selectAsProperties` leaves it as it is and the
+ * records come back with every field: a select silently dropped, which the query is refused for
+ * rather than answered without.
+ */
+function projectionSelects(include: QueryIR['include'], path: string): string[] {
+  const found: string[] = [];
+  for (const [key, spec] of Object.entries(include ?? {})) {
+    if (spec === true) continue;
+    if (spec.over && spec.select) found.push(`${path}.${key}.select`);
+    found.push(...projectionSelects(spec.include, `${path}.${key}.include`));
+  }
+  return found;
+}
+
+/**
  * Build the AD4M {@link QueryAdapter}. A factory (not a singleton) because `lower` needs the current
  * perspective's model manifest to resolve a `scope` drill-down — so `getEntities` returns the SHACL model
  * entries (including synced ones, e.g. Flux's) at call time.
@@ -440,6 +457,14 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
             note: 'AD4M returns correct rows but silently ignores a projection/relation-path sort without a limit',
           });
         }
+      }
+      for (const path of projectionSelects(ir.include, 'include')) {
+        gaps.push({
+          feature: 'projection:select',
+          path,
+          disposition: 'unsupported',
+          note: "a projection's records cannot be narrowed to a field list; sent, the select would be dropped",
+        });
       }
       return { runnable: base.runnable && !gaps.some((g) => g.disposition === 'unsupported'), gaps };
     },

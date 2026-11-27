@@ -8,7 +8,7 @@
  *
  * ## Lifecycle: app-lifetime, not view-lifetime
  *
- * Composed alongside the other stores in `BootController`, not inside a view. Flux creates a signalling
+ * Composed alongside the other stores in `composeStores`, not inside a view. Flux creates a signalling
  * service per community view and tears it down on unmount, so leaving the view loses every peer with
  * no path back except remounting. Here the store outlives navigation and simply re-scopes when the
  * dataset changes.

@@ -16,6 +16,8 @@
  */
 import { parseCached, referencedPaths, referencedRoots } from '@we/expressions';
 
+import { PROFILE_NAMESPACES } from './profiles';
+
 export interface FreeNames {
   /** Context names read and never bound inside — `tile`, `block`, `item`. */
   names: string[];
@@ -41,7 +43,8 @@ const ALWAYS_BOUND = new Set([
   'record',
   'clipboard',
 ]);
-const isGlobal = (name: string) => ALWAYS_BOUND.has(name) || /Store$/.test(name);
+// A host store or a capability profile's namespace: the host binds both, whatever composes the part.
+const isGlobal = (name: string) => ALWAYS_BOUND.has(name) || /Store$/.test(name) || PROFILE_NAMESPACES.has(name);
 
 /** What a binding node calls the name it binds, when it is not told. */
 const DEFAULT_AS: Record<string, string> = { $each: 'item', $single: 'item', $agent: 'agent', $surface: 'surface' };

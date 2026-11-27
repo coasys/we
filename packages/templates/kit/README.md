@@ -38,7 +38,7 @@ provenance tags, marketplace sharing — is designed in
 | Portable  | `@we/schema-kit` (schema-system/kit) | components, primitives, `local` contracts it documents                    |
 | WE-domain | `@we/template-kit` (this one)        | WE's stores (`profileStore`, `datasetStore`, `runtimeStore`) and `$agent` |
 
-The split is the kit's honest dependency declaration. A fragment naming `spaceStore.mutedDids` resolves
+The split is the kit's honest dependency declaration. A fragment naming `identity.mutedDids` resolves
 to nothing on a deployment without that store — silently — and `package.json` cannot say so. Nothing
 in `@we/schema-kit` may name a store, and `kit.test.ts` reads its source to make sure.
 

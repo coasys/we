@@ -1,5 +1,5 @@
 /**
- * Who is on what: the vocabulary, the read, the writes and the overlay between them.
+ * Who is on what: the vocabulary, the read and the writes.
  *
  * The rules worth holding are the ones a template cannot be trusted to keep — nobody answers for
  * anybody else, an agent gives one answer per record, a toggle cannot undo itself — and the ones
@@ -8,22 +8,18 @@
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { createInvolvementOptimism } from '../src/shared/involvementOptimism';
+import { invokeOperation } from '../src/shared/invokeOperation';
 import {
-  createInvolvementActions,
   type InvolvementTypeView,
   parseAppliesTo,
   relationId,
   resolveInvolvementTypes,
 } from '../src/shared/involvements';
-import { applyPendingInvolvements, involvement } from '../src/shared/sources/involvement';
+import { involvement } from '../src/shared/sources/involvement';
 import { involvementMenu } from '../src/shared/sources/involvementMenu';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
-
-const involvementOptimism = createInvolvementOptimism(createTestReactivity().signal);
 
 const ME = 'did:key:me';
 const ANA = 'did:key:ana';
@@ -53,12 +49,6 @@ describe('the vocabulary', () => {
     expect(kinds.find((k) => k.slug === 'going')?.reflexive).toBe(true);
   });
 
-  it('collapses two records with one slug to the first, since to everybody holding it they are one kind', () => {
-    const first = kind({ slug: 'assignee', name: 'Owner' });
-    const kinds = resolveInvolvementTypes([first, kind({ slug: 'assignee', name: 'Doer' })]);
-    expect(kinds.filter((k) => k.slug === 'assignee')).toEqual([first]);
-  });
-
   it('orders by what each kind means, in the order written among kinds meaning the same', () => {
     const shepherd = kind({ slug: 'shepherd', semantic: 'reviewing' });
     const kinds = resolveInvolvementTypes([...SEEDED_INVOLVEMENT_TYPES, shepherd]);
@@ -76,7 +66,7 @@ describe('who is on each record', () => {
   const types = SEEDED_INVOLVEMENT_TYPES;
   const rows = [
     { id: 'i1', node: 't1', agent: ANA, kind: 'assignee' },
-    { id: 'i2', node: ['t1'], agent: ME, kind: 'reviewer' },
+    { id: 'i2', node: 't1', agent: ME, kind: 'reviewer' },
     { id: 'i3', node: { id: 'e1' }, agent: ME, kind: 'going' },
     { id: 'i4', node: 'e1', agent: ANA, kind: 'not-going' },
   ];
@@ -121,100 +111,6 @@ describe('who is on each record', () => {
   });
 });
 
-describe('a write shown before it lands', () => {
-  it('adds a held pair nobody has seen yet, and removes every copy of one taken off', () => {
-    const observed = [
-      { node: 't1', agent: ANA, kind: 'assignee' },
-      { node: 't1', agent: ANA, kind: 'assignee' },
-    ];
-    const pending = [
-      { node: 't1', agent: ANA, kind: 'assignee', on: false },
-      { node: 't1', agent: ME, kind: 'reviewer', on: true },
-    ];
-    expect(applyPendingInvolvements(observed, pending)).toEqual([{ node: 't1', agent: ME, kind: 'reviewer' }]);
-  });
-
-  beforeEach(() => involvementOptimism.reset());
-
-  it('stays up across a draw that has not caught up, and goes once the data moves', () => {
-    involvementOptimism.ports.hold('t1', ME, 'assignee', true);
-    involvementOptimism.ports.done('t1', ME, 'assignee');
-    involvementOptimism.settle(() => false);
-    involvementOptimism.settle(() => false);
-    expect(involvementOptimism.overlay()).toHaveLength(1);
-    involvementOptimism.settle(() => true);
-    expect(involvementOptimism.overlay()).toHaveLength(0);
-  });
-
-  it('goes when somebody else overtakes it, rather than waiting for data that will never agree', () => {
-    // Held as off, seen as on at the first draw; then the pair moves — but not to what was written.
-    involvementOptimism.ports.hold('t1', ANA, 'assignee', false);
-    involvementOptimism.ports.done('t1', ANA, 'assignee');
-    involvementOptimism.settle(() => true);
-    expect(involvementOptimism.overlay()).toHaveLength(1);
-    // A peer's own write landing counts as an answer later than ours.
-    involvementOptimism.ports.hold('t1', ME, 'reviewer', true);
-    involvementOptimism.ports.done('t1', ME, 'reviewer');
-    involvementOptimism.settle((_node, agent) => agent === ANA);
-    involvementOptimism.settle((_node, agent) => agent === ANA);
-    involvementOptimism.settle(() => false);
-    expect(involvementOptimism.overlay().map((h) => h.agent)).toEqual([ME]);
-  });
-
-  it('takes no answer from a surface whose query has not answered yet', () => {
-    /*
-      The inspector mounting mid-write read an empty list and released a hold on the card: an off
-      hold read as agreed with, and the card drew the stale row for the rest of the round trip.
-    */
-    const held = [{ node: 't1', agent: ME, kind: 'assignee' }];
-    involvementOptimism.ports.hold('t1', ME, 'assignee', false);
-    involvementOptimism.ports.done('t1', ME, 'assignee');
-    involvementOptimism.settleFromRows(held);
-    involvementOptimism.settleFromRows([]);
-    involvementOptimism.settleFromRows(undefined);
-    expect(involvementOptimism.overlay()).toHaveLength(1);
-    // The removal coming back is what releases it.
-    involvementOptimism.settleFromRows([{ node: 't2', agent: ME, kind: 'assignee' }]);
-    expect(involvementOptimism.overlay()).toHaveLength(0);
-  });
-
-  it('stands through on, off and on again until the last write returns', () => {
-    /*
-      The first press's echo arriving while the third is on screen read as the data having moved,
-      and the card blinked back to the first answer before the later writes caught it up.
-    */
-    const hold = (on: boolean) => involvementOptimism.ports.hold('t1', ME, 'reviewer', on);
-    const done = () => involvementOptimism.ports.done('t1', ME, 'reviewer');
-    const rows = (present: boolean) =>
-      present ? [{ node: 't1', agent: ME, kind: 'reviewer' }] : [{ node: 't9', agent: ME, kind: 'assignee' }];
-    hold(true);
-    involvementOptimism.settleFromRows(rows(false));
-    hold(false);
-    hold(true);
-    done(); // the on landed
-    involvementOptimism.settleFromRows(rows(true));
-    done(); // the off landed
-    involvementOptimism.settleFromRows(rows(false));
-    expect(involvementOptimism.overlay()).toEqual([expect.objectContaining({ kind: 'reviewer', on: true })]);
-    done(); // the last on landed, and the rows say so
-    involvementOptimism.settleFromRows(rows(true));
-    expect(involvementOptimism.overlay()).toHaveLength(0);
-  });
-
-  it('keeps a later press when an earlier write fails', () => {
-    involvementOptimism.ports.hold('t1', ME, 'reviewer', true);
-    involvementOptimism.ports.hold('t1', ME, 'reviewer', false);
-    involvementOptimism.ports.release('t1', ME, 'reviewer');
-    expect(involvementOptimism.overlay()).toEqual([expect.objectContaining({ on: false })]);
-  });
-
-  it('is withdrawn when the write is refused', () => {
-    involvementOptimism.ports.hold('t1', ME, 'assignee', true);
-    involvementOptimism.ports.release('t1', ME, 'assignee');
-    expect(involvementOptimism.overlay()).toHaveLength(0);
-  });
-});
-
 describe('the writes', () => {
   /*
     Against the in-memory backend, with the space's kinds as records: the writes are declared
@@ -235,13 +131,15 @@ describe('the writes', () => {
   let notices: string[];
 
   const types = SEEDED_INVOLVEMENT_TYPES;
-  const actions = () =>
-    createInvolvementActions({
-      dataset: () => dataset as never,
-      me: () => ME,
-      types: () => types,
-      notify: (message) => notices.push(message),
-    });
+  // As a template invokes them: through the host, which queues them by their serial key and says a
+  // declared error in its own words.
+  const options = () => ({ dataset, invoker: ME, notify: (message: string) => notices.push(message) });
+  const actions = () => ({
+    setInvolvement: (node: string, agent: string, kind: string, on: boolean) =>
+      invokeOperation('core.setInvolvement', { node, agent, kind, on }, options()).catch(() => undefined),
+    respond: (node: string, kind: string) =>
+      invokeOperation('core.respond', { node, kind }, options()).catch(() => undefined),
+  });
   const table = async () =>
     (await Involvement().findAll(dataset, { order: { createdAt: 'asc' } })).map((r) => ({
       agent: r.agent,
@@ -273,9 +171,9 @@ describe('the writes', () => {
   });
 
   it('takes every copy off, so a duplicate does not outlive the person removing it', async () => {
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t1'] });
-    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: ['t2'] });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't1' });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't1' });
+    await Involvement().create(dataset, { agent: ANA, kind: 'assignee', node: 't2' });
     await actions().setInvolvement('t1', ANA, 'assignee', false);
     expect((await table()).map((r) => r.node)).toEqual(['t2']);
   });

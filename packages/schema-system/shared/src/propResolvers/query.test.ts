@@ -25,7 +25,7 @@ describe('resolveQueryProp', () => {
 
 describe('pruneUnresolvedWhere', () => {
   it('drops an empty exclusion list, which excludes nothing', () => {
-    // `author: { not: spaceStore.mutedDids }` with nobody muted. Sent, AD4M refused it beside the
+    // `author: { not: identity.mutedDids }` with nobody muted. Sent, AD4M refused it beside the
     // thread's `kind` and failed the whole query over a filter that would not have removed a row.
     expect(pruneUnresolvedWhere({ kind: 'post', author: { not: [] } })).toEqual({ kind: 'post' });
     // A non-empty one stays, and so does an empty list that is a value rather than an exclusion.

@@ -151,7 +151,7 @@ const spread: SchemaNode = {
   $queries: {
     scraps: {
       entity: 'CollectionBlock',
-      where: { kind: KIND.post, author: { not: { $: 'spaceStore.mutedDids' } } },
+      where: { kind: KIND.post, author: { not: { $: 'identity.mutedDids' } } },
       order: { createdAt: 'desc' },
       limit: PLACED,
       include: { $firstImage: { from: 'children', limit: 1 } },
@@ -168,12 +168,12 @@ const spread: SchemaNode = {
         {
           type: 'we-text',
           props: { variant: 'heading-xl', fontFamily: 'boldonse' },
-          children: [{ $: 'spaceStore.currentSpace.name' }],
+          children: [{ $: 'spaceSettings.currentSpace.name' }],
         },
         {
           type: 'we-text',
           props: { variant: 'ingress', color: 'text-muted' },
-          children: [{ $: "spaceStore.currentSpace.description ?? ''" }],
+          children: [{ $: "spaceSettings.currentSpace.description ?? ''" }],
         },
       ],
     }),
@@ -246,7 +246,7 @@ const spread: SchemaNode = {
                 variant: 'soft',
                 size: 'sm',
                 alignSelf: 'start',
-                onClick: { $invoke: 'routeStore.navigate', args: ['~/wall'] },
+                onClick: { $invoke: 'navigation.navigate', args: ['~/wall'] },
               },
               children: ['Open the wall'],
             },
@@ -300,12 +300,12 @@ const header: SchemaNode = {
   children: [
     {
       type: 'we-button',
-      props: { variant: 'bare', onClick: { $invoke: 'routeStore.navigate', args: ['~/'] } },
+      props: { variant: 'bare', onClick: { $invoke: 'navigation.navigate', args: ['~/'] } },
       children: [
         {
           type: 'we-text',
           props: { variant: 'heading-sm' },
-          children: [{ $: 'spaceStore.currentSpace.name' }],
+          children: [{ $: 'spaceSettings.currentSpace.name' }],
         },
       ],
     },
@@ -315,7 +315,7 @@ const header: SchemaNode = {
       children: [
         {
           type: 'we-button',
-          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['~/wall'] } },
+          props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'navigation.navigate', args: ['~/wall'] } },
           children: [{ type: 'we-icon', props: { name: 'squares-four' } }, 'Wall'],
         },
         {

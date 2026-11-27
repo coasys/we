@@ -12,7 +12,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createSpaceExtraction, type SpaceExtraction } from '../src/shared/stores/space/extraction';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -61,16 +62,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         const writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { current: onScreen, show: () => {} },
+          onScreen: { currentSpace: onScreen, showOnScreen: () => {} },
         });
         extraction = createSpaceExtraction({
           ...h.ctx,

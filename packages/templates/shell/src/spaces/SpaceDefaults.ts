@@ -23,7 +23,9 @@ const defaultPickerRow = (opts: {
   name: string | ExpressionToken;
   /** The path, inside an expression, of the id this row compares itself against. */
   currentDefault: string;
-  setDefault: string;
+  /** The operation that sets the default, and the name of its param holding the id. */
+  operation: string;
+  param: string;
 }): SchemaNode => {
   const isDefault = expr`${ref(opts.as, 'id')} == ${{ $: opts.currentDefault }}`;
 
@@ -64,10 +66,18 @@ const defaultPickerRow = (opts: {
                 props: {
                   variant: 'soft',
                   size: 'sm',
-                  // The space is named explicitly. On the route this replaced it could be omitted,
-                  // because there was only ever one space in question; here the row being configured
-                  // is usually not the one on screen.
-                  onClick: { $invoke: opts.setDefault, args: [{ $: `${opts.as}.id` }, { $: 'space.id' }] },
+                  /*
+                    The space is named explicitly: here the row being configured is usually not the
+                    one on screen. Its record is the operation's subject, and its dataset where the
+                    operation runs — which only a surface holding every space may name.
+                  */
+                  onClick: {
+                    $invoke: opts.operation,
+                    args: [
+                      { $: `{ space: space.recordId, ${opts.param}: ${opts.as}.id }` },
+                      { $: '{ space: space.id }' },
+                    ],
+                  },
                 },
                 children: ['Set as default'],
               },
@@ -83,10 +93,11 @@ const templateRow = defaultPickerRow({
   as: 'template',
   icon: { $: 'template.meta.icon' },
   name: { $: 'template.meta.name' },
-  // The row's own space, not `spaceStore.spaceDefaultTemplateId` — that reads the space on screen,
+  // The row's own space, not `spaceSettings.spaceDefaultTemplateId` — that reads the space on screen,
   // which would mark the wrong row as default on every other space's page.
   currentDefault: 'space.defaultTemplateId',
-  setDefault: 'spaceStore.setSpaceDefaultTemplate',
+  operation: 'ops.core.setSpaceDefaultTemplate',
+  param: 'template',
 });
 
 const themeRow = defaultPickerRow({
@@ -94,7 +105,8 @@ const themeRow = defaultPickerRow({
   icon: { $: 'theme.icon' },
   name: { $: 'theme.name' },
   currentDefault: 'space.defaultThemeId',
-  setDefault: 'spaceStore.setSpaceDefaultTheme',
+  operation: 'ops.core.setSpaceDefaultTheme',
+  param: 'theme',
 });
 
 /*
@@ -139,7 +151,7 @@ const hiddenThemeNote: SchemaNode = {
                   props: {
                     variant: 'soft',
                     size: 'sm',
-                    onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
+                    onClick: { $invoke: 'appearance.clearSpaceThemePin' },
                   },
                   children: ["Use the space's theme"],
                 },
@@ -218,7 +230,7 @@ export const spaceDefaultsSection: SchemaNode = {
     ]),
     sectionBox('Default theme', 'The look members get when they open this space.', [
       hiddenThemeNote,
-      group('Built-in', { $: 'themeStore.builtInThemes' }, 'theme', themeRow),
+      group('Built-in', { $: 'appearance.builtInThemes' }, 'theme', themeRow),
       /*
         "Follow system" is not a built-in theme — it resolves to one rather than being one, which is
         why `themeStore` keeps it in a list of its own — but it is a choice made in the same place,
@@ -233,8 +245,8 @@ export const spaceDefaultsSection: SchemaNode = {
       {
         type: '$if',
         props: {
-          condition: { $: 'count(themeStore.spaceThemes)' },
-          then: group('In this space', { $: 'themeStore.spaceThemes' }, 'theme', themeRow),
+          condition: { $: 'count(appearance.spaceThemes)' },
+          then: group('In this space', { $: 'appearance.spaceThemes' }, 'theme', themeRow),
         },
       },
       browseToggle('showThemeMarketplace', themeMarketplaceBrowser),

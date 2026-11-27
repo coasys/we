@@ -15,6 +15,8 @@
 import type { Expr, ExpressionSource } from '@we/expressions';
 import { isExpressionToken, parseExpression, printExpression } from '@we/expressions';
 
+import { PROFILE_NAMESPACES } from './profiles';
+
 // ── Public types ────────────────────────────────────────────────────────────
 
 export type ComparisonOperator = 'eq' | 'ne' | 'gt' | 'lt' | 'in' | 'nin' | 'truthy' | 'falsy';
@@ -26,7 +28,7 @@ export const UNARY_OPERATORS: ComparisonOperator[] = ['truthy', 'falsy'];
 export type FormStateToken = 'formValid' | 'valid' | 'touched' | 'error';
 
 export type ConditionOperand =
-  /** A store member — `spaceStore.memberDids`, `modules.notes.open`. */
+  /** A store member — `identity.memberDids`, `modules.notes.open`. */
   | { kind: 'store'; path: string }
   /** A `$localState`/`$queries` field — the path after `local.`. */
   | { kind: 'local'; path: string }
@@ -87,7 +89,8 @@ function referenceOperand(expr: Expr): ConditionOperand | null {
   if (!chain) return null;
   const [root, ...rest] = chain;
   if (root === 'local') return rest.length ? { kind: 'local', path: rest.join('.') } : null;
-  if (/Store$/.test(root) || root === 'modules') return rest.length ? { kind: 'store', path: chain.join('.') } : null;
+  if (/Store$/.test(root) || root === 'modules' || PROFILE_NAMESPACES.has(root))
+    return rest.length ? { kind: 'store', path: chain.join('.') } : null;
   return { kind: 'context', path: chain.join('.') };
 }
 

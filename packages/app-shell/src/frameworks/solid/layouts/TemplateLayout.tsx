@@ -25,7 +25,7 @@ import { activePanels as panelsFor } from '@shared/panelScope';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
 import { resolveParts } from '@shared/registries/moduleParts';
 import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templatePanels';
-import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
+import { buildTemplateBag, CHROME_TIER, PROFILE_HOMES } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { createShellRouteStore } from '@shared/stores/ShellRouteStore';
 import type { Stores } from '@shared/stores/storeBag';
@@ -34,6 +34,7 @@ import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
 import { ShellRouterRoot } from '@solid/layouts/ShellRouterRoot';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { publishTemplateScope } from '@solid/registries/templateScope';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
@@ -135,14 +136,22 @@ function ShellOverlayInner(props: {
     Substituting the raw store here would hand the schema untagged accessors, and `walkPath` calls
     only tagged ones — so `currentPath`, `segments` and `params` would all read as absent, silently.
     That is not cosmetic: `/spaces/space` in Settings filters the spaces list on
-    `routeStore.params.id`, so an untagged read empties the filter and the page draws nothing at
+    `navigation.params.id`, so an untagged read empties the filter and the page draws nothing at
     all. The bag also drops `setCurrentPath`/`setNavigateFunction`, which are ShellRouterRoot's to
     call and no schema's.
+
+    The address is the navigation profile's, which also holds the spaces, so the namespace is built
+    again over the host's stores with this router in the route store's place: the overlay's
+    `navigation.params` is its own address, and `navigation.mySpaces` the same list as anywhere.
   */
-  const shellRouteBag = buildTemplateBag({ routeStore: shellRouteStore }, { grants: CHROME_TIER }).routeStore;
+  const navigationStores = untrack(() =>
+    Object.fromEntries(Object.keys(PROFILE_HOMES.navigation).map((store) => [store, props.stores[store]])),
+  );
+  const shellBag = buildTemplateBag({ ...navigationStores, routeStore: shellRouteStore }, { grants: CHROME_TIER });
   const shellStores: Stores = {
     ...untrack(() => props.chromeStores),
-    routeStore: shellRouteBag,
+    navigation: shellBag.navigation,
+    routeStore: shellBag.routeStore,
     ...(storeEntries as Partial<Stores>),
   };
   /*
@@ -569,6 +578,8 @@ export function TemplateLayout(
                   because its links cross spaces.
                 */
                     context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
+                    // For the template's panels, which are docked outside this tree.
+                    onScope={publishTemplateScope}
                     children={props.children}
                   />
                 </RouteSurface.Provider>

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import type { ShellStore } from '../src/shared/stores/ShellStore';
 import { createShellStore } from '../src/shared/stores/ShellStore';
@@ -16,7 +17,7 @@ import { createShellStore } from '../src/shared/stores/ShellStore';
 function mountShellStore(): ShellStore {
   let store!: ShellStore;
   render(() => {
-    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+    store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
     return null;
   });
   return store;
@@ -110,7 +111,7 @@ describe('a home lane folding', () => {
   function mountLane() {
     let store!: ShellStore;
     const { container } = render(() => {
-      store = createShellStore({ reactivity: solidReactivity, host: shellHost });
+      store = createShellStore({ reactivity: solidReactivity, platform: createBrowserPlatform(), host: shellHost });
       return (
         <StoreRegistryContext.Provider value={{ shellStore: store }}>
           <PanelLane lane="side" width="280px" resize="end" />

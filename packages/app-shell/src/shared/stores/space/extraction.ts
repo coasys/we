@@ -46,7 +46,7 @@ export interface SpaceExtractionDeps extends SpaceContext {
   navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace' | 'root'> };
   writes: Pick<
     SpaceWrites,
-    'writeSpaceFields' | 'publishSpaceFields' | 'defaultSaveFor' | 'queueDefaultWrite' | 'endDefaultSave'
+    'writeSpaceFields' | 'publishSpaceFields' | 'heldSaveFor' | 'queueHeldWrite' | 'endHeldSave'
   >;
   /**
    * Whether this agent administers the space on screen — the roles' answer, which decides who may
@@ -72,7 +72,7 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
   const { heldSpace } = spaces;
   const { currentSpace, root: spaceRoot } = navigation.members;
-  const { writeSpaceFields, publishSpaceFields, defaultSaveFor, queueDefaultWrite, endDefaultSave } = writes;
+  const { writeSpaceFields, publishSpaceFields, heldSaveFor, queueHeldWrite, endHeldSave } = writes;
 
   /*
     What a new collection here starts with — whether it is interpreted as it grows.
@@ -453,8 +453,9 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
    * a model that becomes a candidate in a later release does not silently join a space that has
    * already decided.
    *
-   * Published before it is stored, and queued like a default save. Each switch writes the *whole*
-   * list, so the next one has to read this one's list rather than the copy from before it. The
+   * Published before it is stored, and queued as a held save (`writes.heldSaveFor`). Each switch
+   * writes the *whole* list, so the next one has to read this one's list rather than the copy from
+   * before it. The
    * backend shows a write as soon as it lands, which is before this call resumes to publish, and a
    * live row from before the write can replace the copy in the meantime — either one drops the class
    * the switch just turned on. The queue keeps an older write, whose list does not have the later
@@ -464,7 +465,7 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
     const ds = targetDataset(spaceUuid);
     const space = ds ? heldSpace(ds) : undefined;
     if (!ds || !space) return;
-    const save = defaultSaveFor(ds, 'extractionTargets');
+    const save = heldSaveFor(ds, 'extractionTargets');
     const isNewest = save.ops.begin();
     const base = save.pending > 0 && save.value !== undefined ? save.value : space.extractionTargets;
     const current = entityListOf(base) ?? LEGACY_INTERPRETATION_TARGETS;
@@ -476,14 +477,14 @@ export function createSpaceExtraction(deps: SpaceExtractionDeps) {
     save.pending += 1;
     try {
       publishSpaceFields(ds, { extractionTargets });
-      await queueDefaultWrite(save, async () => writeSpaceFields(ds, space, { extractionTargets }, isNewest));
+      await queueHeldWrite(save, async () => writeSpaceFields(ds, space, { extractionTargets }, isNewest));
       save.confirmed = extractionTargets;
     } catch (error) {
       // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
       if (isNewest()) publishSpaceFields(ds, { extractionTargets: save.confirmed });
       throw error;
     } finally {
-      endDefaultSave(save);
+      endHeldSave(save);
     }
   }
 

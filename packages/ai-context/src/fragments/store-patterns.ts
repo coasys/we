@@ -8,11 +8,11 @@ export const storePatterns = `
 
 Reading state — an expression naming the store:
 { "$": "storeName.property" }
-Example: { "$": "routeStore.currentPath" }
+Example: { "$": "navigation.currentPath" }
 
 Calling actions:
 { "$invoke": "storeName.method", "args": [...] }
-Example: { "$invoke": "routeStore.navigate", "args": ["~/"] } (the template's home; see routeStore.navigate for where a path is from)
+Example: { "$invoke": "navigation.navigate", "args": ["~/"] } (the template's home; see navigation.navigate for where a path is from)
 
 Feature-module stores:
 { "$": "modules.<moduleId>.<member>" } and { "$invoke": "modules.<moduleId>.<action>" }
@@ -32,7 +32,7 @@ Iterating over store data:
       "type": "we-button",
       "props": {
         "variant": "ghost",
-        "onClick": { "$invoke": "routeStore.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
+        "onClick": { "$invoke": "navigation.navigate", "args": [{ "$": "\`/space/\${space.uuid}\`" }] }
       },
       "children": [
         { "type": "we-avatar", "props": { "image": { "$": "space.avatar" }, "hash": { "$": "space.uuid" }, "initials": { "$": "space.name" }, "size": "sm" } },
@@ -46,7 +46,7 @@ Conditional rendering from store:
 {
   "type": "$if",
   "props": {
-    "condition": { "$": "routeStore.currentPath == '/'" },
+    "condition": { "$": "navigation.currentPath == '/'" },
     "then": { "type": "we-text", "children": ["Home"] },
     "else": { "type": "we-text", "children": ["Not home"] }
   }
@@ -111,7 +111,7 @@ Use routes + a $query \`scope\` when you navigate to a detail route and need onl
 scope.anchor is the parent entity type; scope.via is its HasMany relation (see externalEntities) whose targets
 are the query's entity; scope.anchorId is the parent record's id. The adapter resolves the relation to a
 backend handle, so no protocol details live in the template.
-routeStore.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
+navigation.segments.N extracts the Nth dynamic path segment (segments splits currentPath by "/").
 
 Example — Channel list → Conversation list:
 {
@@ -130,7 +130,7 @@ Example — Channel list → Conversation list:
           "type": "we-button",
           "props": {
             "variant": "ghost",
-            "onClick": { "$invoke": "routeStore.navigate", "args": ["~/channels", { "$": "{ query: { id: channel.id } }" }] }
+            "onClick": { "$invoke": "navigation.navigate", "args": ["~/channels", { "$": "{ query: { id: channel.id } }" }] }
           },
           "children": [{ "$": "channel.name" }]
         }]
@@ -146,7 +146,7 @@ Example — Channel list → Conversation list:
           "items": {
             "$query": {
               "entity": "Conversation",
-              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "routeStore.params.id" } },
+              "scope": { "anchor": "Channel", "via": "conversations", "anchorId": { "$": "navigation.params.id" } },
               "dataset": { "$": "currentDataset" }
             }
           },
@@ -163,7 +163,7 @@ Example — Channel list → Conversation list:
 Notes:
 - Use include when you need related data displayed inline (e.g. a post with its comments, a channel with its conversation count).
 - Use a scope drill-down when you're on a detail route and want only children belonging to the current record.
-- A detail route takes its record's id from the query, never the path: open it with navigate('~/channels', { query: { id } }) and read routeStore.params.id. An id is a URI, so in a path it is several segments and the route never matches.
+- A detail route takes its record's id from the query, never the path: open it with navigate('~/channels', { query: { id } }) and read navigation.params.id. An id is a URI, so in a path it is several segments and the route never matches.
 - dataset must point to the dataset that holds the data. For external apps (e.g. Flux) opened as a WE space, use { "$": "currentDataset" }.
 - The relation name (in include, or scope.via) is the HasMany field name on the parent entity.
 
@@ -316,7 +316,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                     "signalType": { "$": "sig" },
                     "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": { "$": "me.did" },
-                    "onSignal": { "$invoke": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
+                    "onSignal": { "$if": { "condition": { "$": "arg == null" }, "then": { "$invoke": "ops.core.withdrawSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id }" }] }, "else": { "$invoke": "ops.core.upsertSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id, value: arg }" }] } } }
                   }
                 }
               ]

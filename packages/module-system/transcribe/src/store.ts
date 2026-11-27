@@ -1244,11 +1244,10 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
       .filter((p) => !seen.has(p.id) && Boolean(seen.add(p.id)));
   };
 
-  /** A relation as a row carries it — an id, a list of one, or an included record — as an id. */
+  /** A to-one relation's id: the id itself, or the record when the read included it. */
   const relationId = (value: unknown): string => {
-    const one: unknown = Array.isArray(value) ? (value as unknown[])[0] : value;
-    if (typeof one === 'string') return one;
-    const id = (one as { id?: unknown } | null | undefined)?.id;
+    if (typeof value === 'string') return value;
+    const id = (value as { id?: unknown } | null | undefined)?.id;
     return typeof id === 'string' ? id : '';
   };
 
@@ -1495,8 +1494,7 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
             previousValue,
             newValue,
             nodeType: proposal.entity,
-            // A to-one relation, written as the single-entry list the model layer takes.
-            node: [proposal.id],
+            node: proposal.id,
           },
           {
             // Parented on creation, as every other write here is: unparented then linked leaves a

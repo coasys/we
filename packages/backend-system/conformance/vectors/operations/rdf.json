@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "context": "docs/spec/operations/context.jsonld",
+  "cases": [
+    {
+      "id": "rdf.make-board",
+      "note": "an operation is a node named in its manifest; its steps an rdf:List, each a node under its verb; values rdf:JSON literals, expressions kept inside them",
+      "document": {
+        "version": "1",
+        "operations": {
+          "makeBoard": {
+            "description": "A board and a column under it for each column given.",
+            "params": {
+              "title": { "type": "string", "required": true },
+              "columns": { "type": "list", "required": true }
+            },
+            "errors": { "untitled": "A board needs a title." },
+            "steps": [
+              { "check": { "condition": { "$": "trim(title) != ''" }, "error": "untitled" } },
+              {
+                "create": {
+                  "as": "board",
+                  "entity": "CollectionBlock",
+                  "fields": { "kind": "board", "title": { "$": "title" } }
+                }
+              },
+              {
+                "forEach": {
+                  "in": { "$": "columns" },
+                  "as": "col",
+                  "steps": [
+                    {
+                      "create": {
+                        "as": "column",
+                        "entity": "CollectionBlock",
+                        "fields": { "kind": "column", "title": { "$": "col.title" } }
+                      }
+                    },
+                    {
+                      "link": {
+                        "entity": "CollectionBlock",
+                        "id": { "$": "board.id" },
+                        "relation": "children",
+                        "target": { "$": "column.id" }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": { "$": "board.id" }
+          }
+        }
+      },
+      "nquads": [
+        "_:c14n0 <https://we.example/ns/operations#description> \"A board and a column under it for each column given.\" .",
+        "_:c14n0 <https://we.example/ns/operations#errors> \"{\\\"untitled\\\":\\\"A board needs a title.\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n0 <https://we.example/ns/operations#name> \"makeBoard\" .",
+        "_:c14n0 <https://we.example/ns/operations#params> \"{\\\"columns\\\":{\\\"required\\\":true,\\\"type\\\":\\\"list\\\"},\\\"title\\\":{\\\"required\\\":true,\\\"type\\\":\\\"string\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n0 <https://we.example/ns/operations#returns> \"{\\\"$\\\":\\\"board.id\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n0 <https://we.example/ns/operations#steps> _:c14n14 .",
+        "_:c14n1 <https://we.example/ns/operations#check> _:c14n7 .",
+        "_:c14n10 <https://we.example/ns/operations#operation> _:c14n0 .",
+        "_:c14n10 <https://we.example/ns/operations#version> \"1\" .",
+        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n12 .",
+        "_:c14n11 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n13 .",
+        "_:c14n12 <https://we.example/ns/operations#create> _:c14n8 .",
+        "_:c14n13 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n9 .",
+        "_:c14n13 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
+        "_:c14n14 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n5 .",
+        "_:c14n15 <https://we.example/ns/operations#create> _:c14n4 .",
+        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n6 .",
+        "_:c14n16 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n2 <https://we.example/ns/operations#entity> \"CollectionBlock\" .",
+        "_:c14n2 <https://we.example/ns/operations#id> \"{\\\"$\\\":\\\"board.id\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n2 <https://we.example/ns/operations#relation> \"children\" .",
+        "_:c14n2 <https://we.example/ns/operations#target> \"{\\\"$\\\":\\\"column.id\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n3 <https://we.example/ns/operations#as> \"col\" .",
+        "_:c14n3 <https://we.example/ns/operations#in> \"{\\\"$\\\":\\\"columns\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n3 <https://we.example/ns/operations#steps> _:c14n11 .",
+        "_:c14n4 <https://we.example/ns/operations#as> \"board\" .",
+        "_:c14n4 <https://we.example/ns/operations#entity> \"CollectionBlock\" .",
+        "_:c14n4 <https://we.example/ns/operations#fields> \"{\\\"kind\\\":\\\"board\\\",\\\"title\\\":{\\\"$\\\":\\\"title\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n15 .",
+        "_:c14n5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n16 .",
+        "_:c14n6 <https://we.example/ns/operations#forEach> _:c14n3 .",
+        "_:c14n7 <https://we.example/ns/operations#condition> \"{\\\"$\\\":\\\"trim(title) != ''\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n7 <https://we.example/ns/operations#error> \"untitled\" .",
+        "_:c14n8 <https://we.example/ns/operations#as> \"column\" .",
+        "_:c14n8 <https://we.example/ns/operations#entity> \"CollectionBlock\" .",
+        "_:c14n8 <https://we.example/ns/operations#fields> \"{\\\"kind\\\":\\\"column\\\",\\\"title\\\":{\\\"$\\\":\\\"col.title\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n9 <https://we.example/ns/operations#link> _:c14n2 ."
+      ],
+      "summaries": {
+        "makeBoard": [
+          "_:c14n0 <https://we.example/ns/operations#entity> <https://we.example/ns/model#CollectionBlock> .",
+          "_:c14n0 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#create> .",
+          "_:c14n1 <https://we.example/ns/operations#entity> <https://we.example/ns/model#CollectionBlock> .",
+          "_:c14n1 <https://we.example/ns/operations#relation> <https://we.example/ns/model#children> .",
+          "_:c14n1 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#add> .",
+          "_:c14n2 <https://we.example/ns/operations#bulk> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n2 <https://we.example/ns/operations#destructive> \"false\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n2 <https://we.example/ns/operations#name> \"conformance.makeBoard\" .",
+          "_:c14n2 <https://we.example/ns/operations#writes> _:c14n0 .",
+          "_:c14n2 <https://we.example/ns/operations#writes> _:c14n1 ."
+        ]
+      }
+    },
+    {
+      "id": "rdf.chosen-entity",
+      "note": "an entity chosen by expression is a node holding the expression; a oneOf is one JSON literal; the summary names the category, not its members",
+      "document": {
+        "version": "1",
+        "operations": {
+          "deleteAny": {
+            "description": "Deletes a record of any type, or a post.",
+            "params": { "kind": { "type": "string", "required": true }, "id": { "type": "string", "required": true } },
+            "steps": [
+              {
+                "delete": {
+                  "entity": { "$": "kind" },
+                  "oneOf": ["CollectionBlock", { "category": "any" }],
+                  "id": { "$": "id" }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "nquads": [
+        "_:c14n0 <https://we.example/ns/operations#description> \"Deletes a record of any type, or a post.\" .",
+        "_:c14n0 <https://we.example/ns/operations#name> \"deleteAny\" .",
+        "_:c14n0 <https://we.example/ns/operations#params> \"{\\\"id\\\":{\\\"required\\\":true,\\\"type\\\":\\\"string\\\"},\\\"kind\\\":{\\\"required\\\":true,\\\"type\\\":\\\"string\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n0 <https://we.example/ns/operations#steps> _:c14n4 .",
+        "_:c14n1 <https://we.example/ns/operations#delete> _:c14n2 .",
+        "_:c14n2 <https://we.example/ns/operations#entity> _:c14n3 .",
+        "_:c14n2 <https://we.example/ns/operations#id> \"{\\\"$\\\":\\\"id\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n2 <https://we.example/ns/operations#oneOf> \"[\\\"CollectionBlock\\\",{\\\"category\\\":\\\"any\\\"}]\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n3 <https://we.example/ns/operations#expression> \"kind\" .",
+        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
+        "_:c14n4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n5 <https://we.example/ns/operations#operation> _:c14n0 .",
+        "_:c14n5 <https://we.example/ns/operations#version> \"1\" ."
+      ],
+      "summaries": {
+        "deleteAny": [
+          "_:c14n0 <https://we.example/ns/operations#bulk> \"false\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n0 <https://we.example/ns/operations#destructive> \"true\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n0 <https://we.example/ns/operations#mayWrite> _:c14n1 .",
+          "_:c14n0 <https://we.example/ns/operations#name> \"conformance.deleteAny\" .",
+          "_:c14n0 <https://we.example/ns/operations#writes> _:c14n2 .",
+          "_:c14n1 <https://we.example/ns/operations#category> <https://we.example/ns/operations#any> .",
+          "_:c14n1 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#delete> .",
+          "_:c14n2 <https://we.example/ns/operations#entity> <https://we.example/ns/model#CollectionBlock> .",
+          "_:c14n2 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#delete> ."
+        ]
+      }
+    },
+    {
+      "id": "rdf.identity-scope-call",
+      "note": "an identity is an rdf:List of field names; a scope is a node; a call names what it calls; serial and when are JSON literals",
+      "document": {
+        "version": "1",
+        "operations": {
+          "ensureState": {
+            "description": "A task state for the slug, then the records under a board.",
+            "params": {
+              "slug": { "type": "string", "required": true },
+              "board": { "type": "string", "required": true }
+            },
+            "serial": { "$": "'state ' + slug" },
+            "steps": [
+              {
+                "create": {
+                  "as": "state",
+                  "entity": "TaskState",
+                  "identity": ["slug"],
+                  "fields": { "slug": { "$": "slug" } }
+                }
+              },
+              {
+                "find": {
+                  "as": "cards",
+                  "entity": "CollectionBlock",
+                  "scope": {
+                    "anchor": "CollectionBlock",
+                    "via": "children",
+                    "anchorId": { "$": "board" },
+                    "levels": [10, 5]
+                  },
+                  "order": { "createdAt": "desc" },
+                  "limit": 20
+                }
+              },
+              {
+                "call": { "as": "done", "operation": "core.thread", "args": { "node": { "$": "board" } } },
+                "when": false
+              }
+            ]
+          }
+        }
+      },
+      "nquads": [
+        "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> \"slug\" .",
+        "_:c14n0 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .",
+        "_:c14n1 <https://we.example/ns/operations#find> _:c14n4 .",
+        "_:c14n10 <https://we.example/ns/operations#description> \"A task state for the slug, then the records under a board.\" .",
+        "_:c14n10 <https://we.example/ns/operations#name> \"ensureState\" .",
+        "_:c14n10 <https://we.example/ns/operations#params> \"{\\\"board\\\":{\\\"required\\\":true,\\\"type\\\":\\\"string\\\"},\\\"slug\\\":{\\\"required\\\":true,\\\"type\\\":\\\"string\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n10 <https://we.example/ns/operations#serial> \"{\\\"$\\\":\\\"'state ' + slug\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n10 <https://we.example/ns/operations#steps> _:c14n2 .",
+        "_:c14n11 <https://we.example/ns/operations#args> \"{\\\"node\\\":{\\\"$\\\":\\\"board\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n11 <https://we.example/ns/operations#as> \"done\" .",
+        "_:c14n11 <https://we.example/ns/operations#calls> \"core.thread\" .",
+        "_:c14n12 <https://we.example/ns/operations#operation> _:c14n10 .",
+        "_:c14n12 <https://we.example/ns/operations#version> \"1\" .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n5 .",
+        "_:c14n2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n8 .",
+        "_:c14n3 <https://we.example/ns/operations#anchor> \"CollectionBlock\" .",
+        "_:c14n3 <https://we.example/ns/operations#anchorId> \"{\\\"$\\\":\\\"board\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n3 <https://we.example/ns/operations#levels> \"[10,5]\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n3 <https://we.example/ns/operations#via> \"children\" .",
+        "_:c14n4 <https://we.example/ns/operations#as> \"cards\" .",
+        "_:c14n4 <https://we.example/ns/operations#entity> \"CollectionBlock\" .",
+        "_:c14n4 <https://we.example/ns/operations#limit> \"20\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/operations#order> \"{\\\"createdAt\\\":\\\"desc\\\"}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n4 <https://we.example/ns/operations#scope> _:c14n3 .",
+        "_:c14n5 <https://we.example/ns/operations#create> _:c14n7 .",
+        "_:c14n6 <https://we.example/ns/operations#call> _:c14n11 .",
+        "_:c14n6 <https://we.example/ns/operations#when> \"false\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n7 <https://we.example/ns/operations#as> \"state\" .",
+        "_:c14n7 <https://we.example/ns/operations#entity> \"TaskState\" .",
+        "_:c14n7 <https://we.example/ns/operations#fields> \"{\\\"slug\\\":{\\\"$\\\":\\\"slug\\\"}}\"^^<http://www.w3.org/1999/02/22-rdf-syntax-ns#JSON> .",
+        "_:c14n7 <https://we.example/ns/operations#identity> _:c14n0 .",
+        "_:c14n8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n1 .",
+        "_:c14n8 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:c14n9 .",
+        "_:c14n9 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:c14n6 .",
+        "_:c14n9 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> ."
+      ],
+      "summaries": {
+        "ensureState": [
+          "_:c14n0 <https://we.example/ns/operations#entity> <https://we.example/ns/model#Relationship> .",
+          "_:c14n0 <https://we.example/ns/operations#relation> <https://we.example/ns/model#thread> .",
+          "_:c14n0 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#add> .",
+          "_:c14n1 <https://we.example/ns/operations#category> <https://we.example/ns/operations#blockable> .",
+          "_:c14n1 <https://we.example/ns/operations#relation> <https://we.example/ns/model#thread> .",
+          "_:c14n1 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#add> .",
+          "_:c14n2 <https://we.example/ns/operations#bulk> \"false\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n2 <https://we.example/ns/operations#destructive> \"false\"^^<http://www.w3.org/2001/XMLSchema#boolean> .",
+          "_:c14n2 <https://we.example/ns/operations#mayWrite> _:c14n1 .",
+          "_:c14n2 <https://we.example/ns/operations#name> \"conformance.ensureState\" .",
+          "_:c14n2 <https://we.example/ns/operations#writes> _:c14n0 .",
+          "_:c14n2 <https://we.example/ns/operations#writes> _:c14n3 .",
+          "_:c14n2 <https://we.example/ns/operations#writes> _:c14n4 .",
+          "_:c14n3 <https://we.example/ns/operations#entity> <https://we.example/ns/model#TaskState> .",
+          "_:c14n3 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#create> .",
+          "_:c14n4 <https://we.example/ns/operations#entity> <https://we.example/ns/model#Topic> .",
+          "_:c14n4 <https://we.example/ns/operations#relation> <https://we.example/ns/model#thread> .",
+          "_:c14n4 <https://we.example/ns/operations#verb> <https://we.example/ns/operations#add> ."
+        ]
+      }
+    }
+  ]
+}

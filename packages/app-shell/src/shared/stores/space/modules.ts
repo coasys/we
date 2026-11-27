@@ -39,7 +39,7 @@ import type { SpaceStore } from '../SpaceStore';
 import type { TemplateStore } from '../TemplateStore';
 import { type SpaceContext, withRow } from './context';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './enabledModules';
-import type { SpaceNavigation } from './navigation';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 import type { LauncherRow } from './types';
 import type { SpaceWrites } from './writes';
@@ -49,7 +49,7 @@ export interface SpaceModulesDeps extends SpaceContext {
   appStore: Pick<AppStore, 'provideInstalledModules'>;
   shellStore: Pick<ShellStore, 'provideModuleGate' | 'dockGeometry' | 'revealDock' | 'toggleModulePanel'>;
   spaces: Pick<SpaceList, 'heldSpace' | 'spaceForUuid'>;
-  navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace'> };
+  onScreen: Pick<SpaceOnScreen, 'currentSpace'>;
   writes: Pick<SpaceWrites, 'writeSpaceSetting'>;
 }
 
@@ -62,14 +62,14 @@ export function createSpaceModules(deps: SpaceModulesDeps) {
     appStore,
     shellStore,
     spaces,
-    navigation,
+    onScreen,
     writes,
     runCore,
     targetDataset,
   } = deps;
   const { memo, effect, onCleanup } = reactivity;
   const { heldSpace, spaceForUuid } = spaces;
-  const { currentSpace } = navigation.members;
+  const { currentSpace } = onScreen;
   const { writeSpaceSetting } = writes;
 
   /**

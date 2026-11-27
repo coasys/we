@@ -2,8 +2,7 @@
  * identityStore and deviceStore: what they read from the backend's identity port, which changes
  * they ask it for, and that they never hold anything but public state.
  *
- * Plain store tests, run once under each reactivity port: Solid's, and the test port that runs a new
- * effect at once where Solid defers it.
+ * Plain store tests, run once under each engine (Solid, the test port, Vue).
  */
 import type {
   DeviceKeyView,
@@ -15,10 +14,9 @@ import type {
 } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createDeviceStore, type DeviceStore } from '../src/shared/stores/DeviceStore';
 import {
   createIdentityStore,
@@ -26,11 +24,7 @@ import {
   type IdentityStore,
   startNowKey,
 } from '../src/shared/stores/IdentityStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -119,6 +113,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   let setPorts: Setter<{ identity?: IdentityPort } | null>;
   let setBootState: Setter<string>;
   let sessionStub: IdentitySession;
+  let platform: TestPlatform;
   const disposers: (() => void)[] = [];
 
   /** Both stores, built inside a root of their own in the order the host builds them. */
@@ -127,7 +122,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     let deviceStore!: DeviceStore;
     disposers.push(
       reactivity.root(() => {
-        identity = createIdentityStore({ reactivity, sessionStore: sessionStub });
+        identity = createIdentityStore({ reactivity, platform, sessionStore: sessionStub });
         deviceStore = createDeviceStore({ reactivity, sessionStore: sessionStub, identityStore: identity });
       }),
     );
@@ -151,7 +146,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         linkDevice: !!ports()?.identity?.change,
       }),
     };
-    localStorage.clear();
+    platform = createTestPlatform();
   });
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
@@ -364,11 +359,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       await flush();
       identity.startWithoutIdentity();
       expect(identity.needsFirstRun()).toBe(false);
-      expect(localStorage.getItem(startNowKey('z6MkOne'))).toBe('1');
+      expect(platform.storage.getItem(startNowKey('z6MkOne'))).toBe('1');
     });
 
     it('remembers "Start now" for the account it was chosen in, not every account here', async () => {
-      localStorage.setItem(startNowKey('z6MkSomeoneElse'), '1');
+      platform.storage.setItem(startNowKey('z6MkSomeoneElse'), '1');
       setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
       const { identity } = mount();
       await flush();

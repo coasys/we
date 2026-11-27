@@ -100,6 +100,12 @@ export interface OperationCase {
   /** The bare name; it runs as `conformance.<name>`. */
   operation: string;
   args: Record<string, unknown>;
+  /**
+   * Somebody other than the invoker the dataset was seeded by, for a case about what may be done to
+   * another person's records. Such a case ends before anything is written: the runner's agent is the
+   * only writer there is.
+   */
+  invoker?: string;
   invocationId: string;
   invokedAt: string;
   /**
@@ -107,6 +113,16 @@ export interface OperationCase {
    * and before the operation ends. What an `expect` exists to notice.
    */
   concurrent?: SeedRecord[];
+  /**
+   * The dataset's identity domain, for a case about a dataset that names itself by a record (a
+   * space); `{ arriving: true }` for one naming itself by a record the agent does not hold yet.
+   * Absent: none.
+   */
+  domain?: string | { arriving: true };
+  /** The manifest version the caller wrote against, for a case about calling the wrong one. Absent: none given. */
+  version?: string;
+  /** Entities the host refuses this caller when a step chooses them at call time. Absent: none. */
+  deniedChosen?: string[];
   observe: Observation[];
 }
 
@@ -156,6 +172,9 @@ export interface OperationVector {
   invocationId: string;
   invokedAt: string;
   concurrent?: SeedRecord[];
+  domain?: string | { arriving: true };
+  version?: string;
+  deniedChosen?: string[];
   observe: Observation[];
   outcome: { result: unknown } | { error: { class: string; code: string } };
   records: Record<string, ObservedRecord[]>;
@@ -319,6 +338,26 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { entity: 'TagBlock', fields: { name: 'garden' } } },
     ],
   },
+  orderKept: {
+    description: 'Puts the children named first, keeping the rest after them in the order they held.',
+    params: { parent: { type: 'string', required: true }, ids: { type: 'list', required: true } },
+    steps: [
+      {
+        setRelation: {
+          entity: 'CollectionBlock',
+          id: { $: 'parent' },
+          relation: 'children',
+          targets: { $: 'ids' },
+          keep: true,
+        },
+      },
+    ],
+  },
+  takeBack: {
+    description: 'Deletes a record, only if the invoker made it.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ delete: { entity: 'CollectionBlock', id: { $: 'id' }, own: true } }],
+  },
   makeAndDrop: {
     description: 'Makes a note and deletes it, which only its author may.',
     steps: [
@@ -356,6 +395,187 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
       { create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } },
     ],
+  },
+  /*
+    Records keyed by identity: their ids derive from the entity and the slug, never the invocation.
+  */
+  nameState: {
+    description: 'A task state, keyed by its slug.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'made',
+          entity: 'TaskState',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+    ],
+    returns: { $: 'made.id' },
+  },
+  nameStateTwice: {
+    description: 'The same task state named twice in one operation, and a note before it.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'TaskState', identity: ['slug'], fields: { name: 'One', slug: { $: 'slug' } } } },
+      { create: { entity: 'TaskState', identity: ['slug'], fields: { name: 'Two', slug: { $: 'slug' } } } },
+    ],
+  },
+  nameStateBesideNote: {
+    description: 'A task state keyed by its slug and a note keyed by the invocation, answering both ids.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'state',
+          entity: 'TaskState',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+      { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'slug' } } } },
+    ],
+    returns: { $: '[state.id, note.id]' },
+  },
+  retitle: {
+    description: 'Retitles one note.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ update: { entity: 'CollectionBlock', id: { $: 'id' }, fields: { title: 'retitled' } } }],
+  },
+  theTag: {
+    description: 'The one tag there is, or a failure.',
+    steps: [{ find: { as: 'tag', entity: 'CollectionBlock', where: { kind: 'tag' }, one: true } }],
+    returns: { $: 'tag.id' },
+  },
+  unlinkStrictly: {
+    description: 'Takes a record out of a holder, asserting it was in it.',
+    params: { holder: { type: 'string', required: true }, target: { type: 'string', required: true } },
+    steps: [
+      {
+        unlink: {
+          entity: 'CollectionBlock',
+          id: { $: 'holder' },
+          relation: 'children',
+          target: { $: 'target' },
+          strict: true,
+        },
+      },
+    ],
+  },
+  readsNobody: {
+    description: 'Titles a note from a name nothing binds.',
+    steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'nobody' } } } }],
+  },
+  makesNowhere: {
+    description: 'Creates a record of an entity the dataset has no type for.',
+    steps: [{ create: { entity: 'Nowhere', fields: { title: 'x' } } }],
+  },
+  makesChosen: {
+    description: 'Creates a record of the entity the caller names, among collections only.',
+    params: { kind: { type: 'string', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: ['CollectionBlock'], fields: { $: '{ kind: "note" }' } } }],
+  },
+  makesAny: {
+    description: 'Creates a record of whatever entity the caller names, with the fields given.',
+    params: { kind: { type: 'string', required: true }, fields: { type: 'object', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: [{ category: 'any' }], fields: { $: 'fields' } } }],
+  },
+  notesFor: {
+    description: 'A note per item given.',
+    params: { items: { type: 'json', required: true } },
+    steps: [
+      {
+        forEach: {
+          in: { $: 'items' },
+          as: 'item',
+          steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'item.title' } } } }],
+        },
+      },
+    ],
+  },
+  firstTags: {
+    description: 'The first tags, as many as asked for.',
+    params: { n: { type: 'number', required: true } },
+    steps: [{ find: { as: 'tags', entity: 'CollectionBlock', where: { kind: 'tag' }, limit: { $: 'n' } } }],
+    returns: { $: 'count(tags)' },
+  },
+  callsNowhere: {
+    description: 'Calls an operation nobody registered.',
+    steps: [{ call: { operation: 'conformance.nowhere' } }],
+  },
+  deep0: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep1' } }],
+  },
+  deep1: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep2' } }],
+  },
+  deep2: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep3' } }],
+  },
+  deep3: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep4' } }],
+  },
+  deep4: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep5' } }],
+  },
+  deep5: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep6' } }],
+  },
+  deep6: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep7' } }],
+  },
+  deep7: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep8' } }],
+  },
+  deep8: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep9' } }],
+  },
+  deep9: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep10' } }],
+  },
+  deep10: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep11' } }],
+  },
+  deep11: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep12' } }],
+  },
+  deep12: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep13' } }],
+  },
+  deep13: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep14' } }],
+  },
+  deep14: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep15' } }],
+  },
+  deep15: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep16' } }],
+  },
+  deep16: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep17' } }],
+  },
+  deep17: {
+    description: 'The bottom of a chain of calls seventeen deep.',
+    steps: [{ create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'bottom' } } }],
   },
   linkTwo: {
     description: 'Links two records under a holder, in the order given, through an ordered and an unordered relation.',
@@ -491,6 +711,27 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [COLLECTIONS],
   },
+  {
+    id: 'set-relation-keep',
+    note: 'a setRelation that keeps puts the named members first and every other member after them, in the order they held',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2', 'urn:example:k3'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3'] },
+    invocationId: '00000000-0000-4000-8000-000000000090',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
   /*
     WE's own operations, run under this namespace: what a second implementation must produce for a
     reaction, an answer and a reply, the shapes a community's data is mostly made of.
@@ -519,19 +760,37 @@ const CASES: OperationCase[] = [
       {
         entity: 'Involvement',
         id: 'urn:example:said-maybe',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:event'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:event' },
       },
       {
         entity: 'Involvement',
         id: 'urn:example:other-event',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:elsewhere'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:elsewhere' },
       },
     ],
     operation: 'respond',
     args: { node: 'urn:example:event', kind: 'going' },
     invocationId: '00000000-0000-4000-8000-000000000008',
     invokedAt: AT,
-    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: [] }],
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
+  },
+  {
+    id: 'core-set-involvement-to-one',
+    note: 'core.setInvolvement finds the pair on this record by its to-one, leaves the same pair on another record, and writes the new one’s node as one id',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'InvolvementType', id: 'urn:example:assignee', fields: { name: 'Assignee', slug: 'assignee' } },
+      {
+        entity: 'Involvement',
+        id: 'urn:example:on-other-task',
+        fields: { agent: 'did:example:ana', kind: 'assignee', node: 'urn:example:other-task' },
+      },
+    ],
+    operation: 'setInvolvement',
+    args: { node: 'urn:example:task', agent: 'did:example:ana', kind: 'assignee', on: true },
+    invocationId: '00000000-0000-4000-8000-000000000013',
+    invokedAt: AT,
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
   },
   {
     id: 'core-create-post-reply',
@@ -894,6 +1153,282 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children', 'mentions'] }],
   },
+  /*
+    Identity: the id a keyed create derives is the entity's and the slug's, the same from any
+    invocation; a second create of it is refused; and it is never an id an invocation derives.
+  */
+  {
+    id: 'identity-id',
+    note: 'a create keyed by identity derives its id from the entity and the slug, not the invocation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-id-other-invocation',
+    note: 'another invocation naming the same identity derives the same id as identity-id',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000042',
+    invokedAt: AT,
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-id-in-space',
+    note: 'in a dataset with an identity domain (a space), the same identity derives another id, within that domain',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    domain: 'urn:example:space-a',
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-space-not-ready',
+    note: 'in a dataset naming itself by a record not held yet, an identity create is refused as spaceNotReady, never derived without the domain',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000091',
+    invokedAt: AT,
+    domain: { arriving: true },
+    observe: [{ entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-twice',
+    note: 'a second create of the same identity is refused as recordExists, and nothing the operation made lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateTwice',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000043',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-not-invocation',
+    note: 'a record keyed by identity and one keyed by the invocation get different ids, the first the one identity-id derives',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateBesideNote',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000044',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['slug'], relations: [] }],
+  },
+  {
+    id: 'delete-own-mine',
+    note: 'a delete of the invoker’s own record deletes it',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:mine', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:mine' },
+    invocationId: '00000000-0000-4000-8000-000000000045',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'delete-own-not-mine',
+    note: 'a delete of one’s own record, invoked by somebody who did not make it, fails as notOwn and deletes nothing',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:theirs', fields: { kind: 'note', title: 'theirs' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:theirs' },
+    invoker: 'did:example:visitor',
+    invocationId: '00000000-0000-4000-8000-000000000046',
+    invokedAt: AT,
+    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'set-relation-keep-adds',
+    note: 'a setRelation that keeps adds a member it names that the relation did not hold, and removes none',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'CollectionBlock', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'CollectionBlock',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3', 'urn:example:k1'] },
+    invocationId: '00000000-0000-4000-8000-000000000047',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+
+  {
+    id: 'update-missing',
+    note: 'an update naming a record that is not there fails as notFound',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: { id: 'urn:example:gone' },
+    invocationId: '00000000-0000-4000-8000-000000000048',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'find-one-ambiguous',
+    note: 'a find with one that matches two records fails as ambiguous',
+    operations: OPERATIONS,
+    dataset: [TAG, { entity: 'CollectionBlock', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    operation: 'theTag',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000049',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'strict-unlink',
+    note: 'a strict unlink of a record that is not a member fails as notLinked and changes nothing',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'CollectionBlock', id: 'urn:example:parent', fields: { kind: 'board', title: 'parent' } },
+      { entity: 'CollectionBlock', id: 'urn:example:stranger', fields: { kind: 'note', title: 'stranger' } },
+    ],
+    operation: 'unlinkStrictly',
+    args: { holder: 'urn:example:parent', target: 'urn:example:stranger' },
+    invocationId: '00000000-0000-4000-8000-000000000050',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'bad-args',
+    note: 'args missing a required param fail as badArgs before anything runs',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000051',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unbound-name',
+    note: 'an expression reading a name nothing binds fails as unboundName',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'readsNobody',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000052',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unknown-entity',
+    note: 'a create of an entity the dataset has no type for fails as unknownEntity',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000053',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'outside-one-of',
+    note: 'a chosen entity its oneOf does not admit fails as outsideOneOf, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesChosen',
+    args: { kind: 'TaskState' },
+    invocationId: '00000000-0000-4000-8000-000000000054',
+    invokedAt: AT,
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'not-granted',
+    note: 'a chosen entity the host refuses this caller fails as notGranted, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesAny',
+    args: { kind: 'TaskState', fields: { name: 'Blocked', slug: 'blocked' } },
+    invocationId: '00000000-0000-4000-8000-000000000055',
+    invokedAt: AT,
+    deniedChosen: ['TaskState'],
+    observe: [COLLECTIONS, { entity: 'TaskState', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'forEach-no-key',
+    note: 'a forEach item with no id, no key and no key expression fails as forEachKey, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: [{ title: 'one' }] },
+    invocationId: '00000000-0000-4000-8000-000000000056',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'not-a-list',
+    note: 'a forEach over something that is not a list fails as notAList',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: 'one' },
+    invocationId: '00000000-0000-4000-8000-000000000057',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'call-depth',
+    note: 'calls nested seventeen deep fail as callDepth, and the record at the bottom does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'deep0',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000058',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'malformed-limit',
+    note: 'a limit that is not a whole number fails as malformed',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'firstTags',
+    args: { n: 1.5 },
+    invocationId: '00000000-0000-4000-8000-000000000059',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'unknown-operation',
+    note: 'a call to an operation nobody registered fails as unknownOperation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'callsNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000060',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'version-mismatch',
+    note: 'an invocation for a version of the namespace other than the registered one fails as versionMismatch',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'retitle',
+    args: { id: 'urn:example:tag-garden' },
+    invocationId: '00000000-0000-4000-8000-000000000061',
+    invokedAt: AT,
+    version: '2',
+    observe: [COLLECTIONS],
+  },
 ];
 
 /** The suite's own operations a definition calls, by bare name, and their callees in turn. */
@@ -970,6 +1505,9 @@ function* bodiesOf(steps: unknown[] | undefined): Generator<[string, StepBody]> 
  * names in a step (its own operations' and the ones they call), every entity a relation of those
  * targets, and the access-control entities — each with only what changes what an operation does.
  */
+/** Entities a case names so that the dataset has no type for them: never in the file's entities. */
+const UNDECLARED_ENTITIES = new Set(['Nowhere']);
+
 export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES): Record<string, VectorEntity> {
   const named = new Set<string>(PROTECTED_ENTITIES);
   for (const c of cases) {
@@ -983,6 +1521,7 @@ export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES
   const out: Record<string, VectorEntity> = {};
   const add = (name: string) => {
     if (name in out) return;
+    if (UNDECLARED_ENTITIES.has(name)) return;
     const schema = CORE_MANIFEST.entities[name];
     if (!schema) throw new Error(`A case names "${name}", which WE's core manifest does not declare`);
     out[name] = neutralEntity(schema);
@@ -1064,13 +1603,21 @@ async function observe(
 ): Promise<Record<string, ObservedRecord[]>> {
   const records: Record<string, ObservedRecord[]> = {};
   for (const { entity, fields, relations } of observations) {
-    const include = Object.fromEntries(relations.map((relation) => [relation, true]));
-    const rows = await model(entity).findAll(dataset, relations.length ? { include } : {});
+    const toOne = (relation: string) => entities[entity]?.relations[relation]?.cardinality === 'one';
+    // A to-one is read as it stands on the row, the one id, so a backend holding it any other way
+    // differs from the file; a to-many is included and read as its members.
+    const included = relations.filter((relation) => !toOne(relation));
+    const include = Object.fromEntries(included.map((relation) => [relation, true]));
+    const rows = await model(entity).findAll(dataset, included.length ? { include } : {});
     records[entity] = rows
       .map((row) => {
         const out: ObservedRecord = { id: row.id as string };
         for (const field of fields) if (present(row[field])) out[field] = row[field];
         for (const relation of relations) {
+          if (toOne(relation)) {
+            if (present(row[relation])) out[relation] = row[relation];
+            continue;
+          }
           const ids = idsIn(row[relation]);
           if (!ids.length) continue;
           out[relation] = entities[entity]?.relations[relation]?.ordered ? ids : [...ids].sort(compareCodePoints);
@@ -1147,7 +1694,9 @@ export async function runVector(
   opts: { registerCalls?: boolean } = {},
 ): Promise<Pick<OperationVector, 'outcome' | 'records'>> {
   const agent = subject.agent;
-  const inbound = <T>(value: T) => swap(value, vector.invoker, agent);
+  // The file's invoker wrote the seeds and is the runner's agent; a case may be invoked by another.
+  const inbound = <T>(value: T) => swap(value, VECTOR_INVOKER, agent);
+  const invoker = vector.invoker === VECTOR_INVOKER ? agent : vector.invoker;
   await seed(subject.dataset, inbound(vector.dataset));
 
   if (opts.registerCalls) {
@@ -1161,6 +1710,7 @@ export async function runVector(
   }
   registerOperations(VECTOR_NAMESPACE, vector.manifest.operations, {
     entities: context.entities,
+    version: vector.manifest.version,
   });
   const undo = interleave(subject.dataset, vector, inbound(vector.concurrent ?? []));
   registerEntityWriteCheck(policyCheck(context.policy, agent));
@@ -1168,11 +1718,15 @@ export async function runVector(
   try {
     const result = await runOperation(`${VECTOR_NAMESPACE}.${vector.operation}`, inbound(vector.args), {
       dataset: subject.dataset,
-      invoker: agent,
+      invoker,
       invocationId: vector.invocationId,
       invokedAt: vector.invokedAt,
+      // The case's, never the host's: a dataset in a vector has the identity domain the file gives it.
+      domain: vector.domain ?? null,
+      ...(vector.version ? { version: vector.version } : {}),
+      ...(vector.deniedChosen ? { admitChosen: (entity: string) => !vector.deniedChosen!.includes(entity) } : {}),
     });
-    outcome = { result: result === undefined ? null : swap(result, agent, vector.invoker) };
+    outcome = { result: result === undefined ? null : swap(result, agent, VECTOR_INVOKER) };
   } catch (error) {
     if (!isOperationError(error)) throw error;
     outcome = { error: { class: error.class, code: error.code } };
@@ -1182,7 +1736,7 @@ export async function runVector(
     unregisterOperations(VECTOR_NAMESPACE);
   }
   const records = await observe(subject.dataset, vector.observe, context.entities);
-  return { outcome, records: swap(records, agent, vector.invoker) };
+  return { outcome, records: swap(records, agent, VECTOR_INVOKER) };
 }
 
 /** A case as its vector states it, before it is run. */
@@ -1195,10 +1749,13 @@ export function vectorInput(c: OperationCase): VectorInput {
     dataset: c.dataset,
     operation: c.operation,
     args: c.args,
-    invoker: VECTOR_INVOKER,
+    invoker: c.invoker ?? VECTOR_INVOKER,
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
     ...(c.concurrent ? { concurrent: c.concurrent } : {}),
+    ...(c.domain ? { domain: c.domain } : {}),
+    ...(c.version ? { version: c.version } : {}),
+    ...(c.deniedChosen ? { deniedChosen: c.deniedChosen } : {}),
     observe: c.observe,
   };
 }
@@ -1255,8 +1812,7 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
         expect(vectorOf(c, { outcome: vector!.outcome, records: vector!.records })).toEqual(vector);
         expect(await runVector(subject, file, vector!)).toEqual({ outcome: vector!.outcome, records: vector!.records });
       };
-      // Typed by the suite's case list, which names no operation case yet; read by name.
-      const gap = (harness.knownGaps as Partial<Record<string, string>> | undefined)?.[id];
+      const gap = harness.knownGaps?.[id];
       if (gap) it.fails(`${c.note} [known gap: ${gap}]`, body, timeout);
       else it(c.note, body, timeout);
     }

@@ -8,18 +8,12 @@
  * binding fills the store from a mounted router is `shellRouterRoot.test.tsx`.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createShellRouteStore, type ShellRouteStore } from '../src/shared/stores/ShellRouteStore';
+import { reactivityPorts } from './support/engines';
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('shellRouteStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('shellRouteStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

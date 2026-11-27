@@ -291,7 +291,7 @@ function layoutsSection(): SchemaNode {
   return {
     type: '$if',
     props: {
-      condition: { $: 'count(shellStore.layoutNames) || shellStore.layoutDirty' },
+      condition: { $: 'count(shellStore.layoutNames) || layout.layoutDirty' },
       then: {
         type: 'Column',
         props: { gap: '100' },
@@ -349,7 +349,7 @@ function layoutsSection(): SchemaNode {
           {
             type: '$if',
             props: {
-              condition: { $: 'shellStore.layoutDirty' },
+              condition: { $: 'layout.layoutDirty' },
               then: {
                 type: 'we-button',
                 props: {
@@ -440,7 +440,7 @@ export function templatePicker(): SchemaNode {
             appsSection(),
             {
               type: '$each',
-              props: { items: { $: 'templateStore.switcherGroups' }, as: 'group' },
+              props: { items: { $: 'appearance.switcherGroups' }, as: 'group' },
               children: [
                 section({ $: 'group.label' }, templateRows, {
                   type: '$each',
@@ -532,9 +532,9 @@ export function themePicker(): SchemaNode {
           type: 'Column',
           props: { gap: '100' },
           children: [
-            themeSection('Space themes', 'themeStore.spaceThemes'),
-            themeSection('My themes', 'themeStore.installedThemes'),
-            themeSection('Built-in', 'themeStore.builtInThemes'),
+            themeSection('Space themes', 'appearance.spaceThemes'),
+            themeSection('My themes', 'appearance.installedThemes'),
+            themeSection('Built-in', 'appearance.builtInThemes'),
             /*
               Last, and under its own heading, because it is not a theme.
 
@@ -672,7 +672,7 @@ export const themeNameDialog: SchemaNode = nameDialog({
       {
         $if: {
           condition: { $: 'result && currentDataset' },
-          then: { $invoke: 'themeStore.applyTheme', args: [{ $: 'themeStore.currentThemeId' }] },
+          then: { $invoke: 'appearance.applyTheme', args: [{ $: 'appearance.currentThemeId' }] },
         },
       },
       { $if: { condition: { $: 'result' }, then: { $invoke: 'editorStore.enterThemeEditing' } } },

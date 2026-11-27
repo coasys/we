@@ -6254,6 +6254,301 @@
   ],
   "storeEntries": [
     {
+      "name": "navigation",
+      "state": {
+        "currentPath": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array"
+        },
+        "templateSegments": {
+          "type": "array"
+        },
+        "params": {
+          "type": "object"
+        },
+        "mySpaces": {
+          "type": "array",
+          "model": "Space"
+        },
+        "spacePath": {
+          "type": "string"
+        },
+        "viewNav": {
+          "type": "array"
+        }
+      },
+      "actions": ["navigate", "setParam", "back", "navigateToSpace", "openRecordRef"],
+      "homes": {
+        "currentPath": "routeStore",
+        "segments": "routeStore",
+        "templateSegments": "routeStore",
+        "params": "routeStore",
+        "navigate": "routeStore",
+        "setParam": "routeStore",
+        "back": "routeStore",
+        "mySpaces": "spaceStore",
+        "spacePath": "spaceStore",
+        "viewNav": "spaceStore",
+        "navigateToSpace": "spaceStore",
+        "openRecordRef": "spaceStore"
+      },
+      "ambient": ["navigate", "setParam", "back", "navigateToSpace", "openRecordRef"],
+      "needsArgs": ["navigate", "setParam", "navigateToSpace", "openRecordRef"]
+    },
+    {
+      "name": "viewState",
+      "state": {
+        "panelInstances": {
+          "type": "array"
+        },
+        "clocks": {
+          "type": "object"
+        }
+      },
+      "actions": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "openPanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ],
+      "homes": {
+        "panelInstances": "shellStore",
+        "openTemplatePanel": "shellStore",
+        "closeTemplatePanel": "shellStore",
+        "openPanel": "shellStore",
+        "closePanel": "shellStore",
+        "scrollToId": "shellStore",
+        "clocks": "clockStore",
+        "play": "clockStore",
+        "pause": "clockStore",
+        "toggle": "clockStore",
+        "seek": "clockStore",
+        "seekProgress": "clockStore",
+        "setSpeed": "clockStore",
+        "setLoop": "clockStore",
+        "configure": "clockStore"
+      },
+      "ambient": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ],
+      "needsArgs": [
+        "openTemplatePanel",
+        "closeTemplatePanel",
+        "openPanel",
+        "closePanel",
+        "scrollToId",
+        "play",
+        "pause",
+        "toggle",
+        "seek",
+        "seekProgress",
+        "setSpeed",
+        "setLoop",
+        "configure"
+      ]
+    },
+    {
+      "name": "layout",
+      "state": {
+        "layoutDirty": {
+          "type": "boolean"
+        },
+        "collapsedLanes": {
+          "type": "array"
+        }
+      },
+      "actions": ["toggleLane", "setLaneCollapsed", "resetTemplateLayout"],
+      "homes": {
+        "layoutDirty": "shellStore",
+        "collapsedLanes": "shellStore",
+        "toggleLane": "shellStore",
+        "setLaneCollapsed": "shellStore",
+        "resetTemplateLayout": "shellStore"
+      },
+      "ambient": ["toggleLane", "setLaneCollapsed", "resetTemplateLayout"],
+      "needsArgs": ["toggleLane", "setLaneCollapsed"]
+    },
+    {
+      "name": "presence",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "peers": {
+          "type": "array"
+        },
+        "online": {
+          "type": "array"
+        },
+        "onlineHere": {
+          "type": "array"
+        }
+      },
+      "actions": ["setAvailability", "setActivity", "clearActivity"],
+      "homes": {
+        "available": "presenceStore",
+        "peers": "presenceStore",
+        "online": "presenceStore",
+        "onlineHere": "presenceStore",
+        "setAvailability": "presenceStore",
+        "setActivity": "presenceStore",
+        "clearActivity": "presenceStore"
+      },
+      "needsArgs": ["setAvailability", "setActivity", "clearActivity"]
+    },
+    {
+      "name": "identity",
+      "state": {
+        "ownProfile": {
+          "type": "object",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "ownProfileLoaded": {
+          "type": "boolean"
+        },
+        "profiles": {
+          "type": "array",
+          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
+        },
+        "memberDids": {
+          "type": "array"
+        },
+        "mutedDids": {
+          "type": "array"
+        },
+        "readMarkers": {
+          "type": "array"
+        }
+      },
+      "actions": [],
+      "homes": {
+        "ownProfile": "profileStore",
+        "ownProfileLoaded": "profileStore",
+        "profiles": "profileStore",
+        "memberDids": "spaceStore",
+        "mutedDids": "spaceStore",
+        "readMarkers": "spaceStore"
+      }
+    },
+    {
+      "name": "spaceSettings",
+      "state": {
+        "currentSpace": {
+          "type": "object",
+          "model": "Space"
+        },
+        "canAdministerCurrentSpace": {
+          "type": "boolean"
+        },
+        "spaceDefaultTemplateId": {
+          "type": "string"
+        },
+        "spaceDefaultThemeId": {
+          "type": "string"
+        },
+        "myModuleSettings": {
+          "type": "array"
+        }
+      },
+      "actions": ["prepareSpaceImage", "setViewVisible", "setModuleVisible", "setMyModuleSetting"],
+      "homes": {
+        "currentSpace": "spaceStore",
+        "canAdministerCurrentSpace": "spaceStore",
+        "spaceDefaultTemplateId": "spaceStore",
+        "spaceDefaultThemeId": "spaceStore",
+        "myModuleSettings": "spaceStore",
+        "prepareSpaceImage": "spaceStore",
+        "setViewVisible": "spaceStore",
+        "setModuleVisible": "spaceStore",
+        "setMyModuleSetting": "spaceStore"
+      },
+      "needsArgs": ["prepareSpaceImage", "setViewVisible", "setModuleVisible", "setMyModuleSetting"]
+    },
+    {
+      "name": "appearance",
+      "state": {
+        "switcherGroups": {
+          "type": "array",
+          "properties": ["label", "items"]
+        },
+        "currentSwitcherId": {
+          "type": "string"
+        },
+        "templateOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "builtInThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "installedThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "spaceThemes": {
+          "type": "array",
+          "properties": ["id", "name", "icon", "origin"]
+        },
+        "themeOverrideOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "currentThemeId": {
+          "type": "string"
+        },
+        "spaceThemePinned": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "switchTemplate",
+        "setSpaceTemplateOverride",
+        "applyTheme",
+        "clearSpaceThemePin",
+        "setSpaceThemeOverride"
+      ],
+      "homes": {
+        "switcherGroups": "templateStore",
+        "currentSwitcherId": "templateStore",
+        "templateOverrideOptions": "templateStore",
+        "builtInThemes": "themeStore",
+        "installedThemes": "themeStore",
+        "spaceThemes": "themeStore",
+        "themeOverrideOptions": "themeStore",
+        "currentThemeId": "themeStore",
+        "spaceThemePinned": "themeStore",
+        "switchTemplate": "templateStore",
+        "setSpaceTemplateOverride": "templateStore",
+        "applyTheme": "themeStore",
+        "clearSpaceThemePin": "themeStore",
+        "setSpaceThemeOverride": "themeStore"
+      },
+      "needsArgs": ["switchTemplate", "setSpaceTemplateOverride", "applyTheme", "setSpaceThemeOverride"]
+    },
+    {
       "name": "accountStore",
       "state": {
         "canManageAccounts": {
@@ -6375,14 +6670,8 @@
     },
     {
       "name": "clockStore",
-      "state": {
-        "clocks": {
-          "type": "object"
-        }
-      },
-      "actions": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
-      "ambient": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"],
-      "needsArgs": ["play", "pause", "toggle", "seek", "seekProgress", "setSpeed", "setLoop", "configure"]
+      "state": {},
+      "actions": []
     },
     {
       "name": "datasetStore",
@@ -6728,42 +7017,19 @@
     {
       "name": "presenceStore",
       "state": {
-        "peers": {
-          "type": "array"
-        },
-        "online": {
-          "type": "array"
-        },
-        "onlineHere": {
-          "type": "array"
-        },
         "calls": {
           "type": "object"
-        },
-        "available": {
-          "type": "boolean"
         },
         "focusDepth": {
           "type": "object"
         }
       },
-      "actions": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"],
-      "needsArgs": ["setFocusDepth", "setAvailability", "setActivity", "clearActivity"]
+      "actions": ["setFocusDepth"],
+      "needsArgs": ["setFocusDepth"]
     },
     {
       "name": "profileStore",
       "state": {
-        "profiles": {
-          "type": "array",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "ownProfile": {
-          "type": "object",
-          "properties": ["did", "firstName", "lastName", "handle", "bio", "avatar", "coverImage", "location"]
-        },
-        "ownProfileLoaded": {
-          "type": "boolean"
-        },
         "needsName": {
           "type": "boolean"
         },
@@ -6944,25 +7210,13 @@
     {
       "name": "routeStore",
       "state": {
-        "currentPath": {
-          "type": "string"
-        },
-        "segments": {
-          "type": "array"
-        },
-        "templateSegments": {
-          "type": "array"
-        },
-        "params": {
-          "type": "object"
-        },
         "page": {
           "type": "string"
         }
       },
-      "actions": ["navigate", "resolve", "setParam", "back"],
-      "ambient": ["navigate", "resolve", "setParam", "back"],
-      "needsArgs": ["navigate", "resolve", "setParam"]
+      "actions": ["resolve"],
+      "ambient": ["resolve"],
+      "needsArgs": ["resolve"]
     },
     {
       "name": "runtimeStore",
@@ -7664,17 +7918,8 @@
         "layoutPinned": {
           "type": "object"
         },
-        "layoutDirty": {
-          "type": "boolean"
-        },
         "panelSupplied": {
           "type": "object"
-        },
-        "panelInstances": {
-          "type": "array"
-        },
-        "collapsedLanes": {
-          "type": "array"
         },
         "customisingLayout": {
           "type": "boolean"
@@ -7703,7 +7948,6 @@
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
-        "scrollToId",
         "beginDockResize",
         "resizeDock",
         "resizeColumn",
@@ -7717,13 +7961,6 @@
         "endTabDrag",
         "endDockMove",
         "resetDockToLayout",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "openPanel",
-        "closePanel",
-        "resetTemplateLayout",
-        "toggleLane",
-        "setLaneCollapsed",
         "toggleCustomiseLayout",
         "saveLayout",
         "applyLayout",
@@ -7753,7 +7990,6 @@
         "toggleSpaceSettings",
         "openSpaceSettings",
         "closeSpaceSettings",
-        "scrollToId",
         "resizeDock",
         "resizeColumn",
         "endDockResize",
@@ -7762,12 +7998,6 @@
         "moveTab",
         "endTabDrag",
         "endDockMove",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "closePanel",
-        "resetTemplateLayout",
-        "toggleLane",
-        "setLaneCollapsed",
         "toggleCustomiseLayout",
         "revealDock",
         "openModulePanel",
@@ -7780,7 +8010,6 @@
         "setCreateSpaceOpen",
         "setJoinSpaceOpen",
         "chooseScreenSource",
-        "scrollToId",
         "beginDockResize",
         "resizeDock",
         "resizeColumn",
@@ -7793,12 +8022,6 @@
         "endTabDrag",
         "endDockMove",
         "resetDockToLayout",
-        "closeTemplatePanel",
-        "openTemplatePanel",
-        "openPanel",
-        "closePanel",
-        "toggleLane",
-        "setLaneCollapsed",
         "saveLayout",
         "applyLayout",
         "deleteLayout",
@@ -7820,23 +8043,6 @@
     {
       "name": "spaceStore",
       "state": {
-        "memberDids": {
-          "type": "array"
-        },
-        "spaceDefaultTemplateId": {
-          "type": "string"
-        },
-        "spaceDefaultThemeId": {
-          "type": "string"
-        },
-        "currentSpace": {
-          "type": "object",
-          "model": "Space"
-        },
-        "mySpaces": {
-          "type": "array",
-          "model": "Space"
-        },
         "personalSpaces": {
           "type": "array",
           "model": "Space"
@@ -7869,9 +8075,6 @@
         },
         "routeSpaceUnjoined": {
           "type": "boolean"
-        },
-        "spacePath": {
-          "type": "string"
         },
         "creatingSpace": {
           "type": "boolean"
@@ -7954,9 +8157,6 @@
         "enabledViewIds": {
           "type": "array"
         },
-        "viewNav": {
-          "type": "array"
-        },
         "sharingOptions": {
           "type": "array"
         },
@@ -7966,13 +8166,7 @@
         "starterChoices": {
           "type": "array"
         },
-        "mutedDids": {
-          "type": "array"
-        },
         "mutedAgents": {
-          "type": "array"
-        },
-        "readMarkers": {
           "type": "array"
         },
         "unreadNodeIds": {
@@ -7983,9 +8177,6 @@
           "properties": ["id", "author", "createdAt"]
         },
         "spaceModuleSettings": {
-          "type": "array"
-        },
-        "myModuleSettings": {
           "type": "array"
         },
         "agentModuleSettings": {
@@ -8009,9 +8200,6 @@
         "archivedWorkflows": {
           "type": "array"
         },
-        "canAdministerCurrentSpace": {
-          "type": "boolean"
-        },
         "policy": {
           "type": "object",
           "properties": ["loaded", "preset", "permissions", "frozen", "me", "roles", "sentences"]
@@ -8027,8 +8215,6 @@
         "updatePost",
         "openBoardFor",
         "removeBoardColumn",
-        "reorderBoardColumns",
-        "arrangeColumn",
         "moveCardToColumn",
         "addTaskToColumn",
         "setAttending",
@@ -8036,13 +8222,9 @@
         "markRead",
         "uploadFile",
         "deleteCollection",
-        "updateSpaceImage",
         "updateSpaceMeta",
-        "setSpaceDefaultTemplate",
-        "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setSpaceModuleSetting",
-        "setMyModuleSetting",
         "setAgentModuleSetting",
         "autoInterpretFor",
         "setAutoInterpretFor",
@@ -8051,10 +8233,8 @@
         "setThreadMode",
         "setInterpretationTarget",
         "setModuleInstalled",
-        "setModuleVisible",
         "setViewEnabled",
         "reorderViews",
-        "setViewVisible",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8068,14 +8248,9 @@
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
-        "respondTo",
         "createInvolvementType",
         "updateInvolvementType",
         "setInvolvementTypeRetired",
-        "upsertSignal",
-        "withdrawSignal",
-        "navigateToSpace",
-        "openRecordRef",
         "canAdministerSpace",
         "createRole",
         "updateRole",
@@ -8089,13 +8264,7 @@
         "saveFileBlock",
         "removeSpaceFromGlobal"
       ],
-      "ambient": [
-        "autoInterpretFor",
-        "canSetInterpretationFor",
-        "navigateToSpace",
-        "openRecordRef",
-        "canAdministerSpace"
-      ],
+      "ambient": ["autoInterpretFor", "canSetInterpretationFor", "canAdministerSpace"],
       "destructive": ["removeSpace", "deleteCollection", "removeSpaceFromGlobal"],
       "needsArgs": [
         "createSpace",
@@ -8106,8 +8275,6 @@
         "createPost",
         "updatePost",
         "removeBoardColumn",
-        "reorderBoardColumns",
-        "arrangeColumn",
         "moveCardToColumn",
         "addTaskToColumn",
         "setAttending",
@@ -8115,13 +8282,9 @@
         "markRead",
         "uploadFile",
         "deleteCollection",
-        "updateSpaceImage",
         "updateSpaceMeta",
-        "setSpaceDefaultTemplate",
-        "setSpaceDefaultTheme",
         "setModuleEnabled",
         "setSpaceModuleSetting",
-        "setMyModuleSetting",
         "setAgentModuleSetting",
         "autoInterpretFor",
         "setAutoInterpretFor",
@@ -8130,10 +8293,8 @@
         "setThreadMode",
         "setInterpretationTarget",
         "setModuleInstalled",
-        "setModuleVisible",
         "setViewEnabled",
         "reorderViews",
-        "setViewVisible",
         "launchModule",
         "setSignalTypeRetired",
         "createTaskState",
@@ -8147,14 +8308,9 @@
         "setTaskStateRetired",
         "reorderTaskStates",
         "setInvolvement",
-        "respondTo",
         "createInvolvementType",
         "updateInvolvementType",
         "setInvolvementTypeRetired",
-        "upsertSignal",
-        "withdrawSignal",
-        "navigateToSpace",
-        "openRecordRef",
         "canAdministerSpace",
         "createRole",
         "updateRole",
@@ -8172,10 +8328,6 @@
     {
       "name": "templateStore",
       "state": {
-        "templateOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
         "personalTemplates": {
           "type": "array",
           "properties": ["id", "meta", "type", "props", "children", "routes"]
@@ -8203,13 +8355,6 @@
         "refusedTemplates": {
           "type": "array",
           "properties": ["id", "name", "icon", "reason"]
-        },
-        "switcherGroups": {
-          "type": "array",
-          "properties": ["label", "items"]
-        },
-        "currentSwitcherId": {
-          "type": "string"
         },
         "currentTemplate": {
           "type": "object",
@@ -8246,8 +8391,6 @@
         }
       },
       "actions": [
-        "setSpaceTemplateOverride",
-        "switchTemplate",
         "removeTemplate",
         "deleteTemplate",
         "deleteRefusedTemplate",
@@ -8273,8 +8416,6 @@
       "ambient": ["cancelInstall", "refreshSpaceTemplates"],
       "destructive": ["removeTemplate", "deleteTemplate", "deleteRefusedTemplate", "deleteMarketplaceTemplate"],
       "needsArgs": [
-        "setSpaceTemplateOverride",
-        "switchTemplate",
         "deleteTemplate",
         "deleteRefusedTemplate",
         "installTemplate",
@@ -8296,28 +8437,13 @@
     {
       "name": "themeStore",
       "state": {
-        "builtInThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
         "automaticThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
-        "installedThemes": {
-          "type": "array",
-          "properties": ["id", "name", "icon", "origin"]
-        },
-        "spaceThemes": {
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]
         },
         "allThemes": {
           "type": "array",
           "properties": ["id", "name", "icon", "origin"]
-        },
-        "currentThemeId": {
-          "type": "string"
         },
         "currentTheme": {
           "type": "object",
@@ -8335,13 +8461,6 @@
         },
         "operationLoading": {
           "type": "string"
-        },
-        "themeOverrideOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
-        },
-        "spaceThemePinned": {
-          "type": "boolean"
         },
         "spaceThemeHiddenBy": {
           "type": "string"
@@ -8395,9 +8514,6 @@
       "actions": [
         "setCurrentTheme",
         "setDefaultTheme",
-        "setSpaceThemeOverride",
-        "applyTheme",
-        "clearSpaceThemePin",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
@@ -8431,8 +8547,6 @@
       "needsArgs": [
         "setCurrentTheme",
         "setDefaultTheme",
-        "setSpaceThemeOverride",
-        "applyTheme",
         "focusRole",
         "setSystemTheme",
         "setThemeMode",
@@ -8672,8 +8786,8 @@
     {
       "name": "involvementMenu",
       "params": ["options"],
-      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.memberDids), profiles (profileStore.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).",
-      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did })"
+      "doc": "The entries of a \"who is on this\" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; \"Assign to me\" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (identity.memberDids), profiles (identity.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).",
+      "example": "involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: identity.memberDids, profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "signalTally",
@@ -8682,28 +8796,22 @@
       "example": "signalTally({ signals: row.signals, type: sig })"
     },
     {
-      "name": "reactions",
-      "params": ["options"],
-      "doc": "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
-      "example": "reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })"
-    },
-    {
       "name": "reactors",
       "params": ["options"],
-      "doc": "Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what \"12 people\" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.",
-      "example": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })"
+      "doc": "Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what \"12 people\" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (identity.profiles), me (me.did), search.",
+      "example": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "signalTypesByUse",
       "params": ["options"],
-      "doc": "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).",
-      "example": "signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })"
+      "doc": "Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (identity.mutedDids), limit (keep the first N of that order).",
+      "example": "signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: identity.mutedDids, limit: 4 })"
     },
     {
       "name": "voices",
       "params": ["options"],
-      "doc": "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).",
-      "example": "voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })"
+      "doc": "Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (identity.profiles), me (me.did).",
+      "example": "voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did })"
     },
     {
       "name": "voicesParam",
@@ -9086,7 +9194,7 @@
         },
         {
           "name": "renameCallButton",
-          "subject": "routeStore.params.call ? routeStore.params.call : modules.call.callRecordId"
+          "subject": "navigation.params.call ? navigation.params.call : modules.call.callRecordId"
         },
         {
           "name": "deviceSettings"
@@ -9642,7 +9750,7 @@
       "parts": [
         {
           "name": "transcriptFeed",
-          "subject": "routeStore.params.call ? routeStore.params.call : modules.transcribe.collectionId"
+          "subject": "navigation.params.call ? navigation.params.call : modules.transcribe.collectionId"
         },
         {
           "name": "transcriptLines",
@@ -9916,7 +10024,7 @@
         },
         {
           "name": "callFeed",
-          "subject": "routeStore.params.call"
+          "subject": "navigation.params.call"
         }
       ],
       "panels": [
@@ -10540,11 +10648,6 @@
           "doc": "Why the last vote could not be recorded, or empty."
         },
         {
-          "name": "pendingVote",
-          "kind": "state",
-          "doc": "This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id."
-        },
-        {
           "name": "revealBeforeVoting",
           "kind": "state",
           "doc": "Whether a poll shows its counts before this agent has voted — the community’s setting here."
@@ -10591,8 +10694,8 @@
         {
           "name": "tally",
           "params": ["options"],
-          "doc": "Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).",
-          "example": "tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })"
+          "doc": "Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).",
+          "example": "tally({ votes: local.votes, options: block.options })"
         }
       ],
       "views": [
@@ -10754,7 +10857,7 @@
           "TaskState": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -10809,16 +10912,20 @@
           "type": "list",
           "required": true,
           "description": "Card ids, in the order wanted."
+        },
+        "order": {
+          "type": "list",
+          "description": "The column’s whole order as the board draws it, for a column showing only some of its cards: the ids given go back into the places of the ones it shows, and the hidden ones keep theirs. Omit when the ids are the whole column."
         }
       },
       "returns": true,
       "effects": {
         "entities": {
-          "CollectionBlock": ["add:arranges", "remove:arranges"]
+          "CollectionBlock": ["add:arranges"]
         },
         "categories": {},
         "bulk": false,
-        "destructive": true
+        "destructive": false
       }
     },
     {
@@ -11155,7 +11262,7 @@
         "fields": {
           "type": "object",
           "required": true,
-          "description": "Its fields, relations among them as lists of ids (a to-one as a one-element list)."
+          "description": "Its fields, relations among them as ids: a to-many as a list of ids, a to-one as the one id."
         },
         "home": {
           "type": "string",
@@ -11746,7 +11853,7 @@
           "TaskState": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -11798,11 +11905,11 @@
       "returns": true,
       "effects": {
         "entities": {
-          "CollectionBlock": ["add:children", "remove:children"]
+          "CollectionBlock": ["add:children"]
         },
         "categories": {},
         "bulk": false,
-        "destructive": true
+        "destructive": false
       }
     },
     {
@@ -11876,11 +11983,11 @@
       "returns": false,
       "effects": {
         "entities": {
-          "Involvement": ["create", "delete"]
+          "Involvement": ["create", "deleteOwn"]
         },
         "categories": {},
         "bulk": true,
-        "destructive": true
+        "destructive": false
       }
     },
     {
@@ -12046,7 +12153,7 @@
       "returns": false,
       "effects": {
         "entities": {
-          "Involvement": ["create", "delete"]
+          "Involvement": ["create", "delete", "deleteOwn"]
         },
         "categories": {},
         "bulk": true,
@@ -12074,7 +12181,7 @@
           "InvolvementType": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -12174,6 +12281,85 @@
         "categories": {},
         "bulk": true,
         "destructive": true
+      }
+    },
+    {
+      "name": "core.setSpaceDefaultTemplate",
+      "description": "Choose the template members see when they open the space.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "template": {
+          "type": "string",
+          "required": true,
+          "description": "The template’s id, as the host lists it; empty leaves the choice to each member’s own default."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      }
+    },
+    {
+      "name": "core.setSpaceDefaultTheme",
+      "description": "Choose the theme members see when they open the space.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "theme": {
+          "type": "string",
+          "required": true,
+          "description": "The theme’s id, as the host lists it; empty leaves the choice to each member’s own default."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      }
+    },
+    {
+      "name": "core.setSpaceImage",
+      "description": "Set the space’s avatar or its cover image, or take it away.",
+      "params": {
+        "space": {
+          "type": "string",
+          "required": true,
+          "description": "The space record’s id."
+        },
+        "field": {
+          "type": "string",
+          "required": true,
+          "description": "avatar or coverImage."
+        },
+        "image": {
+          "type": "json",
+          "description": "The picture as the record stores a file — what the host made of the one the person chose; absent takes it away."
+        }
+      },
+      "returns": false,
+      "effects": {
+        "entities": {
+          "Space": ["edit"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
       }
     },
     {
@@ -12281,7 +12467,7 @@
           "TaskState": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -12448,7 +12634,7 @@
           "InvolvementType": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -12487,7 +12673,7 @@
           "Space": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": true
       }
     },
@@ -12535,7 +12721,7 @@
           "TaskState": ["edit"]
         },
         "categories": {},
-        "bulk": true,
+        "bulk": false,
         "destructive": false
       }
     },
@@ -12563,11 +12749,11 @@
       "effects": {
         "entities": {
           "*": ["add:signals"],
-          "Signal": ["create", "delete", "edit"]
+          "Signal": ["create", "deleteOwn", "edit"]
         },
         "categories": {},
         "bulk": true,
-        "destructive": true
+        "destructive": false
       }
     },
     {
@@ -12588,11 +12774,11 @@
       "returns": false,
       "effects": {
         "entities": {
-          "Signal": ["delete"]
+          "Signal": ["deleteOwn"]
         },
         "categories": {},
         "bulk": true,
-        "destructive": true
+        "destructive": false
       }
     },
     {

@@ -50,7 +50,7 @@ export const CHANGED = 'modules.transcribe.changedIds';
 export const SUGGESTIONS_PARAM = 'suggestions';
 
 /** Whether the reader has put unconfirmed records away, as expression source. */
-export const SUGGESTIONS_HIDDEN = `routeStore.params.${SUGGESTIONS_PARAM} == 'hide'`;
+export const SUGGESTIONS_HIDDEN = `navigation.params.${SUGGESTIONS_PARAM} == 'hide'`;
 
 /**
  * A list of records without the ones nobody has kept, while the reader has hidden them — expression
@@ -339,7 +339,7 @@ export function suggestionsToggle(opts: SuggestionsToggleOptions): SchemaNode {
                   label: 'Pending acceptance',
                   checked: { $: `!(${SUGGESTIONS_HIDDEN})` },
                   onChange: {
-                    $invoke: 'routeStore.setParam',
+                    $invoke: 'navigation.setParam',
                     args: [SUGGESTIONS_PARAM, { $: "event.detail ? null : 'hide'" }],
                   },
                 },

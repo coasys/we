@@ -1778,7 +1778,7 @@
     },
     {
       "id": "render.routes.params",
-      "note": "a route's `:param` is read through routeStore.params",
+      "note": "a route's `:param` is read through navigation.params",
       "template": {
         "type": "Column",
         "children": [
@@ -1805,7 +1805,7 @@
                 "type": "we-text",
                 "children": [
                   {
-                    "$": "'post ' + routeStore.params.postId"
+                    "$": "'post ' + navigation.params.postId"
                   }
                 ]
               }
@@ -1903,7 +1903,7 @@
                     "type": "we-text",
                     "children": [
                       {
-                        "$": "'card ' + routeStore.params.cardId"
+                        "$": "'card ' + navigation.params.cardId"
                       }
                     ]
                   }
@@ -6889,6 +6889,958 @@
                 {
                   "type": "we-text",
                   "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.component-node-prop",
+      "note": "a component's declared node props are drawn as nodes and handed over drawn; its other props stay data",
+      "template": {
+        "type": "FlipCard",
+        "props": {
+          "width": "200px",
+          "front": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["front face"]
+              }
+            ]
+          },
+          "back": {
+            "type": "we-text",
+            "children": ["back face"]
+          },
+          "items": [
+            {
+              "type": "Row",
+              "children": ["data"]
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "props": {
+                "width": "200px",
+                "items": [
+                  {
+                    "type": "Row",
+                    "children": ["data"]
+                  }
+                ]
+              },
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["front face"]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "slot": "back",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["back face"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.component-node-prop-scope",
+      "note": "a node in a declared node prop reads the scope of the node holding it, and follows it",
+      "template": {
+        "type": "FlipCard",
+        "$localState": {
+          "side": {
+            "type": "string",
+            "initial": "one"
+          }
+        },
+        "props": {
+          "front": {
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`${local.side} ${app.title}`"
+                  }
+                ]
+              },
+              {
+                "type": "we-button",
+                "props": {
+                  "data-case": "flip",
+                  "onClick": {
+                    "$setLocal": "side",
+                    "value": "two"
+                  }
+                },
+                "children": ["flip"]
+              }
+            ]
+          }
+        }
+      },
+      "data": {
+        "app": {
+          "title": "Card"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "flip"
+        },
+        {
+          "op": "data",
+          "store": "app",
+          "member": "title",
+          "value": "Board"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["one Card"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two Card"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "FlipCard",
+              "children": [
+                {
+                  "slot": "front",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two Board"]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "data-case": "flip"
+                          },
+                          "children": ["flip"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.root-local",
+      "note": "a route body reads and writes the template root's $localState, and the root follows",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "count": {
+            "type": "number",
+            "initial": 1
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'root ' + local.count"
+              }
+            ]
+          },
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "'route ' + local.count"
+                  }
+                ]
+              },
+              {
+                "type": "we-button",
+                "props": {
+                  "data-case": "more",
+                  "onClick": {
+                    "$setLocal": "count",
+                    "value": 2
+                  }
+                },
+                "children": ["more"]
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "more"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["root 1"]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["route 1"]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "more"
+                      },
+                      "children": ["more"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["root 2"]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["route 2"]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "more"
+                      },
+                      "children": ["more"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.nested-local",
+      "note": "a nested route sees the locals of the layout route that lists it, and of the root, the nearer shadowing",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "a": {
+            "type": "string",
+            "initial": "root a"
+          },
+          "b": {
+            "type": "string",
+            "initial": "root b"
+          }
+        },
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/board",
+            "type": "Column",
+            "$localState": {
+              "b": {
+                "type": "string",
+                "initial": "board b"
+              }
+            },
+            "children": [
+              {
+                "type": "$routes"
+              }
+            ],
+            "routes": [
+              {
+                "path": "/",
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": [
+                      {
+                        "$": "`${local.a} / ${local.b}`"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "start": "/board",
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "Row",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["root a / board b"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.outlet-scope-not-lexical",
+      "note": "a route does not see locals declared between the root and its outlet: scope follows where a route is declared",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "near": {
+                "type": "string",
+                "initial": "near the outlet"
+              }
+            },
+            "children": [
+              {
+                "type": "$routes"
+              }
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.near ?? 'not in scope'"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "Column",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["not in scope"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.ref",
+      "note": "a $ref in a route body draws the root's shape",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Shared"]
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          },
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Card",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["Shared"]
+                    }
+                  ]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["Shared"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.ref-missing",
+      "note": "a $ref in a route body naming no shape draws the missing marker there",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Shared"]
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "nope"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "missing": "$ref",
+                      "reason": "missing-definition"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.panels.root-scope",
+      "note": "a panel body, drawn apart from the root, reads the root's locals and shapes, and writes its locals",
+      "template": {
+        "type": "Column",
+        "meta": {
+          "name": "Panels",
+          "panels": [
+            {
+              "id": "side",
+              "node": {
+                "type": "Column",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": [
+                      {
+                        "$": "'panel ' + local.count + ' in ' + panel.id"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$ref",
+                    "props": {
+                      "def": "d1"
+                    }
+                  },
+                  {
+                    "type": "we-button",
+                    "props": {
+                      "data-case": "bump",
+                      "onClick": {
+                        "$setLocal": "count",
+                        "value": 5
+                      }
+                    },
+                    "children": ["bump"]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "$defs": {
+          "d1": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Shared"]
+              }
+            ]
+          }
+        },
+        "$localState": {
+          "count": {
+            "type": "number",
+            "initial": 1
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'root ' + local.count"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "bump"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["root 1"]
+                }
+              ]
+            },
+            {
+              "panel": "side",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["panel 1 in side"]
+                    },
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["Shared"]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "bump"
+                      },
+                      "children": ["bump"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["root 5"]
+                }
+              ]
+            },
+            {
+              "panel": "side",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["panel 5 in side"]
+                    },
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["Shared"]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "bump"
+                      },
+                      "children": ["bump"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.url-schemes",
+      "note": "vbscript: and a data: URL that is not media are refused; a data: image stays",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "a",
+            "props": {
+              "href": "VBScript:msgbox(1)"
+            },
+            "children": ["vbscript"]
+          },
+          {
+            "type": "a",
+            "props": {
+              "href": "data:text/html,<script>alert(1)</script>"
+            },
+            "children": ["data html"]
+          },
+          {
+            "type": "img",
+            "props": {
+              "src": "data:image/png;base64,iVBORw0KGgo=",
+              "alt": "kept"
+            }
+          },
+          {
+            "type": "form",
+            "props": {
+              "action": "javascript:alert(1)"
+            },
+            "children": ["form"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "a",
+                  "children": ["vbscript"]
+                },
+                {
+                  "type": "a",
+                  "children": ["data html"]
+                },
+                {
+                  "type": "img",
+                  "props": {
+                    "src": "data:image/png;base64,iVBORw0KGgo=",
+                    "alt": "kept"
+                  }
+                },
+                {
+                  "type": "form",
+                  "children": ["form"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.inline-handler-text",
+      "note": "an on… prop holding text on a native element is refused: it would be a script",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "div",
+            "props": {
+              "onclick": "alert(1)",
+              "title": "kept"
+            },
+            "children": ["x"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "div",
+                  "props": {
+                    "title": "kept"
+                  },
+                  "children": ["x"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.native-tags-more",
+      "note": "style, link, object and embed mount nothing either",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "style",
+            "children": ["body { display: none }"]
+          },
+          {
+            "type": "link",
+            "props": {
+              "rel": "stylesheet",
+              "href": "https://example.org/x.css"
+            }
+          },
+          {
+            "type": "object",
+            "props": {
+              "data": "https://example.org/"
+            }
+          },
+          {
+            "type": "embed",
+            "props": {
+              "src": "https://example.org/"
+            }
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
                 }
               ]
             }

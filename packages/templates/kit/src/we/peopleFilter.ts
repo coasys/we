@@ -80,7 +80,7 @@ export function peopleFilter(opts: PeopleFilterOptions): SchemaNode {
   const max = opts.max ?? 6;
   const faces = expression(opts.faces);
   const inline = `filter(${faces}, {}, ${max})`;
-  const profile = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+  const profile = (did: string) => `find(identity.profiles, { did: ${did} })`;
 
   /** One face: press to choose or let go, ringed while chosen, faded while somebody else is. */
   const faceToggle = (did: string): SchemaNode => ({

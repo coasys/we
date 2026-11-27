@@ -258,13 +258,13 @@ export const globeView: TemplateSchema = {
                       {
                         $if: {
                           condition: { $: 'local.showTimeline' },
-                          then: { $invoke: 'clockStore.pause', args: ['globe'] },
+                          then: { $invoke: 'viewState.pause', args: ['globe'] },
                         },
                       },
                       {
                         $if: {
                           condition: { $: 'local.showTimeline' },
-                          then: { $invoke: 'clockStore.seek', args: ['globe', null] },
+                          then: { $invoke: 'viewState.seek', args: ['globe', null] },
                         },
                       },
                       { $toggleLocal: 'showTimeline' },
@@ -496,7 +496,7 @@ export const globeView: TemplateSchema = {
               type: '$if',
               props: {
                 // Until a layer with dates has given the clock a range, there is nothing to play.
-                condition: { $: 'clockStore.clocks.globe.canPlay' },
+                condition: { $: 'viewState.clocks.globe.canPlay' },
                 then: {
                   type: 'Row',
                   props: {
@@ -518,14 +518,14 @@ export const globeView: TemplateSchema = {
                         variant: 'ghost',
                         size: 'sm',
                         square: true,
-                        label: { $: "clockStore.clocks.globe.playing ? 'Pause' : 'Play'" },
-                        onClick: { $invoke: 'clockStore.toggle', args: ['globe'] },
+                        label: { $: "viewState.clocks.globe.playing ? 'Pause' : 'Play'" },
+                        onClick: { $invoke: 'viewState.toggle', args: ['globe'] },
                       },
                       children: [
                         {
                           type: 'we-icon',
                           props: {
-                            name: { $: "clockStore.clocks.globe.playing ? 'pause' : 'play'" },
+                            name: { $: "viewState.clocks.globe.playing ? 'pause' : 'play'" },
                             weight: 'fill',
                           },
                         },
@@ -543,28 +543,28 @@ export const globeView: TemplateSchema = {
                         max: 1,
                         step: 0.001,
                         label: 'Moment shown on the globe',
-                        value: { $: 'clockStore.clocks.globe.progress' },
+                        value: { $: 'viewState.clocks.globe.progress' },
                         valueText: {
-                          $: "clockStore.clocks.globe.atLabel ? clockStore.clocks.globe.atLabel : 'Everything'",
+                          $: "viewState.clocks.globe.atLabel ? viewState.clocks.globe.atLabel : 'Everything'",
                         },
                         marks: {
-                          $: 'clockStore.clocks.globe.ticks.map(tick, { value: tick.fraction, label: tick.label })',
+                          $: 'viewState.clocks.globe.ticks.map(tick, { value: tick.fraction, label: tick.label })',
                         },
-                        onInput: { $invoke: 'clockStore.seekProgress', args: ['globe', { $: 'event.detail' }] },
+                        onInput: { $invoke: 'viewState.seekProgress', args: ['globe', { $: 'event.detail' }] },
                       },
                     },
                     {
                       type: 'we-text',
                       props: { color: 'text-muted', whiteSpace: 'nowrap' },
                       children: [
-                        { $: "clockStore.clocks.globe.atLabel ? clockStore.clocks.globe.atLabel : 'Everything'" },
+                        { $: "viewState.clocks.globe.atLabel ? viewState.clocks.globe.atLabel : 'Everything'" },
                       ],
                     },
                     // Back to showing everything, as before anybody pressed play.
                     {
                       type: '$if',
                       props: {
-                        condition: { $: 'clockStore.clocks.globe.atIso' },
+                        condition: { $: 'viewState.clocks.globe.atIso' },
                         then: {
                           type: 'we-button',
                           props: {
@@ -573,8 +573,8 @@ export const globeView: TemplateSchema = {
                             square: true,
                             label: 'Show everything',
                             onClick: [
-                              { $invoke: 'clockStore.pause', args: ['globe'] },
-                              { $invoke: 'clockStore.seek', args: ['globe', null] },
+                              { $invoke: 'viewState.pause', args: ['globe'] },
+                              { $invoke: 'viewState.seek', args: ['globe', null] },
                             ],
                           },
                           children: [{ type: 'we-icon', props: { name: 'x' } }],

@@ -11,8 +11,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity, registerEntity, unregisterEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -64,14 +62,14 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingM
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
     const instance: AnyRow = { ...row };
-    // An edit through the record, as the operations runner makes one: '' clears a field, a to-one
-    // with accessors takes a one-element list, anything else is written as given.
+    // An edit through the record, as the operations runner makes one: '' clears a field, anything
+    // else is written as given — a to-one as its one id.
     instance.save = async () => {
       const stored = table.get(row.id)!;
       for (const [field, value] of Object.entries(instance)) {
         if (typeof value === 'function' || field === 'id' || value == null) continue;
         if (value === '') delete stored[field];
-        else stored[field] = Array.isArray(value) && toOnes.includes(field) ? value[0] : value;
+        else stored[field] = value;
       }
     };
     for (const prop of world.bare ? [] : toOnes) {
@@ -311,16 +309,14 @@ const datasetStub = {
 const sessionStub = { me: () => ({ did: 'did:key:z6Mk' }) };
 const shapeStub = { spaceShapes: () => [], interpretationCandidates: () => [] };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
 
 /*
-  Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
-  where Solid defers it. Each store is built in a root of its own and disposed after its case.
+  Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
+  and disposed after its case.
 */
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -342,6 +338,7 @@ function mount(): RecordStore {
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );
@@ -359,7 +356,7 @@ let handle: unknown;
 const place = (node: string, rank?: number) =>
   model('Placement').create(
     handle,
-    { nodeType: 'Position', node: [node], ...(rank ? { rank } : {}) },
+    { nodeType: 'Position', node, ...(rank ? { rank } : {}) },
     { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
   );
 const placementOf = async (node: string) =>

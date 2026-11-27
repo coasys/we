@@ -165,14 +165,14 @@ describe('a dock whose close takes an argument', () => {
     moduleId: 'template',
     edge: 'edge:interpretation',
     storeRef: 'shellStore',
-    closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: ['interpretation'] },
+    closeAction: { $invoke: 'viewState.closeTemplatePanel', args: ['interpretation'] },
   } as unknown as DockEntry;
 
   const frame = dockFrame(authored, { type: 'Column' });
 
   it('renders the button on the written-out action alone, with no close key', () => {
     expect(names(frame, 'Close')).toBe(true);
-    expect(JSON.stringify(frame)).toContain('shellStore.closeTemplatePanel');
+    expect(JSON.stringify(frame)).toContain('viewState.closeTemplatePanel');
     // The failing spelling, which would be built from a `close` key it does not have.
     expect(JSON.stringify(frame)).not.toContain('close:interpretation');
   });

@@ -278,7 +278,7 @@ describe('the template documentation', () => {
 
   it('answers a topic with its text, and a path that is not one with nothing', async () => {
     expect(await templateToolset.docs.read('template/components/we-button')).toMatch(/- we-button/);
-    expect(await templateToolset.docs.read('template/stores/spaceStore')).toContain('SpaceStore:');
+    expect(await templateToolset.docs.read('template/stores/spaceStore')).toContain('spaceStore (WE-host-only):');
     expect(await templateToolset.docs.read('template/nothing')).toBeUndefined();
   });
 });

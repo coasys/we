@@ -50,11 +50,11 @@ import { spaceVocabularySection } from './SpaceVocabulary.ts';
  */
 
 /** Read the space the *page* is for out of the address. `/spaces/space?id=<dataset id>`. */
-const routeSpaceId = { $: 'routeStore.params.id' };
+const routeSpaceId = { $: 'navigation.params.id' };
 
 const backLink: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $invoke: 'routeStore.navigate', args: ['/spaces'] } },
+  props: { variant: 'ghost', size: 'sm', ax: 'start', onClick: { $invoke: 'navigation.navigate', args: ['/spaces'] } },
   children: [
     { type: 'we-icon', props: { name: 'arrow-left' } },
     { type: 'we-text', props: { variant: 'label' }, children: ['All spaces'] },
@@ -102,7 +102,7 @@ const pageHeader: SchemaNode = {
       props: {
         variant: 'soft',
         size: 'sm',
-        onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.id' }] },
+        onClick: { $invoke: 'navigation.navigateToSpace', args: [{ $: 'space.id' }] },
       },
       children: [
         { type: 'we-text', props: { variant: 'label' }, children: ['Open'] },
@@ -165,7 +165,7 @@ const isListed = { $: "space.discovery == 'listed'" };
 /**
  * Whether the space appears on the global discovery globe.
  *
- * Reads `$space.discovery` rather than `spaceStore.currentSpace.discovery` — the row being
+ * Reads `$space.discovery` rather than `spaceSettings.currentSpace.discovery` — the row being
  * configured is usually not the space on screen, and the store accessor would answer for the wrong
  * one. The write names the space for the same reason.
  *
@@ -651,9 +651,9 @@ const personalAppearanceSection: SchemaNode = {
           type: 'we-select',
           props: {
             value: { $: 'space.templateOverride' },
-            options: { $: 'templateStore.templateOverrideOptions' },
+            options: { $: 'appearance.templateOverrideOptions' },
             onChange: {
-              $invoke: 'templateStore.setSpaceTemplateOverride',
+              $invoke: 'appearance.setSpaceTemplateOverride',
               args: [{ $: 'event.detail' }, { $: 'space.id' }],
             },
           },
@@ -668,9 +668,9 @@ const personalAppearanceSection: SchemaNode = {
           type: 'we-select',
           props: {
             value: { $: 'space.themeOverride' },
-            options: { $: 'themeStore.themeOverrideOptions' },
+            options: { $: 'appearance.themeOverrideOptions' },
             onChange: {
-              $invoke: 'themeStore.setSpaceThemeOverride',
+              $invoke: 'appearance.setSpaceThemeOverride',
               args: [{ $: 'event.detail' }, { $: 'space.id' }],
             },
           },
@@ -726,7 +726,7 @@ const moduleRow: SchemaNode = {
                 // A bare `$event.detail`, never wrapped: an operator object around it would be
                 // evaluated at render time, before the event exists. See `setModuleVisible`.
                 onChange: {
-                  $invoke: 'spaceStore.setModuleVisible',
+                  $invoke: 'spaceSettings.setModuleVisible',
                   args: [{ $: 'mod.id' }, { $: 'event.detail' }, { $: 'space.id' }],
                 },
               },
@@ -830,7 +830,7 @@ function settingColumn(label: string, control: SchemaNode): SchemaNode {
 }
 
 /** This agent's own answer to the setting the row is about, or nothing where they have no say. */
-const MINE = 'find(spaceStore.myModuleSettings, { group: setting.group, key: setting.key })';
+const MINE = 'find(spaceSettings.myModuleSettings, { group: setting.group, key: setting.key })';
 
 /**
  * What each capability lets this space decide — rendered from what the modules declare.
@@ -939,7 +939,7 @@ const moduleSettingsSection: SchemaNode = {
                           settingControl({
                             value: { $: `${MINE}.value` },
                             disabled: { $: `${MINE}.locked` },
-                            action: 'spaceStore.setMyModuleSetting',
+                            action: 'spaceSettings.setMyModuleSetting',
                             args: [{ $: 'setting.group' }, { $: 'setting.key' }],
                           }),
                         ),
@@ -1078,7 +1078,7 @@ const autoInterpretSection: SchemaNode = {
           type: 'we-switch',
           props: {
             size: 'sm',
-            checked: { $: 'spaceStore.currentSpace.autoInterpret == true' },
+            checked: { $: 'spaceSettings.currentSpace.autoInterpret == true' },
             disabled: { $: '!space.canAdminister' },
             // Bare `$event.detail` — an operator around it would resolve at render time, before
             // the event exists. Same reason as the module switches above.
@@ -1145,7 +1145,7 @@ const threadModeSection: SchemaNode = {
             width: '180px',
             // Anything but the stored 'flat' reads as fractal, so a space that predates the setting
             // shows what it has always done rather than an empty picker.
-            value: { $: "spaceStore.currentSpace.threadMode == 'flat' ? 'flat' : 'fractal'" },
+            value: { $: "spaceSettings.currentSpace.threadMode == 'flat' ? 'flat' : 'fractal'" },
             disabled: { $: '!space.canAdminister' },
             options: [
               { label: 'Branching', value: 'fractal' },

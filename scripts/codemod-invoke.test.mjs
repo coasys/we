@@ -5,7 +5,7 @@ import { rewrite } from './codemod-invoke.mjs';
 
 test('rewrites the token wherever it is spelled', () => {
   const input = [
-    '{ "onClick": { "$action": "routeStore.navigate", "args": ["/"] } }', // invoke-codemod: keep
+    '{ "onClick": { "$action": "navigation.navigate", "args": ["/"] } }', // invoke-codemod: keep
     "onClick: { $action: 'modules.call.startCall' },", // invoke-codemod: keep
     'if (typeof token.$action === "string") return token.$action;', // invoke-codemod: keep
   ].join('\n');
@@ -14,7 +14,7 @@ test('rewrites the token wherever it is spelled', () => {
   assert.equal(
     text,
     [
-      '{ "onClick": { "$invoke": "routeStore.navigate", "args": ["/"] } }',
+      '{ "onClick": { "$invoke": "navigation.navigate", "args": ["/"] } }',
       "onClick: { $invoke: 'modules.call.startCall' },",
       'if (typeof token.$invoke === "string") return token.$invoke;',
     ].join('\n'),

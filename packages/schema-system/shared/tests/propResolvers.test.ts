@@ -69,12 +69,12 @@ describe('propResolvers (combined)', () => {
   // The evaluator hands the route over; the router resolves (`resolvePath`, `navigationPaths.test.ts`).
   it('resolveInvokeProp hands a ../ path to navigate with the route it was written in', () => {
     const navigate = vi.fn();
-    const stores = { routeStore: { navigate } };
+    const stores = { navigation: { navigate } };
     const context = { $nav: { baseDepth: 2 } };
 
     window.history.pushState({}, '', '/a/b/c');
 
-    const action = { $invoke: 'routeStore.navigate', args: ['../foo'] };
+    const action = { $invoke: 'navigation.navigate', args: ['../foo'] };
     const fn = resolveProp(action, stores, context) as () => void;
     expect(typeof fn).toBe('function');
     fn();
@@ -214,29 +214,29 @@ describe('propResolvers (combined)', () => {
     expect(onEnter).toHaveBeenCalled();
   });
 
-  it('routeStore.navigate passes an absolute path through as written', () => {
+  it('navigation.navigate passes an absolute path through as written', () => {
     const navigate = vi.fn();
-    const stores = { routeStore: { navigate } };
+    const stores = { navigation: { navigate } };
     const ctx = { $nav: { baseDepth: 2 } };
-    const action = { $invoke: 'routeStore.navigate', args: ['/home'] };
+    const action = { $invoke: 'navigation.navigate', args: ['/home'] };
     const fn = resolveProp(action, stores, ctx) as () => void;
     fn();
     expect(navigate).toHaveBeenCalledWith('/home', { base: { depth: 2 } });
   });
 
-  it('routeStore.navigate handles "." and "./" relative paths (basic assertions)', () => {
+  it('navigation.navigate handles "." and "./" relative paths (basic assertions)', () => {
     const navigate = vi.fn();
-    const stores = { routeStore: { navigate } };
+    const stores = { navigation: { navigate } };
     const ctx = { $nav: { baseDepth: 2 } };
     window.history.pushState({}, '', '/a/b/c/d');
 
-    const dot = { $invoke: 'routeStore.navigate', args: ['.'] };
+    const dot = { $invoke: 'navigation.navigate', args: ['.'] };
     const fnDot = resolveProp(dot, stores, ctx) as () => void;
     fnDot();
     expect(navigate).toHaveBeenCalled();
     expect(typeof navigate.mock.calls[0][0]).toBe('string');
 
-    const dotSlash = { $invoke: 'routeStore.navigate', args: ['./z'] };
+    const dotSlash = { $invoke: 'navigation.navigate', args: ['./z'] };
     const fnDotSlash = resolveProp(dotSlash, stores, ctx) as () => void;
     fnDotSlash();
     expect(navigate).toHaveBeenCalled();

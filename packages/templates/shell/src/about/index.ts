@@ -365,7 +365,7 @@ function ctaCard(card: (typeof CTA_CARDS)[0], imageLeft: boolean) {
           variant: 'outline',
           // gradient: true,
           // size: 'sm',
-          onClick: { $invoke: 'shellStore.scrollToId', args: [card.id] },
+          onClick: { $invoke: 'viewState.scrollToId', args: [card.id] },
         },
       },
     ],
@@ -744,8 +744,10 @@ const weAboutPage: SchemaNode = {
           props: { wrap: true, ax: 'center', gap: '400', mb: '900' },
           children: FLIP_CARDS.map((card) => ({
             type: 'FlipCard',
-            props: { width: '340px', height: '310px', wobbleDegree: 20 },
-            slots: {
+            props: {
+              width: '340px',
+              height: '310px',
+              wobbleDegree: 20,
               front: {
                 type: 'Card',
                 props: {

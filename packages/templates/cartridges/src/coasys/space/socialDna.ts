@@ -159,7 +159,7 @@ const flowsSection: SchemaNode = onAll([
                   detail: detail({ $: "`${workflow.records} ${plural(workflow.records, 'record', 'records')}`" }),
                   onClick: [
                     { $invoke: 'workflowStore.openWorkflow', args: [{ $: 'workflow.name' }] },
-                    { $invoke: 'routeStore.navigate', args: [{ $: groupPath('workflows') }] },
+                    { $invoke: 'navigation.navigate', args: [{ $: groupPath('workflows') }] },
                   ],
                 }),
               ],
@@ -193,11 +193,11 @@ const templatesSection: SchemaNode = onAll([
               badge: {
                 type: '$if',
                 props: {
-                  condition: { $: 'template.id == spaceStore.spaceDefaultTemplateId' },
+                  condition: { $: 'template.id == spaceSettings.spaceDefaultTemplateId' },
                   then: { type: 'we-icon', props: { name: 'star', weight: 'fill', color: 'warning-text' } },
                 },
               },
-              selected: 'template.id == templateStore.currentSwitcherId',
+              selected: 'template.id == appearance.currentSwitcherId',
               onClick: chooseTemplate('template.id'),
             }),
           ],

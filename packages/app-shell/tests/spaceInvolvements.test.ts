@@ -1,28 +1,27 @@
 /**
  * The space store's involvements part: the kinds of involvement a space names, read per space; naming
- * and retiring one; joining a record's roster; and reactions drawn before they land, taken back when
- * refused, and every hold forgotten with the space.
+ * and retiring one; joining a record's roster; and what is drawn ahead of the data forgotten with the
+ * space.
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { CollectionBlock, SignalType } from '@we/entities';
+import { clearPredictions, CollectionBlock, Involvement, predict, predictionsFor, SignalType } from '@we/entities';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createInvolvementOptimism } from '../src/shared/involvementOptimism';
-import { createSignalOptimism } from '../src/shared/signalOptimism';
 import { createSpaceInvolvements, type SpaceInvolvements } from '../src/shared/stores/space/involvements';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    clearPredictions();
   });
 
   interface Built {
     h: SpaceHarness;
     involvements: SpaceInvolvements;
-    signalOptimism: ReturnType<typeof createSignalOptimism>;
     orderResets: { count: number };
   }
 
@@ -33,19 +32,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     ]);
     const { reactivity } = h;
     const orderResets = { count: 0 };
-    const signalOptimism = createSignalOptimism(reactivity.signal);
     let involvements!: SpaceInvolvements;
     disposers.push(
       reactivity.root(() => {
         involvements = createSpaceInvolvements({
           ...h.ctx,
-          involvementOptimism: createInvolvementOptimism(reactivity.signal),
-          signalOptimism,
           signalOrder: { reset: () => void orderResets.count++ },
         });
       }),
     );
-    return { h, involvements, signalOptimism, orderResets };
+    return { h, involvements, orderResets };
   }
 
   it('reads the kinds per space, offers the ones in use, and names a new one', async () => {
@@ -65,28 +61,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(involvements.members.involvementTypes()).toEqual([]);
   });
 
-  it('draws a reaction on the press and keeps it once stored', async () => {
-    const { h, involvements, signalOptimism } = await build();
-    h.datasets.show('ds-a');
-    await flush();
-    const handle = (await h.datasets.get('ds-a')).handle;
-    const post = await CollectionBlock.create(handle, { kind: 'post' });
-    const like = await SignalType.create(handle, { name: 'Like', slug: 'like', mode: 'toggle' });
-    const giving = involvements.members.upsertSignal(post.id, like.id, 1);
-    expect(signalOptimism.overlay()).toEqual([{ record: post.id, type: like.id, value: 1 }]);
-    await giving;
-    expect(h.toasts.said).toEqual([]);
-  });
-
-  it('forgets every hold and settled order when the space changes', async () => {
-    const { h, involvements, signalOptimism, orderResets } = await build();
+  it('forgets every prediction and settled order when the space changes', async () => {
+    const { h, involvements, orderResets } = await build();
     h.datasets.show('ds-a');
     await flush();
     const resetsInA = orderResets.count;
-    signalOptimism.hold('post-1', 'like', 1);
+    const handle = (await h.datasets.get('ds-a')).handle;
+    predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
     h.datasets.show('ds-b');
     await flush();
-    expect(signalOptimism.overlay()).toEqual([]);
+    expect(predictionsFor(handle)).toEqual([]);
     expect(orderResets.count).toBeGreaterThan(resetsInA);
     expect(involvements.members.involvementTypesLoaded()).toBe(true);
   });
@@ -101,5 +85,60 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect((await CollectionBlock.findOne(handle, { where: { id: event.id } }))?.participants).toEqual([ME]);
     await involvements.members.setAttending(event.id, false);
     expect((await CollectionBlock.findOne(handle, { where: { id: event.id } }))?.participants ?? []).toEqual([]);
+  });
+
+  it('puts somebody on a record under a kind, and takes them off', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    const handle = (await h.datasets.get('ds-a')).handle;
+    await involvements.members.createInvolvementType({ name: 'Shepherd', semantic: 'responsible' });
+    const task = await CollectionBlock.create(handle, { kind: 'post' });
+    const rows = async () =>
+      ((await Involvement.findAll(handle, {})) as Involvement[]).map((row) => [row.agent, row.kind]);
+    await involvements.members.setInvolvement(task.id, 'did:key:z6MkAnna', 'shepherd', true);
+    expect(await rows()).toEqual([['did:key:z6MkAnna', 'shepherd']]);
+    await involvements.members.setInvolvement(task.id, 'did:key:z6MkAnna', 'shepherd', false);
+    expect(await rows()).toEqual([]);
+    expect(h.toasts.said).toEqual([]);
+  });
+
+  it('changes a kind it has and keeps its slug, and refuses a second of one name', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    await involvements.members.createInvolvementType({ name: 'Shepherd', semantic: 'responsible' });
+    await involvements.members.updateInvolvementType('shepherd', {
+      name: 'Steward',
+      semantic: 'reviewing',
+      appliesTo: 'TaskBlock, EventBlock',
+    });
+    expect(involvements.members.involvementTypes()).toMatchObject([
+      { slug: 'shepherd', name: 'Steward', semantic: 'reviewing' },
+    ]);
+    await involvements.members.createInvolvementType({ name: 'Shepherd' });
+    expect(h.toasts.said).toHaveLength(1);
+    expect(involvements.members.involvementTypes()).toHaveLength(1);
+  });
+
+  it('retires a reaction type and brings it back, leaving it readable throughout', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const like = await SignalType.create(handle, { slug: 'like', name: 'Like' });
+    const retired = async () => (await SignalType.findOne(handle, { where: { id: like.id } }))?.retired;
+    await involvements.members.setSignalTypeRetired(like.id, true);
+    expect(await retired()).toBe(true);
+    await involvements.members.setSignalTypeRetired(like.id, false);
+    expect(await retired()).toBe(false);
+  });
+
+  it('leaves the roster alone for a record that is not there', async () => {
+    const { h, involvements } = await build();
+    h.datasets.show('ds-a');
+    await flush();
+    await involvements.members.setAttending('nothing-here', true);
+    expect(h.toasts.said).toEqual([]);
   });
 });

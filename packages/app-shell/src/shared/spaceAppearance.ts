@@ -14,6 +14,8 @@ import type { ThemeResolutionInput } from './themeResolution';
 
 /** The part of a space's record the resolution reads. */
 export interface SpaceAppearanceRecord {
+  /** The record's own id: what an operation writing its defaults names. */
+  id?: string;
   uuid?: string;
   url?: string;
   defaultTemplateId?: string;

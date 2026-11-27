@@ -13,8 +13,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -56,16 +54,14 @@ const shapeStub = {
   interpretationCandidatesLoaded: () => true,
 };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
 
 /*
-  Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
-  where Solid defers it. Each store is built in a root of its own and disposed after its case.
+  Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
+  and disposed after its case.
 */
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -87,6 +83,7 @@ function mount(): RecordStore {
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );
@@ -384,7 +381,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     */
       await model('Placement').create(
         handle,
-        { nodeType: 'TaskBlock', x: 400, y: 400, node: ['n1'] },
+        { nodeType: 'TaskBlock', x: 400, y: 400, node: 'n1' },
         { id: 'peer-row', parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
       );
       await store.undoCanvas(CANVAS);

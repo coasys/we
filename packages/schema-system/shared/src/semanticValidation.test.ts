@@ -125,46 +125,53 @@ describe('undeclared local writes', () => {
 
 describe('local scope across a route boundary', () => {
   /**
-   * `buildRoutes` renders each route through its own `RenderSchema` call, so a route subtree
-   * inherits no context — `$localState` and `$queries` on the template root are invisible below a
-   * `$routes` outlet. The validator used to carry the parent scope across, which made it *approve*
-   * reads that resolve to nothing: the showcase Timeline template hoisted its `signalTypes` query
-   * onto the root, validated clean, and rendered no signal controls at all.
+   * A route sees the scope of the node that lists it, lexically: the template root's `$localState`
+   * and `$queries` are readable in every route, as the renderer draws them. Not what is declared
+   * between the root and its outlet, which a route is not inside.
    *
    * The reads are in `props` because that is where the real ones were (a `count()` guard and a
    * `find()` inside a query projection).
    */
-  const template = (routes: unknown): SchemaNode =>
+  const template = (routes: unknown, children: unknown[] = [{ type: '$routes' }]): SchemaNode =>
     ({
       meta: { name: 'T', description: 'd', icon: 'bug' },
       type: 'Column',
       $queries: { signalTypes: { entity: 'SignalType' } },
       $localState: { draft: { type: 'string', initial: '' } },
-      children: [{ type: '$routes' }],
+      children,
       routes,
     }) as SchemaNode;
 
   const readsSignalTypes = { type: 'we-text', props: { text: { $: 'local.signalTypes' } } };
 
-  it('rejects a route reading a $queries entry declared on the root', () => {
+  it('accepts a route reading a $queries entry declared on the root', () => {
     const node = template([{ path: '/', type: 'Column', children: [readsSignalTypes] }]);
-    expect(messages(node, 'error').join(' ')).toMatch(/signalTypes/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('rejects a route reading a $localState field declared on the root', () => {
+  it('accepts a route reading a $localState field declared on the root', () => {
     const node = template([
       { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.draft' } } }] },
     ]);
-    expect(messages(node, 'error').join(' ')).toMatch(/draft/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('accepts the same read when the route declares it itself', () => {
+  it('rejects a route reading a field declared between the root and its outlet', () => {
+    const node = template(
+      [{ path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }] }],
+      [{ type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] }],
+    );
+    expect(messages(node, 'error').join(' ')).toMatch(/near/);
+  });
+
+  it('lets a nested route read the layout route that lists it', () => {
     const node = template([
       {
-        path: '/',
+        path: '/board',
         type: 'Column',
-        $queries: { signalTypes: { entity: 'SignalType' } },
-        children: [readsSignalTypes],
+        $localState: { open: { type: 'boolean', initial: false } },
+        children: [{ type: '$routes' }],
+        routes: [{ path: '/', type: 'Row', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
     expect(messages(node, 'error')).toEqual([]);
@@ -179,6 +186,21 @@ describe('local scope across a route boundary', () => {
         children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('lets a panel read the root’s local state', () => {
+    const node = {
+      ...template([]),
+      routes: undefined,
+      children: [],
+      meta: {
+        name: 'T',
+        description: 'd',
+        icon: 'bug',
+        panels: [{ id: 'p', node: { type: 'we-text', props: { text: { $: 'local.draft' } } } }],
+      },
+    } as unknown as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
   });
 });
@@ -380,7 +402,7 @@ describe('breakpoint tiers', () => {
 describe('"open" on a panel, and what a panel\'s node can read', () => {
   /*
     `open: false` places a panel without opening it — a module's without invoking its launcher (the
-    call module's joins a call), a template's own until `shellStore.openTemplatePanel` opens it: an
+    call module's joins a call), a template's own until `viewState.openTemplatePanel` opens it: an
     inspector, opened when something is chosen. It was once read only for a module's panel, and this
     validator warned that it did nothing on one the template supplies; the shell reads it for both now.
   */
@@ -401,7 +423,7 @@ describe('"open" on a panel, and what a panel\'s node can read', () => {
   });
 
   /*
-    A panel's node is told which panel it is and what it was opened with — `shellStore.openPanel`
+    A panel's node is told which panel it is and what it was opened with — `viewState.openPanel`
     opens one as many times as asked, each with inputs of its own.
   */
   it("lets a panel's node read `panel`, and nothing else", () => {
@@ -523,7 +545,7 @@ describe('a write wired to an event nobody causes', () => {
   });
 
   it('finds the write inside a handler list and inside a lifecycle callback', () => {
-    const nested = { $invoke: 'routeStore.navigate', args: ['/'], onSuccess: [create] };
+    const nested = { $invoke: 'navigation.navigate', args: ['/'], onSuccess: [create] };
     expect(unasked({ type: 'details', props: { onToggle: [{ $setLocal: 'x', value: 1 }, nested] } })).toHaveLength(1);
   });
 
@@ -533,7 +555,7 @@ describe('a write wired to an event nobody causes', () => {
 
   it('says nothing about an action that may run unasked', () => {
     expect(
-      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'routeStore.navigate', args: ['/'] } } }),
+      unasked({ type: 'img', props: { src: 'a.png', onLoad: { $invoke: 'navigation.navigate', args: ['/'] } } }),
     ).toEqual([]);
     expect(unasked({ type: 'Grid', props: { onArrange: { $invoke: 'modules.call.setArrangement' } } })).toEqual([]);
   });
@@ -790,13 +812,22 @@ describe('tokens inside the data a prop holds', () => {
     ).toEqual([]);
   });
 
-  it('does not judge a subtree a prop holds against the scope outside it', () => {
-    // A node held in a prop is rendered by its component, which may bind names the scope outside
-    // it has never heard of. Data is opened; a subtree is left to whatever renders it.
+  it('does not judge a node-shaped value in an undeclared prop against the scope outside it', () => {
+    // A prop the component does not declare as holding a node is data, handed over as it is, so
+    // the names in it are the component's business.
+    const node = template([{ type: 'GraphView', props: { tooltip: { type: 'Row', children: [{ $: 'row.title' }] } } }]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('judges a declared node prop as a node, in the scope of the node holding it', () => {
+    // `emptyAction` is element-typed in GraphView's declaration: the renderer draws it where the
+    // graph is, so it reads what the graph reads and nothing the graph binds.
     const node = template([
       { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
     ]);
-    expect(messages(node, 'error')).toEqual([]);
+    expect(messages(node, 'error').some((m) => m.includes('row'))).toBe(true);
+    const fine = template([{ type: 'GraphView', props: { emptyAction: { type: 'Row', children: ['Start'] } } }]);
+    expect(messages(fine, 'error')).toEqual([]);
   });
 });
 
@@ -841,7 +872,7 @@ describe('a record id in the path of an address', () => {
   const PUT_IN_PATH = 'A record id is put into the path';
   const go = (to: unknown, ...rest: unknown[]): SchemaNode => ({
     type: 'we-button',
-    props: { onClick: { $invoke: 'routeStore.navigate', args: [to, ...rest] } },
+    props: { onClick: { $invoke: 'navigation.navigate', args: [to, ...rest] } },
   });
   const warned = (node: SchemaNode) => messages(node, 'warning').some((m) => m.startsWith(PUT_IN_PATH));
 
@@ -867,7 +898,7 @@ describe('a record id in the path of an address', () => {
 describe('a relative path that goes nowhere useful', () => {
   const button = (to: string): SchemaNode => ({
     type: 'we-button',
-    props: { onClick: { $invoke: 'routeStore.navigate', args: [to] } },
+    props: { onClick: { $invoke: 'navigation.navigate', args: [to] } },
   });
   const template = (route: SchemaNode, chrome: SchemaNode[] = []) =>
     ({

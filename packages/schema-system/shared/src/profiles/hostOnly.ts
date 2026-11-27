@@ -1,7 +1,7 @@
 import { isExpressionToken, parseExpression, referencedPaths } from '@we/expressions';
 
 import { HOST_ONLY_EQUIVALENTS } from './equivalents';
-import { NEUTRAL_NAMESPACES, PROFILE_MEMBERS } from './lookup';
+import { NEUTRAL_NAMESPACES, PROFILE_NAMESPACES } from './lookup';
 
 /** One store member a template names that no profile holds, and how often it names it. */
 export interface HostOnlyUse {
@@ -14,7 +14,8 @@ export interface HostOnlyUse {
 
 /**
  * Every store member a schema names, read in an expression, called through `$invoke` or given as a
- * query's dataset, that is outside every capability profile — counted, most used first.
+ * query's dataset — counted, most used first. A profile member is never one: it is written under its
+ * profile's namespace, so a name under a store is outside every profile by construction.
  *
  * `members` is the host's store members by store, so only a member the host actually has counts: a
  * root an expression binds itself (`item`, `local`, a `$each` name) is not a store, a member nobody
@@ -26,9 +27,10 @@ export function hostOnlyUses(schema: unknown, members: ReadonlyMap<string, Reado
   const counts = new Map<string, number>();
   const note = (path: string) => {
     const [store, member] = path.split('.');
-    if (!store || !member || NEUTRAL_NAMESPACES.has(store) || !members.get(store)?.has(member)) return;
+    // A profile namespace travels by its name, whatever host the template is drawn in.
+    if (!store || !member || NEUTRAL_NAMESPACES.has(store) || PROFILE_NAMESPACES.has(store)) return;
+    if (!members.get(store)?.has(member)) return;
     const key = `${store}.${member}`;
-    if (PROFILE_MEMBERS.has(key)) return;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   };
 

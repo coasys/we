@@ -228,7 +228,7 @@ describe('call transcripts in the Feed', () => {
     expect(props.label).toBe('Show call transcripts');
     expect(props.checked).toEqual({ $: 'modules.feed.showCallTranscripts' });
     expect(props.onChange).toMatchObject({
-      $invoke: 'spaceStore.setMyModuleSetting',
+      $invoke: 'spaceSettings.setMyModuleSetting',
       args: ['feed', 'showCallTranscripts', { $: 'event.detail' }],
     });
     for (const json of [panel, view]) expect(json).toContain('Show call transcripts');
@@ -247,11 +247,11 @@ describe('the Feed of one call', () => {
 
   it('is a part a page places, pointed at a call, and kept live while it is drawn', () => {
     expect(feedModule.contributes?.parts?.callFeed).toMatchObject({
-      subject: 'routeStore.params.call',
+      subject: 'navigation.params.call',
       whileShown: { show: 'watchCallFeed', hide: 'unwatchCallFeed' },
     });
     // The subject is a whole token in the part, so a placement pointing it elsewhere reaches it.
-    expect(callView).toContain('{"$":"routeStore.params.call"}');
+    expect(callView).toContain('{"$":"navigation.params.call"}');
   });
 
   it('draws everything said and written in the call under Everything, whatever the space’s transcript choice', () => {

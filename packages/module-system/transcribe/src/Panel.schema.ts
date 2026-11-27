@@ -165,7 +165,7 @@ const TRANSCRIPT_HAS_MORE = `count(local.utterances) >= ${'modules.transcribe.tr
  * from its first second.
  */
 export const INTERPRETATION_SUBJECT_EXPR =
-  'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+  'navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
   'spaceStore.root)';
 
 /**
@@ -249,7 +249,7 @@ const forSubject = (field: 'targets' | 'canChoose' | 'canInterpret' | 'auto') =>
  * recordable at all, and the messages outside calls are the community's, so only somebody who
  * administers the space may change those.
  */
-const CAN_DECIDE = `${forSubject('canChoose').$} && !((${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace)`;
+const CAN_DECIDE = `${forSubject('canChoose').$} && !((${SUBJECT_IS_SPACE}) && !spaceSettings.canAdministerCurrentSpace)`;
 
 /**
  * A message shown for exactly one status.
@@ -2528,7 +2528,7 @@ const autoInterpretControl: SchemaNode = {
         placement: 'bottom',
         content: {
           $:
-            `(${SUBJECT_IS_SPACE}) && !spaceStore.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
+            `(${SUBJECT_IS_SPACE}) && !spaceSettings.canAdministerCurrentSpace ? 'Set by whoever administers this space' : ` +
             `(${SUBJECT_IS_SPACE}) ? 'Interpret messages typed outside calls as they arrive, for this space' : ` +
             "'Interpret this call as it goes, for everyone in it'",
         },
@@ -3021,7 +3021,7 @@ const noUtterances: SchemaNode = {
       */
       message: {
         $:
-          `!routeStore.params.call && !modules.transcribe.callId ? 'Join a call to transcribe what is said.' : ` +
+          `!navigation.params.call && !modules.transcribe.callId ? 'Join a call to transcribe what is said.' : ` +
           `!modules.transcribe.enabled && modules.transcribe.available ? 'Nothing has been said here yet. Press Transcribe to write down what is said.' : ` +
           `'Nothing has been said here yet.'`,
       },
@@ -3742,7 +3742,7 @@ export const pendingUtterance: SchemaNode = {
 /** A reply started from the transcript's own lines — see `replyingTo`'s surface. */
 const TRANSCRIPT_REPLY = "modules.transcribe.replyingTo.surface == 'transcript'";
 
-const TRANSCRIPT_TARGET_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.transcribe.callId';
+const TRANSCRIPT_TARGET_EXPR = 'navigation.params.call ? navigation.params.call : modules.transcribe.callId';
 
 /**
  * Sending a line: a reply when one is being written, a message into the call otherwise — the text

@@ -26,6 +26,11 @@ export interface SpaceListEntry {
    * list is not drawn again on every write.
    */
   id: string;
+  /**
+   * The id of the space's own Space record — what an operation on the space names it by — or `''`
+   * for a dataset with no record (yet).
+   */
+  recordId: string;
   name: string;
   description: string;
   avatar: string;
@@ -36,7 +41,7 @@ export interface SpaceListEntry {
    * This row's Space record has not been read yet, so `isWeSpace` and `kind` do not know yet.
    *
    * True only for the first seconds of a boot: the space on screen is read before the app appears,
-   * and the others after its first screen has drawn (see `BootController`). A row that is loading is
+   * and the others after its first screen has drawn (see `startBoot` in `composeStores.ts`). A row that is loading is
    * not a dataset from another app, so a page must not say it is one.
    */
   loading: boolean;

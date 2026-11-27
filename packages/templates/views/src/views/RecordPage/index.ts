@@ -61,8 +61,8 @@ import { linkedRecords, loadMore, pageShell, RECORD_ROUTE_PATH } from '@we/templ
  */
 export { RECORD_ROUTE_PATH };
 
-const entityExpr = { $: 'last(routeStore.segments)' };
-const idExpr = { $: 'routeStore.params.id' };
+const entityExpr = { $: 'last(navigation.segments)' };
+const idExpr = { $: 'navigation.params.id' };
 
 /**
  * One detail field, drawn from what the model says it is.
@@ -498,7 +498,7 @@ export const recordPage: SchemaNode = {
           alignSelf: 'start',
           color: 'text-muted',
           hoverProps: { color: 'text' },
-          onClick: { $invoke: 'routeStore.back' },
+          onClick: { $invoke: 'navigation.back' },
         },
         children: [
           { type: 'we-icon', props: { name: 'arrow-left' } },
@@ -571,7 +571,7 @@ export const recordPage: SchemaNode = {
                   {
                     type: 'we-text',
                     props: { variant: 'footnote', color: 'text-faint', textAlign: 'center' },
-                    children: [{ $: "`Looked for ${local.entity} · ${routeStore.params.id ?? 'no id given'}`" }],
+                    children: [{ $: "`Looked for ${local.entity} · ${navigation.params.id ?? 'no id given'}`" }],
                   },
                 ],
               },

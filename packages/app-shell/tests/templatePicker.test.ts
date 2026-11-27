@@ -78,7 +78,7 @@ describe('the picker offers editing on every editable row', () => {
 
     // Order is the assertion: `enterTemplateEditing` opens a session over whatever is current, so a
     // switch afterwards — or none at all — edits the wrong template while looking entirely correct.
-    expect(steps).toEqual(['templateStore.switchTemplate', 'editorStore.enterTemplateEditing']);
+    expect(steps).toEqual(['appearance.switchTemplate', 'editorStore.enterTemplateEditing']);
 
     const [switchStep] = clickOf(edit!) as { args?: unknown[] }[];
     expect(switchStep.args).toEqual([{ $: 'template.id' }]);
@@ -88,7 +88,7 @@ describe('the picker offers editing on every editable row', () => {
     // The shape the edit action now matches. If this ever stops being true the two have diverged
     // again, and one of them is wrong.
     const fork = actionFor(picker, 'Fork this template');
-    expect(actionNames(clickOf(fork!))).toEqual(['templateStore.switchTemplate', 'editorStore.startFork']);
+    expect(actionNames(clickOf(fork!))).toEqual(['appearance.switchTemplate', 'editorStore.startFork']);
   });
 });
 
@@ -110,7 +110,7 @@ describe('the picker offers a way back to the template’s own layout', () => {
     expect(reset).toBeDefined();
     const condition = (reset!.props as Record<string, unknown>).condition;
 
-    expect(condition).toEqual({ $: 'template.id == templateStore.currentSwitcherId && shellStore.layoutDirty' });
+    expect(condition).toEqual({ $: 'template.id == appearance.currentSwitcherId && layout.layoutDirty' });
     // Not the per-panel answer: `layoutPinned` is keyed by dock id and false for a panel that was
     // closed rather than dragged, which is the case with no other way out.
     expect(JSON.stringify(condition)).not.toContain('layoutPinned');
@@ -120,7 +120,7 @@ describe('the picker offers a way back to the template’s own layout', () => {
     const tooltip = (reset!.props as Record<string, unknown>).then as Record<string, unknown>;
     const button = (tooltip.children as Record<string, unknown>[])[0];
 
-    expect((button.props as Record<string, unknown>).onClick).toEqual({ $invoke: 'shellStore.resetTemplateLayout' });
+    expect((button.props as Record<string, unknown>).onClick).toEqual({ $invoke: 'layout.resetTemplateLayout' });
   });
 });
 
@@ -153,6 +153,6 @@ describe('the picker offers the app apart from the templates', () => {
   it('comes before the templates', () => {
     const text = JSON.stringify(picker);
     expect(text.indexOf('templateStore.appTemplateOptions')).toBeGreaterThan(-1);
-    expect(text.indexOf('templateStore.appTemplateOptions')).toBeLessThan(text.indexOf('templateStore.switcherGroups'));
+    expect(text.indexOf('templateStore.appTemplateOptions')).toBeLessThan(text.indexOf('appearance.switcherGroups'));
   });
 });

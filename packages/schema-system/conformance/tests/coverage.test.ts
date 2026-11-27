@@ -230,3 +230,78 @@ describe('render.json covers the core', () => {
     expect(HANDLER_KINDS.filter((h) => !handlers.has(h))).toEqual([]);
   });
 });
+
+/**
+ * The validator family covers every refusal the format names as invalid: a rule the spec calls an
+ * error without a case here is a rule a second validator is never held to.
+ */
+describe('validate.json covers the refusals the format names', () => {
+  const REQUIRED = [
+    'validate.valid.minimal',
+    'validate.version.newer',
+    'validate.version.not-a-number',
+    'validate.structure.unknown-key',
+    'validate.structure.query-in-children',
+    'validate.structure.handler-in-children',
+    'validate.structure.defs-not-root',
+    'validate.if.children',
+    'validate.slot.in-template',
+    'validate.reset-local.not-scope',
+    'validate.value.unknown-radius',
+    'validate.ref.missing',
+    'validate.ref.cycle',
+    'validate.scope.route-reads-root',
+    'validate.node-prop.judged',
+  ];
+  const cases = (load('validate.json') as { cases: { id: string; valid: boolean; errors: unknown[] }[] }).cases;
+  it('has a case for each', () => {
+    const ids = new Set(cases.map((c) => c.id));
+    expect(REQUIRED.filter((id) => !ids.has(id))).toEqual([]);
+  });
+  it('says valid exactly when it lists no errors', () => {
+    expect(cases.filter((c) => c.valid !== (c.errors.length === 0)).map((c) => c.id)).toEqual([]);
+  });
+});
+
+/**
+ * The safety refusals: every rule a host enforces (grants, gestures, confirmation) in `safety.json`,
+ * and every rule a renderer enforces (elements and URLs) in `render.json`, each with a case that is
+ * refused and one that is not.
+ */
+describe('safety.json and render.json cover the safety rules', () => {
+  const safety = (load('safety.json') as { cases: { id: string }[] }).cases.map((c) => c.id);
+  const render = (load('render.json') as { cases: { id: string }[] }).cases.map((c) => c.id);
+  it('has host cases for grants, gestures and confirmation', () => {
+    for (const rule of ['safety.grant.', 'safety.gesture.', 'safety.confirm.'])
+      expect(safety.filter((id) => id.startsWith(rule)).length, rule).toBeGreaterThanOrEqual(2);
+  });
+  it('has renderer cases for elements, URLs and srcdoc', () => {
+    for (const id of [
+      'render.safety.native-tags',
+      'render.safety.native-tags-more',
+      'render.safety.javascript-href',
+      'render.safety.url-schemes',
+      'render.safety.inline-handler-text',
+      'render.safety.srcdoc',
+    ])
+      expect(render, id).toContain(id);
+  });
+});
+
+/** Panel resolution: both questions, and every rung of the placement. */
+describe('panels.json covers resolution', () => {
+  const cases = (load('panels.json') as { cases: { id: string; op: string }[] }).cases;
+  it('asks which panels are present and where each is', () => {
+    expect(new Set(cases.map((c) => c.op))).toEqual(new Set(['active', 'placement']));
+  });
+  it('has a case for each rung and for a change of template', () => {
+    const ids = cases.map((c) => c.id);
+    for (const id of [
+      'panels.placement.suggestion',
+      'panels.placement.declaration',
+      'panels.placement.disposition',
+      'panels.placement.template-switch',
+    ])
+      expect(ids, id).toContain(id);
+  });
+});

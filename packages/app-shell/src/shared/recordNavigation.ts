@@ -9,7 +9,7 @@ import { RECORD_ROUTE_PATH } from '@we/template-views';
  * template's catch-all, which is a working page that says nothing about why. A decision worth
  * testing has to be reachable without a store, a router or a browser.
  *
- * Three callers share it — `spaceStore.openRecordRef`, a feature module through
+ * Three callers share it — `navigation.openRecordRef`, a feature module through
  * `ModuleDatasetAccess.openRef`, and a composition's embed through `BlockHostValue.openRef` — and
  * they are all asking one question. Answering it three times is how the route and the link came to
  * disagree before `RECORD_ROUTE_PATH` became one literal.

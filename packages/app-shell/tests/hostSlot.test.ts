@@ -22,6 +22,15 @@ describe('hostSlot', () => {
     expect(hostSlot<string>().get()).toBeNull();
   });
 
+  it('names what was never lent when a caller needs it, and hands it over once it is', () => {
+    const slot = hostSlot<() => string>();
+    expect(() => slot.need('the section switch')).toThrow('the section switch was not provided');
+    const dispose = slot.provide(() => 'on');
+    expect(slot.need('the section switch')()).toBe('on');
+    dispose();
+    expect(() => slot.need('the section switch')).toThrow('was not provided');
+  });
+
   it('gives back what was lent, and takes it back on dispose', () => {
     const slot = hostSlot<string>();
 

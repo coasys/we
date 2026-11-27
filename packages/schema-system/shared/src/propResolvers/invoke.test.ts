@@ -151,9 +151,9 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
     const handler = resolve(
       {
         $invoke: 'myStore.create',
-        onSuccess: [{ $invoke: 'routeStore.navigate', args: [{ $: '`/board/${result.id}`' }] }],
+        onSuccess: [{ $invoke: 'navigation.navigate', args: [{ $: '`/board/${result.id}`' }] }],
       },
-      { myStore: { create }, routeStore: { navigate } },
+      { myStore: { create }, navigation: { navigate } },
     );
 
     (handler as () => void)();
@@ -191,8 +191,8 @@ describe('navigating from a route', () => {
   it('hands the route over with a path that arrives as an accessor', () => {
     const navigate = vi.fn();
     const handler = resolveProp(
-      { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
-      { routeStore: { navigate } },
+      { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
+      { navigation: { navigate } },
       { view: { path: './cards' }, $nav: { baseDepth: 2 } },
       memo,
     ) as () => void;
@@ -209,8 +209,8 @@ describe('navigating from a route', () => {
   it('hands the route over with a path that arrives with the event', () => {
     const navigate = vi.fn();
     const handler = resolveProp(
-      { $invoke: 'routeStore.navigate', args: [{ $: 'event.detail' }] },
-      { routeStore: { navigate } },
+      { $invoke: 'navigation.navigate', args: [{ $: 'event.detail' }] },
+      { navigation: { navigate } },
       { $nav: { baseDepth: 3 } },
       memo,
     ) as (event: unknown) => void;
@@ -222,8 +222,8 @@ describe('navigating from a route', () => {
   it('keeps the options written beside it', () => {
     const navigate = vi.fn();
     const handler = resolveProp(
-      { $invoke: 'routeStore.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] },
-      { routeStore: { navigate } },
+      { $invoke: 'navigation.navigate', args: ['./board', { $: '{ query: { id: board.id } }' }] },
+      { navigation: { navigate } },
       { board: { id: 'ad4m://obj/x' }, $nav: { baseDepth: 2 } },
       memo,
     ) as () => void;
@@ -236,8 +236,8 @@ describe('navigating from a route', () => {
     const navigate = vi.fn();
     (
       resolveProp(
-        { $invoke: 'routeStore.navigate', args: ['~/'] },
-        { routeStore: { navigate } },
+        { $invoke: 'navigation.navigate', args: ['~/'] },
+        { navigation: { navigate } },
         {},
         memo,
       ) as () => void

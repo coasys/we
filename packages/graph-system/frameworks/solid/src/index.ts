@@ -12,8 +12,5 @@ export type {
   GraphRegion,
   GraphViewProps,
   NodeControl,
-  ObservedConnection,
-  PendingConnections,
 } from './GraphView.types';
 export { type Box, type Grip, HANDLES, resizeBox } from './resize';
-export { isSettled, patched } from './pending';

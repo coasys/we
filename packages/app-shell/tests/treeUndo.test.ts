@@ -7,11 +7,15 @@
  * backend holding the connections and the placements, and the rule they keep is the canvas's: an undo is a new
  * forward write, and a card a peer has moved since is left where they put it.
  */
-import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity, registerEntityWriteCheck } from '@we/entities';
+import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
+import {
+  clearPredictions,
+  getEntity,
+  predictionsFor,
+  registerEntityWriteCheck,
+  registerTransactionRunner,
+} from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -45,16 +49,22 @@ const shapeStub = {
   interpretationCandidatesLoaded: () => true,
 };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
 
 /*
-  Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
-  where Solid defers it. Each store is built in a root of its own and disposed after its case.
+  Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
+  and disposed after its case.
 */
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+/** Hold every write until `land`, as a round trip would; put back after each test. */
+function holdWrites(): () => void {
+  let land!: () => void;
+  const landed = new Promise<void>((resolve) => (land = resolve));
+  registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
+  return land;
+}
+
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -76,6 +86,7 @@ function mount(): RecordStore {
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );
@@ -85,13 +96,13 @@ function mount(): RecordStore {
 const link = (id: string, source: string, target: string) =>
   model('Relationship').create(
     handle,
-    { relationshipTypeId: SPINE, source: [source], target: [target], sourceType: 'Card', targetType: 'Card' },
+    { relationshipTypeId: SPINE, source, target, sourceType: 'Card', targetType: 'Card' },
     { id },
   );
 const place = (node: string, rank?: number) =>
   model('Placement').create(
     handle,
-    { nodeType: 'Card', node: [node], ...(rank ? { rank } : {}) },
+    { nodeType: 'Card', node, ...(rank ? { rank } : {}) },
     { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
   );
 const links = () => model('Relationship').findAll(handle);
@@ -122,7 +133,11 @@ beforeEach(async () => {
   await place('b', 2048);
 });
 
-afterEach(() => registerEntityWriteCheck(null));
+afterEach(() => {
+  registerEntityWriteCheck(null);
+  registerTransactionRunner(runInMemoryTransaction);
+  clearPredictions();
+});
 
 const drop = (store: RecordStore, payload: Record<string, unknown>) =>
   store.arrangeOnTree(CANVAS, SPINE, { recordId: 'b', recordType: 'Card', ...payload });
@@ -192,7 +207,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     it('leaves a card alone when a peer has moved it since', async () => {
       const store = mount();
       await drop(store, { into: 'child', targetId: 'x', targetType: 'Card', order: ['b'] });
-      await peer('pb', { source: ['q'] });
+      await peer('pb', { source: 'q' });
 
       await store.undoCanvas(CANVAS);
       expect(await parentOf('b')).toBe('q');
@@ -268,47 +283,32 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     });
   });
 
-  describe('connections written and not yet seen', () => {
-    /** What the graph would report drawing from its own data, in records. */
-    const drawn = async () =>
-      (await links()).map(({ id, source, target }) => ({
-        id,
-        source: String(source ?? ''),
-        target: String(target ?? ''),
-      }));
+  describe('connections drawn before they land', () => {
+    /** Every write the predictions draw now, across the invocations still pending. */
+    const predicted = () => predictionsFor(handle).flatMap((prediction) => prediction.writes);
+    const waitForPrediction = async () => {
+      for (let i = 0; i < 40 && !predicted().length; i++) await new Promise((r) => setTimeout(r, 0));
+    };
 
-    it('draws a line somebody drew at once, and stops when the graph draws the real one', async () => {
+    it('draws a line somebody drew at once, with the id the write gives it', async () => {
       const store = mount();
+      const land = holdWrites();
       const writing = store.connectNodesNow({
         sourceId: 'a',
         sourceType: 'Card',
         targetId: 'x',
         targetType: 'Card',
       } as never);
-      // Before the write has come back.
-      expect(store.pendingConnections().added).toEqual([expect.objectContaining({ source: 'a', target: 'x' })]);
-      const id = await writing;
-
-      store.observeConnections((await drawn()).filter((line) => line.id !== id));
-      expect(store.pendingConnections().added).toHaveLength(1);
-      store.observeConnections(await drawn());
-      expect(store.pendingConnections().added).toHaveLength(0);
+      await waitForPrediction();
+      const [line] = predicted();
+      expect(line).toMatchObject({ kind: 'create', entity: 'Relationship', fields: { source: 'a', target: 'x' } });
+      land();
+      expect(await writing).toBe((line as { id: string }).id);
     });
 
-    it('stops drawing a deleted connection at once, and forgets it once it is gone', async () => {
+    it('draws a re-attached end at its new card before the write lands', async () => {
       const store = mount();
-      await store.deleteRecords([{ recordId: 'pa', recordType: 'Relationship' }]);
-      expect(store.pendingConnections().removed).toEqual(['pa']);
-
-      // The graph still drawing it from an answer that predates the delete.
-      store.observeConnections([...(await drawn()), { id: 'pa', source: 'p', target: 'a' }]);
-      expect(store.pendingConnections().removed).toEqual(['pa']);
-      store.observeConnections(await drawn());
-      expect(store.pendingConnections().removed).toEqual([]);
-    });
-
-    it('draws a re-attached end at its new card until the connection says so', async () => {
-      const store = mount();
+      const land = holdWrites();
       const writing = store.retargetOnCanvas(CANVAS, {
         recordId: 'pb',
         recordType: 'Relationship',
@@ -316,33 +316,28 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         nodeId: 'q',
         nodeType: 'Card',
       });
-      expect(store.pendingConnections().moved).toEqual([{ id: 'pb', end: 'source', to: 'q' }]);
+      await waitForPrediction();
+      expect(predicted()).toContainEqual(
+        expect.objectContaining({
+          kind: 'edit',
+          entity: 'Relationship',
+          id: 'pb',
+          fields: expect.objectContaining({ source: 'q' }),
+        }),
+      );
+      land();
       await writing;
-      store.observeConnections(await drawn());
-      expect(store.pendingConnections().moved).toEqual([]);
+      expect((await linkOf('pb')).source).toBe('q');
     });
 
-    it('lets go of a line whose write failed', async () => {
+    it('never draws a line whose write is refused', async () => {
       const store = mount();
       registerEntityWriteCheck((write) => {
         if (write.entity === 'Relationship' && write.kind === 'create')
           throw Object.assign(new Error('refused'), { name: 'PolicyRefusal' });
       });
       await store.connectNodesNow({ sourceId: 'a', sourceType: 'Card', targetId: 'x', targetType: 'Card' } as never);
-      expect(store.pendingConnections().added).toEqual([]);
-    });
-
-    it('leaves a tree drop’s new line to the graph, which is already drawing it from the held card', async () => {
-      const store = mount();
-      await store.arrangeOnTree(CANVAS, SPINE, {
-        recordId: 'z',
-        recordType: 'Card',
-        into: 'child',
-        targetId: 'x',
-        targetType: 'Card',
-        order: ['z'],
-      });
-      expect(store.pendingConnections().added).toEqual([]);
+      expect(predicted()).toEqual([]);
     });
   });
 });

@@ -12,8 +12,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createModuleStoreDeps, resetModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { createSpaceNavigation, type SpaceNavigation } from '../src/shared/stores/space/navigation';
+import { createSpaceOnScreen, type SpaceOnScreen } from '../src/shared/stores/space/onScreen';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -26,6 +28,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     h: SpaceHarness;
     spaces: SpaceList;
     navigation: SpaceNavigation;
+    onScreen: SpaceOnScreen;
     go: (path: string) => void;
     navigated: string[];
     pending: Record<string, unknown>;
@@ -46,6 +49,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     let setQuery!: Setter<Record<string, string>>;
     let spaces!: SpaceList;
     let navigation!: SpaceNavigation;
+    let onScreen!: SpaceOnScreen;
     disposers.push(
       reactivity.root(() => {
         const [path, writePath] = reactivity.signal('/');
@@ -53,16 +57,12 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         setPath = writePath;
         setQuery = writeQuery;
         const segments = () => path().split('/').filter(Boolean);
+        onScreen = createSpaceOnScreen(reactivity);
         spaces = createSpaceList({
           ...h.ctx,
           routeStore: { segments, navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         navigation = createSpaceNavigation({
           ...h.ctx,
@@ -81,9 +81,9 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           templateStore: { preloadSpaceTemplates: () => Promise.resolve(), currentTemplate: {} } as never,
           shellStore: { activeShellView: () => null, closeShellView: () => {}, provideSpaceGate: () => {} } as never,
           spaces,
-          writes: { pendingDefaults: () => pending as never },
-          sections: { routableViews: () => [], spaceViews: () => [], usesSectionsFor: () => true },
-          ensureBoardFor: () => Promise.resolve(''),
+          writes: { pendingSaves: () => pending as never },
+          onScreen,
+          modules: { usesSectionsFor: () => true, members: { routableViews: () => [], spaceViews: () => [] } },
         });
       }),
     );
@@ -94,16 +94,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         setQuery(Object.fromEntries(new URLSearchParams(search)));
       });
     };
-    return { h, spaces, navigation, go, navigated, pending };
+    return { h, spaces, navigation, onScreen, go, navigated, pending };
   }
 
   it('follows the record of the space on screen, and holds it in the list', async () => {
-    const { h, spaces, navigation } = await build();
+    const { h, spaces, navigation, onScreen } = await build();
     h.datasets.show('ds-a');
     await flush();
     const ds = await h.datasets.get('ds-a');
     expect(navigation.members.currentSpace()?.name).toBe('Space ds-a');
-    expect(navigation.pushedOnScreen(navigation.members.currentSpace()!)).toBe(true);
+    expect(onScreen.pushedOnScreen(navigation.members.currentSpace()!)).toBe(true);
 
     const [record] = await Space.findAll(ds.handle, {});
     await Space.update(ds.handle, record.id, { name: 'Renamed by a peer' });
@@ -117,12 +117,12 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   });
 
   it('shows a setting still being saved over the record the live read brings', async () => {
-    const { h, navigation, pending } = await build();
+    const { h, navigation, onScreen, pending } = await build();
     pending.defaultTemplateId = 'workshop';
     h.datasets.show('ds-a');
     await flush();
     expect(navigation.members.currentSpace()?.defaultTemplateId).toBe('workshop');
-    expect(navigation.pushedOnScreen(navigation.members.currentSpace()!)).toBe(true);
+    expect(onScreen.pushedOnScreen(navigation.members.currentSpace()!)).toBe(true);
   });
 
   it('reads the space’s landmarks on entering it, and says when they are in', async () => {

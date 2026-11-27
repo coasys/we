@@ -59,9 +59,24 @@ function warnAmbiguousSupply(moduleId: string, count: number): void {
 
 export function createShellTemplatePanels(deps: {
   reactivity: ReactivityPort;
-  views: ShellViews;
-  arrangement: ShellArrangement;
-  docks: ShellDocks;
+  views: Pick<ShellViews, 'activeShellView' | 'setActiveShellView'>;
+  arrangement: Pick<
+    ShellArrangement,
+    | 'closedPanels'
+    | 'declaredPanels'
+    | 'dockIdFor'
+    | 'instancesHere'
+    | 'placementKey'
+    | 'raise'
+    | 'setClosedPanels'
+    | 'writeInstances'
+  >;
+  docks: Pick<
+    ShellDocks,
+    'dockRegistryVersion' | 'dockRequests' | 'panelsHiddenByUser' | 'placementOf' | 'setPanelsHiddenByUser'
+  > & {
+    members: Pick<ShellDocks['members'], 'revealDock'>;
+  };
 }) {
   const { reactivity } = deps;
   const { signal, memo, effect, untrack, onCleanup } = reactivity;
@@ -140,7 +155,7 @@ export function createShellTemplatePanels(deps: {
             to this store's real surface, where `close:interpretation` is not a member. It rendered, took
             the click, and logged. See `closeAction` in `dockRegistry.ts`.
           */
-          closeAction: { $invoke: 'shellStore.closeTemplatePanel', args: [panel.id] },
+          closeAction: { $invoke: 'viewState.closeTemplatePanel', args: [panel.id] },
           // What a tab strip calls it, when it shares a seat.
           title: panel.title,
           // Named outright rather than through `modules.<id>`, the way the editor's and the shell's
@@ -191,7 +206,7 @@ export function createShellTemplatePanels(deps: {
           size: `size:${key}`,
           float: `float:${key}`,
           min: `min:${key}`,
-          closeAction: { $invoke: 'shellStore.closePanel', args: [instance.id] },
+          closeAction: { $invoke: 'viewState.closePanel', args: [instance.id] },
           title: instance.title ?? panel.title,
           storeRef: 'shellStore',
           node: panel.node as SchemaNode,

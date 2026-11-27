@@ -14,9 +14,9 @@ const stores = {
       { did: 'a', role: 'admin' },
       { did: 'b', role: 'member' },
     ]),
-    currentSpace: markReactive(() => ({ name: 'Garden' })),
     logout: () => 'CALLED',
   },
+  spaceSettings: { currentSpace: markReactive(() => ({ name: 'Garden' })) },
   modules: { notes: { open: markReactive(() => true) } },
   $me: () => ({ did: 'me' }),
   $sources: { double: (options: unknown) => (options as { n: number }).n * 2 },
@@ -33,10 +33,10 @@ const run = (source: string, ctx: Record<string, unknown> = context) =>
 describe('{ $: … } through the dispatcher', () => {
   it('reads stores by the tagging rule, locals, context, globals and modules', () => {
     expect(run("filter(spaceStore.members, { role: 'admin' }).count()")).toBe(1);
-    expect(run('spaceStore.currentSpace.name')).toBe('Garden');
+    expect(run('spaceSettings.currentSpace.name')).toBe('Garden');
     expect(run('spaceStore.logout')).toBeUndefined();
     expect(run('spaceStore')).toBeUndefined();
-    expect(run('contains(spaceStore.currentSpace.name, local.search)')).toBe(true);
+    expect(run('contains(spaceSettings.currentSpace.name, local.search)')).toBe(true);
     expect(run('local.page + 1')).toBe(3);
     expect(run("item.did == me.did ? 'mine' : 'theirs'")).toBe('theirs');
     expect(run('modules.notes.open')).toBe(true);
@@ -61,9 +61,9 @@ describe('{ $: … } through the dispatcher', () => {
 
   it('feeds a deferred argument to an $invoke with the callback argument', () => {
     const calls: unknown[][] = [];
-    const bag = { ...stores, routeStore: { navigate: (...args: unknown[]) => calls.push(args) } };
+    const bag = { ...stores, navigation: { navigate: (...args: unknown[]) => calls.push(args) } };
     const handler = resolveProp(
-      { $invoke: 'routeStore.navigate', args: [{ $: '`/space/${event.detail.uuid}`' }] },
+      { $invoke: 'navigation.navigate', args: [{ $: '`/space/${event.detail.uuid}`' }] },
       bag,
       context,
       noMemo,

@@ -33,7 +33,7 @@ segment it is five segments and the route does not match. Percent-encoding it
 would work, and would need an encode in the schema layer and a matching decode
 on the way out (Solid Router does not decode route params), where a mismatch is
 another silently wrong page. A query value takes `:` and `/` literally. Read it
-with `routeStore.params.id`. See `views/RecordPage`.
+with `navigation.params.id`. See `views/RecordPage`.
 
 **A set of ids lives there too, comma-joined.** The workshop canvas holds the
 cards a reader has _folded_ in `?fold=`, and the kinds they have put away in
@@ -114,7 +114,7 @@ Two consequences worth stating, because both were learned the hard way:
   parent an absolute `redirect` is joined to the _pattern_, producing a literal
   `/space/:spaceId/…` that matches nothing. See "Where a relative path leads"
   below.
-- **A template reads positions from `routeStore.templateSegments`, not
+- **A template reads positions from `navigation.templateSegments`, not
   `segments`.** The latter is the whole URL, so an index into it is pinned to
   wherever the host mounts things; the former is relative to the template's own
   root, so a template's first screen is `[0]` regardless of the prefix.
@@ -124,7 +124,7 @@ Two consequences worth stating, because both were learned the hard way:
   its fallback and nothing says why. The record page shipped it twice, and five
   showcase templates after it. So a detail page is opened with
   `navigate('./board', { query: { id: board.id } })` and reads
-  `routeStore.params.id`; `navigate` writes the value, so an id holding `&`, `#`,
+  `navigation.params.id`; `navigate` writes the value, so an id holding `&`, `#`,
   `+` or `%` still reads back exactly, with its `:` and `/` left readable. `id` is
   the one query value that names the page's subject rather than a view of it.
   The validator warns about an id put into a path. Where the id appears is
@@ -184,7 +184,7 @@ boot still gets honored.
 ## Where a relative path leads
 
 One rule, `resolvePath` in `@we/schema-shared`, for every path a template writes:
-a `routeStore.navigate` target and a link's `href` alike, in the main router and
+a `navigation.navigate` target and a link's `href` alike, in the main router and
 in the shell overlay's.
 
 - **Relative to the route the node is rendered in**, as in most routers. `.` is
@@ -219,10 +219,10 @@ a broken link is what the template's own catch-all is for.
 
 ## Store surface
 
-`routeStore.params` (reactive `Record<string, string>`, readable from schemas
-as `{ $: 'routeStore.params.<name>' }`),
-`routeStore.setParam(name, value | null, { push? })`, and
-`routeStore.navigate(to, { query? })`, which resolves a relative `to` (above)
+`navigation.params` (reactive `Record<string, string>`, readable from schemas
+as `{ $: 'navigation.params.<name>' }`),
+`navigation.setParam(name, value | null, { push? })`, and
+`navigation.navigate(to, { query? })`, which resolves a relative `to` (above)
 and writes `query` the way `setParam` writes a value, and `routeStore.resolve(to)`,
 the address `navigate` would go to. `setParam` writes
 history directly — the path doesn't change, so the route tree must not

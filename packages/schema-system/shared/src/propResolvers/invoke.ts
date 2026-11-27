@@ -1,6 +1,6 @@
 import type { ReactivityPort } from '@we/reactivity';
 
-import { captureGesture, runWithGesture } from '../gesture';
+import { captureGesture, REFUSED, runWithGesture } from '../gesture';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
@@ -39,7 +39,7 @@ function processArgValue(arg: unknown, callArgs: unknown[]): unknown {
 }
 
 /**
- * Resolves `$invoke` props: `{ $invoke: 'routeStore.navigate', args: ['/home'] }`.
+ * Resolves `$invoke` props: `{ $invoke: 'navigation.navigate', args: ['/home'] }`.
  *
  * The method is called with exactly the `args` written, and with none when there are none. An
  * argument may be an expression about the callback — `args: [{ $: 'event.detail' }]` — which is how a
@@ -133,7 +133,7 @@ export function resolveInvokeProp(
         arrives with the event (a tree's `select`, a menu's `onSelect`) is only known now.
       */
       const baseDepth = (context?.$nav as { baseDepth?: unknown } | undefined)?.baseDepth;
-      if (storeName === 'routeStore' && methodName === 'navigate' && typeof baseDepth === 'number') {
+      if (storeName === 'navigation' && methodName === 'navigate' && typeof baseDepth === 'number') {
         const given = unwrappedArgs[1];
         unwrappedArgs[1] = { ...(given && typeof given === 'object' ? given : {}), base: { depth: baseDepth } };
       }
@@ -152,6 +152,8 @@ export function resolveInvokeProp(
         const gesture = captureGesture();
         result
           .then((resolved: unknown) => {
+            // Refused after the call (a declined confirmation): nothing succeeded.
+            if (resolved === REFUSED) return;
             if (token.onSuccess)
               runWithGesture(gesture, () => dispatchActions(token.onSuccess!, { ...context, result: resolved }));
           })

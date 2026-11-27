@@ -495,9 +495,9 @@ const walk: SchemaNode = {
 
 /** Who agreed to a move, as faces — `step.approvers` are DIDs, and the space's members carry the faces. */
 const VOTER_FACES =
-  'step.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d, initials: find(profileStore.profiles, { did: d }).name })';
+  'step.approvers.map(d, { image: find(identity.profiles, { did: d }).avatar, hash: d, initials: find(identity.profiles, { did: d }).name })';
 /** The same people as a sentence, for the tooltip over the faces. */
-const VOTER_NAMES = "join(step.approvers.map(d, find(profileStore.profiles, { did: d }).name ?? 'Someone'), ', ')";
+const VOTER_NAMES = "join(step.approvers.map(d, find(identity.profiles, { did: d }).name ?? 'Someone'), ', ')";
 
 /**
  * What has happened to a record: one row per move, saying where it went, who agreed and when.
@@ -575,7 +575,7 @@ const historyList: SchemaNode = {
 };
 
 /** The record chosen — from this list, or from a row elsewhere that opened this workflow at it. */
-const CHOSEN = 'rec.record == routeStore.params.card';
+const CHOSEN = 'rec.record == navigation.params.card';
 
 /**
  * One record going through the open workflow. The one chosen is marked as a selection is everywhere
@@ -600,7 +600,7 @@ const recordRow: SchemaNode = {
           type: 'we-button',
           props: {
             variant: 'bare',
-            onClick: { $invoke: 'routeStore.setParam', args: ['card', { $: 'rec.record' }] },
+            onClick: { $invoke: 'navigation.setParam', args: ['card', { $: 'rec.record' }] },
           },
           // What the record is, which workflow it is going through and where it stands in it.
           children: [
@@ -1112,16 +1112,16 @@ const draftEditor: SchemaNode = {
   opened nothing. Closing it takes the param away again.
 */
 const newWorkflowModal: SchemaNode = formModal({
-  open: { $: "local.newWorkflowOpen || routeStore.params.new == '1'" },
+  open: { $: "local.newWorkflowOpen || navigation.params.new == '1'" },
   /*
     One handler rather than a list: `we-modal`'s `close` is a prop, not an event, and a list there is
     read as a value, so the ✕ and the backdrop did nothing. A `$if` is a handler and may run a list.
   */
   close: {
     $if: {
-      condition: { $: "routeStore.params.new == '1'" },
+      condition: { $: "navigation.params.new == '1'" },
       then: [
-        { $invoke: 'routeStore.setParam', args: ['new', null] },
+        { $invoke: 'navigation.setParam', args: ['new', null] },
         { $setLocal: 'newWorkflowOpen', value: false },
       ],
       else: { $setLocal: 'newWorkflowOpen', value: false },
@@ -1659,7 +1659,7 @@ export function workflowsSection(opts: {
                                   variant: 'ghost',
                                   onClick: [
                                     { $invoke: 'workflowStore.openWorkflow', args: [{ $: 'inWorkflow.workflow' }] },
-                                    { $invoke: 'routeStore.navigate', args: [opts.workflowsPath] },
+                                    { $invoke: 'navigation.navigate', args: [opts.workflowsPath] },
                                   ],
                                 },
                                 children: [text('Open')],

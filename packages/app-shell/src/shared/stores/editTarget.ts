@@ -9,7 +9,7 @@
  * through that name rather than through `currentTemplate`.
  *
  * Not members of the editor store, which is public API every template can reach: this is the
- * editor's own plumbing. It is composed with the stores at `BootController` and reached the way
+ * editor's own plumbing. It is composed with the stores by `composeStores` and reached the way
  * they are, as `editTarget` in the registry, which no template bag is built from.
  */
 import type { Accessor, ReactivityPort } from '@we/reactivity';

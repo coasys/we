@@ -20,25 +20,24 @@ import {
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
-  followSeat,
   laneable,
   laneSectionsOf,
   NO_INSET,
   occupiedById,
   panelFramesOf,
-  placementFromDeclaration,
   railBand,
   type Rect,
   rectOf,
   resolveDocks,
+  resolvePlacement,
   seatLanes,
   seatSize,
-  seedPlacement,
   SIDEBAR_PX,
-  stackCandidates,
+  stackDrop,
   TITLE_BAR_PX,
   type TopChrome,
   unlaned,
+  type Viewport,
   withChromeCovered,
 } from '@shared/dockGeometry';
 import {
@@ -58,6 +57,7 @@ import { type ChromeReserve, type DockAspect, type DockEdge, type DockSize } fro
 import { type ReactivityPort } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import type { PlatformDocument, PlatformPort } from '../../platform/port';
 import { type ShellHostState, type ShellStore } from '../ShellStore';
 import { type ShellArrangement } from './arrangement';
 import { type ShellViews } from './views';
@@ -94,15 +94,12 @@ function readDockKey(entry: { moduleId: string; store?: Record<string, unknown> 
  * `undefined` when the panel is not on screen — a fit invoked from a keyboard shortcut before the
  * frame mounts — and `fitPlacement` falls back to the constants, which are correct as of writing.
  */
-function measureDockChrome(id: string): { x: number; y: number } | undefined {
-  if (typeof document === 'undefined') return undefined;
-  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
-  const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
-  const content = document.querySelector(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
-  if (!frame || !content) return undefined;
+function measureDockChrome(page: PlatformDocument, id: string): { x: number; y: number } | undefined {
+  const escaped = page.escape(id);
+  const outer = page.measure(`[${DOCK_FRAME_ATTR}="${escaped}"]`);
+  const inner = page.measure(`[${DOCK_CONTENT_ATTR}="${escaped}"]`);
+  if (!outer || !inner) return undefined;
 
-  const outer = frame.getBoundingClientRect();
-  const inner = content.getBoundingClientRect();
   // A panel mid-transition measures as something neither box ever is, and a negative or absurd
   // answer is worse than the constant it would replace.
   const x = outer.width - inner.width;
@@ -112,11 +109,29 @@ function measureDockChrome(id: string): { x: number; y: number } | undefined {
 
 export function createShellDocks(deps: {
   reactivity: ReactivityPort;
+  /**
+   * The window the docks are sized against, its keys, the frames a panel lands over, and the
+   * document the chrome insets are published on and drawn boxes measured in.
+   */
+  platform: Pick<PlatformPort, 'viewport' | 'listen' | 'frame' | 'document'>;
   host: Pick<ShellHostState, 'appFrame' | 'appEdgeFrames' | 'laneFrames'>;
-  views: ShellViews;
-  arrangement: ShellArrangement;
+  views: Pick<ShellViews, 'activeShellView' | 'setActiveShellView'>;
+  arrangement: Pick<
+    ShellArrangement,
+    | 'activation'
+    | 'declarationFor'
+    | 'declaredPanels'
+    | 'dockIdFor'
+    | 'instancesHere'
+    | 'placementKey'
+    | 'placements'
+    | 'raise'
+    | 'sectionDockId'
+    | 'writePlacement'
+  >;
 }) {
-  const { reactivity } = deps;
+  const { reactivity, platform } = deps;
+  const page = platform.document;
   const { signal, memo, effect, untrack, onCleanup } = reactivity;
   const { appFrame, appEdgeFrames, laneFrames } = deps.host;
   const { activeShellView, setActiveShellView } = deps.views;
@@ -134,24 +149,14 @@ export function createShellDocks(deps: {
   } = deps.arrangement;
   // Docks are sized against the window, so the window is state. Tracked here rather than in each
   // module because the whole point of the arrangement is that a module never does viewport maths.
-  const [viewportSize, setViewport] = signal({
-    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
-    height: typeof window === 'undefined' ? 900 : window.innerHeight,
-  });
-  if (typeof window !== 'undefined') {
-    const onResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener('resize', onResize);
-    onCleanup(() => window.removeEventListener('resize', onResize));
-  }
+  const [viewportSize, setViewport] = signal(platform.viewport());
+  onCleanup(platform.listen('resize', () => setViewport(platform.viewport())));
   /*
-    The window, as every geometry memo here reads it — and the app's frame with it, since every
-    function in `dockGeometry` measures against that too. Reading it here is what makes them all
-    follow an app template that changes its chrome, without each memo having to know.
+    The window, as every geometry memo here reads it, carrying the app's frame: every function in
+    `dockGeometry` clears the bands the frame names. Handing it in with the viewport is what makes
+    them all follow an app template that changes its chrome, without each memo having to know.
   */
-  const viewport = () => {
-    appFrame();
-    return viewportSize();
-  };
+  const viewport = memo((): Viewport => ({ ...viewportSize(), frame: appFrame() }));
   /**
    * The panel that has just joined or left a seat — see `settling` on `DockGeometry`.
    *
@@ -161,11 +166,9 @@ export function createShellDocks(deps: {
   const [settling, setSettling] = distinctSignal(reactivity, '');
   const landInPlace = (id: string) => {
     setSettling(id);
-    if (typeof requestAnimationFrame === 'function')
-      requestAnimationFrame(() => {
-        if (untrack(settling) === id) setSettling('');
-      });
-    else setSettling('');
+    platform.frame(() => {
+      if (untrack(settling) === id) setSettling('');
+    });
   };
 
   /**
@@ -192,8 +195,7 @@ export function createShellDocks(deps: {
         if (untrack(landedTab) === id) setLandedTab('');
       }, 1800);
     };
-    if (typeof requestAnimationFrame !== 'function') return light();
-    requestAnimationFrame(() => requestAnimationFrame(light));
+    platform.frame(() => platform.frame(light));
   };
   onCleanup(() => {
     if (landedTimer !== undefined) clearTimeout(landedTimer);
@@ -241,8 +243,7 @@ export function createShellDocks(deps: {
     const show = () => {
       if (untrack(awayPhase) === 'arriving') setAwayPhase('shown');
     };
-    if (typeof requestAnimationFrame !== 'function') return show();
-    requestAnimationFrame(() => requestAnimationFrame(show));
+    platform.frame(() => platform.frame(show));
   });
   onCleanup(() => {
     if (awayTimer !== undefined) clearTimeout(awayTimer);
@@ -296,26 +297,7 @@ export function createShellDocks(deps: {
    * `columnSlots`' targets, so the two never fight over the same pixels. Big enough to land on
    * without aiming; small enough that a drag across a lane does not light every seat it passes.
    */
-  /**
-   * The floating panels a dragged one could stack onto, in a fixed order.
-   *
-   * Two panels in open space had no way to become a stack: every drop target is built per edge, out
-   * of the lanes on it, and a float is in no lane. Now that a seat can exist off the lanes there is
-   * somewhere for such a drop to land, so this is the list of places — one per panel you can point
-   * at, which is why the ones stacked *behind* another are left out. There is only ever one card on
-   * top to aim for, and it is the one that answers for its seat.
-   *
-   * Ordered by the registry, and derived here rather than at either call site, because the slot and
-   * the drop have to agree on what "the third one" means — the same reason the edge slots are keyed
-   * by position rather than by a panel's id, which cannot go in a key that splits on colons.
-   */
-  const stackTargets = (moving: string | null) => {
-    const requests = dockRequests();
-    return stackCandidates(requests, laneSeating().hidden, moving).map((index) => ({
-      request: requests[index],
-      index,
-    }));
-  };
+
   /**
    * Fold or unfold a panel and every tab stacked with it.
    *
@@ -384,8 +366,7 @@ export function createShellDocks(deps: {
       const was = untrack(laneMove);
       if (was?.ids === ids) setLaneMove({ ...was, faded: false });
     };
-    if (typeof requestAnimationFrame !== 'function') return unfade();
-    requestAnimationFrame(() => requestAnimationFrame(unfade));
+    platform.frame(() => platform.frame(unfade));
   };
 
   /** Collapse every panel of a lane to its strip, or bring them all back. See `toggleStowLane`. */
@@ -419,9 +400,8 @@ export function createShellDocks(deps: {
    */
   const boxOnScreen = (id: string, placement: FloatPlacement): Rect => {
     const box = dockGeometry()[id];
-    if ((box?.inLane || box?.home) && typeof document !== 'undefined') {
-      const frame = document.querySelector(`[${DOCK_FRAME_ATTR}="${CSS.escape(id)}"]`);
-      const drawn = frame?.getBoundingClientRect();
+    if (box?.inLane || box?.home) {
+      const drawn = page.measure(`[${DOCK_FRAME_ATTR}="${page.escape(id)}"]`);
       if (drawn && drawn.width > 0 && drawn.height > 0)
         return { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height };
     }
@@ -433,30 +413,14 @@ export function createShellDocks(deps: {
     ...boxOnScreen(id, placement),
   });
 
-  /**
-   * A panel's placement, in three rungs: what the user last dragged it to, then what the interface
-   * asked for, then the module's own opening bid.
-   *
-   * The middle rung is resolved live and never written — so switching template or view is
-   * non-destructive, switching back restores what was there, and an author improving a layout is not
-   * overruled forever by one stray drag. The same shape `meta.themeId` follows for themes.
-   */
-  const placementOf = (request: DockRequest): FloatPlacement => {
-    const stored = placements()[placementKey(request.id)];
-    /*
-      A lane holds only what the interface declared for one — the rule a drop into a lane has always
-      kept (\`insertHome\`). A placement in a lane for any other panel is not honoured: it came from
-      stacking onto a section, which skipped that rule, and it outlives every template, since an
-      undeclared panel's placement is not scoped to one — so the call's stage, stacked into an
-      inspector's lane, followed its owner into every space and froze each on its next call (a lane
-      grows to fit what is in it, and the stage sizes itself to the box it is in). Read as no
-      placement, it goes back to its own bid.
-    */
-    if (stored && !(stored.snap === 'home' && !declarationFor()[request.id]?.home)) return stored;
-    const declared = declarationFor()[request.id];
-    if (declared) return placementFromDeclaration(declared, viewport());
-    return seedPlacement(request, viewport());
-  };
+  /** A panel's placement, from its three rungs — see `resolvePlacement`. */
+  const placementOf = (request: DockRequest): FloatPlacement =>
+    resolvePlacement({
+      disposition: placements()[placementKey(request.id)],
+      declared: declarationFor()[request.id],
+      request,
+      viewport: viewport(),
+    });
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
 
@@ -691,32 +655,29 @@ export function createShellDocks(deps: {
     in", not "close what I am looking at". Closing a call panel with a stray keypress would be a
     different and much worse surprise.
   */
-  if (typeof window !== 'undefined') {
-    const onKeyDown = (event: KeyboardEvent) => {
-      /*
-        Cmd/Ctrl+\ puts every panel away, or brings them back — Figma's key for hiding the interface,
-        and one no text field here claims. Not while an overlay is up: the panels are away already, and
-        a toggle flipped where nobody can see it would surprise the next time they came back.
-      */
-      if (event.key === '\\' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.defaultPrevented) {
-        if (activeShellView()) return;
-        event.preventDefault();
-        setPanelsHiddenByUser(!untrack(panelsHiddenByUser));
-        return;
-      }
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      // A maximised panel that is away is not the mode Escape would be leaving.
-      if (panelsAway()) return;
-      const maximised = dockRequests().filter(
-        (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
-      );
-      if (maximised.length === 0) return;
+  const onKeyDown = (event: KeyboardEvent) => {
+    /*
+      Cmd/Ctrl+\ puts every panel away, or brings them back — Figma's key for hiding the interface,
+      and one no text field here claims. Not while an overlay is up: the panels are away already, and
+      a toggle flipped where nobody can see it would surprise the next time they came back.
+    */
+    if (event.key === '\\' && (event.metaKey || event.ctrlKey) && !event.altKey && !event.defaultPrevented) {
+      if (activeShellView()) return;
       event.preventDefault();
-      for (const request of maximised) writePlacement(request.id, { ...placementOf(request), maximised: false });
-    };
-    window.addEventListener('keydown', onKeyDown);
-    onCleanup(() => window.removeEventListener('keydown', onKeyDown));
-  }
+      setPanelsHiddenByUser(!untrack(panelsHiddenByUser));
+      return;
+    }
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    // A maximised panel that is away is not the mode Escape would be leaving.
+    if (panelsAway()) return;
+    const maximised = dockRequests().filter(
+      (request) => request.edge && (request.size === 'full' || placementOf(request).maximised),
+    );
+    if (maximised.length === 0) return;
+    event.preventDefault();
+    for (const request of maximised) writePlacement(request.id, { ...placementOf(request), maximised: false });
+  };
+  onCleanup(platform.listen('keydown', onKeyDown));
 
   /**
    * Whether any panel is currently maximised — what the app's own chrome hides for.
@@ -929,15 +890,12 @@ export function createShellDocks(deps: {
     drawn into, not anything it can move.
   */
   effect(() => {
-    if (typeof document === 'undefined') return;
     const edges = covered();
-    const root = document.documentElement.style;
     for (const edge of ['top', 'right', 'bottom', 'left'] as const)
-      root.setProperty(`--we-covered-${edge}`, `${edges[edge]}px`);
+      page.setRootProperty(`--we-covered-${edge}`, `${edges[edge]}px`);
   });
 
   effect(() => {
-    if (typeof document === 'undefined') return;
     /*
       Full screen has no content edges but the window's. The sidebar hides and every other panel is
       eclipsed (see `dockGeometry`), so chrome still painted over the panel — the call bar — centres
@@ -945,21 +903,23 @@ export function createShellDocks(deps: {
     */
     const fullScreen = panelMaximised();
     const edges = fullScreen ? { ...NO_INSET } : inset();
-    const root = document.documentElement.style;
-    root.setProperty(
+    page.setRootProperty(
       '--we-chrome-left',
       fullScreen ? '0px' : `calc(var(--we-sidebar-width, ${SIDEBAR_PX}px) + ${edges.left}px)`,
     );
-    root.setProperty('--we-chrome-right', `${edges.right}px`);
+    page.setRootProperty('--we-chrome-right', `${edges.right}px`);
     // The app's own top and bottom bands are chrome too, so anything clearing the edges clears them.
-    root.setProperty('--we-chrome-top', `${edges.top + (fullScreen ? 0 : appFrame().top)}px`);
-    root.setProperty('--we-chrome-bottom', `${edges.bottom + (fullScreen ? 0 : appFrame().bottom)}px`);
+    page.setRootProperty('--we-chrome-top', `${edges.top + (fullScreen ? 0 : appFrame().top)}px`);
+    page.setRootProperty('--we-chrome-bottom', `${edges.bottom + (fullScreen ? 0 : appFrame().bottom)}px`);
     /*
       How far the content's centre has moved from the window's — the horizontal twin of the four
       above, for anything centred rather than pinned. Written as a calc over them rather than as a
       number so there is one subtraction in the codebase instead of one per centred bar.
     */
-    root.setProperty('--we-chrome-center-x', 'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)');
+    page.setRootProperty(
+      '--we-chrome-center-x',
+      'calc((var(--we-chrome-left, 0px) - var(--we-chrome-right, 0px)) / 2)',
+    );
     /*
       Which way centred chrome spills when the content is narrower than it is.
 
@@ -977,7 +937,7 @@ export function createShellDocks(deps: {
       comparison CSS cannot make. The strip has a single child, so reversing it reorders nothing.
       Ties go right, which is where panels open by default.
     */
-    root.setProperty('--we-chrome-give', edges.left > edges.right ? 'row-reverse' : 'row');
+    page.setRootProperty('--we-chrome-give', edges.left > edges.right ? 'row-reverse' : 'row');
   });
 
   /**
@@ -1013,10 +973,8 @@ export function createShellDocks(deps: {
    * unexpected can never push the rail off the screen.
    */
   effect(() => {
-    if (typeof document === 'undefined') return;
-
     const band = railBand(viewport(), inset(), topChrome());
-    document.documentElement.style.setProperty('--we-panel-chrome-top', `${band}px`);
+    page.setRootProperty('--we-panel-chrome-top', `${band}px`);
   });
 
   const members: Pick<
@@ -1091,7 +1049,7 @@ export function createShellDocks(deps: {
       const fitted = fitPlacement(measured, aspect, {
         spanning,
         edge,
-        chrome: measureDockChrome(id),
+        chrome: measureDockChrome(page, id),
         /*
           The most a fit may take, so one that cannot be honoured declines rather than writing a
           number the paint step then clamps.
@@ -1274,22 +1232,19 @@ export function createShellDocks(deps: {
     },
 
     stackDock: (id, position) => {
-      const target = stackTargets(id)[position];
-      const joiner = dockRequests().find((entry) => entry.id === id);
-      if (!target || !joiner) return;
-
       /*
         Two floats become a stack, which needs a name for the seat they are now both in — see
-        `FloatPlacement.seat`. Whichever was already there supplies it: it is the one the other was
-        dropped onto, so naming the seat after it survives the newcomer being dragged out again.
-
-        A seat it is already in keeps its key, so a third panel joins the stack rather than pairing
-        off with whichever tab happened to be showing.
+        `FloatPlacement.seat` and `stackDrop`, which decides it. The cards on offer are the ones
+        `insertSlots` numbered by position, in registry order, so the slot and the drop agree on
+        what "the third one" means.
       */
-      const held = placementOf(target.request);
-      const seat = held.seat ?? target.request.id;
-      if (held.seat === undefined) writePlacement(target.request.id, { ...held, seat });
-      writePlacement(id, followSeat(placementOf(joiner), { ...held, seat }));
+      const writes = stackDrop(
+        { requests: dockRequests(), hidden: laneSeating().hidden, viewport: viewport() },
+        id,
+        position,
+      );
+      if (!writes[id]) return;
+      for (const [dock, placement] of Object.entries(writes)) writePlacement(dock, placement);
       // The newcomer shows, which is what dropping something on top of something else looks like —
       // and its tab flashes, since the card it landed on did not move. See `insertDock`.
       raise(id);
@@ -1405,7 +1360,6 @@ export function createShellDocks(deps: {
     setPanelsHiddenByUser,
     setSeatFolded,
     setStowPending,
-    stackTargets,
     stowPending,
     viewport,
   };

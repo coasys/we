@@ -151,7 +151,7 @@ export function fullContext(preamble: string, reference: string): PreparedContex
 
 export function sectionsContext(preamble: string, reference: string): PreparedContext {
   const section = sectionsByTitle(reference);
-  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1]);
   const storeNames = [...stores.entries.keys()];
 
   const directory = [
@@ -183,7 +183,11 @@ export function sectionsContext(preamble: string, reference: string): PreparedCo
             parameters: {
               type: 'object',
               properties: {
-                stores: { type: 'array', items: { type: 'string' }, description: 'Store names, e.g. "spaceStore".' },
+                stores: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'Profile namespaces or store names, e.g. "navigation" or "spaceStore".',
+                },
               },
               required: ['stores'],
             },
@@ -212,8 +216,11 @@ interface Entries {
 
 /** Component entries start `- name (Kind)`, `- name — description` or a bare `- name`. */
 const COMPONENT_ENTRY = /^- ([A-Za-z][\w-]*)(?: \(| —|$)/;
-/** Store entries start `SpaceStore:`, and are asked for as `spaceStore`. */
-const STORE_ENTRY = /^([A-Z]\w*):$/;
+/**
+ * Entries start with the name a template writes and what it is — `navigation (the navigation profile,
+ * 1.0.0):`, `spaceStore (WE-host-only):` — and are asked for by that name.
+ */
+const STORE_ENTRY = /^([a-z]\w*)(?: \([^)]*\))?:$/;
 
 function parseEntries(text: string, start: RegExp, key: (match: RegExpMatchArray) => string): Entries {
   const intro: string[] = [];
@@ -326,10 +333,17 @@ function componentsIn(node: unknown, found = new Set<string>()): Set<string> {
   return found;
 }
 
-/** Stores named anywhere in the template or the request, as `spaceStore`. */
-function storesIn(...texts: string[]): Set<string> {
+/**
+ * Profile namespaces and stores named anywhere in the template or the request, as written — a store
+ * by its name alone (`spaceStore`), a namespace by a member read off it (`navigation.params`), since
+ * a namespace is often an ordinary word.
+ */
+function storesIn(known: ReadonlySet<string>, ...texts: string[]): Set<string> {
   const found = new Set<string>();
-  for (const text of texts) for (const match of text.matchAll(/\b([a-z]\w*Store)\b/g)) found.add(match[1]);
+  for (const text of texts) {
+    for (const match of text.matchAll(/\b([a-z]\w*Store)\b/g)) found.add(match[1]);
+    for (const match of text.matchAll(/\b([a-z]\w*)\.\w/g)) if (known.has(match[1])) found.add(match[1]);
+  }
   return found;
 }
 
@@ -360,13 +374,13 @@ export function selectReference(
 ): SelectedReference {
   const section = sectionsByTitle(reference);
   const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
-  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1]);
 
   const words = subject.request.toLowerCase().match(/[a-z]+/g) ?? [];
   const named = words.flatMap((word) => COMPONENT_WORDS[word] ?? []);
   const wanted = new Set([...componentsIn(subject.schema), ...named]);
   const schemaText = JSON.stringify(subject.schema);
-  const wantedStores = storesIn(schemaText, subject.request);
+  const wantedStores = storesIn(new Set(stores.entries.keys()), schemaText, subject.request);
 
   /*
     What fits the budget is decided with the request's own words first — they say what the change is
@@ -409,7 +423,7 @@ export function lookupContext(
 ): PreparedContext {
   const section = sectionsByTitle(reference);
   const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
-  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1]);
   const selected = selectReference(reference, subject);
 
   const preselected = [
@@ -443,7 +457,11 @@ export function lookupContext(
           type: 'object',
           properties: {
             components: { type: 'array', items: { type: 'string' }, description: 'Tags, e.g. "we-button", "Grid".' },
-            stores: { type: 'array', items: { type: 'string' }, description: 'Store names, e.g. "spaceStore".' },
+            stores: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Profile namespaces or store names, e.g. "navigation" or "spaceStore".',
+            },
             sections: { type: 'array', items: { type: 'string', enum: Object.keys(LOOKUP_SECTIONS) } },
           },
         },
@@ -528,7 +546,7 @@ export interface ReferenceDoc {
 export function referenceDocs(start: string, reference: string, root = 'template'): ReferenceDoc[] {
   const section = sectionsByTitle(reference);
   const components = parseEntries(section('Component Registry'), COMPONENT_ENTRY, (m) => m[1]);
-  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1][0].toLowerCase() + m[1].slice(1));
+  const stores = parseEntries(section('Stores'), STORE_ENTRY, (m) => m[1]);
 
   /** `- we-draggable (LayoutElement) — Makes whatever…` → `Makes whatever…`, or the kind when there is no description. */
   const describe = (name: string, entry: string): string => {

@@ -5,22 +5,24 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts, keydown } from './support/shellPorts';
 
 const STORE = 'docks-test';
 const A = `${STORE}:a`;
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
+  let platform: TestPlatform;
   const build = () => {
-    const parts = buildParts(makePort());
+    const parts = buildParts(makePort(), platform);
     disposers.push(parts.dispose);
     return parts;
   };
   beforeEach(() => {
-    localStorage.clear();
-    window.history.replaceState({}, '', '/space/test');
+    platform = createTestPlatform({ url: '/space/test' });
     registerHostDockStore(STORE, { edge: () => 'left', float: () => false });
     dockRegistry.register({ id: A, moduleId: STORE, edge: 'edge', float: 'float', node: { type: 'div' } });
   });
@@ -35,7 +37,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(docks.dockRequests().map((request) => request.id)).toContain(A);
     const left = docks.members.contentInset().left;
     expect(left).toBeGreaterThan(0);
-    expect(document.documentElement.style.getPropertyValue('--we-chrome-left')).toContain(`${left}px`);
+    expect(platform.drawn.properties.get('--we-chrome-left')).toContain(`${left}px`);
     expect(docks.members.dockPlacement()[A]).toMatchObject({ snap: 'left', canDisplace: true });
   });
 
@@ -64,13 +66,13 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       maximised: true,
     });
     expect(docks.members.panelMaximised()).toBe(true);
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    platform.emit('keydown', keydown({ key: 'Escape' }));
     expect(docks.members.panelMaximised()).toBe(false);
   });
 
   it('puts every panel away on Cmd+\\ and brings them back', () => {
     const { docks } = build();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: '\\', ctrlKey: true }));
+    platform.emit('keydown', keydown({ key: '\\', ctrlKey: true }));
     expect(docks.members.panelsHidden()).toBe(true);
     expect(docks.members.hasPanels()).toBe(true);
     docks.members.togglePanelsHidden();

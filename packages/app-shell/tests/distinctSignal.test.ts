@@ -2,17 +2,10 @@
  * distinctSignal: a write of what the signal holds wakes nothing, under either port — which Solid's
  * signals did by themselves and the port does not promise.
  */
-import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { describe, expect, it } from 'vitest';
 
 import { distinctSignal, updatingSignal } from '../src/shared/distinctSignal';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   it('skips a write of the value it holds, and wakes on a different one', () => {

@@ -5,7 +5,7 @@
  * ## How a template writes one
  *
  *   { "disabled": { "$": "!local.name || spaceStore.joiningSpace != ''" } }
- *   { "children": [{ "$": "`${count(spaceStore.memberDids)} ${plural(count(spaceStore.memberDids), 'member', 'members')}`" }] }
+ *   { "children": [{ "$": "`${count(identity.memberDids)} ${plural(count(identity.memberDids), 'member', 'members')}`" }] }
  *
  * `{ "$": "…" }` is the whole marker. An object, not a string prefix, so it travels through every
  * path that already handles a token — the dispatcher, the validator, the children array, the
@@ -72,7 +72,7 @@ export {
 } from './functions';
 export { markReactive, REACTIVE_ACCESSOR } from './reactive';
 export type { ExpressionIssue, ExpressionScope } from './check';
-export { checkExpression, isCallTime, suggest } from './check';
+export { checkExpression, isCallTime, movedMessage, suggest } from './check';
 export { matchesWhere } from './where';
 export type { ExpressionSource } from './compose';
 export { expr, ref, sourceOf } from './compose';

@@ -6,6 +6,8 @@
 import { type FloatPlacement } from '@shared/dockGeometry';
 import { type PanelInstance } from '@shared/registries/panelInstances';
 
+import type { PlatformStorage } from '../../platform/port';
+
 /**
  * Where panels are remembered, and why it is localStorage rather than the URL.
  *
@@ -73,10 +75,9 @@ export function bandLegacyOrder(placements: Record<string, FloatPlacement>): Rec
   );
 }
 
-export function loadPlacements(): Record<string, FloatPlacement> {
-  if (typeof localStorage === 'undefined') return {};
+export function loadPlacements(storage: PlatformStorage): Record<string, FloatPlacement> {
   try {
-    const raw = localStorage.getItem(PLACEMENTS_KEY);
+    const raw = storage.getItem(PLACEMENTS_KEY);
     const parsed = raw ? (JSON.parse(raw) as Record<string, FloatPlacement>) : {};
     return parsed && typeof parsed === 'object' ? bandLegacyOrder(stripLegacyThickness(parsed)) : {};
   } catch {
@@ -90,7 +91,7 @@ export function loadPlacements(): Record<string, FloatPlacement> {
  * ## Why it cannot be synchronous
  *
  * `writePlacement` runs on every `pointermove` of a drag or a resize, which is once per frame — and
- * each call serialised the whole placement map and wrote it to localStorage. `setItem` is
+ * each call serialised the whole placement map and wrote it to storage. `setItem` is
  * synchronous and hits the disk, so a drag was doing blocking I/O at 60Hz, at the exact moment the
  * app is trying to track a cursor. Nothing about it needs to be immediate: the value being persisted
  * is where a panel *ended up*, and every frame but the last is a position nobody asked to keep.
@@ -99,14 +100,14 @@ export function loadPlacements(): Record<string, FloatPlacement> {
  * event loop and nothing has to reason about how long the tail is. Coalescing means a drag of 300
  * frames writes once when it settles.
  */
-export let pendingPlacements: Record<string, FloatPlacement> | null = null;
+let pendingPlacements: { storage: PlatformStorage; placements: Record<string, FloatPlacement> } | null = null;
 
 export function flushPlacements(): void {
-  const placements = pendingPlacements;
+  const pending = pendingPlacements;
   pendingPlacements = null;
-  if (!placements || typeof localStorage === 'undefined') return;
+  if (!pending) return;
   try {
-    localStorage.setItem(PLACEMENTS_KEY, JSON.stringify(placements));
+    pending.storage.setItem(PLACEMENTS_KEY, JSON.stringify(pending.placements));
   } catch {
     // A full or disabled store costs the user their layout next boot, and nothing else.
   }
@@ -124,20 +125,18 @@ export function flushPlacements(): void {
  */
 export const ACTIVATION_KEY = 'we-local:shell.dockActivation';
 
-export function loadActivation(): Record<string, number> {
-  if (typeof localStorage === 'undefined') return {};
+export function loadActivation(storage: PlatformStorage): Record<string, number> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(ACTIVATION_KEY) ?? '{}') as unknown;
+    const parsed = JSON.parse(storage.getItem(ACTIVATION_KEY) ?? '{}') as unknown;
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, number>) : {};
   } catch {
     return {};
   }
 }
 
-export function saveActivation(activation: Record<string, number>): void {
-  if (typeof localStorage === 'undefined') return;
+export function saveActivation(storage: PlatformStorage, activation: Record<string, number>): void {
   try {
-    localStorage.setItem(ACTIVATION_KEY, JSON.stringify(activation));
+    storage.setItem(ACTIVATION_KEY, JSON.stringify(activation));
   } catch {
     // Lost stacking order on next boot, and nothing else.
   }
@@ -180,10 +179,9 @@ export const INSTANCES_KEY = 'we-local:shell.panelInstances';
  * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
  * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
  */
-export function loadInstances(did: string): Record<string, Record<string, PanelInstance>> {
-  if (typeof localStorage === 'undefined') return {};
+export function loadInstances(storage: PlatformStorage, did: string): Record<string, Record<string, PanelInstance>> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const parsed = JSON.parse(storage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
     const perAgent =
       parsed && typeof parsed === 'object' && !Array.isArray(parsed)
         ? (parsed as Record<string, Record<string, Record<string, PanelInstance>>>)
@@ -195,34 +193,35 @@ export function loadInstances(did: string): Record<string, Record<string, PanelI
   }
 }
 
-export function saveInstances(did: string, all: Record<string, Record<string, PanelInstance>>): void {
-  if (typeof localStorage === 'undefined') return;
+export function saveInstances(
+  storage: PlatformStorage,
+  did: string,
+  all: Record<string, Record<string, PanelInstance>>,
+): void {
   try {
-    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const parsed = JSON.parse(storage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
     const perAgent =
       parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : {};
     if (Object.keys(all).length) perAgent[did] = all;
     else delete perAgent[did];
-    localStorage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
+    storage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
   } catch {
     // The instances open now stay open; a reload starts without them.
   }
 }
 
-export function loadLanes(): Record<string, LaneState> {
-  if (typeof localStorage === 'undefined') return {};
+export function loadLanes(storage: PlatformStorage): Record<string, LaneState> {
   try {
-    const parsed = JSON.parse(localStorage.getItem(LANES_KEY) ?? '{}') as unknown;
+    const parsed = JSON.parse(storage.getItem(LANES_KEY) ?? '{}') as unknown;
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, LaneState>) : {};
   } catch {
     return {};
   }
 }
 
-export function saveLanes(lanes: Record<string, LaneState>): void {
-  if (typeof localStorage === 'undefined') return;
+export function saveLanes(storage: PlatformStorage, lanes: Record<string, LaneState>): void {
   try {
-    localStorage.setItem(LANES_KEY, JSON.stringify(lanes));
+    storage.setItem(LANES_KEY, JSON.stringify(lanes));
   } catch {
     // A lane back at its template's width on next boot, and nothing else.
   }
@@ -230,27 +229,25 @@ export function saveLanes(lanes: Record<string, LaneState>): void {
 
 export type SavedLayouts = Record<string, Record<string, SavedLayout>>;
 
-export function loadLayouts(): SavedLayouts {
-  if (typeof localStorage === 'undefined') return {};
+export function loadLayouts(storage: PlatformStorage): SavedLayouts {
   try {
-    const parsed = JSON.parse(localStorage.getItem(LAYOUTS_KEY) ?? '{}') as unknown;
+    const parsed = JSON.parse(storage.getItem(LAYOUTS_KEY) ?? '{}') as unknown;
     return parsed && typeof parsed === 'object' ? (parsed as SavedLayouts) : {};
   } catch {
     return {};
   }
 }
 
-export function saveLayouts(layouts: SavedLayouts): void {
-  if (typeof localStorage === 'undefined') return;
+export function saveLayouts(storage: PlatformStorage, layouts: SavedLayouts): void {
   try {
-    localStorage.setItem(LAYOUTS_KEY, JSON.stringify(layouts));
+    storage.setItem(LAYOUTS_KEY, JSON.stringify(layouts));
   } catch {
     // Lost named layouts on next boot, and nothing else.
   }
 }
 
-export function savePlacements(placements: Record<string, FloatPlacement>): void {
+export function savePlacements(storage: PlatformStorage, placements: Record<string, FloatPlacement>): void {
   const first = pendingPlacements === null;
-  pendingPlacements = placements;
+  pendingPlacements = { storage, placements };
   if (first) queueMicrotask(flushPlacements);
 }

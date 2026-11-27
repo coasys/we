@@ -90,14 +90,24 @@ Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared
 ## Profiles
 
 A **profile** is the part of a host's bag that is neither a store of a module nor the core library:
-the host state and actions a template reaches beyond records, queries and operations. Five are
+the host state and actions a template reaches beyond records, queries and operations. Seven are
 specified, each a versioned member list with change events, in
-[Capability profiles](../profiles/README.md): `navigation`, `view-state`, `presence`, `identity` and
-`space-settings`. Each member keeps the [capability group](safety.md#capability-grants) that grants
-it.
+[Capability profiles](../profiles/README.md): `navigation`, `view-state`, `layout`, `presence`,
+`identity`, `space-settings` and `appearance`. A template writes each profile's members under the
+profile's namespace (`navigation.params`, `viewState.openPanel`, `spaceSettings.currentSpace`), never
+under a store. Each member keeps the [capability group](safety.md#capability-grants) that grants it.
 
 Beside them are the host values every host provides by name (`me`, the person viewing;
 `currentDataset`, the dataset on screen; the person's profile as `$agent` binds it) and the actions on
 records (`record.*`), specified with the format itself. A member a host offers outside every profile
 is [host-only](../profiles/README.md#we-host-only): a template naming one depends on that host, and a
 validator says so.
+
+---
+
+Implemented by: [`profiles.ts`](../../../packages/schema-system/shared/src/profiles/profiles.ts),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
+(`withHostOnlyReport`).
+Pinned by: the profile vectors (`navigation.*`, `view-state.*` and the rest, in
+[`profiles.json`](../../../packages/schema-system/conformance/vectors/profiles.json)),
+[`profilesCoverage.test.ts`](../../../packages/schema-system/conformance/tests/profilesCoverage.test.ts).

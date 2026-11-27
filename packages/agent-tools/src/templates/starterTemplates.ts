@@ -6,7 +6,7 @@
  * an agent's next step is to read it and patch it, and every node here is one it would otherwise
  * have to take out.
  *
- * - **shell**: a space's chrome — its sections down the side from `spaceStore.viewNav`, the section
+ * - **shell**: a space's chrome — its sections down the side from `navigation.viewNav`, the section
  *   on screen beside them, and the marker the host expands into one route per section.
  * - **view**: one section, a heading and room under it.
  * - **app**: WE's own chrome placed as host parts, which is what an app is for. An app of somebody's
@@ -45,7 +45,7 @@ const shell = (): TemplateSchema => ({
                 {
                   type: 'we-text',
                   props: { variant: 'heading-sm', tag: 'h1' },
-                  children: [{ $: 'spaceStore.currentSpace.name' }],
+                  children: [{ $: 'spaceSettings.currentSpace.name' }],
                 },
                 {
                   type: 'Column',
@@ -53,15 +53,15 @@ const shell = (): TemplateSchema => ({
                   children: [
                     {
                       type: '$each',
-                      props: { items: { $: 'spaceStore.viewNav' }, as: 'view' },
+                      props: { items: { $: 'navigation.viewNav' }, as: 'view' },
                       children: [
                         {
                           type: 'we-button',
                           props: {
-                            variant: { $: "contains(routeStore.currentPath, view.segment) ? 'soft' : 'ghost'" },
+                            variant: { $: "contains(navigation.currentPath, view.segment) ? 'soft' : 'ghost'" },
                             width: '100%',
                             ax: 'start',
-                            onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'view.path' }] },
+                            onClick: { $invoke: 'navigation.navigate', args: [{ $: 'view.path' }] },
                           },
                           children: [
                             { type: 'we-icon', props: { name: { $: 'view.icon' } } },

@@ -16,8 +16,9 @@ import {
 } from '@we/block-shared';
 import { CollectionBlock, compressImageToFileData, type DatasetProxy, dataURIToFileData } from '@we/entities';
 
-import type { BoardOptimism } from '../../boardOptimism';
 import { createBoardActions } from '../../boards';
+import { fileAsDataURI } from '../../fileDataURI';
+import { provideModuleHostServices } from '../../registries/moduleHostServices';
 import { uploadOf } from '../../uploadOf';
 import type { RecordStore } from '../RecordStore';
 import type { SpaceStore } from '../SpaceStore';
@@ -33,19 +34,7 @@ export interface SpaceContentDeps extends SpaceContext {
     'reloadSpaceStructure'
   >;
   taskStates: Pick<SpaceTaskStates, 'offeredTaskStates' | 'boardWorkflow'>;
-  /** Cards drawn where they were dropped, ahead of the data — the app's one. */
-  boardOptimism: BoardOptimism;
 }
-
-/** A file's contents as a data URI. */
-const readAsDataURI = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    // `readAsDataURL` always yields a string.
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
 
 export function createSpaceContent(deps: SpaceContentDeps) {
   const { reactivity, toasts, sessionStore: session, datasetStore, recordStore, navigation, taskStates } = deps;
@@ -126,7 +115,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   /*
     The board writes, from `shared/boards.ts`.
 
-    Ten actions over one shape, and what they decide is the board design rather than anything about
+    The board actions that need the host, and what they decide is the board design rather than anything about
     this store: which list to store, what a drop means, and the invariant that a board's children are
     columns. They live there because they are a subsystem rather than because this file is long — the
     ordering itself is the backend's, so what is left in them is meaning, and meaning reads better
@@ -140,10 +129,6 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   const boards = createBoardActions({
     dataset: datasetFor,
     invoker: () => session.me()?.did,
-    // An arrangement is drawn before it is stored; `boardOptimism` holds it, and whatever draws the
-    // board reports when the data has overtaken it. See that module for why nothing releases on
-    // success.
-    ...deps.boardOptimism.ports,
     offeredStates: () => taskStates.offeredTaskStates(),
     notify: (message) => toasts.error(message),
     landmarksChanged: () => void reloadSpaceStructure(),
@@ -169,6 +154,12 @@ export function createSpaceContent(deps: SpaceContentDeps) {
   });
 
   /*
+    Extraction's hook for a board — see the declaration on `ModuleHostServices`, and `ensureBoardFor`
+    for why it only fires once the collection holds a task. Lent from here, where the boards are.
+  */
+  onCleanup(provideModuleHostServices({ ensureBoardFor: boards.ensureBoardFor }));
+
+  /*
     Where content lives: the space collection, for anything made on the space's own canvas and for
     anything made with no other home. See `provideContentHomes` — lent because the record store is
     composed before this one.
@@ -192,10 +183,10 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     if (!profiles) return null;
     try {
       const fileData = file.type.startsWith('image/')
-        ? await compressImageToFileData(file, name ?? file.name)
+        ? await compressImageToFileData(deps.platform.images, file, name ?? file.name)
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
-          dataURIToFileData(await readAsDataURI(file), name ?? file.name);
+          dataURIToFileData(await fileAsDataURI(file), name ?? file.name);
       return await profiles.uploadFile(uploadOf(fileData));
     } catch (error) {
       console.error('SpaceStore: upload failed', error);
@@ -214,8 +205,6 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     | 'ensureBoardFor'
     | 'addStateToSpaceBoard'
     | 'removeBoardColumn'
-    | 'reorderBoardColumns'
-    | 'arrangeColumn'
     | 'moveCardToColumn'
     | 'addTaskToColumn'
   > = {

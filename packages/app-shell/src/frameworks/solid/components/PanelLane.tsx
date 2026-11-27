@@ -33,7 +33,7 @@
  * and the width somebody drags it to is kept per agent and per template (`shellStore.laneWidth`),
  * from the template's `minWidth` up to as wide as the row allows: what is beside it always keeps
  * `LANE_LEAVES_PX`. A `maxWidth` caps it lower, for a lane that should not grow at all. And a lane can be folded away
- * (`shellStore.toggleLane`): its sections stay mounted and hidden, so a feed keeps its place.
+ * (`layout.toggleLane`): its sections stay mounted and hidden, so a feed keeps its place.
  *
  * Folding slides. The lane's own width goes to nothing while what is in it keeps its width, held to
  * the lane's inner edge and cut off at the outer one, so the column moves out past the edge rather

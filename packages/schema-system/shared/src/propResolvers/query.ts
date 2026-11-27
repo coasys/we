@@ -49,7 +49,7 @@ export function resolveQueryProp(value: unknown): QueryDescriptor {
  * record the backend happened to return first.
  *
  * **And an empty exclusion list excludes nothing.** `{ not: [] }` is what a reactive list resolves to
- * when it holds nothing — `author: { not: { $: 'spaceStore.mutedDids' } }` with nobody muted — and
+ * when it holds nothing — `author: { not: { $: 'identity.mutedDids' } }` with nobody muted — and
  * it is no condition at all, so it is dropped rather than sent. Sent, it is a shape a backend has to
  * have thought about: AD4M refuses it on `author` beside another condition, and the whole query
  * fails over a filter that would not have removed a row.
@@ -106,7 +106,7 @@ export function pruneUnresolvedWhere(where: Record<string, unknown>): Record<str
  * is a perfectly valid query for the children of no record, which returns nothing at all. Silently.
  *
  * That distinction is what lets a view carry an anchor unconditionally. A shipped view reads its
- * anchor from a URL parameter that is usually absent — `{ $: 'routeStore.params.anchor' }` — and
+ * anchor from a URL parameter that is usually absent — `{ $: 'navigation.params.anchor' }` — and
  * absent has to mean *the whole space*, which is what an unanchored view has always shown. Without
  * this the view would need two copies of every query behind an `$if`, or would go blank the moment
  * nobody had named a container.

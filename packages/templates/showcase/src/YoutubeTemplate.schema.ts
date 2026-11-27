@@ -47,7 +47,7 @@ const videoCard: SchemaNode = {
       props: {
         variant: 'bare',
         width: '100%',
-        onClick: { $invoke: 'routeStore.navigate', args: ['~/watch', { $: '{ query: { id: video.id } }' }] },
+        onClick: { $invoke: 'navigation.navigate', args: ['~/watch', { $: '{ query: { id: video.id } }' }] },
       },
       children: [
         {
@@ -134,7 +134,7 @@ const watchRoute: RouteSchema = {
             variant: 'ghost',
             size: 'sm',
             alignSelf: 'start',
-            onClick: { $invoke: 'routeStore.navigate', args: ['~/'] },
+            onClick: { $invoke: 'navigation.navigate', args: ['~/'] },
           },
           children: [{ type: 'we-icon', props: { name: 'arrow-left' } }, 'Back'],
         },
@@ -144,7 +144,7 @@ const watchRoute: RouteSchema = {
             item: {
               $query: {
                 entity: 'CollectionBlock',
-                where: { id: { $: 'routeStore.params.id' } },
+                where: { id: { $: 'navigation.params.id' } },
                 include: { signals: true },
                 limit: 1,
               },
@@ -185,7 +185,7 @@ const watchRoute: RouteSchema = {
               saveLabel: 'Comment',
             }),
             commentThread({
-              anchorId: { $: 'routeStore.params.id' },
+              anchorId: { $: 'navigation.params.id' },
               empty: noReplies(),
               reply: (as) => [
                 {
@@ -326,9 +326,9 @@ export const youtubeTemplate: TemplateSchema = {
                   props: {
                     size: 'sm',
                     variant: {
-                      $: "(nav.segment ? nav.segment in routeStore.templateSegments : !count(routeStore.templateSegments)) ? 'soft' : 'ghost'",
+                      $: "(nav.segment ? nav.segment in navigation.templateSegments : !count(navigation.templateSegments)) ? 'soft' : 'ghost'",
                     },
-                    onClick: { $invoke: 'routeStore.navigate', args: [{ $: 'nav.path' }] },
+                    onClick: { $invoke: 'navigation.navigate', args: [{ $: 'nav.path' }] },
                   },
                   children: [{ $: 'nav.label' }],
                 },

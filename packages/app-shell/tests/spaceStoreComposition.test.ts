@@ -8,13 +8,11 @@ import { Space } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createBoardOptimism } from '../src/shared/boardOptimism';
-import { createInvolvementOptimism } from '../src/shared/involvementOptimism';
-import { createSignalOptimism } from '../src/shared/signalOptimism';
 import type { SpaceAppearance } from '../src/shared/spaceAppearance';
 import { createSpaceStore, type SpaceStore } from '../src/shared/stores/SpaceStore';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -47,6 +45,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       const segments = () => path().split('/').filter(Boolean);
       store = createSpaceStore({
         reactivity,
+        platform: h.platform,
         toasts: ctx.toasts,
         firstScreen: ctx.firstScreen,
         sessionStore: ctx.sessionStore,
@@ -98,13 +97,9 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           saveTemplateAs: () => Promise.resolve(undefined),
         } as never,
         themeStore: {
-          explainSpaceThemeHidden: () => {},
           provideSpaceAppearance: (appearance: SpaceAppearance) => void lent.appearance.push(appearance),
         },
         host: {
-          boardOptimism: createBoardOptimism(reactivity.signal),
-          involvementOptimism: createInvolvementOptimism(reactivity.signal),
-          signalOptimism: createSignalOptimism(reactivity.signal),
           signalOrder: { reset: () => {} },
           taskWorkflowLive: createTaskWorkflowLive(reactivity.signal),
         },

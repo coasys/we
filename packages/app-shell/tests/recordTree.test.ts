@@ -8,8 +8,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordCanvas, type RecordCanvas } from '../src/shared/stores/records/canvas';
@@ -17,11 +15,7 @@ import { createRecordConnections } from '../src/shared/stores/records/connection
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
 import { createRecordTree, type RecordTree } from '../src/shared/stores/records/tree';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'kind-1';
@@ -73,7 +67,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const link = (id: string, source: string, target: string) =>
     model('Relationship').create(
       handle,
-      { relationshipTypeId: SPINE, source: [source], target: [target], sourceType: 'Card', targetType: 'Card' },
+      { relationshipTypeId: SPINE, source, target, sourceType: 'Card', targetType: 'Card' },
       { id },
     );
   const parentOf = async (card: string) =>
@@ -96,7 +90,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     for (const [card, rank] of [['p'], ['q'], ['x'], ['a', 1024], ['b', 2048]] as [string, number?][])
       await model('Placement').create(
         handle,
-        { nodeType: 'Card', node: [card], ...(rank ? { rank } : {}) },
+        { nodeType: 'Card', node: card, ...(rank ? { rank } : {}) },
         { id: `row-${card}`, parent: canvasChildren(CANVAS) },
       );
   });

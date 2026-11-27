@@ -114,13 +114,13 @@ export {
   asFileField,
   dataURItoBlob,
   blobToDataURL,
-  resizeImage,
+  canvasImageCodec,
   compressImageToFileData,
   shrinkDataUri,
   dataURIToFileData,
   readFileAsFileData,
 } from './utils/imageHelpers';
-export type { FileData } from './utils/imageHelpers';
+export type { FileData, ImageCodec } from './utils/imageHelpers';
 export { normalizeSignal, denormalizeSignal } from './utils/signalNormalize';
 export { type Generated, generatedRun } from './utils/provenance';
 export { aggregateSignals } from './utils/signalAggregate';
@@ -162,3 +162,4 @@ export * from './operations';
 export { COMPOSE_CARD_POST } from './manifest/operations/canvas';
 export { inlineRecordId } from './manifest/operations/records';
 export { postBlockId, THREAD_SUBJECTS } from './manifest/operations/content';
+export * from './predictions';

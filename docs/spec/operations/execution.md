@@ -120,7 +120,11 @@ the read widened. So the runner rewrites the evaluated where first:
 2. `fields` is evaluated; it MUST give an object, otherwise static `malformed`. A field whose value
    is absent is left out (absent is how a field starts). A field holding `''` or `null` is passed to
    the backend, which stores no value for it.
-3. The record's id is derived from the step's path ([Ids](#ids)).
+3. The record's id is derived: from its identity when the create declares one ([Identity
+   ids](#identity-ids)), else from the step's path ([Ids](#ids)). An identity field with no value,
+   or with a value that is not a string, number or boolean, fails with static `malformed`. If this
+   operation already created a record under that id, the operation fails with precondition
+   `recordExists`.
 4. With a `parent`, `parent.id` is evaluated. No value means the record is created with no parent;
    otherwise it is created under that record, joining its `parent.relation`.
 5. The record is created, in the operation's transaction. If a record with the derived id already
@@ -143,6 +147,8 @@ the read widened. So the runner rewrites the evaluated where first:
 1. The entity is resolved, and `id` is evaluated to an id.
 2. If the record exists (made or read by this operation, or committed), it is deleted in the
    operation's transaction. If it does not, the step does nothing: the state asked for already holds.
+   With `own`, a record that exists, that this operation did not create, and whose `author` is not
+   `invoker` fails with precondition `notOwn` instead.
 3. Result: no value.
 
 ### `link` and `unlink`
@@ -169,7 +175,9 @@ relation, is refused by the backend.
 1. As `link` step 1, with `targets` evaluated to a list of ids. No value is the empty list; anything
    that is not a list of records or ids fails with static `notAList`.
 2. The relation's membership becomes exactly that list, in that order, in the operation's
-   transaction.
+   transaction. With `keep`, the list is first extended by the members the relation holds (as this
+   operation has left them, read from committed state the first time) that it does not name, in the
+   order they held.
 3. Result: no value.
 
 ### `forEach`
@@ -220,6 +228,16 @@ admitted by an entry of `oneOf`:
 A value no entry admits fails with static `outsideOneOf`. Either way, an entity that is
 access-control fails with static `protectedEntity`, and one the dataset has no record type for fails
 with static `unknownEntity`.
+
+**The host judges a chosen entity per call.** A host that decides permission from the effect summary
+([Permission and confirmation](#permission-and-confirmation)) cannot know, before the operation
+runs, which entity a chosen entity will be. So the invocation MAY carry the host's judgement of a
+chosen entity: once the entity is resolved and admitted above, and before the step writes, the
+runner asks it with the entity's name, and when it refuses, the operation fails with static
+`notGranted` and nothing it wrote lands. A host that gates operations by permission MUST pass one
+for every invocation it gates, and it MUST answer from the same table it uses for the summary, for
+the entity actually chosen. The judgement is the host's; nothing in the invocation's `args` can
+supply or widen it.
 
 ### Returns
 
@@ -286,6 +304,70 @@ The first two are the board and its first column in the `create-and-link` vector
 A host that needs to know a record's id before the operation runs (to show it optimistically, or to
 pass it to a later write) MAY derive it the same way from the invocation id it will use.
 
+### Identity ids
+
+A `create` with `identity` ([Format](format.md#create)) names its record by what it is, not by who
+made it: the id is the same from every invocation, so the same identity made twice, anywhere, is one
+record.
+
+1. Take the list `['', d=D, entity, field₁, value₁, field₂, value₂, …]`: the empty string; when the
+   dataset has an identity domain `D` (below), `d=` followed by it, and nothing when it has none; the
+   create's entity name; then each identity field in the order `identity` lists them, followed by
+   its value as text: a string as it is, a number as its shortest round-tripping decimal (as a
+   `forEach` key is), `true` or `false`.
+2. Continue from step 2 of the derivation above: frame each element, hash, and format the UUID.
+
+**Why an empty first element.** It sets identities apart from invocations. An invocation id is a
+non-empty string, so the framing of an identity begins `0:` and no invocation's framing ever does:
+the two kinds of id are derived from inputs that can never be equal, and so never collide short of
+SHA-256 colliding. A runner MUST refuse an empty `invocationId` (static `malformed`).
+
+**The dataset's identity domain.** A dataset that stands for one thing (a space) holds a record
+naming that thing (the space's own `Space` record). Its id is the dataset's **identity domain**: the
+record is written first, before anything else in the dataset, reaches every agent that holds the
+dataset, and never changes. A dataset that names nothing (a personal one, one the host keeps for its
+own configuration) has no domain. The host says which record names a dataset; the runner takes the
+domain from the invocation's dataset, it is not an argument, and no expression reads it. With it,
+an identity names a record within that space and nowhere else: two spaces' `done` are two records,
+as they are two things, while every agent holding one space derives the same id for its `done`. A
+dataset without a domain keeps the shorter framing, and the same identity in two such datasets gives
+the same id in each, which the data model allows (ids are unique within a dataset).
+
+**A domain that has not arrived.** An agent can hold a dataset that names itself before it holds
+the record that names it: a member who has joined a space whose own record has not synced to them
+yet. Its domain is then **arriving**. A runner MUST NOT derive an identity id in such a dataset
+without the domain: that id would name another record than every agent holding the record names. An
+identity-keyed `create` there fails with precondition `spaceNotReady`, and nothing the operation
+wrote lands; run again once the record is held, it succeeds. A host that knows the record is coming
+MAY wait for it, briefly, before saying the domain is arriving. Which datasets name themselves is the
+host's to say, as their domain is: a dataset that names nothing is never arriving.
+
+> **Why the record, not the address the dataset is shared at.** A space's vocabulary (its task
+> states, its roles) is written when the space is made, before it is shared, and an address exists
+> only once it is. Ids derived within the address would differ from the ones the vocabulary was
+> seeded with, so the same slug made after sharing would name a second record. The space's own
+> record exists before the vocabulary and is the same on every agent, shared or not.
+
+> **Why the two never collide.** Without a domain the list has an even number of elements (the
+> empty string, the entity, then a field and a value per field); with one it has an odd number. The
+> framing is length-prefixed, so two lists hash alike only when they are equal, and lists of
+> different lengths never are. `d=` marks the element for whoever reads the bytes; nothing depends
+> on it.
+
+**Examples.** Normative test vectors.
+
+| entity      | identity                                              | domain                | bytes hashed (as text)                                    | id                                              |
+| ----------- | ----------------------------------------------------- | --------------------- | --------------------------------------------------------- | ----------------------------------------------- |
+| `TaskState` | `slug` = `blocked`                                    | none                  | `0:9:TaskState4:slug7:blocked`                            | `urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49` |
+| `TaskState` | `slug` = `blocked`                                    | `urn:example:space-a` | `0:21:d=urn:example:space-a9:TaskState4:slug7:blocked`    | `urn:uuid:1dc050ca-60a7-8861-aab2-e1cb9e0ee03f` |
+| `TaskState` | `slug` = `blocked`                                    | `urn:example:space-b` | `0:21:d=urn:example:space-b9:TaskState4:slug7:blocked`    | `urn:uuid:ea99375c-b545-886d-b300-15865134e59d` |
+| `Role`      | `slug` = `admin`                                      | none                  | `0:4:Role4:slug5:admin`                                   | `urn:uuid:86c6ab81-f4a4-8f85-997b-e64cde1d859e` |
+| `Vote`      | `poll` = `urn:example:p`, `voter` = `did:example:ann` | none                  | `0:4:Vote4:poll13:urn:example:p5:voter15:did:example:ann` | `urn:uuid:6ce7df0a-6f09-8bff-a03e-b41f62804a81` |
+| `Seat`      | `row` = `café`, `n` = `1.5`                           | none                  | `0:4:Seat3:row5:café1:n3:1.5` (`é` is two bytes)          | `urn:uuid:88084a04-6308-804b-8623-9ce69f883852` |
+
+The first is the state in the `identity-id` vector and the second the one in `identity-id-in-space`
+([Conformance](conformance.md)); every row is a case of the [id vectors](conformance.md#the-id-vectors).
+
 ## Atomicity
 
 **Definition.** An operation is atomic when:
@@ -308,6 +390,74 @@ operation that needs a guarantee across agents cannot get it from this version o
 > **Why.** "All or nothing, here" is what every backend can promise, and is what a person pressing a
 > button needs; agreement across replicas is a property of the network beneath, not of the
 > operation.
+
+## Serial
+
+An invocation whose operation declares [`serial`](format.md#serial) has a queue key: the expression
+evaluated over the checked args, with only the params bound. A host that starts runs SHOULD start an
+invocation only once every earlier invocation it started with the same key in the same dataset has
+finished, whether that one succeeded or failed. Invocations with different keys, or none, are not
+ordered by this. An invocation whose args fail the [args check](#args) has no key; its run fails
+anyway.
+
+The key orders the runs one host starts. It says nothing about another agent's runs, which
+[Atomicity](#atomicity)'s rule on preconditions still covers.
+
+Implemented by: [`run.ts`](../../../packages/entities/src/operations/run.ts) (`serialKey`),
+[`invokeOperation.ts`](../../../packages/app-shell/src/shared/invokeOperation.ts) (the queue).
+Pinned by: [`entities/tests/operations.test.ts`](../../../packages/entities/tests/operations.test.ts)
+("a serial key"), [`app-shell/tests/invokeOperation.test.ts`](../../../packages/app-shell/tests/invokeOperation.test.ts),
+[`app-shell/tests/involvements.test.ts`](../../../packages/app-shell/tests/involvements.test.ts)
+("writes quick presses in order").
+
+## Running speculatively
+
+_This section is informative: it says what a host MAY do, and nothing here changes what an
+operation means._
+
+A person who presses something watches for it to happen, and the write behind the press comes back
+through the backend's own notifications a round trip later. A host MAY draw an operation's writes
+before they land by running it twice with **one invocation**: first speculatively, then for real.
+
+- **The speculative run** is the same runner over a view of the dataset that answers each `find`
+  from what the host currently sees — the committed records, with the host's own pending predictions
+  laid over them — and records each write instead of making it. It asks the [write check](#the-write-check)
+  as the real run will. What it recorded is the **prediction**.
+- **The real run** is the invocation as this spec describes it, with the same `invocationId` and
+  `invokedAt`.
+
+Because a created record's id derives from the invocation and the step ([Ids](#ids)), and an
+identity id from the entity and the identity, the records the prediction draws have exactly the ids
+the real run gives them. Reconciling is therefore a matter of ids, not of resemblance:
+
+1. A speculative run that fails, statically or on a precondition (a refusal included), predicts
+   nothing, and nothing is drawn.
+2. While the real run is going, every read the host draws MAY show the prediction laid over what it
+   read: a predicted create where the read asks for its entity and its parent, a delete taken out,
+   an edit or a relation change applied to the record of that id.
+3. When the real run fails, the prediction is withdrawn.
+4. When it succeeds, each read keeps the prediction until that read's answer has moved: its records
+   now say what was predicted (the real rows have arrived), or say something else than they did
+   when the run returned (another agent's write landed, and the real rows win). A backstop retires
+   a prediction no read ever answers.
+5. Predictions are about a dataset, and a host drops them when it stops showing that dataset.
+
+A speculative run's reads see the predictions still pending from earlier invocations, but not its
+own writes, as the real run's reads do not: a second press made before the first has landed is
+predicted from the first one's answer. Invocations sharing a [serial](#serial) key are predicted
+in the order they were made.
+
+Nothing here is part of an operation's result. A host that never runs speculatively conforms, and a
+backend that delivers writes at once makes a prediction retire on its first read.
+
+Implemented by: [`speculate.ts`](../../../packages/entities/src/operations/speculate.ts)
+(`speculateOperation`), [`predictions/`](../../../packages/entities/src/predictions/index.ts) (what is
+drawn, and when it stops),
+[`invokeOperation.ts`](../../../packages/app-shell/src/shared/invokeOperation.ts) (the host's one way
+to run an operation).
+Pinned by: [`backend-inmemory/tests/speculativeRun.test.ts`](../../../packages/backend-system/inmemory/tests/speculativeRun.test.ts),
+[`entities/tests/predictions.test.ts`](../../../packages/entities/tests/predictions.test.ts),
+[`app-shell/tests/invokeOperation.test.ts`](../../../packages/app-shell/tests/invokeOperation.test.ts).
 
 ## The write check
 
@@ -362,6 +512,7 @@ way; the fault is in the definition or the call.
 | `unboundName`      | An expression reads a name not bound where it sits.                                                                                                                                                                                           |
 | `unknownEntity`    | The dataset has no record type for an entity a step names.                                                                                                                                                                                    |
 | `outsideOneOf`     | A chosen entity's value is not admitted by its `oneOf`.                                                                                                                                                                                       |
+| `notGranted`       | The host refused the entity a chosen entity resolved to, for this caller ([Chosen entities](#chosen-entities)).                                                                                                                               |
 | `protectedEntity`  | A write names an access-control entity.                                                                                                                                                                                                       |
 | `forEachKey`       | A `forEach` item has no key, or two items share one.                                                                                                                                                                                          |
 | `notAList`         | A `forEach`'s `in` or a `setRelation`'s `targets` is not a list.                                                                                                                                                                              |
@@ -369,19 +520,26 @@ way; the fault is in the definition or the call.
 
 **`precondition`**: the data was not as the operation requires. Running it again later may succeed.
 
-| Code              | When                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| `notFound`        | A `find` with `one` matched nothing; an `update`, `link` or `unlink` named a record that is not there. |
-| `ambiguous`       | A `find` with `one` matched more than one record.                                                      |
-| `alreadyLinked`   | A strict `link`'s target is already a member.                                                          |
-| `notLinked`       | A strict `unlink`'s target is not a member.                                                            |
-| `recordExists`    | A `create`'s derived id is already held: most often, a replay.                                         |
-| `expectChanged`   | An `expect` find's answer changed before commit.                                                       |
-| `refused`         | The write check refused a write.                                                                       |
-| _a declared name_ | A `check` failed with one of the operation's (or a callee's) `errors`.                                 |
+| Code              | When                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `notFound`        | A `find` with `one` matched nothing; an `update`, `link` or `unlink` named a record that is not there.             |
+| `ambiguous`       | A `find` with `one` matched more than one record.                                                                  |
+| `alreadyLinked`   | A strict `link`'s target is already a member.                                                                      |
+| `notLinked`       | A strict `unlink`'s target is not a member.                                                                        |
+| `notOwn`          | A `delete` with `own` named a record somebody other than the invoker made.                                         |
+| `recordExists`    | A `create`'s derived id is already held: most often a replay, or the same identity made again.                     |
+| `expectChanged`   | An `expect` find's answer changed before commit.                                                                   |
+| `refused`         | The write check refused a write.                                                                                   |
+| `spaceNotReady`   | An identity-keyed `create` ran in a dataset whose identity domain has not arrived ([Identity ids](#identity-ids)). |
+| _a declared name_ | A `check` failed with one of the operation's (or a callee's) `errors`.                                             |
 
 A failure that is neither (the backend unreachable, storage failing) is not an operation error and
 MAY be reported however the implementation reports such faults; the atomicity rules still apply.
+
+A declared name's `message` is the operation's own, written for the person who asked; a host MAY
+show it to them as it is. Every other code's message is for whoever wrote the definition or the
+call, and a host SHOULD say the failure in its own words instead. A `refused` error is the write
+check's to explain, and a host that already said so SHOULD NOT say it again.
 
 `step` SHOULD be a path naming the step: `<namespace>.<name>/steps.<index>.<verb>`, with
 `[<key>].steps.<index>.<verb>` for each `forEach` level and `/steps.<index>.<verb>` after a `call`,
@@ -410,10 +568,10 @@ not what one run will. Record, per entity:
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `create`                           | `create` on its entity; with a `parent`, `add:<parent.relation>` on `parent.entity`, or on `*` when the parent names no entity. |
 | `update`                           | `edit`                                                                                                                          |
-| `delete`                           | `delete`                                                                                                                        |
+| `delete`                           | `delete`; `deleteOwn` with `own`                                                                                                |
 | `link`                             | `add:<relation>`                                                                                                                |
 | `unlink`                           | `remove:<relation>`                                                                                                             |
-| `setRelation`                      | `add:<relation>` and `remove:<relation>`                                                                                        |
+| `setRelation`                      | `add:<relation>` and `remove:<relation>`; `add:<relation>` alone with `keep`                                                    |
 | `find`, `check`, `forEach`, `call` | nothing themselves                                                                                                              |
 
 - A literal `entity` records under its name. A chosen entity records under each name in its `oneOf`,
@@ -421,8 +579,9 @@ not what one run will. Record, per entity:
   members.
 - A `relation` given as an expression is recorded as `*` (`add:*`, `remove:*`).
 - `bulk` is true when any write sits inside a `forEach`, directly or through a call made from one.
-- `destructive` is true when any `delete` or `remove:` verb is recorded (so every `unlink` and
-  `setRelation`).
+- `destructive` is true when any `delete` or `remove:` verb is recorded (so every `unlink`, and every
+  `setRelation` without `keep`). `deleteOwn` is not destructive: the run cannot reach beyond the
+  invoker's own records with it, and taking back what one gave destroys nothing of anybody else's.
 - Entity and category keys, and each list of verbs, are sorted by code point.
 
 An operation **writes** when `entities` or `categories` is non-empty. One that writes nothing (only
@@ -432,15 +591,24 @@ reads and checks) is not a write.
 > summary listing them would change too, and a consent given against it would silently cover a type
 > the person never saw.
 
+> **Why per call, not the widest.** Giving a category the widest group a caller might hold would
+> make a generic write (delete these records, edit this record) need settings permission to delete
+> a post, and give anyone who holds it every entity the category reaches. Judging the entity passed
+> gives each call exactly what the same write made on its own would need.
+
 ### Permission and confirmation
 
 A host deriving what invoking an operation needs MUST derive it from the effect summary, never from
 anything written beside the operation:
 
-- **Permission.** The host keeps one table mapping entities, and categories, to its permission
-  groups. An operation needs the widest group any recorded entity or category reaches, and an entity
-  the table does not list falls in the host's default group. So invoking an operation needs what
-  making its writes one at a time would.
+- **Permission.** The host keeps one table mapping entities to its permission groups. Holding an
+  operation at all needs the widest group any entity recorded under `entities` reaches, and an entity
+  the table does not list falls in the host's default group. A category recorded under `categories`
+  says "an entity chosen at call time, in this category", and adds nothing to that group: the entity
+  is known only when the step runs, so the host judges it then, by the same table, for the caller
+  invoking it ([Chosen entities](#chosen-entities)). So invoking an operation needs what making its
+  writes one at a time would, call by call: one generic delete removes a post for a caller who may
+  write content and is refused a settings record to the same caller.
 - **Confirmation.** A host that confirms destructive actions MUST treat an operation as destructive
   exactly when `destructive` is true, and SHOULD describe it to the person from the summary ("creates
   a board; adds to board's children; may write many records in one call").

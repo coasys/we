@@ -104,7 +104,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/graph-protocol\` · \`-core\` · \`-expanders\` · \`-layouts\` · \`-solid\` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | \`@we/block-shared\` | block-system/shared | Block content types + serialization | Agnostic |
 | \`@we/reactivity\` · \`@we/reactivity-solid\` | reactivity-system/* | The reactivity port every store, module store and the prop resolvers take (signal, memo, effect, untrack, batch, root, onCleanup), its three timing guarantees, a second implementation for tests, and Solid's implementation | **Agnostic** (Solid only in \`-solid\`) |
-| \`@we/optimism\` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| \`@we/optimism\` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic |
 | \`@we/clock\` | packages/clock | A moment being looked at and the playback that moves it — clocks by name, so a globe, a scrubber and a module follow the same one | Agnostic |
 | \`@we/history\` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
 | \`@we/drag\` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
@@ -117,7 +117,9 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 
 Apps (\`apps/we-web\`, \`apps/we-electron\`, \`apps/we-tauri\`) are thin hosts over \`@we/app-shell\`.
 Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`BackendConnector\`
-(how do I reach the data layer).
+(how do I reach the data layer). The adapter is also the stores' \`PlatformPort\` — storage, the
+address, the window and the document they reach through \`platform\` rather than the browser's
+globals; a browser host spreads \`createBrowserPlatform()\` into it.
 
 **Dependency direction:** \`templates → shell → backend-shared ← backend-ad4m\`, and
 \`modules → shell → backend-shared\`. Dependencies point inward toward the contract packages; there are
@@ -167,9 +169,9 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - Add/adjust a primitive → \`packages/design-system/3-primitives/src/\` (Lit).
 - Add/adjust a layout/composite component → \`packages/design-system/4-components/src/\` (Solid).
 - DS-props → CSS logic (shared) → \`packages/design-system/utils/src/index.ts\`; Solid binding → \`.../src/solid/index.ts\`.
-- Stores → \`packages/app-shell/src/shared/stores/\`, all on the reactivity port; SpaceStore, ShellStore and
+- Stores → \`packages/app-shell/src/shared/stores/\`, all on the reactivity and platform ports; SpaceStore, ShellStore and
   RecordStore are compositions over one part per job in \`stores/space/\`, \`stores/shell/\`, \`stores/records/\`.
-  Composed once in \`BootController\`; components reach them with \`useStore\` (the Solid binding,
+  Composed once by \`composeStores\` (\`shared/composeStores.ts\`, which \`BootController\` calls); components reach them with \`useStore\` (the Solid binding,
   \`frameworks/solid/stores/\`).
 - Pure algorithms another host must agree with (board arrangement, tree ranks, connection keys, dock layout)
   → \`packages/app-shell/src/shared/kernels/\`, each with recorded vectors; block flattening is
@@ -216,7 +218,7 @@ chosen by the agent, never applied as a space's template, and only an app may pl
 marks where its sections go with \`{ path: '$views' }\` and the host expands that per space, from
 \`Space.enabledViews\` (the community's list, and its order) minus \`SpacePreference.hiddenViews\`
 (each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip
-from a literal array — read \`spaceStore.viewNav\`, which is the same resolved list the routes are
+from a literal array — read \`navigation.viewNav\`, which is the same resolved list the routes are
 built from. See docs/architecture/views.md.
 
 **Before adding a relation between two models, read docs/architecture/relations.md.** A connection

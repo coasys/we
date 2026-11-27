@@ -92,7 +92,7 @@ describe('the Coasys cartridge', () => {
       if (Array.isArray(node)) {
         const invoked = node.map((step) => (step as { $invoke?: string } | null)?.$invoke);
         const close = invoked.indexOf('shellStore.closeShellView');
-        if (close >= 0 && invoked.indexOf('spaceStore.navigateToSpace') > close) offenders.push(path);
+        if (close >= 0 && invoked.indexOf('navigation.navigateToSpace') > close) offenders.push(path);
         node.forEach((item, i) => walk(item, `${path}[${i}]`));
       } else if (node && typeof node === 'object')
         for (const [key, value] of Object.entries(node)) walk(value, `${path}.${key}`);
@@ -193,7 +193,7 @@ describe('the Coasys cartridge', () => {
 
   /*
     A call's page names its call to the modules, not only to the record view: the panel, its count
-    on the button and the transcript read `routeStore.params.call`, so an address without it showed
+    on the button and the transcript read `navigation.params.call`, so an address without it showed
     the joined call (or the space) on another call's page.
   */
   it('puts the call on its page’s address the way the modules read it', () => {
@@ -230,7 +230,7 @@ describe('the Coasys cartridge', () => {
             ?.impl(args, { context: {}, stores: {} }),
       });
     const roots = (waiting: number, running = false) => ({
-      routeStore: { params: { call: 'call-1' } },
+      navigation: { params: { call: 'call-1' } },
       spaceStore: { root: 'space-root' },
       modules: {
         transcribe: {
@@ -246,7 +246,7 @@ describe('the Coasys cartridge', () => {
       (n) => n.type === 'we-button' && JSON.stringify(n.props).includes('transcribe:interpretation'),
     ) as Node;
     const subject =
-      'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+      'navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
       'spaceStore.root)';
     expect(JSON.stringify(button)).toContain(`modules.transcribe.proposalsFor[${subject}]`);
 
@@ -295,7 +295,7 @@ describe('the Coasys cartridge', () => {
     expect(enter.$invoke).toBe('chatStore.openChat');
     const source = enter.args![0].$;
     expect(source).toContain('datasetStore.currentDataset.id');
-    expect(source).not.toContain('spaceStore.currentSpace.uuid');
+    expect(source).not.toContain('spaceSettings.currentSpace.uuid');
 
     const asked = evaluateExpression(parseExpression(source), {
       root: (name) => ({
@@ -303,7 +303,7 @@ describe('the Coasys cartridge', () => {
         value: {
           // A joined space: the local dataset id is not the uuid the creator's record synced in.
           datasetStore: { currentDataset: { id: 'local-dataset-uuid', sharedId: 'we://shared-cid' } },
-          spaceStore: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
+          spaceSettings: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
           local: { findQuery: 'what is growing?' },
         }[name],
       }),
@@ -337,7 +337,7 @@ describe('the Coasys cartridge', () => {
       callPage,
       (n) => n.type === '$part' && (n.props as { id?: unknown } | undefined)?.id === 'feed.callFeed',
     );
-    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'routeStore.params.id' });
+    expect((placement!.props as { subject?: unknown }).subject).toEqual({ $: 'navigation.params.id' });
 
     // Not inside any `$if`: nothing about the reader or the call's state hides it.
     const gated = findNode(callPage, (n) => n.type === '$if' && JSON.stringify(n).includes('"feed.callFeed"'));
@@ -475,7 +475,7 @@ describe('the Coasys cartridge', () => {
     it("offers the space's built-in, its own templates and the agent's, and not every built-in", () => {
       const row = (id: string) => ({ id, name: id });
       const roots = {
-        templateStore: {
+        appearance: {
           currentSwitcherId: 'coasys-space',
           switcherGroups: [
             { label: 'Space templates', items: [row('space::ours')] },
@@ -483,7 +483,7 @@ describe('the Coasys cartridge', () => {
             { label: 'Built-in', items: [row('coasys-space'), row('workshop'), row('default')] },
           ],
         },
-        spaceStore: { spaceDefaultTemplateId: 'coasys-space' },
+        spaceSettings: { spaceDefaultTemplateId: 'coasys-space' },
       };
       const ids = (evaluate(SPACE_TEMPLATE_CHOICES, roots) as { id: string }[]).map((t) => t.id);
       expect(ids).toEqual(['coasys-space', 'space::ours', 'mine']);
@@ -497,15 +497,15 @@ describe('the Coasys cartridge', () => {
       expect(tree).toContain(JSON.stringify(chooseTemplate("split(event.detail.value, '|')[1]")));
       expect(tree).toContain(JSON.stringify(chooseTheme("split(event.detail.value, '|')[1]")));
       // Reset layout is the template row's own, offered once the layout has been moved.
-      expect(tree).toContain('shellStore.resetTemplateLayout');
+      expect(tree).toContain('layout.resetTemplateLayout');
     });
   });
 
   describe('in Canvas mode', () => {
     const at = (path: string[], params: Record<string, string>, extra: Record<string, unknown> = {}) => {
       const roots: Record<string, unknown> = {
-        routeStore: { templateSegments: path, params },
-        spaceStore: { spacePath: '/space/s1', policy: { sentences: [] } },
+        navigation: { templateSegments: path, params, spacePath: '/space/s1' },
+        spaceStore: { policy: { sentences: [] } },
         workflowStore: { open: null },
         shapeStore: { spaceShapes: [] },
         local: { others: 'dim', spaceLandmarks: [{ id: 'l1', name: 'canvas', node: 'c1' }] },
@@ -536,7 +536,6 @@ describe('the Coasys cartridge', () => {
         )
         .map((card) => card.id);
     const SPACE = {
-      spacePath: '/space/s1',
       root: 'space-root',
       landmarks: { canvas: 'c1' },
       policy: { sentences: [] },
@@ -555,7 +554,7 @@ describe('the Coasys cartridge', () => {
 
     it('is drawn beside the pages, by the mode in the address', () => {
       const view = (coasys.shell.children as SchemaNode[])[1];
-      expect(JSON.stringify(view)).toContain("routeStore.params.view == 'canvas'");
+      expect(JSON.stringify(view)).toContain("navigation.params.view == 'canvas'");
       expect(JSON.stringify(view)).toContain('"type":"$routes"');
     });
 
@@ -705,9 +704,9 @@ describe('the Coasys cartridge', () => {
       const onNodeClick = (vocab.props as { onNodeClick: { $if: { condition: unknown; then: unknown } }[] })
         .onNodeClick[1];
       expect(onNodeClick.$if.then).toEqual([
-        { $invoke: 'routeStore.setParam', args: ['cardType', { $: 'event.recordType' }] },
-        { $invoke: 'routeStore.setParam', args: ['card', { $: 'event.recordId' }] },
-        { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+        { $invoke: 'navigation.setParam', args: ['cardType', { $: 'event.recordType' }] },
+        { $invoke: 'navigation.setParam', args: ['card', { $: 'event.recordId' }] },
+        { $invoke: 'viewState.openTemplatePanel', args: ['inspector'] },
       ]);
       const pressed = (recordId: string, recordType: string) =>
         at([], { view: 'canvas' }, { event: { recordId, recordType } })(onNodeClick.$if.condition);
@@ -1149,7 +1148,7 @@ describe('the Coasys cartridge', () => {
         const [first, second] = (h.args ?? []).map((arg) =>
           arg && typeof arg === 'object' && '$' in arg ? evaluate(arg) : arg,
         );
-        if (h.$invoke === 'routeStore.setParam') return `?${first}=${second}`;
+        if (h.$invoke === 'navigation.setParam') return `?${first}=${second}`;
         const query = (second as { query?: Record<string, string> } | undefined)?.query;
         return query ? `${first}?${new URLSearchParams(query)}` : first;
       };
@@ -1324,7 +1323,7 @@ describe('the Coasys cartridge', () => {
         // The strip sits under the `$if` that reads "not on the map".
         const notOnMap = findNode(canvasPane, (n) => {
           const condition = (n.props as { condition?: { $?: unknown } } | undefined)?.condition?.$;
-          return n.type === '$if' && condition === "!((routeStore.params.view == 'canvas') && routeStore.params.dna)";
+          return n.type === '$if' && condition === "!((navigation.params.view == 'canvas') && navigation.params.dna)";
         });
         expect(JSON.stringify(notOnMap)).toContain('"$toggleLocal":"treeMode"');
       });
@@ -1523,7 +1522,7 @@ describe('the Coasys space chat: one mount for the channel on screen', () => {
       root: (name) => ({
         bound: true,
         value: {
-          routeStore: { params: { channel: FEED }, templateSegments: [] },
+          navigation: { params: { channel: FEED }, templateSegments: [] },
           spaceStore,
           local: {},
           modules: { transcribe: {}, call: {} },

@@ -60,6 +60,10 @@ A schema is a tree of nodes. Each node can have:
 - props: An object of props for the component
 - children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
+- Node props: a component prop the Component Registry types as JSX.Element (FlipCard's front and back,
+  GraphView's emptyAction) takes a NODE. Write { "props": { "front": { "type": "Card", … } } } and the
+  node is drawn, reading the same locals and names as the component around it. Any other prop holding
+  a node-shaped value is data, handed to the component as it is.
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
@@ -127,7 +131,7 @@ Example node:
 {
   "type": "we-button",
   "props": {
-    "onClick": { "$invoke": "routeStore.navigate", "args": ["~/"] }
+    "onClick": { "$invoke": "navigation.navigate", "args": ["~/"] }
   },
   "children": [
     { "type": "we-icon", "props": { "name": "house" } },
@@ -163,7 +167,7 @@ Non-promise (synchronous) methods are unaffected — lifecycle keys are ignored.
 Example — close modal after async submission:
 { "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }] }
 Example — navigate to newly created item (createSpace resolves with the new space's id):
-{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "spaceStore.navigateToSpace", "args": [{ "$": "result" }] }] }
+{ "$invoke": "spaceStore.createSpace", "args": [...], "onSuccess": [{ "$setLocal": "modalOpen", "value": false }, { "$invoke": "navigation.navigateToSpace", "args": [{ "$": "result" }] }] }
 
 An action runs only when somebody asked for it. A press, a key, typing, a drop or a paste that reaches
 the element whose handler calls it counts as asking — and so does whatever the element does in answer,
@@ -216,7 +220,7 @@ as tokens; an expression goes anywhere a VALUE goes — a prop, a condition, $ea
 array (rendered as text), a where value, an $invoke argument.
 
 References — what a name starts from:
-  spaceStore.memberDids          a store member (any store in the Stores section; modules.<id>.<key> for a module)
+  identity.memberDids          a store member (any store in the Stores section; modules.<id>.<key> for a module)
   local.searchText               a $localState or $queries field; dot paths read into object fields
   post.title                     a name bound by $each / $single / $agent through "as" — the default is item
   index, prev                    $each's row position, and the previous row
@@ -344,15 +348,15 @@ other.
 
 Examples:
 { "$": "filter(local.tasks, { status: 'done' })" }
-{ "$": "filter(profileStore.profiles, { location: { exists: true }, handle: { contains: local.searchText } })" }
+{ "$": "filter(identity.profiles, { location: { exists: true }, handle: { contains: local.searchText } })" }
 { "$": "filter(local.dayEvents, { startDate: { startsWith: cell.date } }, 2)" }        — the first two only
 { "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
 { "$": "item.author == me.did ? 'mine' : 'theirs'" }
-{ "$": "\`\${count(spaceStore.memberDids)} \${plural(count(spaceStore.memberDids), 'Member', 'Members')}\`" }
-{ "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.did != me.did).map(m, m.handle).join(', ')" }
-{ "$": "post.author in spaceStore.mutedDids" }
+{ "$": "\`\${count(identity.memberDids)} \${plural(count(identity.memberDids), 'Member', 'Members')}\`" }
+{ "$": "identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m && m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "post.author in identity.mutedDids" }
 
 Rules:
 - An expression naming event/arg/result at the TOP LEVEL of an $invoke's args, or as a $setLocal
@@ -643,12 +647,16 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+Scope is where a node is WRITTEN, not where it is drawn: a route sees the $localState and $queries of
+the node that lists it and every node above it (the template root's included), and a panel's node in
+meta.panels sees the root's. A field written in a route or a panel is the same field the root reads.
+Nothing declared between a node and its { "type": "$routes" } outlet reaches the routes.
 Local values can be used in $invoke args: { "$invoke": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
 When several related fields share a common condition on their initial values (e.g. all null/empty when a store value is absent), prefer a single "object" field seeded from the store, then read sub-fields with dot-notation and write with merge.
 Example — location object (replaces 5 separate scalar fields with conditional initials):
-  "$localState": { "location": { "type": "object", "initial": { "$": "spaceStore.currentSpace.location" } } }
+  "$localState": { "location": { "type": "object", "initial": { "$": "spaceSettings.currentSpace.location" } } }
   Read:  { "$": "local.location.latitude" }, { "$": "local.location.city" }
   Write (picker confirm): { "$setLocal": "location", "value": { "$": "event.detail" } }
   Write (partial edit):   { "$setLocal": "location", "merge": { "city": { "$": "event.detail" } } }

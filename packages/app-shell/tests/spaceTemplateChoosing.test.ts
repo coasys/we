@@ -6,18 +6,12 @@
  * A plain store test, run once under each reactivity port.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CHOOSING_GIVE_UP_MS, createSpaceTemplateChoosing } from '../src/shared/stores/spaceTemplateChoosing';
+import { reactivityPorts } from './support/engines';
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('a space waiting for its template, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('a space waiting for its template, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

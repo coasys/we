@@ -55,3 +55,23 @@ export function datasetAddressedBy(
   if (!dataset || !segment) return false;
   return dataset.id === segment || dataset.sharedId === segment;
 }
+
+/**
+ * The dataset a write's handle names, among the ones given. A backend may hand a model a handle
+ * object of its own for the same dataset, so when no dataset holds the handle itself it is matched
+ * by the id it carries: `uuid` first, since one backend's handle also carries an unrelated `id`.
+ */
+export function datasetOfHandle<D extends { id: string; handle: unknown }>(
+  known: readonly D[],
+  handle: unknown,
+): D | undefined {
+  const byHandle = known.find((d) => d.handle === handle);
+  if (byHandle) return byHandle;
+  const id = handleDatasetId(handle);
+  return id ? known.find((d) => d.id === id) : undefined;
+}
+
+/** The local dataset id a handle carries, for one no known dataset holds: `uuid` first, as above. */
+export function handleDatasetId(handle: unknown): string | undefined {
+  return (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
+}

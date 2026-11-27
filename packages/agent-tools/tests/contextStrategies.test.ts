@@ -14,11 +14,13 @@ import { chatSystemPreamble } from '../src/templates/chatSystemPrompt';
 import { fullContext, lookupContext, sectionsContext, splitReference } from '../src/templates/contextStrategies';
 
 const call = (name: string, args: Record<string, unknown> = {}) => ({ id: 'c', name, arguments: args });
+/** A Stores entry's heading: the name a template writes, then what it is. */
+const entry = (name: string) => new RegExp(`^${name} \\([^)]*\\):$`, 'm');
 
 const schema = {
   type: 'Column',
   meta: { name: 'T', description: '', icon: 'cube' },
-  children: [{ type: 'we-avatar', props: { image: { $: 'profileStore.ownProfile.avatar' } } }],
+  children: [{ type: 'we-avatar', props: { image: { $: 'identity.ownProfile.avatar' } } }],
 } as unknown as SchemaNode;
 
 describe('splitting the reference', () => {
@@ -45,18 +47,19 @@ describe('the sections strategy', () => {
 
   it('reaches the stores by name, several at once', () => {
     const answer = prepared.resolveTool!(call('we_stores_reference', { stores: ['spaceStore', 'themeStore'] }))!;
-    expect(answer).toMatch(/^SpaceStore:$/m);
-    expect(answer).toMatch(/^ThemeStore:$/m);
-    expect(answer).not.toMatch(/^RecordStore:$/m);
+    expect(answer).toMatch(entry('spaceStore'));
+    expect(answer).toMatch(entry('themeStore'));
+    expect(answer).not.toMatch(entry('recordStore'));
   });
 
   it('names every store it will answer for, in the directory and in the tool', () => {
     const tool = prepared.tools.find((t) => t.name === 'we_stores_reference')!;
-    for (const name of storesText.match(/^([A-Z]\w*):$/gm)!) {
-      const asked = name.replace(/:$/, '');
-      const member = asked[0].toLowerCase() + asked.slice(1);
-      expect(prepared.system, member).toContain(member);
-      expect(tool.description, member).toContain(member);
+    const names = [...storesText.matchAll(/^([a-z]\w*) \([^)]*\):$/gm)].map((m) => m[1]);
+    expect(names).toContain('navigation');
+    expect(names).toContain('spaceStore');
+    for (const name of names) {
+      expect(prepared.system, name).toContain(name);
+      expect(tool.description, name).toContain(name);
     }
   });
 
@@ -94,10 +97,10 @@ describe('the lookup strategy', () => {
 
     expect(prepared.system).toMatch(/^- we-avatar /m);
     expect(prepared.system).toMatch(/^- we-button /m);
-    expect(prepared.system).toMatch(/^ProfileStore:$/m);
-    expect(prepared.system).toMatch(/^SpaceStore:$/m);
+    expect(prepared.system).toMatch(entry('identity'));
+    expect(prepared.system).toMatch(entry('spaceStore'));
     // Not implicated, so left to a lookup.
-    expect(prepared.system).not.toMatch(/^ThemeStore:$/m);
+    expect(prepared.system).not.toMatch(entry('themeStore'));
   });
 
   it('looks up components, stores and sections by name, several at once', () => {
@@ -107,7 +110,7 @@ describe('the lookup strategy', () => {
     )!;
 
     expect(answer).toMatch(/^- Grid /m);
-    expect(answer).toMatch(/^ThemeStore:$/m);
+    expect(answer).toMatch(entry('themeStore'));
     expect(answer).toContain('## Panels');
   });
 

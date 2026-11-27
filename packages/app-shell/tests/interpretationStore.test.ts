@@ -7,8 +7,6 @@
  */
 import type { InterpretationActivity } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFirstScreen, type FirstScreen } from '../src/shared/firstScreen';
@@ -23,15 +21,11 @@ vi.mock('../src/shared/registries/moduleHostServices', () => ({
 }));
 
 import { createInterpretationStore, type InterpretationStore } from '../src/shared/stores/InterpretationStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const ME = 'did:key:z6MkOwn';
 
-describe.each(ports)('interpretationStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('interpretationStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

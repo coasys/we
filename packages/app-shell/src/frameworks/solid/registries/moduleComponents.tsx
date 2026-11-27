@@ -15,7 +15,7 @@
 import { deviceHints, engineChoiceFrom, imageryChoiceFrom, ionTokenFrom, resolveEngine } from '@we/module-globe';
 import { createMemo, lazy, Show } from 'solid-js';
 
-import { clockRegistry } from '../../../shared/clocks';
+import { appClocks } from '../../../shared/clocks';
 import { moduleRegistry } from '../../../shared/registries/moduleRegistry';
 
 /**
@@ -41,7 +41,7 @@ const CesiumEngine = lazy(async () => {
       <CesiumGlobe
         {...props}
         layerKinds={layerKinds}
-        clocks={clockRegistry}
+        clocks={appClocks()}
         imagery={imageryChoiceFrom(globeSettings())}
         ionAccessToken={ionTokenFrom(globeSettings())}
       />
@@ -59,7 +59,7 @@ const MapLibreEngine = lazy(async () => {
       <MapLibreGlobe
         {...props}
         layerKinds={maplibreLayerKinds}
-        clocks={clockRegistry}
+        clocks={appClocks()}
         imagery={imageryChoiceFrom(globeSettings())}
       />
     ),

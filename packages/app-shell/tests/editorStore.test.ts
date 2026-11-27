@@ -1,9 +1,9 @@
 /**
  * The editor store over the real edit target and live documents, with the stores around it doubled.
  *
- * Plain store tests, run once under each reactivity port: Solid with its nested live documents, and
- * the test port with the plain ones, whose every read of a template wakes on every edit — so a
- * session that ended, a chat list that reloaded or a history that was trimmed on an edit fails there.
+ * Plain store tests, run once under each engine: Solid with its nested live documents, and the test
+ * port and Vue with the plain ones, whose every read of a template wakes on every edit — so a session
+ * that ended, a chat list that reloaded or a history that was trimmed on an edit fails there.
  */
 import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
@@ -13,10 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { type LiveTemplates, plainLiveTemplates } from '../src/shared/liveTemplate';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createEditorStore, type EditorStore } from '../src/shared/stores/EditorStore';
 import { createEditTarget, type EditTargetPort } from '../src/shared/stores/editTarget';
 import type { EditingTheme } from '../src/shared/stores/ThemeStore';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';
+import { createVueReactivity } from './support/vueReactivity';
 
 const chatLoads: string[] = [];
 vi.mock('../src/shared/editorChats', () => ({
@@ -37,6 +39,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTem
     'the test port, with plain documents',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],
@@ -61,10 +70,12 @@ const theme = (name: string) => ({ id: 'theme', name }) as unknown as EditingThe
 describe.each(hosts)('the editor store under %s', (_name, host) => {
   let reactivity: ReactivityPort;
   let liveTemplates: LiveTemplates;
+  let platform: TestPlatform;
   const disposers: (() => void)[] = [];
 
   beforeEach(() => {
     ({ reactivity, liveTemplates } = host());
+    platform = createTestPlatform();
     chatLoads.length = 0;
   });
   afterEach(() => {
@@ -120,6 +131,7 @@ describe.each(hosts)('the editor store under %s', (_name, host) => {
         edit = createEditTarget({ reactivity, templateStore });
         store = createEditorStore({
           reactivity,
+          platform,
           toasts: {
             info: (m) => told.push(m),
             success: (m) => told.push(m),

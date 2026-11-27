@@ -21,13 +21,13 @@ import {
   CHROME_RAIL_PX,
   COLLAPSED_PX,
   columnLayout,
-  columnMembers,
   columnSlots,
   contains,
   type ContentInset,
   contentInset,
   coveredInset,
   coveringLanes,
+  DEFAULT_APP_FRAME,
   displaces,
   displacingLanes,
   DOCK_GAP_PX,
@@ -37,6 +37,7 @@ import {
   type DropTarget,
   EDGE_REACH_PX,
   edgeGroups,
+  edgeLaneBox,
   edgeOfSnap,
   EDGES,
   edgeZone,
@@ -47,6 +48,8 @@ import {
   grown,
   homeLaneMembers,
   insertionSlots,
+  laneable,
+  laneBase,
   type LaneMember,
   laneShrunk,
   laneThickness,
@@ -59,6 +62,7 @@ import {
   NO_INSET,
   NO_TOP_CHROME,
   occupiedFor,
+  overlapArea,
   PANEL_CHROME,
   PANEL_LAYER_BASE,
   placementFromDeclaration,
@@ -70,6 +74,7 @@ import {
   roomElsewhere,
   seatOrder,
   seatSize,
+  seatsOf,
   seedPlacement,
   shareSeatBox,
   SIDEBAR_PX,
@@ -83,7 +88,9 @@ import {
   stripBox,
   takenSnaps,
   targetRank,
+  thicknessOf,
   unlaned,
+  type Viewport,
   widestMin,
   withChromeCovered,
 } from '../src/shared/dockGeometry';
@@ -1188,6 +1195,10 @@ describe('a floating column', () => {
 });
 
 describe('who is in a column', () => {
+  /** The floating lane on an edge: the one group that covers rather than displaces. */
+  const columnMembers = <T extends { placement: FloatPlacement }>(panels: T[], edge: 'left', viewport: Viewport) =>
+    edgeGroups(panels, edge, viewport).find((group) => !group.displacing)?.members ?? [];
+
   const member = (over: Partial<FloatPlacement> = {}) => ({
     placement: placement({ snap: 'left', displace: false, ...over }),
   });
@@ -3001,5 +3012,90 @@ describe('cards snapped to an edge, as a lane over the content', () => {
     const sidebar: DockRequest = { id: 's', edge: 'right', size: 'md', float: false, placement: placement({ w: 400 }) };
     const [lane] = coveringLanes([sidebar, card('a', 0), card('b', 1)], desktop);
     expect(lane.box.right).toBe(400);
+  });
+});
+
+/*
+  Helpers the dock layout kernel's entry points are built from. The kernel's vectors ask only the
+  entry points, so these are pinned here instead, where a refactor that changes one is a change to a
+  test rather than to the contract.
+*/
+describe('the helpers behind the layout', () => {
+  it('takes a panel that is closed or full screen off every edge, keeping its place in the list', () => {
+    const panels = laneable(
+      [
+        dock({ id: 'a', placement: placement({ snap: 'left' }) }),
+        dock({ id: 'closed', edge: null, placement: placement({ snap: 'left' }) }),
+        dock({ id: 'full', size: 'full', placement: placement({ snap: 'left' }) }),
+        dock({ id: 'bid', edge: 'bottom', size: 'sm' }),
+      ],
+      desktop,
+    );
+    expect(panels.map((panel) => panel.index)).toEqual([0, 1, 2, 3]);
+    expect(panels.map((panel) => panel.placement.snap)).toEqual(['left', null, null, 'bottom']);
+  });
+
+  it('reads a displacing thickness from what was stored, falling back to the card', () => {
+    const stored = placement({ w: 360, h: 420, thicknessX: 300, thicknessY: 180 });
+    expect(thicknessOf(stored, 'left')).toBe(300);
+    expect(thicknessOf(stored, 'bottom')).toBe(180);
+    const card = placement({ w: 360, h: 420 });
+    expect(thicknessOf(card, 'right')).toBe(360);
+    expect(thicknessOf(card, 'top')).toBe(420);
+  });
+
+  it('puts side lanes in the corners and runs top and bottom lanes between them', () => {
+    const inset = { left: 300, right: 200, top: 100, bottom: 50 };
+    expect(edgeLaneBox('left', inset)).toEqual({ left: SIDEBAR_PX, top: 0, bottom: 0 });
+    expect(edgeLaneBox('right', inset)).toEqual({ right: 0, top: 0, bottom: 0 });
+    expect(edgeLaneBox('top', inset)).toEqual({ top: 0, left: SIDEBAR_PX + 300, right: 200 });
+    expect(edgeLaneBox('bottom', inset)).toEqual({ bottom: 0, left: SIDEBAR_PX + 300, right: 200 });
+  });
+
+  it('starts every lane below a top bar the app frame holds', () => {
+    const frame = { ...DEFAULT_APP_FRAME, top: 48 };
+    expect(edgeLaneBox('left', NO_INSET, frame).top).toBe(48);
+    expect(edgeLaneBox('right', NO_INSET, frame).top).toBe(48);
+    expect(edgeLaneBox('top', NO_INSET, frame).top).toBe(48);
+    expect(edgeLaneBox('bottom', NO_INSET, frame).bottom).toBe(0);
+  });
+
+  it('gives a lane member its size and grow, a folded one only its titlebar', () => {
+    const sized = { ...placement({ snap: 'left', h: 400, grow: 2 }), min: { height: 260 } };
+    expect(laneBase(sized, 'h', false)).toEqual({ base: 400, grow: 2, floor: 260 });
+    expect(laneBase({ ...sized, h: 100 }, 'h', true)).toEqual({ base: 260, grow: 2, floor: 260 });
+    expect(laneBase(placement({ snap: 'left', h: 200, collapsed: true }), 'h', true)).toEqual({
+      base: COLLAPSED_PX,
+      grow: 0,
+      floor: COLLAPSED_PX,
+    });
+    // Across a top or bottom lane a fold gives up height, not its share of the width.
+    expect(laneBase(placement({ snap: 'top', w: 360, collapsed: true }), 'w', true)).toEqual({
+      base: 360,
+      grow: 1,
+      floor: MIN_DOCK_PX,
+    });
+  });
+
+  it('seats tabs that share an order together, in tab order, and gives each unnamed panel a seat', () => {
+    const member = (over: Partial<FloatPlacement>) => ({ placement: placement(over) });
+    const [first, second, own, unnamedA, unnamedB] = [
+      member({ order: 0, tab: 1 }),
+      member({ order: 0, tab: 0 }),
+      member({ order: 1 }),
+      member({}),
+      member({}),
+    ];
+    expect(seatsOf([first, second, own, unnamedA, unnamedB])).toEqual([[second, first], [own], [unnamedA], [unnamedB]]);
+  });
+
+  it('measures how much of a box another covers', () => {
+    expect(overlapArea({ x: 0, y: 0, w: 100, h: 100 }, { x: 50, y: 50, w: 100, h: 100 })).toBe(2500);
+    expect(overlapArea({ x: 0, y: 0, w: 10, h: 10 }, { x: 50, y: 50, w: 10, h: 10 })).toBe(0);
+  });
+
+  it('parks a section at home in the bottom-right corner when asked for its snap origin', () => {
+    const corner = snapOrigin('bottom-right', 360, 420, desktop);
+    expect(snapOrigin('home', 360, 420, desktop)).toEqual(corner);
   });
 });

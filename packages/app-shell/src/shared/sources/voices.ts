@@ -45,7 +45,7 @@ const shortDid = (did: string) => (did.length > 16 ? `${did.slice(0, 12)}…${di
 /**
  * The voices from a seed's summary, each with its face, its weight from the address and its share of
  * the say. Options: summary (what `onSeedSummary` reported), param (the address form), profiles
- * (profileStore.profiles), me (me.did).
+ * (identity.profiles), me (me.did).
  */
 export function voices(options: unknown): VoiceView[] {
   const { summary, param, profiles, me } = (options ?? {}) as {

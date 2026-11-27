@@ -158,7 +158,7 @@ const origin: SchemaNode = {
             size: 'xs',
             variant: 'ghost',
             // Into the call it was said in — the address the transcript and the space's views follow.
-            onClick: { $invoke: 'routeStore.setParam', args: ['call', { $: 'row.call' }] },
+            onClick: { $invoke: 'navigation.setParam', args: ['call', { $: 'row.call' }] },
           },
           children: [{ $: 'row.callTitle' }],
         },
@@ -419,7 +419,7 @@ const transcriptsSwitch: SchemaNode = {
         label: 'Show call transcripts',
         checked: { $: 'modules.feed.showCallTranscripts' },
         onChange: {
-          $invoke: 'spaceStore.setMyModuleSetting',
+          $invoke: 'spaceSettings.setMyModuleSetting',
           args: ['feed', 'showCallTranscripts', { $: 'event.detail' }],
         },
       },
@@ -491,14 +491,14 @@ export const feedView: SchemaNode = {
 
 /**
  * The Feed of one call, for a page to place: the same stream and box, read from and written into the
- * call the part is pointed at — its subject, `routeStore.params.call` unless the placement points it
+ * call the part is pointed at — its subject, `navigation.params.call` unless the placement points it
  * elsewhere. The host hands that call to the store as the part is drawn and takes it back as it goes
  * (`whileShown`), so this reads only while it is on screen, and only that call.
  */
 export const callFeedView: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: 'routeStore.params.call' },
+    condition: { $: 'navigation.params.call' },
     then: {
       type: 'Column',
       props: { width: '100%', height: '100%', gap: '200' },

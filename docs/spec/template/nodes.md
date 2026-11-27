@@ -133,7 +133,8 @@ A node holds other nodes at exactly these positions, visited in this order:
 2. **`routes`** — each entry of `routes`. A route is always a node.
 3. **`slots`** — the node under each name in `slots`.
 4. **`props`** — the value of each _node prop_. A node prop is a prop its type declares as taking a
-   node: in this version, `then` and `else` of a [`$if`](blocks.md#if), and no other.
+   node: `then` and `else` of a [`$if`](blocks.md#if), and each prop a component's catalog entry
+   declares as taking one ([Node props](#node-props)).
 5. **`panels`** — the `node` of each `meta.panels` entry. The entry itself is configuration.
 6. **`$defs`** — each value of `$defs`. Root only.
 
@@ -150,9 +151,6 @@ names it (or walks the tree with every `$ref` [expanded](#shared-shapes-defs-and
 > decided for itself they disagreed, and each disagreement was silent: nodes in a panel with no ids,
 > a component in a panel invisible to an uninstall check, a route outlet in a prop reported missing.
 
-> **Planned.** Node props a component declares in its catalog entry (a card's front and back), drawn
-> as nodes. Until then a component prop holds data, whatever its value looks like.
-
 ---
 
 Implemented by: [`treeUtils.ts`](../../../packages/schema-system/shared/src/treeUtils.ts)
@@ -160,6 +158,36 @@ Implemented by: [`treeUtils.ts`](../../../packages/schema-system/shared/src/tree
 Pinned by: [`childPositions.test.ts`](../../../packages/schema-system/shared/tests/childPositions.test.ts)
 (one template with a node at every position and a non-node beside each, every walk checked against
 it); render vector `render.node.prop-node-is-data`.
+
+## Node props
+
+A component's catalog entry says which of its props take a node: in the core catalog, `FlipCard`'s
+`front` and `back`, and `GraphView`'s `emptyAction`. A component declares one by giving the prop an
+element as its type; nothing about the value a template writes makes a prop a node prop.
+
+- **Drawn.** A renderer draws the node in a declared node prop, in the scope of the node that holds
+  it (its `$localState`, its bound names, the template root's locals), and hands the component what
+  it drew under the prop's name, as it hands a [slot](#slots). Text in a node prop is drawn as text.
+  A token there is invalid, and a validator refuses it.
+- **A child.** The node is at a [child position](#child-positions) like any other: it carries an id,
+  an edit reaches it, and a validator judges it as a node.
+- **Only where declared.** The same prop name on a component that does not declare it holds data.
+
+A node prop and a slot of the same name reach the component the same way. A node prop is checked
+against the catalog; a slot's name is the component's to accept or ignore.
+
+---
+
+Implemented by: [`componentNodeProps.ts`](../../../packages/schema-system/shared/src/generated/componentNodeProps.ts)
+(`COMPONENT_NODE_PROPS`, generated from each component's declaration by
+[`generate.ts`](../../../packages/ai-context/src/generate.ts)), [`treeUtils.ts`](../../../packages/schema-system/shared/src/treeUtils.ts)
+(`NODE_PROPS`), [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
+(`RenderNode`), [`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
+(`checkProps`).
+Pinned by: [`childPositions.test.ts`](../../../packages/schema-system/shared/tests/childPositions.test.ts),
+[`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts);
+render vectors `render.node.component-node-prop`, `render.node.component-node-prop-scope`,
+`render.node.prop-node-is-data`.
 
 ## Shared shapes: `$defs` and `$ref`
 
@@ -188,10 +216,8 @@ Shapes are an encoding, not a commitment: whether two identical shapes are store
 invisible to everything that reads the template. A writer MAY hoist identical shapes into `$defs`,
 and MAY write a use back out as a copy.
 
-> **Planned.** A `$ref` inside a route body or a panel's node. Those are drawn as separate passes
-> ([Routing](routing.md#a-route-is-its-own-scope), [Panels](panels.md#the-entry)) and a reference there
-> does not yet reach the root's `$defs`. Until a later version requires it, a writer MUST NOT place a
-> `$ref` inside a route or a panel's node, and a renderer that meets one draws the missing marker.
+A `$ref` in a route body or a panel's node names the root's shapes like any other, though those are
+drawn as passes of their own ([Scope across passes](handlers.md#scope-across-passes)).
 
 > **Why inside the document.** A template that cited shapes kept elsewhere could not be read as the
 > thing it will be, and could not be judged before it runs. Kept in `$defs`, everything that will
@@ -206,4 +232,5 @@ Implemented by: [`definitions.ts`](../../../packages/schema-system/shared/src/de
 (`validateSchema`, which expands first).
 Pinned by: [`definitions.test.ts`](../../../packages/schema-system/shared/src/definitions.test.ts);
 render vectors `render.node.ref`, `render.node.ref-nested`, `render.node.ref-missing`,
-`render.node.ref-no-defs`, `render.node.ref-cycle`, `render.node.ref-cycle-through`.
+`render.node.ref-no-defs`, `render.node.ref-cycle`, `render.node.ref-cycle-through`, `render.routes.ref`,
+`render.routes.ref-missing`, `render.panels.root-scope`.

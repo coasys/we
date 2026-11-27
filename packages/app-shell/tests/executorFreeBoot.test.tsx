@@ -19,13 +19,17 @@ import { provideFileSaver } from '@we/design-utils';
 import {
   AgentSettings,
   CollectionBlock,
+  deriveIdentityId,
   getEntity,
   getEntityForDataset,
+  identityDomainOf,
   ModelRun,
   Policy,
+  registerOperations,
   Space,
   SpaceLandmark,
   unregisterEntity,
+  unregisterOperations,
 } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
@@ -35,6 +39,8 @@ import { createEffect, createRoot } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { shellHost, spaceHost } from '../src/frameworks/solid/stores/hostState';
+import { createBrowserPlatform } from '../src/shared/platform/browser';
+import { isSpaceSelf, spaceSelfWhere } from '../src/shared/spaceSync';
 import { heldLive } from './liveRows';
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
@@ -185,8 +191,8 @@ vi.mock('../src/shared/stores/TemplateStore', async () => {
         The real store's space-template follow, modelled rather than stubbed: when the record the
         space lookup serves names a different `defaultTemplateId` for the dataset on screen, its
         template is chosen again — through this agent's `SpacePreference` where one is written,
-        because a named choice or `AGENT_DEFAULT` outranks the record. `setSpaceDefaultTemplate`
-        paints only through this path now, so a double that could not follow would hide the
+        because a named choice or `AGENT_DEFAULT` outranks the record. A default set through its
+        operation paints only through this path, so a double that could not follow would hide the
         publish-to-repaint contract from every test below.
       */
       let appearance: {
@@ -261,7 +267,6 @@ vi.mock('../src/shared/stores/ThemeStore', () => ({
     restorePersonalTheme: () => {},
     clearSpaceTheme: () => {},
     provideSpaceAppearance: () => {},
-    explainSpaceThemeHidden: () => {},
   }),
 }));
 
@@ -271,11 +276,12 @@ import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
-import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
+import { startBoot } from '../src/shared/composeStores';
+import { invokeOperation } from '../src/shared/invokeOperation';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
@@ -312,18 +318,19 @@ interface Stores {
 function mountShell(): Stores {
   const out = {} as Stores;
   /*
-    The stores this suite is about, composed in BootController's order with the stores they read
+    The stores this suite is about, composed in `composeStores`'s order with the stores they read
     passed in — the route, template and theme stores as the fakes above. Built inside the render so
     their effects and cleanups belong to the tree `cleanup()` takes down.
   */
   function Shell() {
-    const platform = usePlatform();
+    // The mocked host adapter, in the window the suite runs in.
+    const platform = { ...createBrowserPlatform(), ...usePlatform() };
     const backend = useBackend();
-    const routeStore = createRouteStore({ reactivity: solidReactivity });
+    const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
     const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
-    // BootController builds it.
-    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
+    // the composition builds it.
+    const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
@@ -353,7 +360,7 @@ function mountShell(): Stores {
     });
     // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
     // enroller, and hands the record layer the vocabularies this community owns — a task's own
-    // states — so these are built in the order BootController uses.
+    // states — so these are built in the order the composition uses.
     const shapeStore = createShapeStore({
       reactivity: solidReactivity,
       toasts: toastService,
@@ -366,6 +373,7 @@ function mountShell(): Stores {
       sessionStore,
       datasetStore,
       shapeStore,
+      platform,
     });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,
@@ -375,15 +383,18 @@ function mountShell(): Stores {
       sessionStore,
       runtimeStore,
       accountStore,
+      platform,
     });
     const themeStore = createThemeStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       sessionStore,
       datasetStore,
     });
     const templateStore = createTemplateStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       liveTemplates: solidLiveTemplates,
       sessionStore,
@@ -395,6 +406,7 @@ function mountShell(): Stores {
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       reactivity: solidReactivity,
+      platform,
       toasts: toastService,
       firstScreen,
       host: spaceHost,
@@ -409,7 +421,7 @@ function mountShell(): Stores {
       themeStore,
       shellStore,
     });
-    startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+    startBoot({ platform, firstScreen, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     Object.assign(out, {
       profiles: profileStore,
       runtime: runtimeStore,
@@ -1517,22 +1529,63 @@ describe('dataset lifecycle through the real stores', () => {
     setting a default. The rows themselves are plain and rebuilt; the browser harness's
     space-settings case shows the page keeping them.
   */
-  it('keeps a space’s row under its dataset’s id when one of its settings changes', async () => {
+  /*
+    A space's default template and theme are its record's, written by the space's operations as the
+    settings page and a template invoke them: through the host's one way of running an operation, so
+    the choice is drawn the moment it is asked for, on the space on screen and on every held row, and
+    taken back if the write fails. `before` holds or fails the real run, standing in for a backend
+    that is slow or refuses, while the drawing runs as it would.
+  */
+  async function setDefault(
+    stores: Stores,
+    which: 'Template' | 'Theme',
+    value: string,
+    uuid: string,
+    before?: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const ds = stores.datasets.datasets().find((d) => d.id === uuid)!;
+    const record =
+      stores.spaces.mySpaces().find((s) => isSpaceSelf(s, ds)) ??
+      (await Space.findAll(ds.handle as never, { where: spaceSelfWhere(ds) }))[0];
+    return invokeOperation(
+      `core.setSpaceDefault${which}`,
+      { space: record.id, [which.toLowerCase()]: value },
+      {
+        dataset: ds.handle,
+        invoker: stores.session.me()?.did ?? '',
+        notify: (message) => toastService.error(message),
+        ...(before ? { before } : {}),
+      },
+    );
+  }
+
+  /** A real run held until released, or failed. */
+  function heldRun() {
+    let release!: () => void;
+    let fail!: () => void;
+    const held = new Promise<void>((resolve, reject) => {
+      release = resolve;
+      fail = () => reject(new Error('disk full'));
+    });
+    return { before: () => held, release, fail };
+  }
+
+  it('keeps a space’s row under its dataset’s id when an operation changes one of its settings', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Row Space', '', 'personal', 'hidden');
     const uuid = (await lifecycle.list()).find((d) => d.name === 'Row Space')!.id;
     const rowOf = () => stores.spaces.spaceList().find((r) => r.id === uuid);
     await vi.waitFor(() => expect(rowOf()?.isWeSpace).toBe(true));
-    expect(rowOf()?.id).toBe(uuid);
+    expect(rowOf()?.recordId).toBe(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.id);
 
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
+    await setDefault(stores, 'Theme', 'retro', uuid);
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
     expect(rowOf()?.id).toBe(uuid);
   }, 10000);
 
-  it('shows a space default set here before it is stored, read off the space on screen', async () => {
+  it('shows a space default before it is stored, on the space on screen and on its row', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Default Space', '', 'personal', 'hidden');
@@ -1540,88 +1593,53 @@ describe('dataset lifecycle through the real stores', () => {
     await stores.datasets.switchDataset(uuid);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
 
-    const writing = stores.spaces.setSpaceDefaultTheme('retro', uuid);
-    // Before the write has been stored: what is on screen already says so.
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
+    const run = heldRun();
+    const writing = setDefault(stores, 'Theme', 'retro', uuid, run.before);
+    // Before the write has been stored: what is on screen, and the row a settings page reads, say so.
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('retro'));
     expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('retro');
+    expect(stores.spaces.spaceList().find((r) => r.id === uuid)?.defaultThemeId).toBe('retro');
+    run.release();
     await writing;
 
-    const templating = stores.spaces.setSpaceDefaultTemplate('some-template', uuid);
+    await setDefault(stores, 'Template', 'some-template', uuid);
     expect(stores.spaces.spaceDefaultTemplateId()).toBe('some-template');
-    await templating;
     expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('some-template');
   }, 10000);
 
-  it('stores a space default for a space whose row is not held yet', async () => {
+  /*
+    Only the space on screen is followed live: another space's row is the record as it was read. A
+    default an operation writes there is drawn on the row while it is out and kept there once the
+    record has taken it — the settings page for a space nobody is standing in shows its own change.
+  */
+  it('keeps a default written to a space not on screen on its row once it is stored', async () => {
     const stores = mountShell();
     await ready(stores);
-    // A space whose record is stored but was never read into the list, as one that synced in after boot.
-    const ref = await lifecycle.create('Unheld Space');
-    await Space.create(ref.handle as never, { name: 'Unheld Space', uuid: ref.id } as never);
-    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
-    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
+    await stores.spaces.createSpace('Elsewhere', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('Here', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const elsewhere = refs.find((d) => d.name === 'Elsewhere')!;
+    await stores.datasets.switchDataset(refs.find((d) => d.name === 'Here')!.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Here'));
+    const rowOf = () => stores.spaces.spaceList().find((r) => r.id === elsewhere.id);
 
-    await stores.spaces.setSpaceDefaultTheme('retro', ref.id);
-    await stores.spaces.setSpaceDefaultTemplate('some-template', ref.id);
-
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('retro');
-    expect(stored?.defaultTemplateId).toBe('some-template');
+    const run = heldRun();
+    const writing = setDefault(stores, 'Template', 'garden', elsewhere.id, run.before);
+    await vi.waitFor(() => expect(rowOf()?.defaultTemplateId).toBe('garden'));
+    run.release();
+    await writing;
+    // Past the run and past the prediction's own lifetime: the row reads what the record took.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(rowOf()?.defaultTemplateId).toBe('garden');
+    expect((await Space.findAll(elsewhere.handle as never))[0]?.defaultTemplateId).toBe('garden');
   }, 10000);
 
   /*
-    A space whose record is not held is read before it is written. Two saves each starting that read
-    would write in the order the reads happened to answer, so the older choice could be stored last.
+    The record on screen lags a switch: for a moment the dataset is the new space's while the record
+    is still the old one's. A default written to the space being switched to is its own record's, so
+    it is drawn on that space's row and never on the record still on screen.
   */
-  it('stores the newer of two default saves last when the older one’s record read answers last', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    const ref = await lifecycle.create('Unheld Order');
-    await Space.create(ref.handle as never, { name: 'Unheld Order', uuid: ref.id } as never);
-    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
-    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
-
-    const Entity = getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown> };
-    const findAll = Entity.findAll.bind(Entity);
-    const reads: (() => void)[] = [];
-    const spy = vi.spyOn(Entity, 'findAll').mockImplementation(async (...args: unknown[]) => {
-      await new Promise<void>((resolve) => reads.push(resolve));
-      return findAll(...args);
-    });
-    let outcome: { error?: unknown } | undefined;
-    const saving = Promise.all([
-      stores.spaces.setSpaceDefaultTheme('neon', ref.id),
-      stores.spaces.setSpaceDefaultTheme('moss', ref.id),
-    ]).then(
-      () => ({}),
-      (error: unknown) => ({ error }),
-    );
-    void saving.then((result) => (outcome = result));
-    try {
-      // Reads are answered newest first: whatever is out is let finish in reverse order of asking.
-      for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
-        reads
-          .splice(0)
-          .reverse()
-          .forEach((release) => release());
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-    } finally {
-      reads.splice(0).forEach((release) => release());
-      spy.mockRestore();
-    }
-    expect(outcome).toEqual({});
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('moss');
-  }, 10000);
-
-  /*
-    A publish for the space on screen keys on the dataset, but the record on screen lags the
-    switch: for a moment the dataset is already the new space's while the record is still the old
-    one's. A default set for the space being switched to must wait for its own record — written
-    onto the one still there, it repaints the old space with the new space's choice.
-  */
-  it('does not land a default for the space being switched to on the record still on screen', async () => {
+  it('does not draw a default for the space being switched to on the record still on screen', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('From', '', 'personal', 'hidden');
@@ -1633,8 +1651,8 @@ describe('dataset lifecycle through the real stores', () => {
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
     await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
 
-    // Hold To's record read — the live query that sets `currentSpace`, not the findOne
-    // `divertSpaceReads` wraps — so the dataset moves while the record on screen stays From's.
+    // Hold To's record read — the live query that sets `currentSpace` — so the dataset moves while
+    // the record on screen stays From's.
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     let toRead = false;
@@ -1650,16 +1668,16 @@ describe('dataset lifecycle through the real stores', () => {
     });
     try {
       await stores.datasets.switchDataset(to);
-      expect(stores.datasets.currentDataset()?.id).toBe(to);
       await vi.waitFor(() => expect(toRead).toBe(true));
       expect(stores.spaces.currentSpace()?.uuid).toBe(from);
 
-      await stores.spaces.setSpaceDefaultTheme('retro', to);
+      await setDefault(stores, 'Theme', 'retro', to);
 
-      // To's own row carries it; the record still on screen — From's — must not.
+      // To's own row carries it; From's — its row, and its record if still on screen — does not.
       expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultThemeId).toBe('retro');
-      expect(stores.spaces.currentSpace()?.defaultThemeId).not.toBe('retro');
-      expect(stores.spaces.spaceDefaultThemeId()).not.toBe('retro');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === from)?.defaultThemeId).not.toBe('retro');
+      const shown = stores.spaces.currentSpace();
+      if (shown?.uuid === from) expect(shown.defaultThemeId).not.toBe('retro');
 
       release();
       await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(to));
@@ -1670,82 +1688,40 @@ describe('dataset lifecycle through the real stores', () => {
     }
   }, 10000);
 
-  /*
-    The template on screen belongs to the record on screen, so a default-template save touches no
-    template itself: it publishes the id, and the space-template follow repaints from the record.
-    A rollback is the same shape — the record's last confirmed id is published back — which is the
-    safety: a template the record itself brought in mid-save is never rolled back over, where a
-    snapshot taken while the other space's record was still up would have replayed *that* into the
-    new space. The pre-load reads the fresh id off the cache, so a template can land before the
-    record does: the record read stays held below, which is exactly the window.
-  */
-  it('does not roll the space still on screen’s template into the space switched to', async () => {
+  it('stores a space default for a space whose row is not held yet', async () => {
     const stores = mountShell();
     await ready(stores);
-    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
-    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
-    const refs = await lifecycle.list();
-    const from = refs.find((d) => d.name === 'From')!.id;
-    const to = refs.find((d) => d.name === 'To')!.id;
-    await stores.datasets.switchDataset(from);
-    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
-    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+    // A space whose record is stored but was never read into the list, as one that synced in after boot.
+    const ref = await lifecycle.create('Unheld Space');
+    await Space.create(ref.handle as never, { name: 'Unheld Space', uuid: ref.id } as never);
+    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
+    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
 
-    // From's template is up; the registry knows the template the save for To will name. To's own
-    // default is stored first, so the rollback has an exact value to go back to.
-    app.templates.list = [{ id: 'from-tpl' }, { id: 'to-default' }, { id: 'to-new' }];
-    await stores.spaces.setSpaceDefaultTemplate('to-default', to);
-    app.templates.put({ id: 'from-tpl' });
+    await setDefault(stores, 'Theme', 'retro', ref.id);
+    await setDefault(stores, 'Template', 'some-template', ref.id);
 
-    // Hold To's record read, as the theme case above does — the dataset moves while the record
-    // and template on screen stay From's.
-    let release!: () => void;
-    const heldRead = new Promise<void>((resolve) => (release = resolve));
-    let toRead = false;
-    const Entity = getEntity('Space') as unknown as {
-      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
-      update: (...a: unknown[]) => Promise<unknown>;
-    };
-    const query = Entity.query.bind(Entity);
-    const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
-      const which = q?.where?.uuid ?? q?.where?.url;
-      const live = query(handle, q);
-      if (which !== to) return live;
-      return heldLive(live, heldRead, () => (toRead = true));
-    });
-    // The save is held at the store write, so it is still out when To's own template arrives.
-    let fail!: () => void;
-    const heldWrite = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
-    const updateSpy = vi.spyOn(Entity, 'update').mockImplementationOnce(() => heldWrite);
-    try {
-      await stores.datasets.switchDataset(to);
-      await vi.waitFor(() => expect(toRead).toBe(true));
-      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+    const [stored] = await Space.findAll(ref.handle as never);
+    expect(stored?.defaultThemeId).toBe('retro');
+    expect(stored?.defaultTemplateId).toBe('some-template');
+  }, 10000);
 
-      const saving = stores.spaces.setSpaceDefaultTemplate('to-new', to);
-      await vi.waitFor(() =>
-        expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-new'),
-      );
-      // The publish alone put the named template up — the save paints nothing directly.
-      await vi.waitFor(() => expect(app.templates.shown().id).toBe('to-new'));
-      // To's own template lands in the window — the record read is still held, and the pre-load
-      // had the fresh id off the cache. Then the save fails.
-      app.templates.put({ id: 'to-default' });
-      fail();
-      await expect(saving).rejects.toThrow('disk full');
+  // Two presses before the first has landed: the operation's `serial` key queues the second behind it.
+  it('stores the newer of two defaults last, and shows it throughout', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Two Saves', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Two Saves')!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(ref.id));
 
-      // To's own template stayed up — From's was not replayed into it — and To's cached row is
-      // back to what it stored, not the choice that failed to save.
-      expect(app.templates.shown().id).toBe('to-default');
-      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-default');
-    } finally {
-      release();
-      querySpy.mockRestore();
-      updateSpy.mockRestore();
-    }
-
-    const [stored] = await Space.findAll(refs.find((d) => d.name === 'To')!.handle as never);
-    expect(stored?.defaultTemplateId).toBe('to-default');
+    const run = heldRun();
+    const first = setDefault(stores, 'Theme', 'neon', ref.id, run.before);
+    const second = setDefault(stores, 'Theme', 'moss', ref.id);
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('moss'));
+    run.release();
+    await Promise.all([first, second]);
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('moss');
+    expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('moss');
   }, 10000);
 
   it('stores a space setting, and shows it on the cached space and the space on screen', async () => {
@@ -1790,11 +1766,11 @@ describe('dataset lifecycle through the real stores', () => {
   }, 10000);
 
   /*
-    The default setters show the choice before it is stored. A write that fails has to take its own
-    optimism back — a default that reads as saved while the record kept the old one is the setting
-    that lies until the next visit.
+    A default is shown before it is stored. A write that fails takes its drawing back — a default
+    that reads as saved while the record kept the old one is the setting that lies until the next
+    visit — and says so, once.
   */
-  it('restores the previous space default, and says so, when its save fails', async () => {
+  it('takes a space default back, and says so, when its write fails', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
@@ -1802,40 +1778,60 @@ describe('dataset lifecycle through the real stores', () => {
     const uuid = ref.id;
     await stores.datasets.switchDataset(uuid);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await setDefault(stores, 'Theme', 'retro', uuid);
 
     const refused = vi.spyOn(toastService, 'error');
-    const update = vi
-      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
-      .mockRejectedValue(new Error('disk full'));
     try {
-      await expect(stores.spaces.setSpaceDefaultTheme('neon', uuid)).rejects.toThrow('disk full');
-      await expect(stores.spaces.setSpaceDefaultTemplate('second', uuid)).rejects.toThrow('disk full');
-      // Reported the way every other field's failed write is.
-      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+      const run = heldRun();
+      const saving = setDefault(stores, 'Theme', 'neon', uuid, run.before);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
+      expect(stores.spaces.spaceList().find((r) => r.id === uuid)?.defaultThemeId).toBe('neon');
+      run.fail();
+      await expect(saving).rejects.toThrow('disk full');
+      expect(refused).toHaveBeenCalledTimes(1);
     } finally {
-      update.mockRestore();
       refused.mockRestore();
     }
 
-    // The shown default is what stands, on the record and in the row the picker reads.
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
-    expect(stores.spaces.spaceDefaultTemplateId()).toBe('first');
+    // The stored default is what stands, on screen and in the row the picker reads.
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('retro'));
+    expect(stores.spaces.spaceList().find((r) => r.id === uuid)?.defaultThemeId).toBe('retro');
+    expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('retro');
+  }, 10000);
+
+  it('keeps a later default standing when an earlier one fails, and the stored one when both do', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Overlapping', '', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === 'Overlapping')!;
+    const uuid = ref.id;
+    await stores.datasets.switchDataset(uuid);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
+    await setDefault(stores, 'Theme', 'retro', uuid);
+
+    const earlier = heldRun();
+    const later = heldRun();
+    const neon = setDefault(stores, 'Theme', 'neon', uuid, earlier.before);
+    const jade = setDefault(stores, 'Theme', 'jade', uuid, later.before);
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('jade'));
+
+    earlier.fail();
+    await expect(neon).rejects.toThrow('disk full');
+    expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
+
+    later.fail();
+    await expect(jade).rejects.toThrow('disk full');
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('retro'));
     expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('retro');
-    expect(stored?.defaultTemplateId).toBe('first');
+    expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('retro');
   }, 10000);
 
   /*
-    A personal template choice is not a default save's to take back. Chosen while the save is
-    still out, it is written as this agent's `SpacePreference` — and when the save fails and
-    publishes the record's confirmed default back, the follow chooses through that preference:
-    the override stays up, where a rollback that restored what the save had painted would put
-    the record's template back over a choice that was never the save's.
+    A personal template choice is not the default's to take back. Chosen while the default's write
+    is out, it is this agent's `SpacePreference`; when the write fails and the space reads its stored
+    default again, the follow chooses through that preference and the override stays up.
   */
-  it('keeps a personal template override chosen while its space default’s save fails', async () => {
+  it('keeps a personal template override chosen while its space default’s write fails', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
@@ -1844,46 +1840,101 @@ describe('dataset lifecycle through the real stores', () => {
     await stores.datasets.switchDataset(uuid);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
     app.templates.list = [{ id: 'first' }, { id: 'second' }, { id: 'mine' }];
-    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await setDefault(stores, 'Template', 'first', uuid);
     await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
 
-    // The second save is held at the store write, so the choice below lands while it is out.
-    let fail!: () => void;
-    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
-    const update = vi
-      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
-      .mockImplementationOnce(() => held);
-    try {
-      const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
-      await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
+    const run = heldRun();
+    const saving = setDefault(stores, 'Template', 'second', uuid, run.before);
+    await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
 
-      await stores.templates.setSpaceTemplateOverride('mine', uuid);
-      expect(app.templates.shown().id).toBe('mine');
-      const repaints = app.templates.repaints.length;
+    await stores.templates.setSpaceTemplateOverride('mine', uuid);
+    expect(app.templates.shown().id).toBe('mine');
 
-      fail();
-      await expect(saving).rejects.toThrow('disk full');
-      // The republish re-chooses through the preference — 'mine' again — rather than the record's
-      // 'first' or the save's 'second'.
-      await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(repaints));
-      expect(app.templates.repaints.at(-1)).toBe('mine');
-      expect(app.templates.shown().id).toBe('mine');
-    } finally {
-      update.mockRestore();
-    }
-
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultTemplateId).toBe('first');
+    run.fail();
+    await expect(saving).rejects.toThrow('disk full');
+    await vi.waitFor(() => expect(stores.spaces.spaceDefaultTemplateId()).toBe('first'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(app.templates.shown().id).toBe('mine');
+    expect((await Space.findAll(ref.handle as never))[0]?.defaultTemplateId).toBe('first');
   }, 10000);
 
   /*
-    A save's publish starts the space-template follow, and its rollback's republish starts
-    another. The first can still be inside its preference read when the second paints the stored
-    default — and its record was read before the rollback landed, so left to run it would paint
-    the failed save's template back over what the record last took. The choose is sequenced so
-    only the newest paints, and the record is re-read after the wait.
+    The template on screen belongs to the record on screen, so a default-template write touches no
+    template itself: it is drawn on the record, and the space-template follow repaints from it. A
+    failed write is withdrawn the same way, and the follow paints what the record holds — so a
+    template the record itself brought in meanwhile is never rolled back over, where a snapshot taken
+    while the other space's record was still up would have replayed *that* into the new space. The
+    record read stays held below, which is exactly the window.
   */
-  it('does not let a follow still reading paint the failed save’s template over the rollback', async () => {
+  it('does not roll the space still on screen’s template into the space switched to', async () => {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('From', '', 'personal', 'hidden');
+    await stores.spaces.createSpace('To', '', 'personal', 'hidden');
+    const refs = await lifecycle.list();
+    const from = refs.find((d) => d.name === 'From')!.id;
+    const to = refs.find((d) => d.name === 'To')!.id;
+    await stores.datasets.switchDataset(from);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(from));
+    await vi.waitFor(() => expect(stores.spaces.mySpaces().map((s) => s.uuid)).toContain(to));
+
+    // From's template is up; To's own default is stored first, so there is an exact value to go back to.
+    app.templates.list = [{ id: 'from-tpl' }, { id: 'to-default' }, { id: 'to-new' }];
+    await setDefault(stores, 'Template', 'to-default', to);
+    app.templates.put({ id: 'from-tpl' });
+
+    // Hold To's record read, so the dataset moves while the record on screen stays From's.
+    let release!: () => void;
+    const heldRead = new Promise<void>((resolve) => (release = resolve));
+    let toRead = false;
+    const Entity = getEntity('Space') as unknown as {
+      query: (handle: unknown, q?: { where?: { uuid?: string; url?: string } }) => LiveQuery<LivePage<unknown>>;
+    };
+    const query = Entity.query.bind(Entity);
+    const querySpy = vi.spyOn(Entity, 'query').mockImplementation((handle, q) => {
+      const which = q?.where?.uuid ?? q?.where?.url;
+      const live = query(handle, q);
+      if (which !== to) return live;
+      return heldLive(live, heldRead, () => (toRead = true));
+    });
+    try {
+      await stores.datasets.switchDataset(to);
+      await vi.waitFor(() => expect(toRead).toBe(true));
+      expect(stores.spaces.currentSpace()?.uuid).toBe(from);
+
+      // The write is held at its real run, so it is still out when To's own template arrives.
+      const run = heldRun();
+      const saving = setDefault(stores, 'Template', 'to-new', to, run.before);
+      await vi.waitFor(() =>
+        expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-new'),
+      );
+      // To's own template lands in the window, the record read still held. Then the write fails.
+      app.templates.put({ id: 'to-default' });
+      run.fail();
+      await expect(saving).rejects.toThrow('disk full');
+
+      // To's own template stayed up — From's was not replayed into it — and To's row is back to
+      // what it stored, not the choice that failed.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(app.templates.shown().id).toBe('to-default');
+      expect(stores.spaces.mySpaces().find((s) => s.uuid === to)?.defaultTemplateId).toBe('to-default');
+    } finally {
+      release();
+      querySpy.mockRestore();
+    }
+
+    const [stored] = await Space.findAll(refs.find((d) => d.name === 'To')!.handle as never);
+    expect(stored?.defaultTemplateId).toBe('to-default');
+  }, 10000);
+
+  /*
+    A write's drawing starts the space-template follow, and its withdrawal starts another. The first
+    can still be inside its preference read when the second paints the stored default — and its
+    record was read before the withdrawal, so left to run it would paint the failed write's template
+    back over what the record holds. The choose is sequenced so only the newest paints, and the record
+    is re-read after the wait.
+  */
+  it('does not let a follow still reading paint the failed write’s template over the stored one', async () => {
     const stores = mountShell();
     await ready(stores);
     await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
@@ -1892,12 +1943,12 @@ describe('dataset lifecycle through the real stores', () => {
     await stores.datasets.switchDataset(uuid);
     await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
     app.templates.list = [{ id: 'first' }, { id: 'second' }];
-    await stores.spaces.setSpaceDefaultTemplate('first', uuid);
+    await setDefault(stores, 'Template', 'first', uuid);
     await vi.waitFor(() => expect(app.templates.shown().id).toBe('first'));
 
-    // The first follow's preference read is held — the follow the save's publish started.
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => (release = resolve));
+    // The first follow's preference read is held — the follow the write's drawing started.
+    let releaseRead!: () => void;
+    const heldRead = new Promise<void>((resolve) => (releaseRead = resolve));
     let holding = true;
     const Preference = getEntity('SpacePreference') as unknown as {
       findAll: (...a: unknown[]) => Promise<unknown[]>;
@@ -1906,352 +1957,35 @@ describe('dataset lifecycle through the real stores', () => {
     const preference = vi.spyOn(Preference, 'findAll').mockImplementation(async (...args: unknown[]) => {
       if (holding) {
         holding = false;
-        await held;
+        await heldRead;
       }
       return findAll(...args);
     });
-    // And the save is failed at the store write.
-    const update = vi
-      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
-      .mockImplementationOnce(() => Promise.reject(new Error('disk full')));
+    const run = heldRun();
     const paintsBefore = app.templates.repaints.length;
     try {
-      const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
-      // The publish named 'second' — the held follow is carrying it.
-      await vi.waitFor(() =>
-        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('second'),
-      );
+      const saving = setDefault(stores, 'Template', 'second', uuid, run.before);
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultTemplateId()).toBe('second'));
       await vi.waitFor(() => expect(preference).toHaveBeenCalled());
+      run.fail();
       await expect(saving).rejects.toThrow('disk full');
-      // The rollback republished 'first', and its follow is free to paint it.
-      await vi.waitFor(() =>
-        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultTemplateId).toBe('first'),
-      );
-      // The rollback's own repaint has happened before the older read is let go.
+      // Withdrawn: the record's own default is drawn again, and its follow is free to paint it.
+      await vi.waitFor(() => expect(stores.spaces.spaceDefaultTemplateId()).toBe('first'));
       await vi.waitFor(() => expect(app.templates.repaints.length).toBeGreaterThan(paintsBefore));
       expect(app.templates.repaints.at(-1)).toBe('first');
 
-      release();
+      releaseRead();
       // The held follow's answer must not land: the screen keeps the stored default.
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(app.templates.shown().id).toBe('first');
       expect(app.templates.repaints.at(-1)).toBe('first');
     } finally {
+      releaseRead();
       preference.mockRestore();
-      update.mockRestore();
     }
   }, 10000);
 
-  /*
-    Two default saves for one field are one choice, the newer. The older landing while the newer is
-    still out must not show its value, and the store must take the newer write last whatever order
-    the backend would have finished them in.
-  */
-  describe('two default saves for one field', () => {
-    async function twoSaves(store = true) {
-      const stores = mountShell();
-      await ready(stores);
-      await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
-      const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
-      const uuid = ref.id;
-      await stores.datasets.switchDataset(uuid);
-      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-      await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-      // Each store write is held until released, so the test decides how they finish.
-      const writes: { value: unknown; released: boolean; release: () => void }[] = [];
-      const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
-      const update = Entity.update.bind(Entity);
-      const spy = vi.spyOn(Entity, 'update').mockImplementation(async (...args: unknown[]) => {
-        await new Promise<void>((resolve) => {
-          const write = {
-            value: args[2],
-            released: false,
-            release: () => {
-              write.released = true;
-              resolve();
-            },
-          };
-          writes.push(write);
-        });
-        // Not stored where only the screen is under test: the live record would show a landed write too.
-        return store ? update(...args) : undefined;
-      });
-      return { stores, ref, uuid, writes, spy };
-    }
-
-    it('does not show the older save’s value while the newer is pending', async () => {
-      const { stores, uuid, writes, spy } = await twoSaves(false);
-      try {
-        const first = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-        const second = stores.spaces.setSpaceDefaultTheme('moss', uuid);
-        await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
-        writes[0].release();
-        await first;
-        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('moss');
-        expect(stores.spaces.spaceDefaultThemeId()).toBe('moss');
-        await vi.waitFor(() => expect(writes).toHaveLength(2));
-        writes[1].release();
-        await second;
-        expect(stores.spaces.spaceDefaultThemeId()).toBe('moss');
-      } finally {
-        writes.forEach((w) => w.release());
-        spy.mockRestore();
-      }
-    }, 10000);
-
-    it('keeps the newer pending choice shown when the live record delivers the older one that landed', async () => {
-      const { stores, ref, uuid, writes, spy } = await twoSaves();
-      try {
-        const first = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-        const second = stores.spaces.setSpaceDefaultTheme('moss', uuid);
-        await vi.waitFor(() => expect(writes).toHaveLength(1));
-        writes[0].release();
-        await first;
-        // The older choice is really stored now, and the live read is free to deliver it.
-        await vi.waitFor(async () =>
-          expect((await Space.findAll(ref.handle as never))[0]?.defaultThemeId).toBe('neon'),
-        );
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss');
-        expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('moss');
-        await vi.waitFor(() => expect(writes).toHaveLength(2));
-        writes[1].release();
-        await second;
-        await vi.waitFor(() => expect(stores.spaces.currentSpace()?.defaultThemeId).toBe('moss'));
-      } finally {
-        writes.forEach((w) => w.release());
-        spy.mockRestore();
-      }
-    }, 10000);
-
-    it('stores the newer choice last even when the backend would finish the older one last', async () => {
-      const { stores, ref, uuid, writes, spy } = await twoSaves();
-      // Fulfilment and rejection are both watched from here, so a failed write is reported as that.
-      let outcome: { error?: unknown } | undefined;
-      try {
-        const saving = Promise.all([
-          stores.spaces.setSpaceDefaultTheme('neon', uuid),
-          stores.spaces.setSpaceDefaultTheme('moss', uuid),
-        ]).then(
-          () => ({}),
-          (error: unknown) => ({ error }),
-        );
-        void saving.then((result) => (outcome = result));
-        // Released newest first: whatever is out is let finish in reverse order of asking.
-        await vi.waitFor(() => expect(writes.length).toBeGreaterThan(0));
-        for (let attempt = 0; attempt < 200 && !outcome; attempt++) {
-          writes
-            .filter((w) => !w.released)
-            .at(-1)
-            ?.release();
-          await new Promise((resolve) => setTimeout(resolve, 10));
-        }
-      } finally {
-        writes.forEach((w) => w.release());
-        spy.mockRestore();
-      }
-      expect(outcome).toEqual({});
-      const [stored] = await Space.findAll(ref.handle as never);
-      expect(stored?.defaultThemeId).toBe('moss');
-    }, 10000);
-  });
-
-  it('does not take back a later choice that landed when an earlier save fails', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    await stores.spaces.createSpace('Defaults', '', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Defaults')!;
-    const uuid = ref.id;
-    await stores.datasets.switchDataset(uuid);
-    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-
-    // The first save is held at the store write; the second's write goes out after it and lands.
-    let fail!: () => void;
-    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
-    const Entity = getEntity('Space') as unknown as {
-      update: (handle: unknown, id: string, fields: unknown) => Promise<unknown>;
-    };
-    const update = vi.spyOn(Entity, 'update').mockImplementationOnce(async () => {
-      await held;
-    });
-    try {
-      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
-      const later = stores.spaces.setSpaceDefaultTheme('jade', uuid);
-      fail();
-      await expect(earlier).rejects.toThrow('disk full');
-      await later;
-    } finally {
-      update.mockRestore();
-    }
-
-    // 'neon' never persisted: what stands is the choice that did — not 'retro', and not 'neon'.
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
-    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('jade');
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('jade');
-  }, 10000);
-
-  /*
-    What a failed save puts back is what the record last took, not what the screen happened to
-    show: two saves out at once paint two optimistic values, and the earlier one's "previous" is
-    the later one's paint — a value nothing ever stored.
-  */
-  it('restores the last stored default, not an earlier save’s paint, when overlapping saves fail', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    await stores.spaces.createSpace('Overlapping', '', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Overlapping')!;
-    const uuid = ref.id;
-    await stores.datasets.switchDataset(uuid);
-    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-
-    // Saves held at the store write, one at a time: 'neon' first, then 'jade' over it.
-    const releases: { resolve: () => void; reject: (e: Error) => void }[] = [];
-    const update = vi
-      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
-      .mockImplementation(() => new Promise<void>((resolve, reject) => releases.push({ resolve, reject })));
-    try {
-      const neon = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      const jade = stores.spaces.setSpaceDefaultTheme('jade', uuid);
-      await vi.waitFor(() => expect(releases).toHaveLength(1));
-
-      // The older save failing while the newer is out leaves the newer's choice alone.
-      releases[0].reject(new Error('disk full'));
-      await expect(neon).rejects.toThrow('disk full');
-      expect(stores.spaces.spaceDefaultThemeId()).toBe('jade');
-
-      // The newer one failing — its write goes out once the older has finished — puts back what
-      // the record last took: 'retro' — never 'neon'.
-      await vi.waitFor(() => expect(releases).toHaveLength(2));
-      releases[1].reject(new Error('disk full'));
-      await expect(jade).rejects.toThrow('disk full');
-    } finally {
-      update.mockRestore();
-    }
-
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('retro');
-    expect(stores.spaces.mySpaces().find((s) => s.uuid === uuid)?.defaultThemeId).toBe('retro');
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('retro');
-  }, 10000);
-
-  /*
-    Two saves of the same value cannot be told apart by what the screen shows — an earlier one
-    failing must not take back the later one that stored it.
-  */
-  it('leaves the same value standing when an earlier save of it fails after a later one landed', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    await stores.spaces.createSpace('Same Value', '', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Same Value')!;
-    const uuid = ref.id;
-    await stores.datasets.switchDataset(uuid);
-    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-
-    let fail!: () => void;
-    const held = new Promise<void>((_resolve, reject) => (fail = () => reject(new Error('disk full'))));
-    const update = vi
-      .spyOn(getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> }, 'update')
-      .mockImplementationOnce(async () => {
-        await held;
-      });
-    try {
-      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      await vi.waitFor(() => expect(stores.spaces.spaceDefaultThemeId()).toBe('neon'));
-      // The same choice, saved again — its write goes out once the first has finished.
-      const later = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      fail();
-      await expect(earlier).rejects.toThrow('disk full');
-      await later;
-    } finally {
-      update.mockRestore();
-    }
-
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('neon');
-  }, 10000);
-
-  it('does not touch the screen when a save fails while a newer save of the same value is out', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    await stores.spaces.createSpace('Still Out', '', 'personal', 'hidden');
-    const ref = (await lifecycle.list()).find((d) => d.name === 'Still Out')!;
-    const uuid = ref.id;
-    await stores.datasets.switchDataset(uuid);
-    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.uuid).toBe(uuid));
-    await stores.spaces.setSpaceDefaultTheme('retro', uuid);
-
-    const releases: { resolve: () => void; reject: (e: Error) => void }[] = [];
-    const Entity = getEntity('Space') as unknown as { update: (...a: unknown[]) => Promise<unknown> };
-    const realUpdate = Entity.update.bind(Entity);
-    const update = vi.spyOn(Entity, 'update').mockImplementation(
-      (...args) =>
-        new Promise<void>((resolve, reject) =>
-          // Resolving writes for real — what a save that lands does — so the end state is the
-          // stored value too, not only the paint.
-          releases.push({ resolve: () => void realUpdate(...args).then(() => resolve(), reject), reject }),
-        ),
-    );
-    try {
-      const earlier = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      const later = stores.spaces.setSpaceDefaultTheme('neon', uuid);
-      await vi.waitFor(() => expect(releases).toHaveLength(1));
-
-      // 'neon' is what the screen was asked for and what the pending save will store: the earlier
-      // save's failure has nothing to take back. The pending save's write goes out after it.
-      releases[0].reject(new Error('disk full'));
-      await expect(earlier).rejects.toThrow('disk full');
-      expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
-
-      await vi.waitFor(() => expect(releases).toHaveLength(2));
-      releases[1].resolve();
-      await later;
-    } finally {
-      update.mockRestore();
-    }
-
-    expect(stores.spaces.spaceDefaultThemeId()).toBe('neon');
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('neon');
-  }, 10000);
-
-  /*
-    The write is not the only thing that can fail after the publish: the row read before it can
-    reject, and there can be no row at all. Both were silent successes — the painted choice simply
-    stayed, with nothing said.
-  */
-  it('says so, and takes the publish back, when the record for a default save cannot be read', async () => {
-    const stores = mountShell();
-    await ready(stores);
-    // An unheld space, as one that synced in after boot: the save's row read goes to the store.
-    const ref = await lifecycle.create('Unread Space');
-    await Space.create(ref.handle as never, { name: 'Unread Space', uuid: ref.id, defaultThemeId: 'retro' } as never);
-    await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(ref.id));
-    expect(stores.spaces.mySpaces().some((s) => s.uuid === ref.id)).toBe(false);
-
-    const refused = vi.spyOn(toastService, 'error');
-    const read = vi
-      .spyOn(getEntity('Space') as unknown as { findAll: (...a: unknown[]) => Promise<unknown[]> }, 'findAll')
-      .mockRejectedValue(new Error('read gone'));
-    try {
-      await expect(stores.spaces.setSpaceDefaultTheme('neon', ref.id)).rejects.toThrow('read gone');
-      // Reported the way a failed write is — the publish had already painted the choice.
-      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
-    } finally {
-      read.mockRestore();
-      refused.mockRestore();
-    }
-
-    const [stored] = await Space.findAll(ref.handle as never);
-    expect(stored?.defaultThemeId).toBe('retro');
-  }, 10000);
-
-  it('rejects rather than reporting a save on a space that has no record', async () => {
+  it('refuses a default for a space that has no record, and says so', async () => {
     const stores = mountShell();
     await ready(stores);
     const ref = await lifecycle.create('No Record');
@@ -2259,18 +1993,23 @@ describe('dataset lifecycle through the real stores', () => {
 
     const refused = vi.spyOn(toastService, 'error');
     try {
-      await expect(stores.spaces.setSpaceDefaultTheme('neon', ref.id)).rejects.toThrow('no space record');
-      expect(refused).toHaveBeenCalledWith('Could not save this change for the space.');
+      await expect(
+        invokeOperation(
+          'core.setSpaceDefaultTheme',
+          { space: 'urn:nothing', theme: 'neon' },
+          {
+            dataset: ref.handle,
+            invoker: stores.session.me()?.did ?? '',
+            notify: (message) => toastService.error(message),
+          },
+        ),
+      ).rejects.toThrow();
+      expect(refused).toHaveBeenCalledTimes(1);
     } finally {
       refused.mockRestore();
     }
   }, 10000);
 
-  /*
-    The same for a module's setting rows, which are rebuilt on every write: kept by anything but a
-    stable id, pressing one switch on a settings screen redrew every row under it and threw the
-    page's scroll.
-  */
   it('keeps a module setting’s row under the same id when it changes', async () => {
     moduleRegistry.register(
       {
@@ -2587,6 +2326,149 @@ describe('what the stores actually wrote', () => {
         ['canvas', contained[0].id],
       ]);
     } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  }, 10000);
+
+  it('refuses an identity create in a space whose own record has not arrived, rather than derive without it', async () => {
+    /*
+      A member who joined before the space's record synced has no domain to derive a task state's id
+      within. The create waits for the record, briefly, and lands within it when the record comes;
+      past the wait it is refused as spaceNotReady, and nothing is written under a domain-less id.
+    */
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      // A dataset holding WE's schema and no Space record: a space joined before its record synced.
+      const joined = await lifecycle.create('Joined');
+      await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(joined.id));
+      const name = (slug: string) =>
+        runOperation('identitytest.nameState', { slug }, { dataset: joined.handle, invoker: 'did:test:me' });
+
+      expect(await identityDomainOf(joined.handle)).toEqual({ arriving: true });
+      await expect(name('done')).rejects.toMatchObject({
+        name: 'OperationError',
+        class: 'precondition',
+        code: 'spaceNotReady',
+      });
+      expect(await getEntityForDataset('TaskState', joined.handle)!.findAll(joined.handle)).toEqual([]);
+
+      // The record lands while a create waits for it: the create derives within it.
+      const pending = name('doing');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const space = await Space.create(joined.handle as never, { name: 'Joined', uuid: joined.id } as never);
+      const made = (await pending) as { id: string };
+      expect(made.id).toBe(await deriveIdentityId('TaskState', [['slug', 'doing']], space.id));
+    } finally {
+      unregisterOperations('identitytest');
+    }
+  }, 15000);
+
+  it('seeds a new space’s vocabulary within its own record, so the same slug made after sharing is the same record', async () => {
+    /*
+      A task state's id derives from what it is (its slug) within the space's own record, which is
+      written before the vocabulary and is the same on every member. So the starter's "done" and a
+      "done" made after the space is shared, here or by a member who joined, are one record: the
+      second create is refused as recordExists. A starter naming one twice writes one.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [
+        {
+          id: 'test',
+          records: [
+            { entity: 'TaskState', fields: { name: 'Doing', slug: 'doing' } },
+            { entity: 'TaskState', fields: { name: 'Done', slug: 'done' } },
+            { entity: 'TaskState', fields: { name: 'Done again', slug: 'done' } },
+          ],
+        },
+      ],
+    } as never);
+    // A create keyed by the slug and nothing else: what a member's create comes to when its find
+    // has not yet seen the state, as on a member who has not synced it.
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const id = (await stores.spaces.createSpace('Vocabulary', 'x', 'personal', 'hidden'))!;
+      const ref = (await lifecycle.list()).find((d) => d.id === id)!;
+      const [space] = await Space.findAll(ref.handle, { where: { uuid: id } });
+      expect(await identityDomainOf(ref.handle)).toBe(space.id);
+      const states = (await getEntityForDataset('TaskState', ref.handle)!.findAll(ref.handle)) as unknown as {
+        id: string;
+        slug: string;
+        name: string;
+      }[];
+      expect(states.map((s) => [s.slug, s.name]).sort()).toEqual([
+        ['doing', 'Doing'],
+        ['done', 'Done'],
+      ]);
+      for (const state of states)
+        expect(state.id).toBe(await deriveIdentityId('TaskState', [['slug', state.slug]], space.id));
+
+      await stores.spaces.shareSpace(id);
+      const shared = await vi.waitFor(async () => {
+        const now = (await lifecycle.list()).find((d) => d.id === id)!;
+        expect(now.sharedId).toBeTruthy();
+        return now;
+      });
+      // The record a member who joins reads the space by (its address) is the one the domain is.
+      const joinerReads = await Space.findOne(shared.handle, { where: { url: shared.sharedId } });
+      expect(joinerReads?.id).toBe(space.id);
+      expect(await identityDomainOf(shared.handle)).toBe(space.id);
+
+      const done = states.find((s) => s.slug === 'done')!;
+      await expect(
+        runOperation('identitytest.nameState', { slug: 'done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError', code: 'recordExists' });
+      // The vocabulary operation itself finds the state first and refuses the name it already has.
+      await expect(
+        runOperation('core.createTaskState', { name: 'Done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError' });
+      // A slug nobody made yet lands, at the id every member derives for it.
+      const blocked = await runOperation(
+        'identitytest.nameState',
+        { slug: 'blocked' },
+        { dataset: shared.handle, invoker: 'did:test:me' },
+      );
+      expect((blocked as { id: string }).id).toBe(await deriveIdentityId('TaskState', [['slug', 'blocked']], space.id));
+      expect(done.id).not.toBe(await deriveIdentityId('TaskState', [['slug', 'done']]));
+    } finally {
+      unregisterOperations('identitytest');
       provideSeed({ name: 'test', modules: [] } as never);
     }
   }, 10000);
@@ -3865,12 +3747,19 @@ describe('changing a reaction', () => {
         where: { signalTypeId: stars.id, author: 'did:test:james' },
       } as never)) as unknown as { id: string; value: number }[];
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    // As a template invokes them: through the host's one way to run an operation.
+    const give = (value: number | null) =>
+      invokeOperation(
+        value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
+        { node: subject.id, signalType: stars.id, ...(value === null ? {} : { value }) },
+        { dataset: handle, invoker: 'did:test:james' },
+      );
+    await give(3);
     const first = await mine();
     expect(first).toHaveLength(1);
     expect(first[0].value).toBe(3);
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    await give(4);
     const second = await mine();
     // One reaction, the new value — not two rows where the reader finds the stale one first.
     expect(second).toHaveLength(1);
@@ -3885,7 +3774,7 @@ describe('changing a reaction', () => {
       { parent: { id: subject.id, relation: 'signals' } } as never,
     );
     expect(await mine()).toHaveLength(2);
-    await stores.spaces.upsertSignal(subject.id, stars.id, 5);
+    await give(5);
     const healed = await mine();
     expect(healed).toHaveLength(1);
     expect(healed[0].value).toBe(5);
@@ -3897,60 +3786,14 @@ describe('changing a reaction', () => {
       0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
       apart: a number is a reaction, `null` takes it back.
     */
-    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    await give(0);
     const zeroed = await mine();
     expect(zeroed).toHaveLength(1);
     expect(zeroed[0].value).toBe(0);
 
     // And withdrawing is its own act, which removes the record rather than storing anything.
-    await stores.spaces.withdrawSignal(subject.id, stars.id);
+    await give(null);
     expect(await mine()).toHaveLength(0);
-  }, 10000);
-});
-
-describe('a card’s presentation, drawn before it is stored', () => {
-  it('holds each field on its own, so one settling does not retire the other', async () => {
-    /*
-      The improvement consolidating on `@we/optimism` bought the canvas.
-
-      A colour and a size are written by different gestures and answered by different pushes. Held
-      together as one patch per record, the first to come back retired the other — so recolouring a
-      card you had just resized snapped it back to its old size for the rest of that round trip.
-      Keyed per field, each answers for itself.
-
-      `previewCardStyle` is used because it is synchronous and holds exactly as a write does; what is
-      under test is the holding and the settling, not the round trip.
-    */
-    const stores = mountShell();
-    await ready(stores);
-
-    stores.records.previewCardStyle('card-1', 'color', 'danger-100');
-    stores.records.previewCardStyle('card-1', 'rotation', 15);
-    expect(stores.records.pendingCardStyle()['card-1']).toEqual({ color: 'danger-100', rotation: 15 });
-
-    // The graph reports the records whose own data now says what was written. Only the colour has
-    // landed, but the report is per record — so the rotation must survive it on its own terms.
-    stores.records.confirmPending(['card-1']);
-    expect(stores.records.pendingCardStyle()['card-1']).toBeUndefined();
-
-    // And a second card's holds are untouched by a report about the first.
-    stores.records.previewCardStyle('card-2', 'color', 'warning-100');
-    stores.records.confirmPending(['card-1']);
-    expect(stores.records.pendingCardStyle()['card-2']).toEqual({ color: 'warning-100' });
-  }, 10000);
-
-  it('a preview is not a write, so it settles rather than standing until the backstop', async () => {
-    // A slider emits continuously as it is dragged. Counted as writes those holds would never be
-    // judged — nothing returns to decrement them — and the card would show its last dragged frame
-    // for ten seconds after the real value had landed.
-    const stores = mountShell();
-    await ready(stores);
-
-    for (const degrees of [5, 10, 15, 20]) stores.records.previewCardStyle('card-3', 'rotation', degrees);
-    expect(stores.records.pendingCardStyle()['card-3']).toEqual({ rotation: 20 });
-
-    stores.records.confirmPending(['card-3']);
-    expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
   }, 10000);
 });
 

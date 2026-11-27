@@ -179,7 +179,7 @@ describe('in-memory workflows: moves', () => {
   it('counts only the people the role names for this record, and records an ask that did not count', async () => {
     const involve = async (agent: string, node: string) => {
       const row = await model('Involvement').create(dataset, { agent, kind: 'reviewing' });
-      row.node = [node];
+      row.node = node;
       await row.save();
     };
     const other = (await model('TaskBlock').create(dataset, { title: 'Other' })).id;

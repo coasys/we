@@ -8,9 +8,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { COLLAPSED_PX, STRIP_PX } from '../src/shared/dockGeometry';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 import type { ShellStore } from '../src/shared/stores/ShellStore';
-import { buildShell, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildShell } from './support/shellPorts';
 
 /** A host store rather than a module, so nothing gates the panels on a space. */
 const STORE = 'docktest';
@@ -28,10 +30,15 @@ function stack(shell: ShellStore, edge: 'left' | 'top') {
   shell.insertDock(B, edge, 0, 'tab', 0);
 }
 
+let platform: TestPlatform;
+/** The two frames a fade waits for something painted to start from. */
+const twoFrames = () => {
+  platform.flushFrames();
+  platform.flushFrames();
+};
 beforeEach(() => {
-  localStorage.clear();
   // Anywhere but '/', which opens the landing page — and panels are away while any overlay is up.
-  window.history.replaceState({}, '', '/space/test');
+  platform = createTestPlatform({ url: '/space/test' });
 });
 
 afterEach(() => {
@@ -44,7 +51,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => disposers.splice(0).forEach((dispose) => dispose()));
   const mountShellStore = () => {
-    const built = buildShell(makePort());
+    const built = buildShell(makePort(), { platform });
     disposers.push(built.dispose);
     return built.store;
   };
@@ -62,7 +69,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       expect(geometry[B].tabs?.find((tab) => tab.id === B)).toMatchObject({ active: true });
       // Not lit on the drop itself, which rebuilt the strip — two frames on, so the fill fades in.
       expect(geometry[B].landedTab).toBe('');
-      vi.advanceTimersByTime(50);
+      twoFrames();
       expect(shell.dockGeometry()[B].landedTab).toBe(B);
       // And the same tab objects throughout, which is what lets the fill fade out again.
       expect(shell.dockGeometry()[B].tabs).toBe(geometry[B].tabs);
@@ -78,7 +85,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
       vi.useFakeTimers();
       shell.revealDock(A);
-      vi.advanceTimersByTime(50);
+      twoFrames();
 
       const geometry = shell.dockGeometry();
       expect(geometry[A].hidden).toBe(false);
@@ -221,7 +228,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
       shell.closeShellView();
       expect(shell.contentInset().left).toBe(room);
-      vi.advanceTimersByTime(50);
+      twoFrames();
       expect(shell.dockGeometry()[A]).toMatchObject({ hidden: false });
       expect(shell.dockGeometry()[A].awayFaded).toBeFalsy();
       vi.useRealTimers();

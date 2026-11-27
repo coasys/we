@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites, type SpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
@@ -32,16 +33,14 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { current: () => null, show: (_ds, fields) => void shown.push(JSON.stringify(fields)) },
+          onScreen: {
+            currentSpace: () => null,
+            showOnScreen: (_ds, fields) => void shown.push(JSON.stringify(fields)),
+          },
         });
       }),
     );
@@ -72,30 +71,30 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(shown).toEqual([]);
   });
 
-  it('holds a default being saved over the live read until the last save of it ends', async () => {
+  it('holds an interpretation list being saved over the live read until the last save of it ends', async () => {
     const { h, writes } = await build();
     const ds = await h.datasets.get('ds-a');
-    const first = writes.defaultSaveFor(ds, 'defaultTemplateId');
-    first.value = 'one';
+    const first = writes.heldSaveFor(ds, 'extractionTargets');
+    first.value = ['Task'];
     first.pending += 1;
-    const second = writes.defaultSaveFor(ds, 'defaultTemplateId');
+    const second = writes.heldSaveFor(ds, 'extractionTargets');
     expect(second).toBe(first);
-    second.value = 'two';
+    second.value = ['Task', 'Event'];
     second.pending += 1;
-    expect(writes.pendingDefaults(ds)).toEqual({ defaultTemplateId: 'two' });
-    writes.endDefaultSave(first);
-    expect(writes.pendingDefaults(ds)).toEqual({ defaultTemplateId: 'two' });
-    writes.endDefaultSave(second);
-    expect(writes.pendingDefaults(ds)).toEqual({});
+    expect(writes.pendingSaves(ds)).toEqual({ extractionTargets: ['Task', 'Event'] });
+    writes.endHeldSave(first);
+    expect(writes.pendingSaves(ds)).toEqual({ extractionTargets: ['Task', 'Event'] });
+    writes.endHeldSave(second);
+    expect(writes.pendingSaves(ds)).toEqual({});
   });
 
-  it('runs a default’s writes in the order they were asked, whether or not one fails', async () => {
+  it('runs a held save’s writes in the order they were asked, whether or not one fails', async () => {
     const { h, writes } = await build();
     const ds = await h.datasets.get('ds-a');
-    const save = writes.defaultSaveFor(ds, 'defaultThemeId');
+    const save = writes.heldSaveFor(ds, 'extractionTargets');
     const ran: string[] = [];
     let release!: () => void;
-    const slow = writes.queueDefaultWrite(
+    const slow = writes.queueHeldWrite(
       save,
       () =>
         new Promise<void>((_resolve, reject) => {
@@ -105,7 +104,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           };
         }),
     );
-    const next = writes.queueDefaultWrite(save, () => Promise.resolve(void ran.push('second')));
+    const next = writes.queueHeldWrite(save, () => Promise.resolve(void ran.push('second')));
     await flush();
     expect(ran).toEqual([]);
     release();

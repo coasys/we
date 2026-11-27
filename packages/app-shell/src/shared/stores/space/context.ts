@@ -7,11 +7,12 @@
  * templates read; this is what they share.
  */
 import type { DatasetProxy } from '@we/entities';
-import { runOperation } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
 import type { FirstScreen } from '../../firstScreen';
+import { invokeOperation } from '../../invokeOperation';
 import { operationFailureMessage } from '../../operationFailure';
+import type { PlatformPort } from '../../platform/port';
 import type { Toasts } from '../../toasts';
 import type { AppDataset, DatasetStore } from '../DatasetStore';
 import type { SessionStore } from '../SessionStore';
@@ -46,6 +47,11 @@ export type SpaceDatasets = Pick<
 
 export interface SpaceContext {
   reactivity: ReactivityPort;
+  /**
+   * The address links are built from, the document embedded apps are told through, and how a
+   * picture is encoded before it is stored.
+   */
+  platform: Pick<PlatformPort, 'location' | 'document' | 'images'>;
   toasts: Toasts;
   /** Whether work the first screen does not need may start yet. */
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
@@ -53,8 +59,9 @@ export interface SpaceContext {
   datasetStore: SpaceDatasets;
   /**
    * Run one of WE's own declared operations as this agent — in the dataset given, else the space on
-   * screen. What the write means lives in the operation; the action around it keeps what only the
-   * host does (what is drawn first, what is said, what is read again).
+   * screen — the way the host runs every one (`invokeOperation`): drawn before it lands and queued by
+   * its `serial` key. What the write means lives in the operation; the action around it keeps what
+   * only the host does (what is said, what is read again).
    */
   runCore: <T = unknown>(name: string, args: Record<string, unknown>, dataset?: DatasetProxy) => Promise<T>;
   /**
@@ -80,6 +87,7 @@ export interface SpaceContext {
 
 export function createSpaceContext(deps: {
   reactivity: ReactivityPort;
+  platform: SpaceContext['platform'];
   toasts: Toasts;
   firstScreen: SpaceContext['firstScreen'];
   sessionStore: SpaceSession;
@@ -92,7 +100,7 @@ export function createSpaceContext(deps: {
       const p = dataset ?? datasetStore.currentDataset()?.handle;
       const invoker = session.me()?.did;
       if (!p || !invoker) return Promise.reject(new Error('No space is open'));
-      return runOperation(`core.${name}`, args, { dataset: p, invoker }) as Promise<T>;
+      return invokeOperation(`core.${name}`, args, { dataset: p, invoker }) as Promise<T>;
     },
     reportOperation: (what, fallback, error) => {
       const message = operationFailureMessage(error, fallback);

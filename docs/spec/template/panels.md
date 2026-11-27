@@ -29,11 +29,11 @@ arrangement outranks it.
 An entry with both `module` and `node`, or neither, is invalid. An entry placing a module with more
 than one panel MUST name `dock`; a host refuses it otherwise, and says which names exist.
 
-**A panel's node** is drawn as a pass of its own, like a route: it does not see the template's local
-state or bound names. A panel opened more than once (an instance per input) reads its inputs as
-`panel.inputs`. A `$panels` outlet MUST NOT be inside a panel's node.
-
-> **Planned.** A `$ref` inside a panel's node ([Shared shapes](nodes.md#shared-shapes-defs-and-ref)).
+**A panel's node** is drawn wherever the host docks it, as a pass of its own, and is a child of the
+template's root: it sees the root's `$localState` and `$queries` and draws the root's shared shapes,
+however far from the template area it is docked ([Scope across passes](handlers.md#scope-across-passes)).
+It reads which panel it is as `panel.id`, and a panel opened more than once (an instance per input)
+reads its inputs as `panel.inputs`. A `$panels` outlet MUST NOT be inside a panel's node.
 
 > **Why names, not pixels.** A template cannot see the viewport, and a position it guessed would be
 > wrong on a screen it never ran on. A size may be pixels because the host clamps it to the room
@@ -46,8 +46,9 @@ Implemented by: [`types.ts`](../../../packages/schema-system/shared/src/types.ts
 [`templatePanels.ts`](../../../packages/app-shell/src/shared/registries/templatePanels.ts),
 [`TemplatePanelBody.tsx`](../../../packages/app-shell/src/frameworks/solid/components/TemplatePanelBody.tsx),
 [`panelInstances.ts`](../../../packages/app-shell/src/shared/registries/panelInstances.ts).
-Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared/tests/semanticValidation.test.ts)
-(module panels, `dock`, `$panels` inside a panel).
+Pinned by: [`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts)
+(module panels, `dock`, `$panels` inside a panel, a panel reading the root's local state); render
+vector `render.panels.root-scope`.
 
 ## Three rungs
 
@@ -78,11 +79,15 @@ makes a module do anything (a call module's opener joins a call).
 ---
 
 Implemented by: [`templatePanels.ts`](../../../packages/app-shell/src/shared/registries/templatePanels.ts),
-[`dockGeometry.ts`](../../../packages/app-shell/src/shared/dockGeometry.ts),
+[`panelScope.ts`](../../../packages/app-shell/src/shared/panelScope.ts) (`activePanels`),
+[`dockGeometry.ts`](../../../packages/app-shell/src/shared/dockGeometry.ts) (`resolvePlacement`),
 [`ShellStore.ts`](../../../packages/app-shell/src/shared/stores/ShellStore.ts).
-Pinned by: [`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
+Pinned by: the panel vectors (`panels.json`: `panels.active.*`, `panels.placement.suggestion`,
+`panels.placement.declaration`, `panels.placement.disposition`, `panels.placement.template-switch`
+and the rest; [Conformance](conformance.md#running-each-family)),
+[`dockGeometry.test.ts`](../../../packages/app-shell/tests/dockGeometry.test.ts), and the
 dock layout's recorded vectors ([`dockLayout.json`](../../../packages/app-shell/src/shared/kernels/vectors/dockLayout.json),
-the functions named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
+scenarios over the entry points named in [`kernels/dockLayout.ts`](../../../packages/app-shell/src/shared/kernels/dockLayout.ts)).
 
 ## Home lanes
 
@@ -114,6 +119,3 @@ Implemented by: [`moduleParts.ts`](../../../packages/app-shell/src/shared/regist
 (`$panels`), [`PanelLane.tsx`](../../../packages/app-shell/src/frameworks/solid/components/PanelLane.tsx),
 [`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts).
 Pinned by: render vector `render.panels.outlet`.
-
-> **Planned.** Panel vectors: a declaration, a disposition and a change of template in, the resolved
-> placements out, so a host other than WE can test its resolution.

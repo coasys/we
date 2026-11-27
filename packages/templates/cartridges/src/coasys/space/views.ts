@@ -18,7 +18,7 @@ import { LATEST_CALLS } from './tree.ts';
 const CHANNEL_TITLE = `${IN_ROOT_EXPR} ? 'Feed' : (first(local.channelRecord).title ? first(local.channelRecord).title : 'Channel')`;
 
 /** Go to an address, an expression. */
-export const navigateTo = (path: string): SchemaProp => ({ $invoke: 'routeStore.navigate', args: [{ $: path }] });
+export const navigateTo = (path: string): SchemaProp => ({ $invoke: 'navigation.navigate', args: [{ $: path }] });
 
 const channelQueries = {
   channelRecord: {
@@ -299,7 +299,7 @@ export const spaceRoutes: RouteSchema[] = [
 ];
 
 /** The call on its own page is the record the address names. */
-const CALL_ID = 'routeStore.params.id';
+const CALL_ID = 'navigation.params.id';
 
 /**
  * The conversation the interpretation panel shows — its own subject, written out as the panel writes
@@ -308,7 +308,7 @@ const CALL_ID = 'routeStore.params.id';
  * on no module package — so a change to the panel's subject has to be made here as well.
  */
 const INTERPRETATION_SUBJECT =
-  'routeStore.params.call ? routeStore.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
+  'navigation.params.call ? navigation.params.call : (modules.transcribe.callId ? modules.transcribe.callId : ' +
   'spaceStore.root)';
 
 /**

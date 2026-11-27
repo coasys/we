@@ -165,7 +165,7 @@ export type TemplatePanel = {
    * Whether to open the panel as well as place it. Absent means yes.
    *
    * For a panel the template supplies (`node`), `false` starts it closed: it opens when the template
-   * calls `shellStore.openTemplatePanel(id)` — an inspector, opened when something is chosen.
+   * calls `viewState.openTemplatePanel(id)` — an inspector, opened when something is chosen.
    *
    * Opening a module's panel means invoking the action its launcher declares, and that action is not
    * always "open a panel": the call module's is `goToCall`, which **joins a call** when there is not

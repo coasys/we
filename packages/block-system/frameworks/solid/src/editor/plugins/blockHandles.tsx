@@ -11,7 +11,7 @@
 import { formatRef, HERE } from '@we/backend-shared';
 import { type DragPayload, dragSession } from '@we/drag';
 import type { FileData } from '@we/entities';
-import { compressImageToFileData, readFileAsFileData } from '@we/entities';
+import { canvasImageCodec, compressImageToFileData, readFileAsFileData } from '@we/entities';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { createEffect, createMemo, createSignal, For, onCleanup } from 'solid-js';
@@ -78,7 +78,7 @@ async function fileToBlock(file: File): Promise<{ type: string; props: Record<st
   const type = mimeToBlockType(file.type);
   let fileData: FileData;
   if (type === 'image') {
-    fileData = await compressImageToFileData(file, 'image-block');
+    fileData = await compressImageToFileData(canvasImageCodec, file, 'image-block');
     return { type, props: { src: fileData } };
   }
   fileData = await readFileAsFileData(file);

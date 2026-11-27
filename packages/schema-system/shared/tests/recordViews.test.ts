@@ -70,12 +70,12 @@ describe('the record page', () => {
     expect(body).toMatchObject({
       type: '$if',
       props: {
-        condition: { $: "last(routeStore.segments) == 'CollectionBlock' && routeStore.params.kind == 'call'" },
+        condition: { $: "last(navigation.segments) == 'CollectionBlock' && navigation.params.kind == 'call'" },
         then: { children: ['call'] },
         else: {
           type: '$if',
           props: {
-            condition: { $: "last(routeStore.segments) == 'TaskBlock'" },
+            condition: { $: "last(navigation.segments) == 'TaskBlock'" },
             then: { children: ['task'] },
             else: generic,
           },
