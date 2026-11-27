@@ -14,12 +14,15 @@ import {
   transcriptLine,
 } from '../../interpretation/callExport';
 import { gatherTranscriptTurns, type TurnRecord } from '../../interpretation/transcriptTurns';
+import type { PlatformPort } from '../../platform/port';
 import type { Toasts } from '../../toasts';
 import type { ProfileStore } from '../ProfileStore';
 
 /** What the exports read from the space they are made in. */
 export interface CallExportDeps {
   toasts: Toasts;
+  /** Where a file kept at a web address is opened. */
+  platform: Pick<PlatformPort, 'openLink'>;
   /** The dataset of the space the call is in, or nothing outside a space. */
   dataset: () => { handle: DatasetProxy } | null | undefined;
   interpretation: () => InterpretationPort | undefined;
@@ -235,7 +238,7 @@ export function createCallExports(deps: CallExportDeps) {
           toasts.warning('That file is not available.');
           return;
         }
-        window.open(href, '_blank', 'noopener');
+        deps.platform.openLink(href);
         return;
       }
       const type = file.mimeType || 'application/octet-stream';

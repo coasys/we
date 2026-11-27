@@ -51,7 +51,7 @@ export interface SpaceContext {
    * The address links are built from, the document embedded apps are told through, and how a
    * picture is encoded before it is stored.
    */
-  platform: Pick<PlatformPort, 'location' | 'document' | 'images'>;
+  platform: Pick<PlatformPort, 'location' | 'document' | 'images' | 'openLink'>;
   toasts: Toasts;
   /** Whether work the first screen does not need may start yet. */
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;

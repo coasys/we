@@ -56,6 +56,8 @@ export interface TestPlatform extends PlatformPort {
   flushFrames(): void;
   /** How many times the app asked to be loaded again. */
   reloads(): number;
+  /** Every web address the app asked to open away from itself, oldest first. */
+  readonly opened: string[];
   /** What was written to the document's root, its style sheets and its title. */
   readonly drawn: {
     properties: Map<string, string>;
@@ -78,6 +80,7 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
   const listeners = new Map<string, { listener: (event: never) => void; capture: boolean }[]>();
   let frames: (() => void)[] = [];
   let reloads = 0;
+  const opened: string[] = [];
   const measured = new Map<string, PlatformRect | null>();
   const drawn: TestPlatform['drawn'] = {
     properties: new Map(),
@@ -117,6 +120,9 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
     },
     reload: () => {
       reloads += 1;
+    },
+    openLink: (href) => {
+      opened.push(href);
     },
     viewport: () => size,
     matchMedia: (query) => ({
@@ -202,6 +208,7 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
       for (const callback of due) callback();
     },
     reloads: () => reloads,
+    opened,
     drawn,
     setMeasured: (selector, rect) => void measured.set(selector, rect),
   };

@@ -114,6 +114,9 @@ export function createBrowserPlatform(): PlatformPort {
       back: () => window.history.back(),
     },
     reload: () => window.location.reload(),
+    openLink: (href) => {
+      window.open(href, '_blank', 'noopener');
+    },
     viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
     matchMedia: (query) => {
       const list = typeof window.matchMedia === 'function' ? window.matchMedia(query) : null;

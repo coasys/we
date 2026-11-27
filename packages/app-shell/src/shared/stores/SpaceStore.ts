@@ -797,6 +797,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   // A call's transcript and its interpretation log, read for the dataset each export names.
   const callExports = createCallExports({
     toasts,
+    platform,
     dataset: () => datasetStore.currentDataset(),
     interpretation: () => session.backendPorts()?.interpretation,
     profileStore,

@@ -112,6 +112,8 @@ export interface PlatformPort {
   };
   /** Load the app again from the start. */
   reload(): void;
+  /** Open a web address away from the app — a new tab, or the system's browser — keeping nothing of the app's. */
+  openLink(href: string): void;
   /** The window's size, in CSS pixels. */
   viewport(): { width: number; height: number };
   /** A media query (`(prefers-color-scheme: dark)`), followed while the app runs. */

@@ -2,7 +2,7 @@
  * Saving a file a message carries: its address was written by a member, so only inline data is
  * saved and only a web address is opened — anything else is "not available", opened nowhere.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const world = vi.hoisted(() => ({
   url: '' as string,
@@ -26,9 +26,11 @@ vi.mock('@we/entities', async () => {
   };
 });
 
+import { createBrowserPlatform } from '../src/shared/platform/browser';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createCallExports } from '../src/shared/stores/space/callExports';
 
-const open = vi.fn();
+let platform: TestPlatform;
 
 function saveWith(url: string) {
   world.url = url;
@@ -37,6 +39,7 @@ function saveWith(url: string) {
       warning: (message: string) => void world.warnings.push(message),
       error: (message: string) => void world.errors.push(message),
     } as never,
+    platform,
     dataset: () => ({ handle: {} as never }),
     interpretation: () => undefined,
     profileStore: { fetchProfile: async () => undefined, profiles: () => [] } as never,
@@ -46,31 +49,29 @@ function saveWith(url: string) {
 }
 
 beforeEach(() => {
-  open.mockClear();
+  platform = createTestPlatform();
   world.warnings.length = 0;
   world.errors.length = 0;
   world.saved.length = 0;
-  vi.stubGlobal('window', { open });
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe('saveFileBlock', () => {
   it('saves an inline file to the machine, opening nothing', async () => {
     await saveWith('data:text/plain;base64,aGk=');
     expect(world.saved).toMatchObject([{ name: 'plan.pdf', type: 'application/pdf' }]);
-    expect(open).not.toHaveBeenCalled();
+    expect(platform.opened).toEqual([]);
   });
 
   it('treats DATA: and a leading space as the inline file they are', async () => {
     await saveWith('  DATA:text/plain;base64,aGk=');
     expect(world.saved).toHaveLength(1);
-    expect(open).not.toHaveBeenCalled();
+    expect(platform.opened).toEqual([]);
     expect(world.warnings).toEqual([]);
   });
 
-  it('opens a web address in a new tab, without an opener', async () => {
+  it('opens a web address away from the app', async () => {
     await saveWith('https://files.example/plan.pdf');
-    expect(open).toHaveBeenCalledWith('https://files.example/plan.pdf', '_blank', 'noopener');
+    expect(platform.opened).toEqual(['https://files.example/plan.pdf']);
     expect(world.saved).toEqual([]);
   });
 
@@ -82,8 +83,21 @@ describe('saveFileBlock', () => {
     ['a relative path', '/settings'],
   ])('says the file is not available, and opens nothing, for %s', async (_name, url) => {
     await saveWith(url);
-    expect(open).not.toHaveBeenCalled();
+    expect(platform.opened).toEqual([]);
     expect(world.saved).toEqual([]);
     expect(world.warnings).toEqual(['That file is not available.']);
+  });
+});
+
+describe("the browser's openLink", () => {
+  it('opens the address in a new tab, without an opener', () => {
+    const open = vi.fn();
+    vi.stubGlobal('window', { open });
+    try {
+      createBrowserPlatform().openLink('https://files.example/plan.pdf');
+      expect(open).toHaveBeenCalledWith('https://files.example/plan.pdf', '_blank', 'noopener');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

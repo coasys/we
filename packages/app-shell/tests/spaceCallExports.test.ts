@@ -10,6 +10,7 @@ import { provideFileSaver } from '@we/design-utils';
 import { CollectionBlock, getEntity, TextBlock } from '@we/entities';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createCallExports } from '../src/shared/stores/space/callExports';
 import { reactivityPorts } from './support/engines';
 import { ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
@@ -49,6 +50,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     );
     const exports = createCallExports({
       toasts: h.ctx.toasts,
+      platform: createTestPlatform(),
       dataset: () => (options.dataset === false ? null : { handle }),
       interpretation: () => undefined,
       profileStore: {
