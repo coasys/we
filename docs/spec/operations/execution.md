@@ -99,7 +99,7 @@ each entry is read the same way.
    operation created or changed is reached by the names its steps bound.
 6. Result: with `one: true`, exactly one record, or precondition `notFound` when none matched and
    precondition `ambiguous` when more than one did. Otherwise a list of the records, in `order` when
-   given.
+   given. For a walk, `order` sorts the whole flat result, not each depth on its own.
 
 #### A find never widens
 
