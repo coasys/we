@@ -1,5 +1,5 @@
 /**
- * Following a live query from a store — `followLive` and `followRows` — under each reactivity port.
+ * Following a live query from a store — `followLive` — under each reactivity port.
  *
  * The handle is a hand-driven stand-in with the contract's shape: it opens, pushes pages, or fails to
  * open when the test says so, and records whether it was disposed. What is under test is the follow:
@@ -10,7 +10,7 @@ import type { LivePage, LiveQuery, Snapshot } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { followLive, followRows } from '../src/shared/followLive';
+import { followLive } from '../src/shared/followLive';
 import { reactivityPorts } from './support/engines';
 
 interface Handle<T> extends LiveQuery<LivePage<T>> {
@@ -351,57 +351,6 @@ describe.each(reactivityPorts)('following a live query, under %s', (_name, makeP
       expect(applied).toEqual(['stored']);
       expect(settled).toHaveBeenCalledWith(true, undefined);
       expect(console.warn).toHaveBeenCalledWith('S: could not read x', new Error('cannot map'));
-    });
-  });
-
-  describe('followRows', () => {
-    it('holds the rows, loaded and error for the current input', async () => {
-      const [input, setInput] = port.signal<string | undefined>(undefined);
-      const handles: Record<string, Handle<string>> = { one: handle(), two: handle() };
-      let rows!: ReturnType<typeof followRows<string, string>>;
-      own(() => {
-        rows = followRows(port, input, {
-          store: 'S',
-          what: 'x',
-          open: (key) => handles[key],
-          readStored: async (key) => [`stored ${key}`],
-        });
-      });
-      await settle();
-      // No input: nothing to wait for.
-      expect(rows.loaded()).toBe(true);
-      expect(rows.rows()).toEqual([]);
-
-      setInput('one');
-      expect(rows.loaded()).toBe(false);
-      handles.one.push(['a']);
-      expect(rows.rows()).toEqual(['a']);
-      expect(rows.loaded()).toBe(true);
-
-      setInput('two');
-      expect(handles.one.disposed).toBe(true);
-      expect(rows.rows()).toEqual([]);
-      expect(rows.loaded()).toBe(false);
-      const why = new Error('no watch');
-      handles.two.failOpen(why);
-      await settle();
-      expect(rows.rows()).toEqual(['stored two']);
-      expect(rows.loaded()).toBe(true);
-      expect(rows.error()).toBe(why);
-    });
-
-    it('wakes a reader once for a page, not once per signal it sets', async () => {
-      const live = handle<string>();
-      let rows!: ReturnType<typeof followRows<string, string>>;
-      const seen: [string[], boolean][] = [];
-      own(() => {
-        rows = followRows(port, () => 'k', { store: 'S', what: 'x', open: () => live });
-        port.effect(() => void seen.push([rows.rows(), rows.loaded()]));
-      });
-      await settle();
-      const before = seen.length;
-      live.push(['a']);
-      expect(seen.slice(before)).toEqual([[['a'], true]]);
     });
   });
 });

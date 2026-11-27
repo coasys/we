@@ -9,13 +9,13 @@
  * store had its own copy of the guard flag and its own idea of when "loaded" was true. They live
  * here, once, against the reactivity port, so a store on any host follows a query the same way.
  *
- * Two forms. {@link followLive} is the core, called inside the effect or root that owns the follow:
- * it applies pages through the caller's own function, for a store whose signals other code also
- * writes. {@link followRows} is the whole thing as signals — `rows`, `loaded`, `error` — for a store
- * that holds nothing but what the query says.
+ * {@link followLive} is called inside the effect or root that owns the follow, and applies pages
+ * through the caller's own function: every store that follows a query also does something of its
+ * own with what arrives (maps it, keys it, reads again when a page names something missing), so the
+ * rows are the store's to hold, not this module's.
  */
 import type { LivePage, LiveQuery } from '@we/backend-shared';
-import type { Accessor, ReactivityPort } from '@we/reactivity';
+import type { ReactivityPort } from '@we/reactivity';
 
 /** A handle on pages of `T`. */
 export type FollowedQuery<T> = LiveQuery<LivePage<T>>;
@@ -182,67 +182,4 @@ export function followLive<T, V = T[]>(
     if (!current) return live.dispose();
     void follow(live);
   }, failedToOpen);
-}
-
-/** A live query held as signals. */
-export interface FollowedRows<T> {
-  /** The newest page's rows; empty while there is no input, and from the moment the input changes. */
-  rows: Accessor<T[]>;
-  /** Whether `rows` is the answer for the current input, live or read once. True with no input. */
-  loaded: Accessor<boolean>;
-  /** Why the query could not be followed for the current input, if it could not. */
-  error: Accessor<Error | undefined>;
-}
-
-export interface FollowRowsOptions<I, T> {
-  store: string;
-  what: string;
-  /** The handle for one input. Opened again, and the old one disposed, each time the input changes. */
-  open: (input: I, current: () => boolean) => FollowOpened<T>;
-  /** The stored rows for one input, read once when its handle cannot open. */
-  readStored?: (input: I) => Promise<T[]>;
-}
-
-/**
- * The rows a live query answers for `input`, followed while the owner this is created under lives.
- *
- * `input` is read in an effect: a new value starts a new follow and supersedes the old one, so a
- * late page or stored read for the input before never lands. An input of `undefined` or `null`
- * follows nothing and is loaded at once, with no rows.
- */
-export function followRows<I, T>(
-  reactivity: ReactivityPort,
-  input: Accessor<I | undefined | null>,
-  options: FollowRowsOptions<I, T>,
-): FollowedRows<T> {
-  const { signal, effect, untrack, batch } = reactivity;
-  const [rows, setRows] = signal<T[]>([]);
-  const [loaded, setLoaded] = signal(false);
-  const [error, setError] = signal<Error | undefined>(undefined);
-  effect(() => {
-    const value = input();
-    untrack(() => {
-      batch(() => {
-        setRows([]);
-        setLoaded(value === undefined || value === null);
-        setError(undefined);
-      });
-      if (value === undefined || value === null) return;
-      const { readStored } = options;
-      followLive<T>(reactivity, (current) => options.open(value, current), {
-        store: options.store,
-        what: options.what,
-        apply: (next) =>
-          batch(() => {
-            setRows(next);
-            setLoaded(true);
-          }),
-        stored: readStored && { read: () => readStored(value) },
-        settled: (_loaded, why) => {
-          if (why) setError(why);
-        },
-      });
-    });
-  });
-  return { rows, loaded, error };
 }

@@ -348,7 +348,7 @@ the first, and the shape the rest copy:
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
   store: an equal write is skipped by comparing first, a function is stored as the value.
 - A backend read is followed through `followLive` (`app-shell/src/shared/followLive.ts`), called in
-  the effect that owns it, or held whole as signals with `followRows`. It disposes the handle with
+  the effect that owns it, applying each page through the store's own function. It disposes the handle with
   its owner, drops anything for an input the store has moved on from, says when the rows are in,
   and reads the stored rows once when the handle cannot open and an empty answer would mean
   something (`stored`). A store does not keep its own `stopped` flag.
