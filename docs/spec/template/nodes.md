@@ -162,7 +162,9 @@ it); render vector `render.node.prop-node-is-data`.
 ## Node props
 
 A component's catalog entry says which of its props take a node: in the core catalog, `FlipCard`'s
-`front` and `back`, and `GraphView`'s `emptyAction`. A component declares one by giving the prop an
+`front` and `back`, and `GraphView`'s `emptyAction`. The core catalog lists them, by component, in
+[`catalog/node-props.json`](../../../packages/schema-system/conformance/catalog/node-props.json), which
+a renderer or validator in any language reads. A component declares one by giving the prop an
 element as its type; nothing about the value a template writes makes a prop a node prop.
 
 - **Drawn.** A renderer draws the node in a declared node prop, in the scope of the node that holds
@@ -179,12 +181,14 @@ against the catalog; a slot's name is the component's to accept or ignore.
 ---
 
 Implemented by: [`componentNodeProps.ts`](../../../packages/schema-system/shared/src/generated/componentNodeProps.ts)
-(`COMPONENT_NODE_PROPS`, generated from each component's declaration by
-[`generate.ts`](../../../packages/ai-context/src/generate.ts)), [`treeUtils.ts`](../../../packages/schema-system/shared/src/treeUtils.ts)
+(`COMPONENT_NODE_PROPS`) and [`catalog/node-props.json`](../../../packages/schema-system/conformance/catalog/node-props.json),
+both generated from each component's declaration by
+[`generate.ts`](../../../packages/ai-context/src/generate.ts), [`treeUtils.ts`](../../../packages/schema-system/shared/src/treeUtils.ts)
 (`NODE_PROPS`), [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx)
 (`RenderNode`), [`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
 (`checkProps`).
-Pinned by: [`childPositions.test.ts`](../../../packages/schema-system/shared/tests/childPositions.test.ts),
+Pinned by: [`catalog.test.ts`](../../../packages/schema-system/conformance/tests/catalog.test.ts)
+(the JSON and the TS agree), [`childPositions.test.ts`](../../../packages/schema-system/shared/tests/childPositions.test.ts),
 [`semanticValidation.test.ts`](../../../packages/schema-system/shared/src/semanticValidation.test.ts);
 render vectors `render.node.component-node-prop`, `render.node.component-node-prop-scope`,
 `render.node.prop-node-is-data`.

@@ -580,6 +580,24 @@ async function main() {
   console.log(`  Written: ${nodePropsPath}`);
 
   /*
+    The same list, as JSON in the core catalog beside the template vectors: a renderer or validator
+    in another language reads which props hold a node from here, since it cannot read a TS file.
+    Written from the one value above, so the two cannot disagree; a test holds them to it anyway.
+  */
+  const catalogNodePropsPath = resolve(packageRoot, '../schema-system/conformance/catalog/node-props.json');
+  mkdirSync(dirname(catalogNodePropsPath), { recursive: true });
+  await writeFormatted(
+    catalogNodePropsPath,
+    JSON.stringify({
+      catalog: 'core',
+      version: 1,
+      note: 'The props each component declares as holding a node, by component (nodes.md, "Node props"). Generated from each component’s declaration; do not edit.',
+      nodeProps: componentNodeProps,
+    }),
+  );
+  console.log(`  Written: ${catalogNodePropsPath}`);
+
+  /*
     An example teaching a spelling the validator rejects fails the build.
 
     ## Why this is a check and not a review note
