@@ -45,6 +45,11 @@ export interface SpaceHarness {
   };
   setBootState: (state: BootState) => void;
   setAgentSettings: (settings: Partial<AgentSettings> | null) => void;
+  /**
+   * Write as somebody else for the length of `write`: the backend records them as the author, while
+   * the session — who the write check judges — stays this agent.
+   */
+  as: <T>(did: string, write: () => Promise<T>) => Promise<T>;
 }
 
 /**
@@ -52,8 +57,9 @@ export interface SpaceHarness {
  * Build each part inside `reactivity.root`, as a composition root builds the store.
  */
 export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDatasetSeed[]): Promise<SpaceHarness> {
+  let self = ME;
   const ports = createInMemoryBackendPorts(
-    { selfId: () => ME },
+    { selfId: () => self },
     { agent: { id: ME, unlocked: true }, datasets: seeds },
   );
   const refs = await ports.lifecycle.list();
@@ -155,5 +161,13 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
     },
     setBootState,
     setAgentSettings: (fields) => setSettings(fields as AgentSettings | null),
+    as: async (did, write) => {
+      self = did;
+      try {
+        return await write();
+      } finally {
+        self = ME;
+      }
+    },
   };
 }
