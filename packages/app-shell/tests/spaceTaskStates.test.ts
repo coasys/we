@@ -62,7 +62,15 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         const writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { currentSpace: onScreen, showOnScreen: () => {} },
+          onScreen: {
+            currentSpace: onScreen,
+            // What a write shows lands on the record on screen, as the navigation part's would.
+            showOnScreen: (_ds, fields) => {
+              const shown = reactivity.untrack(onScreen);
+              if (shown)
+                writeOnScreen(Object.assign(Object.create(Object.getPrototypeOf(shown) as object), shown, fields));
+            },
+          },
         });
         states = createSpaceTaskStates({
           ...h.ctx,
@@ -166,5 +174,60 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await expect(built.states.members.setTaskWorkflowRule('next')).rejects.toThrow(/administers/);
     await expect(built.states.members.setWorkflowArchived('review', true)).rejects.toThrow(/administers/);
     expect(built.states.members.taskWorkflowEnabled()).toBe(false);
+  });
+
+  it('changes a state it has — its name, what it counts as, the agreement it asks for — and keeps its slug', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Review', semantic: 'active' });
+    await built.states.members.updateTaskState('review', { name: 'In review', semantic: 'blocked', approvals: 2 });
+    expect(built.states.members.taskStates()).toMatchObject([
+      { slug: 'review', name: 'In review', semantic: 'blocked', approvals: 2 },
+    ]);
+  });
+
+  it('adds what a state asks to be there first, and takes it away again by position', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Done', semantic: 'done' });
+    await built.states.members.addTaskStateEvidence('done', { entity: 'comment', via: 'responses', min: 1 });
+    await built.states.members.addTaskStateEvidence('done', { entity: 'file', min: 2 });
+    const evidence = () => built.states.members.taskStates()[0].evidence;
+    expect(evidence()).toHaveLength(2);
+    expect(evidence()[0]).toMatchObject({ via: 'responses', min: 1 });
+    await built.states.members.removeTaskStateEvidence('done', 0);
+    expect(evidence()).toHaveLength(1);
+    expect(evidence()[0]).toMatchObject({ min: 2 });
+  });
+
+  it('brings a retired state back into use', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.createTaskState({ name: 'Parked', semantic: 'blocked' });
+    await built.states.members.setTaskStateRetired('parked', true);
+    expect(built.states.members.offeredTaskStates()).toEqual([]);
+    await built.states.members.setTaskStateRetired('parked', false);
+    expect(built.states.members.offeredTaskStates().map((s) => s.slug)).toEqual(['parked']);
+  });
+
+  it('lets whoever administers the space set how tasks move and put a workflow away', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.setTaskWorkflowRule('next');
+    await built.states.members.setWorkflowArchived('review', true);
+    expect(built.states.members.archivedWorkflows()).toEqual(['review']);
+    const handle = (await built.h.datasets.get('ds-a')).handle;
+    const [stored] = (await Space.findAll(handle, {})) as Space[];
+    expect(stored.taskWorkflowRule).toBe('next');
+    await built.states.members.setWorkflowArchived('review', false);
+    expect(built.states.members.archivedWorkflows()).toEqual([]);
+  });
+
+  it('agrees with or withdraws from nothing, quietly, when no move is waiting', async () => {
+    const built = await build();
+    await enter(built, 'ds-a');
+    await built.states.members.approveTaskMove('task-1');
+    await built.states.members.withdrawTaskMove('task-1');
+    expect(built.h.toasts.said).toEqual([]);
   });
 });
