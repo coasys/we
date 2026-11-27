@@ -365,6 +365,42 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
     expect(opts).toMatchObject({ parent: { predicate: 'x://position_about', direction: 'in' } });
   });
 
+  it('reads, for a scope naming no anchor, the relation called `via` that holds the query entity', () => {
+    const rel = (predicate: string, relatedEntity: string) => ({
+      name: 'sections',
+      predicate,
+      type: 'uri' as const,
+      isCollection: true,
+      required: false,
+      writable: true,
+      relatedEntity,
+    });
+    const models = (...entries: Array<[string, ReturnType<typeof rel>]>) =>
+      createAd4mQueryAdapter(() =>
+        entries.map(([name, property]) => ({ name, targetClass: `x://${name}`, properties: [property] })),
+      );
+    const scoped = (scope: Partial<Scope> = {}): QueryIR => ({
+      irVersion: 1,
+      entity: 'Section',
+      scope: { via: 'sections', anchorId: 'r1', ...scope },
+    });
+
+    // One entity's `sections` holds sections; another's of the same name holds something else.
+    const one = models(['Book', rel('x://book_sections', 'Section')], ['Shelf', rel('x://shelf_sections', 'Shelf')]);
+    expect(one.lower(scoped())).toMatchObject({ parent: { id: 'r1', predicate: 'x://book_sections' } });
+    // Two that agree on the predicate are one relation.
+    const agree = models(['Book', rel('x://sections', 'Section')], ['Part', rel('x://sections', 'Section')]);
+    expect(agree.lower(scoped())).toMatchObject({ parent: { predicate: 'x://sections' } });
+    // Two that disagree are ambiguous, and refused rather than read along the first found.
+    const disagree = models(
+      ['Book', rel('x://book_sections', 'Section')],
+      ['Part', rel('x://part_sections', 'Section')],
+    );
+    expect(() => disagree.lower(scoped())).toThrow(/cannot resolve scope/);
+    // A named anchor still decides, whatever else declares the name.
+    expect(disagree.lower(scoped({ anchor: 'Part' }))).toMatchObject({ parent: { predicate: 'x://part_sections' } });
+  });
+
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {
     const ir: QueryIR = {
       irVersion: 1,

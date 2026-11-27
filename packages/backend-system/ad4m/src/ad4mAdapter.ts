@@ -339,10 +339,25 @@ function resolveScopeToParent(
     anchor, which keeps a tree read through one relation (`children` from both ends) as it was. A
     name both declare therefore means the result's, whatever predicate the anchor gives it.
   */
+  /*
+    A scope naming no anchor entity reads the relation called `via` that holds the query's entity,
+    as the query spec says: every entity declaring a `via` whose target is this one is asked, and
+    they must agree on its predicate. Two that disagree leave the scope ambiguous, and it is refused
+    rather than answered along whichever was found first.
+  */
+  const targeting = () => {
+    if (typeof entity !== 'string') return undefined;
+    const found = models.flatMap((m) =>
+      m.properties.filter((p) => p.name === scope.via && p.relatedEntity === entity && p.predicate),
+    );
+    return new Set(found.map((p) => p.predicate)).size === 1 ? found[0] : undefined;
+  };
   const prop =
     scope.direction === 'in' && typeof entity === 'string'
       ? (relationOn(entity) ?? relationOn(scope.anchor))
-      : relationOn(scope.anchor);
+      : scope.anchor
+        ? relationOn(scope.anchor)
+        : targeting();
   if (!prop?.predicate) {
     throw new Error(
       `ad4mQueryAdapter: cannot resolve scope { anchor: "${scope.anchor}", via: "${scope.via}" } — ` +
