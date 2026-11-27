@@ -60,11 +60,7 @@ export function createShellViews(deps: {
   let focusSearch: ReturnType<typeof setTimeout> | undefined;
   function scrollWhenDrawn(id: string, tries = 40): void {
     clearTimeout(focusSearch);
-    const element = platform.document.byId(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
+    if (platform.document.reveal(id, { block: 'center' })) return;
     if (tries > 0) focusSearch = setTimeout(() => scrollWhenDrawn(id, tries - 1), 100);
   }
 
@@ -133,7 +129,7 @@ export function createShellViews(deps: {
       if (id) lastShellPath[id] = path;
     },
     scrollToId: (id: string) => {
-      platform.document.byId(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      platform.document.reveal(id, { block: 'start' });
     },
   };
   return { members, activeShellView, setActiveShellView };

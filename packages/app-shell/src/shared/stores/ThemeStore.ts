@@ -21,7 +21,6 @@ import {
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { BundleTheme, DisplayPreferences, ThemeOverrides } from '@we/schema-shared';
 import {
-  applyThemeVars,
   parseOverrides,
   readThemeSettings,
   reconcileSurfaces,
@@ -508,8 +507,7 @@ function applyThemeToDOM(page: PlatformDocument, theme: ThemeData) {
   */
   const isSwitch = theme.id !== lastAppliedThemeId;
   lastAppliedThemeId = theme.id;
-  const root = page.root();
-  if (root) applyThemeVars(root, overrides, { crossFade: isSwitch });
+  page.applyTheme(overrides, { crossFade: isSwitch });
 
   // Inject the theme's CSS string (component-level rules + any non-parametric vars). Unscoped: this
   // is the whole window, which is what the document theme is for. Namespaced all the same, so the

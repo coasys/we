@@ -14,6 +14,7 @@
  * JavaScript runtime has them, and a test controls them with its runner's fake clock.
  */
 import type { ImageCodec } from '@we/entities';
+import type { ThemeOverrides } from '@we/schema-shared';
 
 /** A string store by key, as `localStorage` is. Reads of a key never written answer null. */
 export interface PlatformStorage {
@@ -50,6 +51,11 @@ export interface PlatformEvents {
   pointercancel: PointerEvent;
 }
 
+/** A computed style, as far as a store reads one: a property's value by name, '' when it has none. */
+export interface ComputedStyle {
+  getPropertyValue(name: string): string;
+}
+
 /** A box on screen, in viewport pixels. */
 export interface PlatformRect {
   x: number;
@@ -72,19 +78,28 @@ export interface PlatformDocument {
   setRootProperty(name: string, value: string | null): void;
   /** Set an attribute on the document's root, or remove it with null (`data-we-theme`). */
   setRootAttribute(name: string, value: string | null): void;
-  /** The root element itself, for a theme's variables, which are written and read as a set. */
-  root(): HTMLElement | null;
+  /**
+   * Write a theme's variables on the document's root, as a set: the previous theme's are cleared,
+   * and a `crossFade` fades from it. Where nothing is drawn the implementation keeps what it was asked.
+   */
+  applyTheme(theme: ThemeOverrides, options?: { crossFade?: boolean }): void;
   /** The text of a `<style>` element by id in the document's head, made when it is missing. */
   setStyleSheet(id: string, css: string): void;
   /**
    * Read the computed style of the root, or of a hidden element wearing `properties` when given:
    * what a theme's settings come back as. `read` runs while the element is in the document.
    */
-  readComputedStyle<T>(read: (style: CSSStyleDeclaration) => T, properties?: Record<string, string>): T | null;
-  /** The element with this id, or null. */
-  byId(id: string): HTMLElement | null;
-  /** Every element matching a CSS selector. */
-  queryAll(selector: string): Element[];
+  readComputedStyle<T>(read: (style: ComputedStyle) => T, properties?: Record<string, string>): T | null;
+  /**
+   * Bring the element with this id into view, `block` saying where in the view it lands. Answers
+   * whether there was one to bring, so a store waiting on something still being drawn can look again.
+   */
+  reveal(id: string, options?: { block?: 'start' | 'center' | 'end' | 'nearest' }): boolean;
+  /**
+   * Post a message to every embedded frame showing a page from one of `origins`, with that origin as
+   * the target, so nothing else embedded hears it. Answers how many frames it reached.
+   */
+  postToFrames(message: unknown, origins: readonly string[]): number;
   /** The box the first element matching a CSS selector is drawn in, or null when none is. */
   measure(selector: string): PlatformRect | null;
   /** A value written so a selector matches it exactly, as `CSS.escape`. */
