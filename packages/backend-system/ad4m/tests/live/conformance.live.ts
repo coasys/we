@@ -56,6 +56,8 @@ describeBackendConformance('AD4M', {
       "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
     'queries.newest-reply-under-a-post':
       "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+    'operations.find-scope-levels':
+      'a `levels` walk answers breadth-first, sorting each depth by `order` on its own, so a grandchild comes after every child whatever its title (ad4m-issue:levels-walk-order)',
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
