@@ -70,6 +70,12 @@ as `open`: no versions means `open`, so a failed read must not count as none. Th
 the policy loaded only once its versions are in. Until then the write check reads them for each write,
 and the write goes through as soon as a read succeeds.
 
+The same holds for what the policy is judged with. A space whose roles or grants cannot be read
+refuses the write as `unreadable`, since no roles would leave the space with no admins and its
+creator's word. So does a dataset known to be a space (the one on screen, or one the agent holds a
+`Space` record of) whose own `Space` record cannot be read. Any other dataset whose record cannot be
+read cannot be told from one that is not a space, and its write is not judged.
+
 ## Where it is enforced
 
 `@we/entities` holds one **write check**, which the host registers (`registerEntityWriteCheck`). Every

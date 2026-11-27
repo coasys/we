@@ -49,7 +49,7 @@ import {
   rolesView,
   type RoleView,
 } from '../../spaceRoles';
-import { spaceSelfWhere } from '../../spaceSync';
+import { isSpaceSelf, spaceSelfWhere } from '../../spaceSync';
 import { isSystemDataset } from '../../systemDatasets';
 import { deriveSlug } from '../../utils';
 import type { SpaceStore } from '../SpaceStore';
@@ -229,11 +229,11 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
       batch(() => {
         applyRoles(roles);
         applyGrants(grants);
+        setRolesLoaded(true);
       });
     } catch (error) {
+      // Not loaded on a failed read: the write check then reads the roles itself, and refuses while it can't.
       console.warn('SpaceStore: could not read the space’s roles', error);
-    } finally {
-      if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
     }
   }
 
@@ -500,12 +500,28 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
   */
   const governedElsewhere = new Map<string, { at: number; space: Promise<GovernedSpace | null> }>();
 
+  /** A dataset this agent already knows is a space: the space on screen, or one it holds a record of. */
+  function knownSpace(ds: { id: string; sharedId?: string }): boolean {
+    if (ds.id === datasetStore.currentDataset()?.id && datasetStore.isWeSpace()) return true;
+    return untrack(mySpaces).some((space) => isSpaceSelf(space, ds));
+  }
+
+  /*
+    A read that fails here throws, and the check refuses the write as `unreadable`, as it does for the
+    policy: no roles means no admins and the creator's word, so a failed read must not count as none.
+    A failed read of the `Space` record refuses too, where the dataset is known to be a space; for any
+    other dataset it cannot be told from one that is not a space, and is not judged, as before.
+  */
   async function readGovernedSpace(ds: { id: string; sharedId?: string; handle: DatasetProxy }) {
-    const [self] = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => [])) as Space[];
+    const selves = (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }).catch((error: unknown) => {
+      if (knownSpace(ds)) throw error;
+      return [];
+    })) as Space[];
+    const [self] = selves;
     if (!self) return null;
     const [roles, grants, versions] = await Promise.all([
-      Role.findAll(ds.handle).catch(() => []) as Promise<Role[]>,
-      RoleGrant.findAll(ds.handle).catch(() => []) as Promise<RoleGrant[]>,
+      Role.findAll(ds.handle) as Promise<Role[]>,
+      RoleGrant.findAll(ds.handle) as Promise<RoleGrant[]>,
       readPolicyVersions(ds.handle),
     ]);
     const grantRows = grantRowsOf(grants);

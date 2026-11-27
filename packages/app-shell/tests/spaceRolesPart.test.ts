@@ -37,6 +37,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     const h = await spaceHarness(makePort(), [
       { id: 'ds-a', name: 'Allotment' },
       { id: 'ds-p', name: 'Notebook' },
+      // Open here, but holding no space record: not known to be a space.
+      { id: 'ds-x', name: 'Scratch' },
     ]);
     await Space.create((await h.datasets.get('ds-a')).handle, {
       uuid: 'ds-a',
@@ -149,6 +151,50 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     failing.mockRestore();
     // Well inside the few seconds a read is kept for: a failed read was not kept.
     await expect(Role.create(handle, { slug: 'steward', name: 'Steward' })).resolves.toBeTruthy();
+  });
+
+  const failRead = (entity: string) =>
+    vi
+      .spyOn(getEntity(entity) as unknown as { findAll: (...a: unknown[]) => Promise<unknown> }, 'findAll')
+      .mockRejectedValue(new Error('backend unreachable'));
+
+  it.each(['Role', 'RoleGrant'])(
+    'refuses a write to another space whose %s records cannot be read, rather than judging it with no admins',
+    async (entity) => {
+      const built = await build();
+      const { h } = built;
+      await enter(built, 'ds-p');
+      const handle = (await h.datasets.get('ds-a')).handle;
+      const failing = failRead(entity);
+      await expect(CollectionBlock.create(handle, { kind: 'post' })).rejects.toMatchObject({
+        refusal: { reason: 'unreadable', action: 'CollectionBlock.create' },
+      });
+      failing.mockRestore();
+      await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+    },
+  );
+
+  it('refuses a write to a dataset known to be a space whose own record cannot be read', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-a')).handle;
+    const failing = failRead('Space');
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).rejects.toMatchObject({
+      refusal: { reason: 'unreadable' },
+    });
+    failing.mockRestore();
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+  });
+
+  it('does not judge a write to a dataset not known to be a space when its record cannot be read', async () => {
+    const built = await build();
+    const { h } = built;
+    await enter(built, 'ds-p');
+    const handle = (await h.datasets.get('ds-x')).handle;
+    const failing = failRead('Space');
+    await expect(CollectionBlock.create(handle, { kind: 'post' })).resolves.toBeTruthy();
+    failing.mockRestore();
   });
 
   it('forgets the last space’s roles on leaving it', async () => {
