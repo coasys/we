@@ -1089,8 +1089,9 @@ async function observe(
 ): Promise<Record<string, ObservedRecord[]>> {
   const records: Record<string, ObservedRecord[]> = {};
   for (const { entity, fields, relations } of observations) {
-    const include = Object.fromEntries(relations.map((relation) => [relation, true]));
-    const rows = await model(entity).findAll(dataset, relations.length ? { include } : {});
+    // A row carries its relations as target ids without an include, and an include would ask the
+    // backend to hydrate records the relation may not hold (`WeNode.mentions` holds agents' DIDs).
+    const rows = await model(entity).findAll(dataset, {});
     records[entity] = rows
       .map((row) => {
         const out: ObservedRecord = { id: row.id as string };
