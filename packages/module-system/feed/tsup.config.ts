@@ -11,5 +11,5 @@ export default defineConfig({
   treeshake: true,
   // Contract packages stay the host's single instance — a second copy of the schema types would be a
   // second registry as far as `instanceof` and module identity are concerned.
-  external: ['@we/schema-shared', '@we/module-shared'],
+  external: ['@we/schema-shared', '@we/module-shared', '@we/block-shared'],
 });
