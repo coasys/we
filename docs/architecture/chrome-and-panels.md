@@ -430,8 +430,14 @@ keep a card's heading.
 
 - `packages/app-shell/src/shared/dockGeometry.ts` — every rule above, as pure functions over a
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
-  `src/shared/kernels/dockLayout.ts` names the functions a second host reproduces the layout with,
-  against the recorded vectors beside it (`vectors/dockLayout.json`).
+  `src/shared/kernels/dockLayout.ts` names the entry points a second host reproduces the layout
+  with — where a panel is placed (`resolvePlacement`, `fitPlacement`, `arrangedPanel`), the seated
+  layout (`seatLanes`, `resolveDocks`, `edgeLaneLayout`, the insets, `panelFramesOf`), a drag's
+  targets (`edgeDropSlots`, `stackDropSlots`, `homeDropSlots`, the snaps, `chooseTarget`), what a
+  drop writes (`arrangeDrop`, `arrangeHomeDrop`, the seat-mates) and the gestures (`resizedBox`,
+  `movedBoundary`, `liftedCard`) — against the scenarios recorded beside it
+  (`vectors/dockLayout.json`). The rest of the file is how WE computes those answers, pinned by
+  `tests/dockGeometry.test.ts` rather than by the vectors, so it can change shape without them.
 - `packages/app-shell/src/shared/stores/ShellStore.ts` — the store's interface, composed of its
   parts in `stores/shell/`, on the reactivity port: `arrangement.ts` (what the reader has done to the
   panels, and the declarations it is read against), `docks.ts` (each panel's box, the edge lanes, the

@@ -355,18 +355,28 @@ the same code compiled to WASM. Sharing one implementation is fine for these bec
 what must stay separately implementable is the spec and anything stateful. (Not the same thing as a
 module's capability kernels in `@we/module-shared`, which are ports a module is handed.)
 
-| Kernel            | Where                                                  | What it answers                                                                                                       | Vectors                                  |
-| ----------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                        | `kernels/vectors/boardArrangement.json`  |
-| Tree ranks        | `app-shell/src/shared/kernels/treeRanks.ts`            | where a card sits in a tree read as arranged (`seatInRow`), and whether a drop would put it inside itself (`isUnder`) | `kernels/vectors/treeRanks.json`         |
-| Connection key    | `app-shell/src/shared/kernels/connectionKey.ts`        | the key a drawn connection is deduplicated by, which an interpretation pass matches                                   | `kernels/vectors/connectionKey.json`     |
-| Dock layout       | `app-shell/src/shared/kernels/dockLayout.ts`           | the 69 functions of `dockGeometry.ts` that place every panel, lane and drop slot                                      | `kernels/vectors/dockLayout.json` (642)  |
-| Block flattening  | `flattenBlocks` in `@we/block-shared` (`src/kernels/`) | a composed document as the ordered rows a post is written as, each keyed to its parent                                | `src/kernels/vectors/flattenBlocks.json` |
+| Kernel            | Where                                                  | What it answers                                                                                                         | Vectors                                  |
+| ----------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                          | `kernels/vectors/boardArrangement.json`  |
+| Tree ranks        | `app-shell/src/shared/kernels/treeRanks.ts`            | where a card sits in a tree read as arranged (`seatInRow`), and whether a drop would put it inside itself (`isUnder`)   | `kernels/vectors/treeRanks.json`         |
+| Connection key    | `app-shell/src/shared/kernels/connectionKey.ts`        | the key a drawn connection is deduplicated by, which an interpretation pass matches                                     | `kernels/vectors/connectionKey.json`     |
+| Dock layout       | `app-shell/src/shared/kernels/dockLayout.ts`           | the entry points of `dockGeometry.ts`: where a panel is placed, the seated layout, a drag's targets, what a drop writes | `kernels/vectors/dockLayout.json`        |
+| Block flattening  | `flattenBlocks` in `@we/block-shared` (`src/kernels/`) | a composed document as the ordered rows a post is written as, each keyed to its parent                                  | `src/kernels/vectors/flattenBlocks.json` |
 
 The vectors are recorded from the code (`pnpm --filter @we/app-shell record:kernels`,
 `pnpm --filter @we/block-shared record:kernels`) and a test replays each file, so changing a kernel's
 answer means re-recording and the diff shows every answer that moved. Add a kernel when a second host
 would otherwise have to read our source to draw the same thing.
+
+A kernel exports its **entry points**, not its helpers: each answers a whole question the host asks,
+and the vectors ask only those. A vector that called a helper would pin how WE happens to compute the
+answer, so a refactor would rewrite the vectors and a second host would have to copy the
+decomposition. The helpers stay exported from the module they live in, for app code and the
+TypeScript tests that pin them. Where the questions share inputs, the vectors are scenarios: the
+inputs once, then each question with its arguments, an argument `{ "$": "path" }` naming one of the
+inputs or an earlier question's answer (`dockLayout.json` is read this way — `askScenario` in
+`app-shell/scripts/dockLayoutCases.ts`). The kernel's test checks that every entry point is asked
+and every question names one.
 
 A Pattern B package with a neutral core and a Solid binding says which exports are which with
 `"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its
