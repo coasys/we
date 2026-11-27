@@ -896,15 +896,19 @@ export function describeBackendConformance(name: string, harness: ConformanceHar
           where: { id: [viaUpdate.id, viaSave.id] },
           include: { location: true },
         });
-        expect(events.map((row) => (row.location as Row | undefined)?.id)).toEqual([there.id, there.id]);
+        // Keyed by id: the query names no `order`, so the rows may come back in any order.
+        expect(Object.fromEntries(events.map((row) => [row.id, (row.location as Row | undefined)?.id]))).toEqual({
+          [viaUpdate.id]: there.id,
+          [viaSave.id]: there.id,
+        });
         const posts = await reader('CollectionBlock').findAll(subject.dataset, {
           where: { id: [postA.id, postB.id] },
           include: { children: true },
         });
-        expect(posts.map((row) => (row.children as Row[]).map((r) => r.id))).toEqual([
-          [b.id, c.id],
-          [e.id, f.id],
-        ]);
+        expect(Object.fromEntries(posts.map((row) => [row.id, (row.children as Row[]).map((r) => r.id)]))).toEqual({
+          [postA.id]: [b.id, c.id],
+          [postB.id]: [e.id, f.id],
+        });
       });
 
       test('relations.create-links-many', 'links a to-many relation named in a create', async () => {
