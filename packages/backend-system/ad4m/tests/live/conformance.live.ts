@@ -53,11 +53,19 @@ describeBackendConformance('AD4M', {
   knownGaps: {
     ...QUERY_VECTOR_GAPS,
     'queries.reply-total-leaves-calls-out':
-      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
+      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns; coasys/ad4m#1417)",
     'queries.newest-in-a-channel':
-      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause; coasys/ad4m#1417)",
     'queries.newest-reply-under-a-post':
-      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause; coasys/ad4m#1417)",
+    'operations.find-scope-levels':
+      'a `levels` walk answers breadth-first, sorting each depth by `order` on its own, so a grandchild comes after every child whatever its title (ad4m-issue:levels-walk-order)',
+    // Four links onto `children` in one transaction, written in the reverse of code-point order.
+    // `link` writes no order entry, so they read back by link timestamp; links made in one
+    // transaction share a millisecond, and a tie falls to the store's order. Not once read back in
+    // the order written, over 20 local runs. Delete this once a pin includes coasys/ad4m#1936.
+    'operations.relation-order':
+      'a link onto an ordered relation writes no order entry, so four children linked in one transaction read back in store order, not the order written (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
