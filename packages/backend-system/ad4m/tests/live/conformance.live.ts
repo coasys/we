@@ -51,11 +51,11 @@ describeBackendConformance('AD4M', {
   timing: { settle: 10_000, quiet: 2_000 },
   knownGaps: {
     'queries.reply-total-leaves-calls-out':
-      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns)",
+      "a count's `where` resolves property names through the relation's target class, and an untyped relation has none, so `kind` is skipped and every response is counted (build_projection_where_patterns; coasys/ad4m#1417)",
     'queries.newest-in-a-channel':
-      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause; coasys/ad4m#1417)",
     'queries.newest-reply-under-a-post':
-      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause)",
+      "a projection's `order` honours only `id`/`base` and drops any other key, so `createdAt` is ignored and the member returned is whichever SPARQL yields first (build_projection_order_clause; coasys/ad4m#1417)",
     'operations.find-scope-levels':
       'a `levels` walk answers breadth-first, sorting each depth by `order` on its own, so a grandchild comes after every child whatever its title (ad4m-issue:levels-walk-order)',
   },
