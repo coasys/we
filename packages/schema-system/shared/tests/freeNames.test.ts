@@ -21,8 +21,11 @@ describe('freeNames', () => {
     expect(freeNames(tree).names).toEqual(['block']);
   });
 
-  it('never reports stores, modules or what the host binds everywhere', () => {
-    const tree = { type: 'we-text', children: [{ $: 'spaceStore.x + modules.call.active + me.did + surface.tier' }] };
+  it('never reports stores, profile namespaces, modules or what the host binds everywhere', () => {
+    const tree = {
+      type: 'we-text',
+      children: [{ $: 'spaceStore.x + navigation.params.call + modules.call.active + me.did + surface.tier' }],
+    };
     expect(freeNames(tree)).toEqual({ names: [], locals: [] });
   });
 

@@ -25,6 +25,8 @@ import {
   buildTemplateBag,
   CAPABILITY_GROUPS,
   CHROME_TIER,
+  inspectTemplateSurface,
+  PROFILE_HOMES,
   SPACE_TIER,
   TEMPLATE_SURFACE,
 } from '../src/shared/registries/templateSurface';
@@ -187,17 +189,17 @@ describe('what the space tier can reach', () => {
 
   it('can still render and take part in a space', () => {
     for (const path of [
-      'spaceStore.currentSpace',
+      'spaceSettings.currentSpace',
       'spaceStore.createPost',
       'spaceStore.moveCardToColumn',
-      'spaceStore.memberDids',
+      'identity.memberDids',
       'spaceStore.unreadNodeIds',
       'spaceStore.myMentions',
       'spaceStore.uploadFile',
-      'presenceStore.onlineHere',
-      'routeStore.navigate',
-      'routeStore.setParam',
-      'profileStore.profiles',
+      'presence.onlineHere',
+      'navigation.navigate',
+      'navigation.setParam',
+      'identity.profiles',
       'record.create',
     ]) {
       expect(reaches(spaceBag, path), path).toBe(true);
@@ -312,6 +314,7 @@ describe('space-configuring actions are pinned to the space on screen', () => {
     { grants: SPACE_TIER },
   );
   const spaceStore = bag.spaceStore as Record<string, (...args: unknown[]) => unknown>;
+  const spaceSettings = bag.spaceSettings as Record<string, (...args: unknown[]) => unknown>;
 
   beforeEach(() => {
     calls.length = 0;
@@ -328,7 +331,7 @@ describe('space-configuring actions are pinned to the space on screen', () => {
   });
 
   it('leaves an ordinary call untouched', () => {
-    spaceStore.setViewVisible('cards', false);
+    spaceSettings.setViewVisible('cards', false);
     spaceStore.updateSpaceMeta({ name: 'Renamed' });
     expect(calls).toEqual([['cards', false], [{ name: 'Renamed' }]]);
   });
@@ -434,7 +437,7 @@ describe('the gesture gate', () => {
     const calls: string[] = [];
     const stores = {
       record: { create: () => calls.push('record.create') },
-      routeStore: { navigate: () => calls.push('routeStore.navigate') },
+      routeStore: { navigate: () => calls.push('navigation.navigate') },
       modules: {
         notes: {
           save: markAction(() => calls.push('notes.save'), 'save'),
@@ -446,7 +449,7 @@ describe('the gesture gate', () => {
     };
     const bag = buildTemplateBag(stores, { grants: SPACE_TIER, gesture }) as unknown as {
       record: { create: () => unknown };
-      routeStore: { navigate: () => unknown };
+      navigation: { navigate: () => unknown };
       modules: { notes: { save: () => unknown; open: () => unknown; share: () => unknown } };
     };
     return { bag, calls };
@@ -468,9 +471,9 @@ describe('the gesture gate', () => {
 
   it('lets an ambient action run unasked — a host one or a module one', () => {
     const { bag, calls } = bagWith('enforce');
-    bag.routeStore.navigate();
+    bag.navigation.navigate();
     bag.modules.notes.open();
-    expect(calls).toEqual(['routeStore.navigate', 'notes.open']);
+    expect(calls).toEqual(['navigation.navigate', 'notes.open']);
   });
 
   it('only says so when reporting', () => {
@@ -510,7 +513,7 @@ describe('a template cannot send a chat question or pick its scope', () => {
     };
     const bag = buildTemplateBag(stores, { grants: options.grants, gesture: options.gesture }) as unknown as {
       chatStore: { openChat: (input?: Record<string, unknown>) => unknown };
-      shellStore: {
+      viewState: {
         openPanel: (panel: string, inputs?: Record<string, unknown>, opts?: Record<string, unknown>) => unknown;
       };
     };
@@ -558,11 +561,106 @@ describe('a template cannot send a chat question or pick its scope', () => {
 
   it('cannot write into another scope or claim a person asked — openPanel options are struck', () => {
     const { bag, openPanel } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
-    bag.shellStore.openPanel('chat-global', { draft: 'x', at: 2 }, { scope: 'app', viaTemplate: false });
+    bag.viewState.openPanel('chat-global', { draft: 'x', at: 2 }, { scope: 'app', viaTemplate: false });
     const [, inputs, opts] = openPanel.mock.calls[0] as [string, Record<string, unknown>, Record<string, unknown>];
     expect('scope' in opts).toBe(false);
     expect(opts.viaTemplate).toBe(true);
     // And the inputs passed through as data — a forgeable `{ draft, at }` is what finding 2 removed.
     expect(inputs.draft).toBe('x');
+  });
+});
+
+describe('profile namespaces', () => {
+  const asked = <T>(fn: () => T): T => runWithGesture({ at: {} as Event }, fn);
+
+  function bagOver(gesture?: 'enforce' | 'report') {
+    const calls: string[] = [];
+    let space = { id: 'first' };
+    const params = () => ({ id: 'r1' });
+    const stores = {
+      routeStore: { params, navigate: (to: string) => calls.push(`navigate ${to}`), setCurrentPath: () => {} },
+      spaceStore: {
+        get currentSpace() {
+          return space;
+        },
+        setViewVisible: () => calls.push('setViewVisible'),
+        policy: () => 'rules',
+      },
+    };
+    const bag = buildTemplateBag(stores, { grants: SPACE_TIER, gesture }) as unknown as Record<
+      string,
+      Record<string, unknown>
+    >;
+    return { bag, calls, params, move: (id: string) => (space = { id }) };
+  }
+
+  it('reach a profile member under its namespace and never under its store', () => {
+    const { bag } = bagOver();
+    expect(Object.keys(bag.navigation).sort()).toEqual(['navigate', 'params']);
+    expect(Object.keys(bag.spaceSettings).sort()).toEqual(['currentSpace', 'setViewVisible']);
+    expect('params' in bag.routeStore).toBe(false);
+    expect('navigate' in bag.routeStore).toBe(false);
+    expect('currentSpace' in bag.spaceStore).toBe(false);
+    // What no profile holds stays under the store, so the name says it is WE's.
+    expect('policy' in bag.spaceStore).toBe(true);
+  });
+
+  it('hand out the store’s own accessor, tagged, so a read stays reactive', () => {
+    const { bag, params, move } = bagOver();
+    expect(bag.navigation.params).toBe(params);
+    expect((params as unknown as Record<symbol, unknown>)[REACTIVE_ACCESSOR]).toBe(true);
+    move('second');
+    expect((bag.spaceSettings.currentSpace as { id: string }).id).toBe('second');
+  });
+
+  it('keep each action’s gesture gate, reported under the name the template wrote', () => {
+    const { bag, calls } = bagOver('enforce');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    (bag.spaceSettings.setViewVisible as () => void)();
+    expect(calls).toEqual([]);
+    expect(warn.mock.calls.flat().join(' ')).toContain('spaceSettings.setViewVisible');
+    asked(() => (bag.spaceSettings.setViewVisible as () => void)());
+    (bag.navigation.navigate as (to: string) => void)('~/');
+    expect(calls).toEqual(['setViewVisible', 'navigate ~/']);
+  });
+
+  it('give a namespace only the members whose group the bag holds', () => {
+    const bag = buildTemplateBag(
+      { routeStore: { params: () => ({}), navigate: () => {} } },
+      { grants: ['navigation'] },
+    ) as unknown as Record<string, Record<string, unknown>>;
+    expect(Object.keys(bag.navigation)).toEqual(['navigate']);
+  });
+
+  it('are what the surface inspection classifies, and a store path to a profile member is absent', () => {
+    const schema = {
+      type: 'Column',
+      children: [
+        { $: 'navigation.params.id' },
+        { $: 'routeStore.params.id' },
+        { $: 'spaceStore.policy' },
+        { type: 'we-button', props: { onClick: { $invoke: 'viewState.openPanel', args: ['x'] } } },
+        // A row bound under a namespace's name reads its own fields; that is not a grant question.
+        {
+          type: '$each',
+          props: { items: { $: 'navigation.mySpaces' }, as: 'layout' },
+          children: [{ $: 'layout.name' }],
+        },
+      ],
+    };
+    const { allowed, blocked } = inspectTemplateSurface(schema, SPACE_TIER);
+    expect(allowed.map((r) => r.path).sort()).toEqual([
+      'navigation.mySpaces',
+      'navigation.params.id',
+      'spaceStore.policy',
+      'viewState.openPanel',
+    ]);
+    expect(blocked).toEqual([{ path: 'routeStore.params.id', via: 'store', group: null }]);
+  });
+
+  it('cover every namespace’s stores with a classification', () => {
+    for (const stores of Object.values(PROFILE_HOMES))
+      for (const [store, members] of Object.entries(stores))
+        for (const member of members) expect(TEMPLATE_SURFACE[store]?.[member], `${store}.${member}`).toBeDefined();
   });
 });

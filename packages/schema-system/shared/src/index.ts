@@ -67,6 +67,8 @@ export {
   hostOnlyUses,
   NEUTRAL_NAMESPACES,
   PROFILE_MEMBERS,
+  PROFILE_NAMESPACES,
+  profileMemberNamed,
   profileOf,
 } from './profiles';
 export type { CapabilityProfile, HostOnlyUse, ProfileArg, ProfileEvent, ProfileMember } from './profiles';

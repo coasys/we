@@ -533,6 +533,29 @@ describe('checking', () => {
   it('is lenient about unknown roots in a fragment', () => {
     expect(checkExpression(parseExpression('anything.at.all'), { ...scope, strict: false, locals: null })).toEqual([]);
   });
+
+  it('refuses a member named under a store that keeps it but does not expose it, saying what to write', () => {
+    const moved = { ...scope, movedMembers: new Map([['spaceStore.memberDids', 'identity.memberDids']]) };
+    const [issue] = checkExpression(parseExpression('count(spaceStore.memberDids)'), moved);
+    expect(issue.severity).toBe('error');
+    expect(issue.message).toBe(
+      'spaceStore.memberDids is not reachable under its store: it is a profile member, written identity.memberDids',
+    );
+  });
+
+  it('warns when a bound name hides a namespace whose member it then reads', () => {
+    const named = {
+      ...scope,
+      storeNames: new Set([...scope.storeNames, 'layout']),
+      storeMembers: new Map([...scope.storeMembers, ['layout', new Set(['collapsedLanes'])]]),
+      contextNames: new Set(['layout']),
+    };
+    const [issue] = checkExpression(parseExpression("'left' in layout.collapsedLanes"), named);
+    expect(issue.severity).toBe('warning');
+    expect(issue.message).toMatch(/"layout" here is the name an enclosing node bound/);
+    // The row's own fields are the row's.
+    expect(checkExpression(parseExpression('layout.name'), named)).toEqual([]);
+  });
 });
 
 describe('the core subset', () => {

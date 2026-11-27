@@ -90,6 +90,12 @@ export interface StoreEntry {
    * validator can say so before anybody presses the button.
    */
   needsArgs?: string[];
+  /**
+   * A capability profile's namespace rather than a store: the store that holds each member in this
+   * host, by member. A member listed here is reachable only under the namespace, so the validator can
+   * tell a template naming it under the store where it is written now.
+   */
+  homes?: Record<string, string>;
 }
 
 /** A token category (e.g. space, color, size) */

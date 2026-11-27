@@ -17,9 +17,10 @@ export interface ProfileArg {
 
 export interface ProfileMember {
   /**
-   * The name a template writes: `<namespace>.<member>`, as in `{ $: 'routeStore.params.id' }` or
-   * `{ $invoke: 'routeStore.navigate' }`. A name in the bag, and nothing more: how a host holds the
-   * value behind it is the host's own business.
+   * The name a template writes: the profile's namespace and the member, as in
+   * `{ $: 'navigation.params.id' }` or `{ $invoke: 'navigation.navigate' }`. A name in the bag, and
+   * nothing more: which of the host's own stores holds the value behind it is the host's business,
+   * and a host may move it between them without a template noticing.
    */
   path: string;
   /** `state` is read in expressions; `action` is called through `$invoke`. */
@@ -52,6 +53,12 @@ export interface ProfileEvent {
 export interface CapabilityProfile {
   /** `navigation`, `view-state`, … — stable, and what `meta.requires` will name. */
   id: string;
+  /**
+   * The name its members are written under, in camelCase: `viewState.openPanel`, `spaceSettings.currentSpace`.
+   * A template names a profile member by this and never by the store that implements it, so the name
+   * alone says that the member travels to any host providing the profile.
+   */
+  namespace: string;
   /**
    * Semantic version. Minor adds members, events or optional arguments; major removes or renames
    * one, or changes what a value or an argument means.

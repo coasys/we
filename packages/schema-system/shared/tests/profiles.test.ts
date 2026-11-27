@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, NEUTRAL_NAMESPACES, PROFILE_MEMBERS } from '../src/profiles';
+import {
+  CAPABILITY_PROFILES,
+  HOST_ONLY_EQUIVALENTS,
+  NEUTRAL_NAMESPACES,
+  PROFILE_MEMBERS,
+  PROFILE_NAMESPACES,
+  profileMemberNamed,
+} from '../src/profiles';
 
 describe('capability profiles', () => {
   it('are the seven, each versioned', () => {
@@ -14,6 +21,32 @@ describe('capability profiles', () => {
       'appearance',
     ]);
     for (const profile of CAPABILITY_PROFILES) expect(profile.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('are written under namespaces of their own, never a store name', () => {
+    expect(CAPABILITY_PROFILES.map((p) => p.namespace)).toEqual([
+      'navigation',
+      'viewState',
+      'layout',
+      'presence',
+      'identity',
+      'spaceSettings',
+      'appearance',
+    ]);
+    expect(PROFILE_NAMESPACES.size).toBe(CAPABILITY_PROFILES.length);
+    for (const profile of CAPABILITY_PROFILES) {
+      expect(profile.namespace).toMatch(/^[a-z][a-zA-Z]*$/);
+      expect(profile.namespace).not.toMatch(/Store$/);
+      expect(NEUTRAL_NAMESPACES.has(profile.namespace)).toBe(false);
+      for (const member of profile.members) expect(member.path.split('.')[0], member.path).toBe(profile.namespace);
+    }
+  });
+
+  it('give every member a name no other profile uses, so a bare member name finds it', () => {
+    const names = CAPABILITY_PROFILES.flatMap((p) => p.members.map((m) => m.path.split('.')[1]));
+    expect(new Set(names).size).toBe(names.length);
+    expect(profileMemberNamed('params')?.path).toBe('navigation.params');
+    expect(profileMemberNamed('policy')).toBeUndefined();
   });
 
   it('are plain JSON, since another host reads them as data', () => {
