@@ -46,6 +46,17 @@ export interface RecordInstance {
 }
 
 /**
+ * The fields of {@link RecordInstance} every record carries, by name. A backend may hold any of them
+ * as an accessor rather than an own property — AD4M's `id` is a getter on its model's prototype — so
+ * code copying a record's fields reads these by name rather than trusting `Object.entries` to find
+ * them.
+ */
+export const RECORD_BASE_FIELDS = ['id', 'author', 'createdAt', 'updatedAt'] as const satisfies readonly Exclude<
+  keyof RecordInstance,
+  'save' | 'delete'
+>[];
+
+/**
  * The key a record read through a polymorphic relation carries its concrete entity name under.
  *
  * A heterogeneous relation hands back records of several kinds at once, and a consumer that has to
