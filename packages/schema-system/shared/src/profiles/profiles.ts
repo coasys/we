@@ -89,9 +89,9 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
           { name: 'options', type: '{ query?: Record<string, string> }', optional: true },
         ],
         description:
-          'Goes to a path, resolved against the route the calling node is in: "." is that route, ".." the one above, "./x" a page below, "~/x" from the template’s root, "?q" the page on screen with that query, and an absolute path leaves the template.',
+          'Goes to a path, resolved against the route the calling node is in: "." is that route, ".." the one above, "./x" a page below, "~/x" from the template’s root, "?q" the page on screen with that query, and an absolute path leaves the template — and may leave the space, putting another one, or none, on screen.',
         ambient: true,
-        events: ['address'],
+        events: ['address', 'space'],
       },
       {
         path: 'navigation.setParam',
@@ -475,8 +475,9 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         kind: 'state',
         group: 'presence',
         shape: 'PresentAgent[]',
-        description: 'The peers on the same page as this person, for a presence strip on a page.',
-        events: ['roster', 'address'],
+        description:
+          'The peers on the same page as this person, for a presence strip on a page. It changes when they move and when this person does.',
+        events: ['roster'],
       },
       {
         path: 'presence.setAvailability',
@@ -511,12 +512,8 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
       {
         name: 'roster',
         changes: ['presence.available', 'presence.peers', 'presence.online', 'presence.onlineHere'],
-        description: 'Somebody arrived, left, moved, or changed what they say about themselves.',
-      },
-      {
-        name: 'address',
-        changes: ['presence.onlineHere'],
-        description: 'This person moved to another page, so who shares it with them changed.',
+        description:
+          'Somebody arrived, left, moved, or changed what they say about themselves — this person included, so their own move to another page, which changes who shares it, is one too.',
       },
     ],
   },

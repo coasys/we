@@ -4,7 +4,7 @@
  * without a vector fails here, so a second host is never handed a profile part of which nobody has
  * said the behaviour of.
  */
-import { CAPABILITY_PROFILES } from '@we/schema-shared';
+import { CAPABILITY_PROFILES, PROFILE_MEMBERS } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
 import { readProfileVectors } from '../src/profiles';
@@ -36,6 +36,22 @@ describe('profiles.json covers the profiles', () => {
       for (const path of [...c.observe, ...(c.action ? [c.action] : []), ...(c.setup ?? []).map((s) => s.action)])
         expect(all.has(path), `${c.id}: ${path}`).toBe(true);
       for (const path of c.observe) expect(states, `${c.id}: ${path}`).toContain(path);
+    }
+  });
+
+  /*
+    An action's own profile's events are what it says it may cause. One recorded beyond them is a
+    member list a second host would read as wrong — or a host waking readers it should not. Events of
+    other profiles are the action's description's to name (going to a space changes who is here), so
+    only the action's own profile is held to its list.
+  */
+  it('records no event of an action’s own profile that the action does not name', () => {
+    for (const c of file.cases) {
+      const events = (c as { events?: Record<string, string[]> }).events;
+      if (!c.action || !events) continue;
+      const { profile, member } = PROFILE_MEMBERS.get(c.action)!;
+      const stray = (events[profile.id] ?? []).filter((event) => !member.events.includes(event));
+      expect(stray, `${c.id}: ${c.action}`).toEqual([]);
     }
   });
 

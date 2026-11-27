@@ -34,7 +34,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 | Member | Arguments | Group | Ambient | Events | Does |
 | --- | --- | --- | --- | --- | --- |
-| `navigation.navigate` | `to: string`, `options?: { query?: Record<string, string> }` | `navigation` | yes | `address` | Goes to a path, resolved against the route the calling node is in: "." is that route, ".." the one above, "./x" a page below, "~/x" from the template’s root, "?q" the page on screen with that query, and an absolute path leaves the template. |
+| `navigation.navigate` | `to: string`, `options?: { query?: Record<string, string> }` | `navigation` | yes | `address`, `space` | Goes to a path, resolved against the route the calling node is in: "." is that route, ".." the one above, "./x" a page below, "~/x" from the template’s root, "?q" the page on screen with that query, and an absolute path leaves the template — and may leave the space, putting another one, or none, on screen. |
 | `navigation.setParam` | `name: string`, `value: string \| null`, `options?: { push?: boolean }` | `view-state` | yes | `address` | Writes one query parameter, or removes it with null. Replaces the history entry unless `push` asks for a new one. |
 | `navigation.back` | none | `navigation` | yes | `address` | Goes back one history entry. Does nothing at the start of the session’s history. |
 | `navigation.navigateToSpace` | `spaceId: string`, `view?: string` | `navigation` | yes | `address`, `space` | Goes to a space the person holds, by its dataset id or its shared id, and optionally to one of its sections. |
@@ -120,7 +120,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 | `presence.available` | `boolean` | `presence` | `roster` | There is anybody to be present to here. False in a personal space; gate presence on it rather than drawing an empty roster. |
 | `presence.peers` | `PresentAgent[]` | `presence` | `roster` | Every peer known in the space on screen, offline included, most recently seen first. A PresentAgent is { did, name, avatar, tone, focus, activities, availability }. |
 | `presence.online` | `PresentAgent[]` | `presence` | `roster` | The peers who are not offline: who is here. |
-| `presence.onlineHere` | `PresentAgent[]` | `presence` | `roster`, `address` | The peers on the same page as this person, for a presence strip on a page. |
+| `presence.onlineHere` | `PresentAgent[]` | `presence` | `roster` | The peers on the same page as this person, for a presence strip on a page. It changes when they move and when this person does. |
 
 ### Actions
 
@@ -134,8 +134,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 | Event | Changes | When |
 | --- | --- | --- |
-| `roster` | `presence.available`, `presence.peers`, `presence.online`, `presence.onlineHere` | Somebody arrived, left, moved, or changed what they say about themselves. |
-| `address` | `presence.onlineHere` | This person moved to another page, so who shares it with them changed. |
+| `roster` | `presence.available`, `presence.peers`, `presence.online`, `presence.onlineHere` | Somebody arrived, left, moved, or changed what they say about themselves — this person included, so their own move to another page, which changes who shares it, is one too. |
 
 ## identity
 
