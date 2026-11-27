@@ -234,7 +234,13 @@ Measuring changes some steps, and a run that measures is not a run that does not
 
 The page takes the times (`probe.mjs`). A watcher in the page marks the frame in which a thing
 shows. All the watchers of a page share one loop, which reads the page once a frame and stops when
-no watcher is left. The interpretation watchers have no expiry: they last until the interpretation
+no watcher is left. Text under `display: none` does not count as shown: a thing that is mounted but
+hidden has not appeared, and a thing that is hidden but still mounted has gone. A watch looks for its
+elements by the selector in its spec, with the text matched against their text, `aria-label` and
+`label`. Page code has no Playwright locators, so the selector names a tag or class of the rendering
+layer (`we-badge`, `.we-graph__node`): an observation of what is drawn, not a control a person
+uses. The steps that act on a control select it by role and accessible name. A step reads a mark only
+after it has waited for it, so a thing seen before its frame has run does not drop the sample. The interpretation watchers have no expiry: they last until the interpretation
 step ends, pass or fail, because a real model's result can come after any fixed time. A gesture's
 observer and listener are removed from the page when its timing ends, even on a timeout. A click starts the clock at the event's own time stamp. Where a step writes data from Node,
 the clock starts at that write.

@@ -79,12 +79,15 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
     const canvas = page.locator('.we-graph');
     for (const title of titles) await canvas.getByText(title).first().waitFor({ timeout: SLOW });
     await timings.attempt('graph.load_ms', async () => {
+      // A mark is taken in the first frame that shows it, and a title can be seen before that frame has
+      // run: wait for each mark, as long as its watch reads the page (SLOW), before reading it.
+      const marked = (name) => until(() => readMark(page, name), Boolean, { timeout: SLOW, what: `the ${name} mark` });
       const opened = await readMark(page, 'canvas.open');
-      timings.add('graph.first_node_ms', ms(opened, await readMark(page, 'canvas.node')));
+      timings.add('graph.first_node_ms', ms(opened, await marked('canvas.node')));
       // The stub tier draws every expected record. The real tier waits for the first one it found only:
       // the canvas draws just what is near the view (cull.ts), so it cannot be asked for all of a model's.
       const drawn = STUB ? 'graph.all_records_ms' : 'graph.first_record_ms';
-      timings.add(drawn, ms(opened, await readMark(page, 'canvas.records')));
+      timings.add(drawn, ms(opened, await marked('canvas.records')));
     });
     // Then the gestures, as the page's mouse makes them, each timed from its input to the frame after.
     await timings.attempt('graph gestures', () => timeCanvas(page, (kind, t) => timings.add(`graph.${kind}_ms`, t)));

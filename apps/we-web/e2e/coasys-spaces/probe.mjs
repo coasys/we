@@ -32,8 +32,21 @@ function armWatch({ name, spec }) {
   if (probe.looping) return;
   probe.looping = true;
 
+  // Whether an element is rendered, as far as `display` goes. `checkVisibility()` is false for a
+  // `display: contents` wrapper, which draws nothing itself and shows its children: only that case
+  // needs the computed style.
+  const rendered = (el) => el.checkVisibility?.() !== false || getComputedStyle(el).display === 'contents';
+  // The element and every ancestor in the flat tree are rendered: text under `display: none` is not shown.
+  const shownInTree = (el) => {
+    for (let n = el; n; n = n.assignedSlot ?? n.parentNode ?? n.host) {
+      if (n.nodeType === Node.ELEMENT_NODE && !rendered(n)) return false;
+    }
+    return true;
+  };
   const deepText = (node) => {
     if (node.nodeType === Node.TEXT_NODE) return node.data;
+    // A hidden subtree adds no text: content that is mounted but not shown has not appeared.
+    if (node.nodeType === Node.ELEMENT_NODE && !rendered(node)) return '';
     let out = '';
     if (node.shadowRoot) out += deepText(node.shadowRoot);
     for (const child of node.childNodes) out += ` ${deepText(child)}`;
@@ -57,6 +70,7 @@ function armWatch({ name, spec }) {
       if (!bySelector.has(selector)) {
         const shown = roots
           .flatMap((root) => [...root.querySelectorAll(selector)])
+          .filter(shownInTree)
           .map((el) => [deepText(el), el.getAttribute('aria-label'), el.getAttribute('label')].join(' ').toLowerCase());
         bySelector.set(selector, shown);
       }

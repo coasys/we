@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { timeInput } from './probe.mjs';
+import { readMark, timeInput, watchPage } from './probe.mjs';
 
 /** A page whose `evaluate` and `waitForFunction` run in this process, against a window of fakes. */
 function fakePage() {
@@ -49,6 +49,8 @@ function fakePage() {
     window,
     observers,
     listeners,
+    // Runs `fn` with the page's globals in place: what a callback of the page does after `evaluate` has returned.
+    scoped: (fn) => run(fn),
     evaluate: async (fn, arg) => run(fn, arg),
     waitForFunction: async (fn, arg, { timeout }) => {
       const end = Date.now() + timeout;
@@ -111,8 +113,10 @@ describe('an input timed in the page', () => {
       async () => {
         page.listeners[1].fn({ timeStamp: 900 });
         // The first round's observer sees the change too: it is disconnected, and what it does is lost.
-        page.observers[0].callback([hit]);
-        page.observers[1].callback([hit]);
+        page.scoped(() => {
+          page.observers[0].callback([hit]);
+          page.observers[1].callback([hit]);
+        });
       },
       500,
     );
@@ -127,5 +131,44 @@ describe('an input timed in the page', () => {
     await timeInput(page, { input: 'wheel', change: CHANGE }, async () => {}, 10);
     await timeInput(page, { input: 'wheel', change: CHANGE }, async () => {}, 10);
     expect(page.observers).toHaveLength(2);
+  });
+});
+
+describe('a watch of the page', () => {
+  // The page's own document stands in for the browser's. jsdom has no `checkVisibility`, so it gets
+  // the part of it the probe asks: false for an element, or one under it, with `display: none`.
+  // Chrome also answers false for a `display: contents` wrapper, so the stand-in does too.
+  const page = { evaluate: async (fn, arg) => fn(arg) };
+  const frames = () => new Promise((resolve) => setTimeout(resolve, 80));
+  const hidden = (el) => el.style.display === 'none' || (el.parentElement ? hidden(el.parentElement) : false);
+  Element.prototype.checkVisibility = function () {
+    return this.style.display !== 'contents' && !hidden(this);
+  };
+
+  it('marks the frame a match is shown, not the frame it is mounted under display: none', async () => {
+    document.body.innerHTML = '<div id="box" style="display:none"><span class="tag">Live</span></div>';
+    await watchPage(page, 'shown', { selector: '.tag', texts: ['Live'], within: 5_000 });
+    await frames();
+    expect(await readMark(page, 'shown')).toBe(null);
+    document.getElementById('box').style.display = 'block';
+    await frames();
+    expect(typeof (await readMark(page, 'shown'))).toBe('number');
+  });
+
+  it('marks gone when the last match is hidden but still mounted', async () => {
+    document.body.innerHTML = '<div id="box"><span class="tag">Live</span></div>';
+    await watchPage(page, 'away', { selector: '.tag', texts: ['Live'], gone: true, within: 5_000 });
+    await frames();
+    expect(await readMark(page, 'away')).toBe(null);
+    document.getElementById('box').style.display = 'none';
+    await frames();
+    expect(typeof (await readMark(page, 'away'))).toBe('number');
+  });
+
+  it('counts text under a display: contents wrapper as shown', async () => {
+    document.body.innerHTML = '<div style="display:contents"><span class="tag">Live</span></div>';
+    await watchPage(page, 'wrapped', { texts: ['Live'], within: 5_000 });
+    await frames();
+    expect(typeof (await readMark(page, 'wrapped'))).toBe('number');
   });
 });
