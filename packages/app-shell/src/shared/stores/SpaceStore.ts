@@ -35,6 +35,7 @@ import { createSpaceExtraction, type SpaceExtractionDeps } from './space/extract
 import { createSpaceInvolvements } from './space/involvements';
 import { createSpaceModules, type SpaceModulesDeps } from './space/modules';
 import { createSpaceNavigation, type SpaceNavigationDeps } from './space/navigation';
+import { createSpaceOnScreen } from './space/onScreen';
 import { createSpaceRoles } from './space/roles';
 import { createSpaceList, type SpaceListDeps } from './space/spaces';
 import { createSpaceTaskStates, type SpaceTaskStatesDeps } from './space/taskStates';
@@ -676,40 +677,31 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   const ctx = createSpaceContext({ reactivity, platform, toasts, firstScreen, sessionStore: session, datasetStore });
 
   /*
-    The spaces this agent holds. Built first: every other part reads the records it holds. What a new
-    space is given by the later jobs — a section, its first admin, its starting policy — is reached
-    through them when a space is made, by which time all of them are built.
+    The parts are built in the order they read each other, each taking the narrowest slice of the
+    parts before it, so nothing reaches a part that does not exist yet. Two needs point backwards —
+    the spaces list turning on a new space's sections (the modules part's switch), and the task
+    states adding a board column for a state just named (the content part's boards) — and each is
+    lent explicitly with a `provide*` call once the later part is built.
   */
-  const spaces = createSpaceList({
-    ...ctx,
-    routeStore,
-    templateStore,
-    shapeStore,
-    newSpace: {
-      enableView: (viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId),
-      writeAdminGrant: (dataset) => roles.writeAdminGrant(dataset),
-      writeStartingPolicy: (dataset, starter) => roles.writeStartingPolicy(dataset, starter),
-    },
-  });
 
-  /*
-    How a setting on a space record is written and shown. Before the navigation part, which shows a
-    setting still being saved over the live read; the space on screen is reached only when a write is
-    made, by which time the navigation part is built.
-  */
-  const writes = createSpaceWrites({
-    ...ctx,
-    spaces,
-    onScreen: {
-      current: () => navigation.members.currentSpace(),
-      show: (ds, fields) => navigation.showOnScreen(ds, fields),
-    },
-  });
+  // The spaces this agent holds. First: every other part reads the records it holds.
+  const spaces = createSpaceList({ ...ctx, routeStore, templateStore, shapeStore });
 
-  /*
-    Where the agent is. The sections a space has are the modules-and-views part's, and its boards the
-    content part's, both composed after this one and read only when somebody goes somewhere.
-  */
+  // The space on screen, which navigation fills from the live read and most parts only read.
+  const onScreen = createSpaceOnScreen(reactivity);
+
+  // How a setting on a space record is written and shown, over the live read while it is saving.
+  const writes = createSpaceWrites({ ...ctx, spaces, onScreen });
+
+  // What each space runs and shows, and this agent's own choices about each.
+  const modules = createSpaceModules({ ...ctx, templateStore, appStore, shellStore, spaces, onScreen, writes });
+  spaces.provideSectionSwitch((viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId));
+
+  // Who stands where in each space and what its rules allow, and the write check that holds them.
+  const roles = createSpaceRoles({ ...ctx, spaces, onScreen });
+  const { canAdministerSpace, canAdministerCurrentSpace } = roles.members;
+
+  // Where the agent is, and the sections and structure of the space it is in.
   const navigation = createSpaceNavigation({
     ...ctx,
     routeStore,
@@ -717,20 +709,9 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     shellStore,
     spaces,
     writes,
-    sections: {
-      routableViews: () => modules.members.routableViews(),
-      spaceViews: () => modules.members.spaceViews(),
-      usesSectionsFor: (uuid) => modules.usesSectionsFor(uuid),
-    },
-    ensureBoardFor: (collectionId, dataset) => content.members.ensureBoardFor(collectionId, dataset),
+    onScreen,
+    modules,
   });
-
-  // Who stands where in each space and what its rules allow, and the write check that holds them.
-  const roles = createSpaceRoles({ ...ctx, spaces, navigation });
-  const { canAdministerSpace, canAdministerCurrentSpace } = roles.members;
-
-  // What each space runs and shows, and this agent's own choices about each.
-  const modules = createSpaceModules({ ...ctx, templateStore, appStore, shellStore, spaces, navigation, writes });
 
   // What each space extracts, and the extraction runtime modules reach.
   const extraction = createSpaceExtraction({
@@ -746,11 +727,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   const taskStates = createSpaceTaskStates({
     ...ctx,
     recordStore,
-    navigation,
+    onScreen,
     writes,
     canAdministerCurrentSpace,
     taskWorkflowLive: host.taskWorkflowLive,
-    addStateToSpaceBoard: (slug, name) => content.members.addStateToSpaceBoard(slug, name),
   });
 
   // Who is on what in each space, and what each person gave.
@@ -769,9 +749,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     navigation,
     taskStates,
   });
+  taskStates.provideSpaceBoard(content.members.addStateToSpaceBoard);
 
   // Each space's own record — its picture, name and place, defaults, thread mode — and its members.
-  const details = createSpaceDetails({ ...ctx, profileStore, themeStore, spaces, navigation, writes });
+  const details = createSpaceDetails({ ...ctx, profileStore, themeStore, spaces, onScreen, writes });
 
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each

@@ -19,6 +19,7 @@ import type { BoardWorkflow } from '../../boards';
 import { distinctSignal } from '../../distinctSignal';
 import { evidenceSubjectOf } from '../../evidenceSubjects';
 import { followLive } from '../../followLive';
+import { hostSlot } from '../../hostSlot';
 import {
   approvalsOf,
   compileTaskWorkflow,
@@ -39,23 +40,18 @@ import { evidenceLabel, refusalWords } from '../../workflowViews';
 import type { RecordStore } from '../RecordStore';
 import type { SpaceStore } from '../SpaceStore';
 import type { SpaceContext } from './context';
-import type { SpaceNavigation } from './navigation';
+import type { SpaceOnScreen } from './onScreen';
 import type { TaskStateView } from './types';
 import type { SpaceWrites } from './writes';
 
 export interface SpaceTaskStatesDeps extends SpaceContext {
   recordStore: Pick<RecordStore, 'provideVocabularies'>;
-  navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace'> } & Pick<SpaceNavigation, 'pushedOnScreen'>;
+  onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'pushedOnScreen'>;
   writes: Pick<SpaceWrites, 'writeSpaceFields' | 'writeSpaceSetting'>;
   /** Whether this agent administers the space on screen — the roles' answer. */
   canAdministerCurrentSpace: () => boolean;
   /** The space's task workflow as the board draws it — the app's one, published here. */
   taskWorkflowLive: TaskWorkflowLive;
-  /**
-   * Give the space's own board a column for a state just named — the boards', which are composed
-   * after this part and reached only when somebody names one.
-   */
-  addStateToSpaceBoard: (slug: string, name: string) => Promise<void>;
 }
 
 function taskStateIds(rows: unknown): string[] {
@@ -83,17 +79,24 @@ export function createSpaceTaskStates(deps: SpaceTaskStatesDeps) {
     sessionStore: session,
     datasetStore,
     recordStore,
-    navigation,
+    onScreen,
     writes,
     runCore,
     reportOperation,
     canAdministerCurrentSpace,
     taskWorkflowLive,
-    addStateToSpaceBoard,
   } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
-  const { currentSpace } = navigation.members;
-  const { pushedOnScreen } = navigation;
+  const { currentSpace, pushedOnScreen } = onScreen;
+
+  /*
+    Give the space's own board a column for a state just named. The boards are the content part's,
+    and they read the states this part offers — so the content part is built after this one and lends
+    the column write back through `provideSpaceBoard`, reached only when somebody names a state.
+  */
+  const spaceBoard = hostSlot<(slug: string, name: string) => Promise<void>>();
+  const addStateToSpaceBoard = (slug: string, name: string) =>
+    spaceBoard.need('SpaceStore: the space board (provideSpaceBoard)')(slug, name);
   const { writeSpaceFields, writeSpaceSetting } = writes;
 
   const [ownTaskStates, setOwnTaskStates] = reactivity.signal<TaskStateView[]>([]);
@@ -787,7 +790,7 @@ export function createSpaceTaskStates(deps: SpaceTaskStatesDeps) {
     withdrawTaskMove,
   };
 
-  return { members, offeredTaskStates, boardWorkflow };
+  return { members, offeredTaskStates, boardWorkflow, provideSpaceBoard: spaceBoard.provide };
 }
 
 export type SpaceTaskStates = ReturnType<typeof createSpaceTaskStates>;

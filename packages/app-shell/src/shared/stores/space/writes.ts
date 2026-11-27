@@ -13,15 +13,13 @@ import { type Latest, latest } from '@we/module-shared';
 import { isSpaceSelf } from '../../spaceSync';
 import type { AppDataset } from '../DatasetStore';
 import type { SpaceContext } from './context';
+import type { SpaceOnScreen } from './onScreen';
 import type { SpaceList } from './spaces';
 
 export interface SpaceWritesDeps extends Pick<SpaceContext, 'toasts' | 'runCore' | 'isCurrent'> {
   spaces: Pick<SpaceList, 'heldSpace' | 'spaceRow'> & { members: Pick<SpaceList['members'], 'updateSpaceInCache'> };
-  /**
-   * The space on screen, from the navigation part — composed after this one, and reached only when a
-   * write is made: what it shows, and showing fields on it.
-   */
-  onScreen: { current: () => Space | null; show: (ds: AppDataset, fields: Partial<Space>) => void };
+  /** The space on screen: what it shows, and showing fields on it. */
+  onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'showOnScreen'>;
 }
 
 export function createSpaceWrites(deps: SpaceWritesDeps) {
@@ -38,7 +36,7 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
    */
   function publishSpaceFields(ds: AppDataset, fields: Partial<Space>): void {
     updateSpaceInCache(ds, fields);
-    if (isCurrent(ds)) onScreen.show(ds, fields);
+    if (isCurrent(ds)) onScreen.showOnScreen(ds, fields);
   }
 
   /**
@@ -138,7 +136,7 @@ export function createSpaceWrites(deps: SpaceWritesDeps) {
     if (!save) {
       // The shown fallback asks for ds's own record, not just the dataset: a switch moves the
       // dataset ahead of the record on screen, and the space being left's record is not a baseline.
-      const shown = onScreen.current();
+      const shown = onScreen.currentSpace();
       save = {
         key,
         confirmed: heldSpace(ds)?.[field] ?? (shown && isSpaceSelf(shown, ds) ? shown[field] : undefined),

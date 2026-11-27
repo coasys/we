@@ -18,6 +18,7 @@ import { CollectionBlock, compressImageToFileData, type DatasetProxy, dataURIToF
 
 import { createBoardActions } from '../../boards';
 import { fileAsDataURI } from '../../fileDataURI';
+import { provideModuleHostServices } from '../../registries/moduleHostServices';
 import { uploadOf } from '../../uploadOf';
 import type { RecordStore } from '../RecordStore';
 import type { SpaceStore } from '../SpaceStore';
@@ -151,6 +152,12 @@ export function createSpaceContent(deps: SpaceContentDeps) {
       }
     },
   });
+
+  /*
+    Extraction's hook for a board — see the declaration on `ModuleHostServices`, and `ensureBoardFor`
+    for why it only fires once the collection holds a task. Lent from here, where the boards are.
+  */
+  onCleanup(provideModuleHostServices({ ensureBoardFor: boards.ensureBoardFor }));
 
   /*
     Where content lives: the space collection, for anything made on the space's own canvas and for

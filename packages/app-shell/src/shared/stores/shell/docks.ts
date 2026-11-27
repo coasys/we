@@ -116,8 +116,20 @@ export function createShellDocks(deps: {
    */
   platform: Pick<PlatformPort, 'viewport' | 'listen' | 'frame' | 'document'>;
   host: Pick<ShellHostState, 'appFrame' | 'appEdgeFrames' | 'laneFrames'>;
-  views: ShellViews;
-  arrangement: ShellArrangement;
+  views: Pick<ShellViews, 'activeShellView' | 'setActiveShellView'>;
+  arrangement: Pick<
+    ShellArrangement,
+    | 'activation'
+    | 'declarationFor'
+    | 'declaredPanels'
+    | 'dockIdFor'
+    | 'instancesHere'
+    | 'placementKey'
+    | 'placements'
+    | 'raise'
+    | 'sectionDockId'
+    | 'writePlacement'
+  >;
 }) {
   const { reactivity, platform } = deps;
   const page = platform.document;

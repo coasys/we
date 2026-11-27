@@ -332,8 +332,11 @@ the first, and the shape the rest copy:
   members it owns, typed as a `Pick` of the store's interface, and what later parts read; the
   composition builds them in order and spreads their members, so a template still reads one
   namespace (`spaceStore.x`) and the template surface and profiles do not change when a job moves.
-  A part reaches a later one only through a function it calls after the store is built, never
-  while it is being built, and each part has its own test under every engine. The parts sit in a
+  A part takes the earlier parts it reads as narrow `Pick`s, never a closure over a later one. Where
+  two parts genuinely need each other, the earlier one exposes a `provide*` call (a `hostSlot`, whose
+  `need` throws naming what is missing) and the composition makes it right after building the later
+  part — so every backward edge is one visible line in the composition. Each part has its own test
+  under every engine, and each composition a test that builds it whole under every engine. The parts sit in a
   subdirectory so the AI-context extractor, which reads `stores/*.ts` for store interfaces, never
   takes one for a store.
 - Its tests are plain `.ts` store tests, `describe.each(reactivityPorts)` over three engines

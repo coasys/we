@@ -14,7 +14,7 @@ import type { ProfileStore } from '../ProfileStore';
 import type { SpaceStore } from '../SpaceStore';
 import type { ThemeStore } from '../ThemeStore';
 import type { SpaceContext } from './context';
-import type { SpaceNavigation } from './navigation';
+import type { SpaceOnScreen } from './onScreen';
 import { SPACE_AVATAR_PX, type SpaceList } from './spaces';
 import type { SpaceMetaUpdate } from './types';
 import type { SpaceWrites } from './writes';
@@ -23,7 +23,7 @@ export interface SpaceDetailsDeps extends SpaceContext {
   profileStore: Pick<ProfileStore, 'profiles' | 'fetchProfile'>;
   themeStore: Pick<ThemeStore, 'explainSpaceThemeHidden'>;
   spaces: Pick<SpaceList, 'heldSpace'> & { members: Pick<SpaceList['members'], 'updateSpaceInCache'> };
-  navigation: { members: Pick<SpaceNavigation['members'], 'currentSpace'> };
+  onScreen: Pick<SpaceOnScreen, 'currentSpace'>;
   writes: Pick<
     SpaceWrites,
     | 'publishSpaceFields'
@@ -44,7 +44,7 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     profileStore,
     themeStore,
     spaces,
-    navigation,
+    onScreen,
     writes,
     runCore,
     targetDataset,
@@ -53,7 +53,7 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
   const { memo, effect } = reactivity;
   const { heldSpace } = spaces;
   const { updateSpaceInCache } = spaces.members;
-  const { currentSpace } = navigation.members;
+  const { currentSpace } = onScreen;
   const { publishSpaceFields, writeSpaceFields, defaultSaveFor, queueDefaultWrite, endDefaultSave, spaceRowForSave } =
     writes;
 

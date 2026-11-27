@@ -58,13 +58,12 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
-        const writes = createSpaceWrites({ ...h.ctx, spaces, onScreen: { current: onScreen, show: () => {} } });
+        const writes = createSpaceWrites({
+          ...h.ctx,
+          spaces,
+          onScreen: { currentSpace: onScreen, showOnScreen: () => {} },
+        });
         states = createSpaceTaskStates({
           ...h.ctx,
           recordStore: {
@@ -73,14 +72,14 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
               return () => (vocabularies = null);
             },
           },
-          navigation: { members: { currentSpace: onScreen }, pushedOnScreen: () => false },
+          onScreen: { currentSpace: onScreen, pushedOnScreen: () => false },
           writes,
           canAdministerCurrentSpace: () => admin.yes,
           taskWorkflowLive: createTaskWorkflowLive(reactivity.signal),
-          addStateToSpaceBoard: (slug) => {
-            boardColumns.push(slug);
-            return Promise.resolve();
-          },
+        });
+        states.provideSpaceBoard((slug) => {
+          boardColumns.push(slug);
+          return Promise.resolve();
         });
       }),
     );

@@ -49,8 +49,33 @@ export function createShellDockDrag(deps: {
   reactivity: ReactivityPort;
   /** The window a drag is followed on once its grip is gone, and the document's drag marks. */
   platform: Pick<PlatformPort, 'listen' | 'document'>;
-  arrangement: ShellArrangement;
-  docks: ShellDocks;
+  arrangement: Pick<ShellArrangement, 'declarationFor' | 'placementKey' | 'placements' | 'raise' | 'writePlacement'>;
+  docks: Pick<
+    ShellDocks,
+    | 'boxOnScreen'
+    | 'dockGeometry'
+    | 'dockRequests'
+    | 'dragCarry'
+    | 'floatChrome'
+    | 'inset'
+    | 'landInPlace'
+    | 'laneSeating'
+    | 'movingDock'
+    | 'movingSeat'
+    | 'movingSeatKey'
+    | 'occupiedForId'
+    | 'placementOf'
+    | 'resolvedPlacement'
+    | 'setDragCarry'
+    | 'setLaneStowed'
+    | 'setMovingDock'
+    | 'setMovingSeat'
+    | 'setSeatFolded'
+    | 'setStowPending'
+    | 'stackTargets'
+    | 'stowPending'
+    | 'viewport'
+  > & { members: Pick<ShellDocks['members'], 'breakOut' | 'insertDock' | 'insertHome' | 'stackDock'> };
 }) {
   const { reactivity, platform } = deps;
   const { memo, effect } = reactivity;

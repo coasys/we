@@ -62,16 +62,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         const writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { current: onScreen, show: () => {} },
+          onScreen: { currentSpace: onScreen, showOnScreen: () => {} },
         });
         extraction = createSpaceExtraction({
           ...h.ctx,

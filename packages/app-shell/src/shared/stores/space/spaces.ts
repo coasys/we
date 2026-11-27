@@ -30,6 +30,7 @@ import { setUpForApp } from '../../bundles/setUpForApp';
 import { datasetAddressedBy, datasetOfHandle, handleDatasetId } from '../../datasetIdentity';
 import { distinctSignal, updatingSignal } from '../../distinctSignal';
 import { buildGuestLink } from '../../guestLink';
+import { hostSlot } from '../../hostSlot';
 import { reportModuleRefusal } from '../../moduleSchemaRefusal';
 import { moduleRegistry } from '../../registries/moduleRegistry';
 import { seedBundlePieces } from '../../registries/seedBundles';
@@ -64,6 +65,7 @@ import {
   sharedIdOf,
   transportGaveUp,
 } from './joining';
+import { writeAdminGrant, writeStartingPolicy } from './roles';
 import type { ShareTask, SpaceInput, SpaceListEntry } from './types';
 
 /**
@@ -92,15 +94,6 @@ export interface SpaceListDeps extends SpaceContext {
   routeStore: Pick<RouteStore, 'segments' | 'navigate'>;
   templateStore: Pick<TemplateStore, 'appTemplate' | 'preloadSpaceTemplates'>;
   shapeStore: Pick<ShapeStore, 'addRecordTypes'>;
-  /**
-   * What a new space is given by the jobs composed after this one, at the create press: a section
-   * its app brings, its first admin, its starting policy.
-   */
-  newSpace: {
-    enableView: (viewId: string, spaceId: string) => Promise<void>;
-    writeAdminGrant: (dataset: DatasetProxy) => Promise<void>;
-    writeStartingPolicy: (dataset: DatasetProxy, starter: SpaceStarter | undefined) => Promise<void>;
-  };
 }
 
 export function createSpaceList(deps: SpaceListDeps) {
@@ -114,10 +107,16 @@ export function createSpaceList(deps: SpaceListDeps) {
     routeStore,
     templateStore,
     shapeStore,
-    newSpace,
     runCore,
   } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
+
+  /*
+    Turning a section on in a new space, for the sections its app brings. The modules part decides
+    what a section switch writes, and it reads the spaces this part holds — so it is built after
+    this one and lends the switch back through `provideSectionSwitch`, reached only at a create press.
+  */
+  const sectionSwitch = hostSlot<(viewId: string, spaceId: string) => Promise<void>>();
 
   const [mySpaces, setMySpaces, updateMySpaces] = updatingSignal<Space[]>(reactivity, []);
   /**
@@ -159,7 +158,8 @@ export function createSpaceList(deps: SpaceListDeps) {
         pieces.recordTypes.length ? shapeStore.addRecordTypes(pieces.bundleId, pieces.recordTypes, spaceId) : [],
       installWorkflows: () => installBundleWorkflows(session.backendPorts()?.workflows, handle, pieces.workflows),
       finish: async () => {
-        for (const section of pieces.sections) await newSpace.enableView(section.id, spaceId);
+        for (const section of pieces.sections)
+          await sectionSwitch.need('SpaceStore: the section switch (provideSectionSwitch)')(section.id, spaceId);
       },
     });
     if (problems.length) {
@@ -700,14 +700,14 @@ export function createSpaceList(deps: SpaceListDeps) {
         written only here, by its creator: a member joining later must never write a first admin of
         their own. See `Role`.
       */
-      await newSpace
-        .writeAdminGrant(spaceHandle)
-        .catch((error) => console.error('SpaceStore: could not make the space’s creator its admin', error));
+      await writeAdminGrant(session, spaceHandle).catch((error) =>
+        console.error('SpaceStore: could not make the space’s creator its admin', error),
+      );
       // After the grant, since writing the first version is an admin's to do; before sharing, so the
       // space is never shared without it.
-      await newSpace
-        .writeStartingPolicy(spaceHandle, starter)
-        .catch((error) => console.error('SpaceStore: could not write the space’s starting policy', error));
+      await writeStartingPolicy(spaceHandle, starter).catch((error) =>
+        console.error('SpaceStore: could not write the space’s starting policy', error),
+      );
 
       // Track locally so the sidebar updates with the action rather than with the backend's
       // change event (which may lag, or on web may not fire at all).
@@ -1198,7 +1198,16 @@ export function createSpaceList(deps: SpaceListDeps) {
     prepareSpaceAt,
   };
 
-  return { members, heldSpace, spaceRow, spaceForUuid, holdSpace, listRow, onRemoved };
+  return {
+    members,
+    heldSpace,
+    spaceRow,
+    spaceForUuid,
+    holdSpace,
+    listRow,
+    onRemoved,
+    provideSectionSwitch: sectionSwitch.provide,
+  };
 }
 
 export type SpaceList = ReturnType<typeof createSpaceList>;

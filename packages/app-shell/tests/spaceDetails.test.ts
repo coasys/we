@@ -53,18 +53,13 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         const writes = createSpaceWrites({
           ...ctx,
           spaces,
           onScreen: {
-            current: onScreen,
-            show: (_ds, fields) => writeOnScreen({ ...reactivity.untrack(onScreen), ...fields } as Space),
+            currentSpace: onScreen,
+            showOnScreen: (_ds, fields) => writeOnScreen({ ...reactivity.untrack(onScreen), ...fields } as Space),
           },
         });
         details = createSpaceDetails({
@@ -72,7 +67,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           profileStore: { profiles, fetchProfile: () => Promise.resolve(undefined) } as never,
           themeStore: { explainSpaceThemeHidden: () => void themeExplained.count++ },
           spaces,
-          navigation: { members: { currentSpace: onScreen } },
+          onScreen: { currentSpace: onScreen },
           writes,
         });
       }),

@@ -33,16 +33,14 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-          },
         });
         writes = createSpaceWrites({
           ...h.ctx,
           spaces,
-          onScreen: { current: () => null, show: (_ds, fields) => void shown.push(JSON.stringify(fields)) },
+          onScreen: {
+            currentSpace: () => null,
+            showOnScreen: (_ds, fields) => void shown.push(JSON.stringify(fields)),
+          },
         });
       }),
     );

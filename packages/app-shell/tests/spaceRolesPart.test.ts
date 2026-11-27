@@ -11,7 +11,7 @@ import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ADMIN_ROLE, ADMIN_ROLE_RECORD } from '../src/shared/spaceRoles';
-import { createSpaceRoles, type SpaceRoles } from '../src/shared/stores/space/roles';
+import { createSpaceRoles, type SpaceRoles, writeAdminGrant } from '../src/shared/stores/space/roles';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { reactivityPorts } from './support/engines';
 import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
@@ -55,13 +55,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: (dataset) => roles.writeAdminGrant(dataset),
-            writeStartingPolicy: (dataset, starter) => roles.writeStartingPolicy(dataset, starter),
-          },
         });
-        roles = createSpaceRoles({ ...h.ctx, spaces, navigation: { members: { currentSpace: onScreen } } });
+        roles = createSpaceRoles({ ...h.ctx, spaces, onScreen: { currentSpace: onScreen } });
       }),
     );
     await spaces.members.loadSpaces();
@@ -119,7 +114,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   it('gives a new space its first admin, then answers from the grant', async () => {
     const built = await build();
     const { h, roles } = built;
-    await roles.writeAdminGrant((await h.datasets.get('ds-a')).handle);
+    await writeAdminGrant(h.ctx.sessionStore, (await h.datasets.get('ds-a')).handle);
     await enter(built, 'ds-a');
     expect(roles.members.myRoles()).toEqual([ADMIN_ROLE]);
     expect(roles.members.canAdministerCurrentSpace()).toBe(true);
@@ -156,7 +151,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   it('forgets the last space’s roles on leaving it', async () => {
     const built = await build();
     const { h, roles } = built;
-    await roles.writeAdminGrant((await h.datasets.get('ds-a')).handle);
+    await writeAdminGrant(h.ctx.sessionStore, (await h.datasets.get('ds-a')).handle);
     await enter(built, 'ds-a');
     expect(roles.members.myRoles()).toEqual([ADMIN_ROLE]);
     await enter(built, 'ds-p');

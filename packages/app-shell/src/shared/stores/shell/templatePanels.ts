@@ -59,9 +59,24 @@ function warnAmbiguousSupply(moduleId: string, count: number): void {
 
 export function createShellTemplatePanels(deps: {
   reactivity: ReactivityPort;
-  views: ShellViews;
-  arrangement: ShellArrangement;
-  docks: ShellDocks;
+  views: Pick<ShellViews, 'activeShellView' | 'setActiveShellView'>;
+  arrangement: Pick<
+    ShellArrangement,
+    | 'closedPanels'
+    | 'declaredPanels'
+    | 'dockIdFor'
+    | 'instancesHere'
+    | 'placementKey'
+    | 'raise'
+    | 'setClosedPanels'
+    | 'writeInstances'
+  >;
+  docks: Pick<
+    ShellDocks,
+    'dockRegistryVersion' | 'dockRequests' | 'panelsHiddenByUser' | 'placementOf' | 'setPanelsHiddenByUser'
+  > & {
+    members: Pick<ShellDocks['members'], 'revealDock'>;
+  };
 }) {
   const { reactivity } = deps;
   const { signal, memo, effect, untrack, onCleanup } = reactivity;

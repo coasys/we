@@ -34,7 +34,9 @@ contract, and product meet. These are the rules that keep it navigable.
 - A store with several jobs is one part per job (`stores/space/`,
   `stores/shell/`, `stores/records/`), each its own factory with its own test
   under every engine (`tests/support/engines.ts`), composed back into the one store templates read. Move a
-  job between parts without changing the store's interface.
+  job between parts without changing the store's interface. A part takes the parts before it as
+  `Pick`s; a need that points at a later part is a `provide*` call the composition makes once that
+  part is built, never a closure.
 - A pure algorithm another host has to agree with is a kernel in
   `src/shared/kernels/`, with recorded vectors (`pnpm --filter @we/app-shell
 record:kernels`; prettier the JSON after, except `dockLayout.json`). See

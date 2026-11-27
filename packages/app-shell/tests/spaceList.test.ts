@@ -5,12 +5,13 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { Space } from '@we/entities';
+import { Role, RoleGrant, Space } from '@we/entities';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ADMIN_ROLE } from '../src/shared/spaceRoles';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { reactivityPorts } from './support/engines';
-import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const NO_DETAILS = () => ({
   canAdminister: false,
@@ -27,7 +28,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     for (const dispose of disposers.splice(0)) dispose();
   });
 
-  function build(h: SpaceHarness, newSpace: Partial<Parameters<typeof createSpaceList>[0]['newSpace']> = {}) {
+  function build(h: SpaceHarness) {
     let spaces!: SpaceList;
     disposers.push(
       h.reactivity.root(() => {
@@ -36,12 +37,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           routeStore: { segments: () => [], navigate: () => {} },
           templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
           shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
-          newSpace: {
-            enableView: () => Promise.resolve(),
-            writeAdminGrant: () => Promise.resolve(),
-            writeStartingPolicy: () => Promise.resolve(),
-            ...newSpace,
-          },
         });
       }),
     );
@@ -153,16 +148,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(spaces.members.joinError()).toBeNull();
   });
 
-  it('makes a space with its collection, its first admin and its starting policy', async () => {
+  it('makes a space with its collection and its creator as its first admin', async () => {
     const h = await seeded();
-    const order: string[] = [];
-    const spaces = build(h, {
-      writeAdminGrant: () => Promise.resolve(void order.push('admin')),
-      writeStartingPolicy: () => Promise.resolve(void order.push('policy')),
-    });
+    const spaces = build(h);
     const id = await spaces.members.createSpace('Garden', 'Beds and paths', 'personal', 'hidden');
     expect(id).toBeTruthy();
-    expect(order).toEqual(['admin', 'policy']);
+    const handle = (await h.datasets.get(id!)).handle;
+    expect(((await Role.findAll(handle, {})) as Role[]).map((role) => role.slug)).toEqual([ADMIN_ROLE]);
+    expect(((await RoleGrant.findAll(handle, {})) as RoleGrant[]).map((grant) => [grant.role, grant.agent])).toEqual([
+      [ADMIN_ROLE, ME],
+    ]);
     const made = spaces.members.mySpaces().find((space) => space.uuid === id);
     expect(made).toMatchObject({ name: 'Garden', description: 'Beds and paths' });
     expect(made?.root).toBeTruthy();
