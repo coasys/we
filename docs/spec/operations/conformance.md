@@ -9,6 +9,13 @@ The vectors are authoritative where this prose and they disagree ([Conventions](
 They were recorded on the reference implementation and are re-recorded only on purpose, so a change
 to one is a change to the contract.
 
+**A vector is only as right as the review it had.** Being recorded from the reference, it carries
+whatever the reference got wrong. So an implementation that disagrees with a vector opens a question
+about the spec, and the vector is not re-recorded to match either side until that question is
+answered: what the spec says the case should produce, and which implementation, if either, does. Until
+then the disagreeing implementation lists the case as a known gap, saying what it produces, as for any
+other gap.
+
 Beside them, five suites need no backend: the [core-subset expression
 vectors](#the-core-subset-expression-vectors), the [static checks](#the-static-check-vectors), the
 [effect summary](#the-effect-summary-vectors), the [id derivation](#the-id-vectors) and the [RDF

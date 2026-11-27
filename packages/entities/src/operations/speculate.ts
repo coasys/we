@@ -58,6 +58,26 @@ interface Reads {
   findAll(dataset: unknown, query?: Record<string, unknown>): Promise<Row[]>;
 }
 
+/** A read a speculation had to send to the backend, because nothing this host holds answered it. */
+export interface SpeculationMiss {
+  operation: string;
+  entity: string;
+  query: Record<string, unknown> | undefined;
+}
+
+let missed: ((miss: SpeculationMiss) => void) | null = null;
+
+/**
+ * Be told of every read a speculation sends past the held rows, or stop being told (`null`).
+ *
+ * Off unless a host turns it on, so production and tests are silent. It is how to see whether the
+ * three cases `heldAnswer` answers cover the gestures that matter: a gesture whose prediction waits a
+ * round trip shows up here, with the read that made it wait.
+ */
+export function onSpeculationMiss(listener: ((miss: SpeculationMiss) => void) | null): void {
+  missed = listener;
+}
+
 /**
  * Run `name` as `runOperation` would, writing nothing. `invocationId` and `invokedAt` are required:
  * a prediction is only worth drawing if the real run will make the same ids.
@@ -108,6 +128,7 @@ export async function speculateOperation(
     const findAll = async (ds: unknown, query?: Record<string, unknown>) => {
       // What the screen holds first, predictions in it already; the backend only for what it does not.
       const held = heldAnswer(entity, ds, query);
+      if (!held) missed?.({ operation: name, entity, query });
       const rows = held ?? withPredictedRows(await real.findAll(ds, query), ds, readShapeOf([entity], query));
       return rows.map((row) => instance(entity, row, false));
     };

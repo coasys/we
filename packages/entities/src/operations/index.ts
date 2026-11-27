@@ -33,7 +33,7 @@ export {
   unregisterOperations,
 } from './registry';
 export { type OperationView, runOperation, type RunOperationOptions, serialKey } from './run';
-export { speculateOperation, type Speculation } from './speculate';
+export { onSpeculationMiss, type SpeculationMiss, speculateOperation, type Speculation } from './speculate';
 export {
   callsOf,
   type OperationIssue,
