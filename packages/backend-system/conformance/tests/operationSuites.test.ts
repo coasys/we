@@ -126,6 +126,11 @@ describe('rdf.json', () => {
       '$',
     ];
     expect(keys.filter((key) => !(key in context))).toEqual([]);
+    // A param's keys are read in the params' own scope; `required` is rewritten to `minCount` first.
+    const params = (context.params as { '@context': Record<string, unknown> })['@context'];
+    expect(['type', 'minCount', 'description'].filter((key) => !(key in params))).toEqual([]);
+    // What a param, an error and a oneOf entry become: the index keys and the category.
+    expect(['path', 'code', 'message', 'category'].filter((key) => !(key in context))).toEqual([]);
   });
 });
 

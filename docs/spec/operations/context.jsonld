@@ -3,13 +3,41 @@
     "@version": 1.1,
     "op": "https://we.example/ns/operations#",
     "@vocab": "https://we.example/ns/operations#",
+    "sh": "http://www.w3.org/ns/shacl#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "param": "https://we.example/ns/operations/param/",
     "version": "op:version",
     "entities": { "@id": "op:entities", "@type": "@json" },
     "operations": { "@id": "op:operation", "@container": "@index", "@index": "name" },
     "name": "op:name",
     "description": "op:description",
-    "params": { "@id": "op:params", "@type": "@json" },
-    "errors": { "@id": "op:errors", "@type": "@json" },
+    "params": {
+      "@id": "op:param",
+      "@container": "@index",
+      "@index": "path",
+      "@context": {
+        "@base": "https://we.example/ns/operations/param/",
+        "type": {
+          "@id": "sh:datatype",
+          "@type": "@vocab",
+          "@context": {
+            "string": "xsd:string",
+            "number": "xsd:double",
+            "boolean": "xsd:boolean",
+            "json": "rdf:JSON",
+            "list": "op:list",
+            "object": "op:object"
+          }
+        },
+        "minCount": "sh:minCount",
+        "description": "sh:description"
+      }
+    },
+    "path": { "@id": "sh:path", "@type": "@id" },
+    "errors": { "@id": "op:errors", "@container": "@index", "@index": "code" },
+    "code": "op:code",
+    "message": "op:message",
     "steps": { "@id": "op:steps", "@container": "@list" },
     "returns": { "@id": "op:returns", "@type": "@json" },
     "serial": { "@id": "op:serial", "@type": "@json" },
@@ -26,7 +54,8 @@
     "when": { "@id": "op:when", "@type": "@json" },
     "as": "op:as",
     "entity": "op:entity",
-    "oneOf": { "@id": "op:oneOf", "@type": "@json" },
+    "oneOf": { "@id": "op:oneOf", "@container": "@list" },
+    "category": { "@id": "op:category", "@type": "@vocab" },
     "relation": "op:relation",
     "via": "op:via",
     "anchor": "op:anchor",
