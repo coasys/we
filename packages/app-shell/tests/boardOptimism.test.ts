@@ -10,19 +10,21 @@
  * hold yet, so a test that omits it is testing a board mid-drag rather than one that has been
  * dropped. The case at the end is what that rule is for.
  */
+import { createTestReactivity } from '@we/reactivity/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { boardOptimism } from '../src/shared/boardOptimism';
-
-const { hold, release, holdStatus, releaseStatus, done, doneStatus } = boardOptimism.ports;
+import { createBoardOptimism } from '../src/shared/boardOptimism';
 
 /*
-  Drop every entry, so one test cannot leak into the next through the module singleton.
+  Drop every entry, so one test cannot leak into the next through the one instance they share.
 
   `settle` cannot do this, which is worth knowing: handed an empty order for everything it *seeds*
   those as baselines rather than dropping them, and the entries survive. That is correct — an empty
   relation is a value like any other — and it is why forgetting is its own operation.
 */
+const boardOptimism = createBoardOptimism(createTestReactivity().signal);
+const { hold, release, holdStatus, releaseStatus, done, doneStatus } = boardOptimism.ports;
+
 beforeEach(() => boardOptimism.reset());
 
 const observedFrom =

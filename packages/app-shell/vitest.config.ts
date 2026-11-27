@@ -17,21 +17,17 @@ const SOLID_TESTS = [
   'tests/partWhileShown.test.tsx',
   'tests/executorFreeBoot.test.tsx',
   // The real template store, its sibling stores doubled: which space a late read may still answer for.
-  'tests/templateStoreSpaceSwitch.test.tsx',
-  'tests/runtimeStore.test.tsx',
-  'tests/accountStore.test.tsx',
-  'tests/identityStore.test.tsx',
-  'tests/profileStore.test.tsx',
-  // Mounts the profile store and holds the app's first-screen gate: real signals and real promises.
-  'tests/firstScreenDeferral.test.tsx',
-  // The same gate and store: this agent's own profile, asked for before `me()` answered.
-  'tests/firstScreenOwnProfile.test.tsx',
-  // Mounts the interpretation store under the held gate and watches what it tells modules.
-  'tests/firstScreenInterpretation.test.tsx',
-  // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
-  // build, where `createEffect` never runs again — so every count would be 1 and the test would
-  // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
-  'tests/profileIndex.test.tsx',
+  'tests/templateStoreSpaceSwitch.test.ts',
+  'tests/runtimeStore.test.ts',
+  'tests/accountStore.test.ts',
+  'tests/identityStore.test.ts',
+  'tests/profileStore.test.ts',
+  // The interpretation store under a held gate, under both ports: what it tells modules.
+  'tests/interpretationStore.test.ts',
+  // Counts effect re-runs under both ports. The node project resolves solid-js to its SSR build,
+  // where an effect never runs again — so every count would be 1 and the test would pass whether
+  // or not the cache is fine-grained, which is the one thing it exists to tell apart.
+  'tests/profileIndex.test.ts',
   // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
   // so the Solid port's effects re-run at all.
   'tests/routeStore.test.ts',
@@ -39,10 +35,29 @@ const SOLID_TESTS = [
   'tests/followLive.test.ts',
   // And for a lookup of one signal per key: a write must wake the port's effects for its own key.
   'tests/keyedSignals.test.ts',
-  'tests/shellRouteStore.test.tsx',
+  // And for the store helpers and stores converted after it, each run under both ports.
+  'tests/spaceTemplateChoosing.test.ts',
+  'tests/appStore.test.ts',
+  'tests/editTarget.test.ts',
+  'tests/clockStore.test.ts',
+  'tests/shellRouteStore.test.ts',
+  'tests/presenceStore.test.ts',
+  'tests/sessionStore.test.ts',
+  'tests/datasetStore.test.ts',
+  'tests/bundleStore.test.ts',
+  'tests/libraryFlow.test.ts',
+  'tests/themeStore.test.ts',
+  'tests/liveTemplate.test.ts',
+  'tests/templateStore.test.ts',
+  'tests/shapeStore.test.ts',
+  'tests/distinctSignal.test.ts',
+  'tests/shellRouterRoot.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',
   'tests/templateDrafts.test.ts',
+  'tests/editorStore.test.ts',
+  // Draws an editor edit through the real renderer and counts which components mount again.
+  'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
   // Not a component test, but it drives real `we-iframe` elements with shadow roots and real
   // `MessageEvent`s — the DOM is what is under test.
@@ -84,7 +99,7 @@ const SOLID_TESTS = [
   // are all reads on the mounted chat — they need the browser build's event dispatch and effects.
   'tests/agentChatResend.test.tsx',
   // A space's ask without its perspective id opens nothing, not the global chat.
-  'tests/chatStoreOpen.test.tsx',
+  'tests/chatStoreOpen.test.ts',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',
   // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
@@ -104,8 +119,9 @@ const SOLID_TESTS = [
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
-  // Mounts the workflow store, whose memos run as they are made — a boot crash the pure tests cannot see.
-  'tests/workflowStore.test.tsx',
+  // Builds the workflow store under both ports, whose memos run as they are made — a boot crash the
+  // pure tests cannot see.
+  'tests/workflowStore.test.ts',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
   // And for a drag on a tree whose spine is a model relation rather than a connection kind.

@@ -51,12 +51,13 @@
  * section shows its own; `shellStore.customisingLayout` shows them all.
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
-import { declareLaneFrame, HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
+import { HOME_SECTION_ATTR, registerHomeLane } from '@shared/registries/homeLanes';
 import { Row } from '@we/components/solid';
 import { parseBorder, tokenVar } from '@we/design-utils';
 import type { PanelFrame } from '@we/schema-shared';
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 
+import { declareLaneFrame } from '../hostState';
 import { type LaneSection } from '../stores/ShellStore';
 import { useStore } from '../stores/useStore';
 import { LaneDivider } from './LaneDivider';

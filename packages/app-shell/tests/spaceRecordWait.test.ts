@@ -9,24 +9,35 @@
  * as one naming none.
  *
  * Driven through real signals and effects, because every one of these was an effect hearing too
- * little or too early.
+ * little or too early — under each reactivity port: Solid's, and the test port that runs an effect
+ * the moment it is woken where Solid may hold it.
  */
-import { createRoot, createSignal } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
+import { createTestReactivity } from '@we/reactivity/testing';
+import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createSpaceRecordWait } from '../src/frameworks/solid/stores/spaceRecordWait';
+import { createSpaceRecordWait } from '../src/shared/stores/spaceRecordWait';
+
+const ports: [string, () => ReactivityPort][] = [
+  ['Solid', () => solidReactivity],
+  ['the test port', createTestReactivity],
+];
+
+let port: ReactivityPort = solidReactivity;
 
 function harness() {
-  const [currentId, setCurrentId] = createSignal<string | null>('ds-1');
-  const [space, setSpace] = createSignal<{ defaultTemplateId?: string } | undefined>(undefined);
-  const [templates, setTemplates] = createSignal<string[]>(['default', 'workshop']);
+  const [currentId, setCurrentId] = port.signal<string | null>('ds-1');
+  const [space, setSpace] = port.signal<{ defaultTemplateId?: string } | undefined>(undefined);
+  const [templates, setTemplates] = port.signal<string[]>(['default', 'workshop']);
   let applied: () => void = () => {};
   const choose = vi.fn(() => new Promise<void>((resolve) => (applied = resolve)));
   const settle = vi.fn();
-  let dispose = () => {};
-  const { wait, waiting } = createRoot((d) => {
-    dispose = d;
-    return createSpaceRecordWait({
+  let wait!: (datasetId: string) => void;
+  let waiting!: () => string | null;
+  const dispose = port.root(() => {
+    ({ wait, waiting } = createSpaceRecordWait({
+      reactivity: port,
       currentId,
       spaceOf: space,
       hasTemplate: (id) => templates().includes(id),
@@ -34,7 +45,7 @@ function harness() {
       settle,
       patienceMs: 1_000,
       noDefaultGraceMs: 300,
-    });
+    }));
   });
   return {
     wait,
@@ -55,8 +66,11 @@ function harness() {
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
-describe('waiting for a space’s own record', () => {
-  beforeEach(() => vi.useFakeTimers());
+describe.each(ports)('waiting for a space’s own record, under %s', (_name, makePort) => {
+  beforeEach(() => {
+    port = makePort();
+    vi.useFakeTimers();
+  });
   afterEach(() => vi.useRealTimers());
 
   it('decides nothing while the record is missing', async () => {
@@ -162,6 +176,22 @@ describe('waiting for a space’s own record', () => {
     expect(h.waiting()).toBeNull();
     expect(h.choose).not.toHaveBeenCalled();
     expect(h.settle).not.toHaveBeenCalled();
+    h.dispose();
+  });
+
+  it('chooses at once for a space whose record and template are already here, the limit still set', async () => {
+    // The effect may run on the write that starts the wait; it must find the wait whole when it does.
+    const h = harness();
+    h.setSpace({ defaultTemplateId: 'workshop' });
+    h.wait('ds-1');
+    await flush();
+    expect(h.choose).toHaveBeenCalledOnce();
+
+    await h.apply();
+    expect(h.settle).toHaveBeenCalledOnce();
+    // The limit was cleared with the wait, so it does not settle a second time.
+    vi.advanceTimersByTime(1_000);
+    expect(h.settle).toHaveBeenCalledOnce();
     h.dispose();
   });
 });

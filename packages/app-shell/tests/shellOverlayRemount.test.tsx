@@ -1,7 +1,7 @@
 /**
  * The overlay surviving a remount, with both real stores wired together.
  *
- * `shellRouteStore.test.tsx` mocks `ShellStore`; `shellPathMemory.test.tsx` drives `ShellStore`
+ * `shellRouterRoot.test.tsx` mocks `ShellStore`; `shellPathMemory.test.tsx` drives `ShellStore`
  * directly with no router. Both passed while the feature was still broken, because the bug lived in
  * the *interaction*: effects run in creation order, so the overlay's location effect fired before
  * `onMount` — with the fresh `MemoryRouter`'s `/` — and overwrote the remembered path with the very
@@ -12,14 +12,16 @@
  */
 import { MemoryRouter, Route } from '@solidjs/router';
 import { render, waitFor } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { createSignal, Show } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
-import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
+import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
+import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';
 
 /**
  * Mount the overlay under a key we control, standing in for the main Router's `routeKey`.
@@ -42,7 +44,7 @@ function mountOverlay() {
           test would assert nothing. */}
         <Show when={routeKey()} keyed>
           {(_key) => {
-            const shellRoute = createShellRouteStore();
+            const shellRoute = createShellRouteStore({ reactivity: solidReactivity });
             route = shellRoute;
             return (
               <MemoryRouter root={(props) => <ShellRouterRoot store={shellRoute}>{props.children}</ShellRouterRoot>}>

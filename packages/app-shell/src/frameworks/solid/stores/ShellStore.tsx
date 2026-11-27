@@ -74,9 +74,8 @@ import {
   widestMin,
   withChromeCovered,
 } from '@shared/dockGeometry';
-import { isAppPanel } from '@shared/panelScope';
+import { APP_PANEL_SCOPE, isAppPanel } from '@shared/panelScope';
 import type { ScreenSource } from '@shared/platform/types';
-import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
   DOCK_CONTENT_ATTR,
   DOCK_FRAME_ATTR,
@@ -90,16 +89,9 @@ import {
   registerHostDockStore,
   unregisterHostDockStore,
 } from '@shared/registries/dockRegistry';
-import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
+import { HOME_SECTION_ATTR, homeLanes } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
-import {
-  APP_PANEL_SCOPE,
-  declaredPanelOf,
-  instanceDockId,
-  instanceKeyOf,
-  type PanelInstance,
-  publishPanelInstances,
-} from '@shared/registries/panelInstances';
+import { declaredPanelOf, instanceDockId, instanceKeyOf, type PanelInstance } from '@shared/registries/panelInstances';
 import { SHELL_DOCK_STORE_ID } from '@shared/registries/shellDocks';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import {
@@ -128,6 +120,7 @@ export interface TemplateSaver {
 import type { PlatformAdapter } from '@shared/platform/types';
 
 import { describeDestructive, type DestructiveFacts } from '../../../shared/destructiveWording';
+import { appEdgeFrames, appFrame, laneFrames, publishPanelInstances } from '../hostState';
 
 /** How long the host waits for what a delete takes with it before asking without it. */
 const FACTS_WAIT_MS = 500;
@@ -569,7 +562,7 @@ export interface ShellStore {
    * What a "reset to layout" control is gated on. The three-rung chain is otherwise one-way: a drag
    * wins for good and there is no way back to the arrangement the template designed, so an author
    * improving a layout would be overruled forever by one stray drag. Same pairing as
-   * `spaceThemePinned` and `clearSpaceThemePin`.
+   * `themeStore.spaceThemePinned` and `themeStore.clearSpaceThemePin`.
    *
    * False for a panel the interface says nothing about — there is no layout to go back to.
    */

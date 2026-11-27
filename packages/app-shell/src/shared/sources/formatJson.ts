@@ -16,10 +16,9 @@
  * `CodeEditor` to silently reformat its own content would be a hidden behaviour the next caller
  * would have to discover.
  *
- * The live extraction feed does exactly this in `InterpretationStore`, on the same two fields,
- * because a store *can* call `JSON.stringify`. That copy is why this is not a speculative
- * extraction: the need is already demonstrated one layer down, and the durable log reads the same
- * two fields through a query, where no store is in the way.
+ * The live extraction feed does the same in `InterpretationStore`, on the same two fields, by
+ * calling this: the need is demonstrated one layer down, and the durable log reads the same two
+ * fields through a query, where no store is in the way.
  *
  * ## Left alone when it will not parse
  *

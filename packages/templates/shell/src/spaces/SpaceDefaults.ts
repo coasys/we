@@ -106,7 +106,7 @@ const themeRow = defaultPickerRow({
 const hiddenThemeNote: SchemaNode = {
   type: '$if',
   props: {
-    condition: { $: "spaceStore.spaceThemeHiddenBy != ''" },
+    condition: { $: "themeStore.spaceThemeHiddenBy != ''" },
     then: {
       type: 'we-alert',
       children: [
@@ -121,9 +121,9 @@ const hiddenThemeNote: SchemaNode = {
               children: [
                 {
                   $: [
-                    "spaceStore.spaceThemeHiddenBy == 'template'",
+                    "themeStore.spaceThemeHiddenBy == 'template'",
                     "? `This template brings its own theme, ${themeStore.currentTheme.name}, so you won't see changes here until you switch to the space's default template. Members still get the default.`",
-                    ": spaceStore.spaceThemeHiddenBy == 'pin'",
+                    ": themeStore.spaceThemeHiddenBy == 'pin'",
                     "? `You're overriding the space's default theme with ${themeStore.currentTheme.name}, so you won't see changes here while it's applied. Members still get the default.`",
                     ": `You're using your own default theme, ${themeStore.currentTheme.name}, in this space, so you won't see changes here. Members still get the default.`",
                   ].join(' '),
@@ -133,13 +133,13 @@ const hiddenThemeNote: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: "spaceStore.spaceThemeHiddenBy != 'template'" },
+                condition: { $: "themeStore.spaceThemeHiddenBy != 'template'" },
                 then: {
                   type: 'we-button',
                   props: {
                     variant: 'soft',
                     size: 'sm',
-                    onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
+                    onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
                   },
                   children: ["Use the space's theme"],
                 },

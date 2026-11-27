@@ -4,12 +4,13 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { type ChatInputs, type ChatStore, createChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
+import { type ChatInputs, type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 
@@ -42,7 +43,7 @@ const stores = {
 
 /** The chat store itself, over the stubs above — composed as the host composes it. */
 function ChatStores(props: ParentProps) {
-  const chatStore = createChatStore({ shellStore: stores.shellStore! });
+  const chatStore = createChatStore({ reactivity: solidReactivity, shellStore: stores.shellStore! });
   return (
     <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
   );

@@ -29,14 +29,19 @@ import {
   TEMPLATE_SURFACE,
 } from '../src/shared/registries/templateSurface';
 
-const storesDir = join(dirname(fileURLToPath(import.meta.url)), '../src/frameworks/solid/stores');
+const here = dirname(fileURLToPath(import.meta.url));
+/*
+  Both homes a store has: the neutral ones in `shared/stores/`, and those not converted yet in the
+  Solid half. Reading only the second made every store that moved drop out of these checks unnoticed.
+*/
+const storeDirs = [join(here, '../src/shared/stores'), join(here, '../src/frameworks/solid/stores')];
 
 /** Members declared on each `export interface …Store`, read from the source. */
 function declaredMembers(): Map<string, string[]> {
   const found = new Map<string, string[]>();
-  for (const file of readdirSync(storesDir)) {
+  for (const file of storeDirs.flatMap((dir) => readdirSync(dir).map((name) => join(dir, name)))) {
     if (!file.endsWith('.tsx') && !file.endsWith('.ts')) continue;
-    const source = readFileSync(join(storesDir, file), 'utf8');
+    const source = readFileSync(file, 'utf8');
     const match = /export interface (\w+Store) \{([\s\S]*?)\n\}/.exec(source);
     if (!match) continue;
     const [, name, body] = match;
@@ -54,8 +59,10 @@ describe('the surface manifest describes the stores that exist', () => {
   it('reads a non-trivial set of stores, so the checks below mean something', () => {
     // Guards the guard: a renamed interface or a moved directory would otherwise make every
     // assertion below pass by finding nothing at all.
-    expect(declared.size).toBeGreaterThanOrEqual(12);
+    expect(declared.size).toBeGreaterThanOrEqual(20);
     expect(declared.get('spaceStore')?.length).toBeGreaterThan(30);
+    // And from the shared half, where converted stores live.
+    expect(declared.get('sessionStore')?.length).toBeGreaterThan(20);
   });
 
   it('classifies every member of every store', () => {
@@ -228,6 +235,19 @@ describe('what the space tier can reach', () => {
     for (const name of RENDERER_BINDING_NAMES) {
       expect((bag[name] as (() => string) | undefined)?.(), name).toBe(name);
     }
+  });
+
+  it('reads a store member held behind a getter afresh, as the template on screen is', () => {
+    // A live document may hand out a new tree per edit; read once at build, the bag would keep the first.
+    let shown = { id: 'first' };
+    const templateStore = {
+      get currentTemplate() {
+        return shown;
+      },
+    };
+    const bag = buildTemplateBag({ templateStore }, { grants: SPACE_TIER }) as { templateStore: typeof templateStore };
+    shown = { id: 'second' };
+    expect(bag.templateStore.currentTemplate.id).toBe('second');
   });
 
   it('never puts host wiring in either bag', () => {

@@ -18,13 +18,14 @@
  */
 import { isAppPanel } from '@shared/panelScope';
 import { resolveParts } from '@shared/registries/moduleParts';
-import { panelInstances } from '@shared/registries/panelInstances';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
 import { chromeComponentRegistry, componentRegistry } from '@solid/registries/componentRegistry';
 import { EDIT_SURFACE_ATTR } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
+
+import { panelInstances } from '../hostState';
 
 export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; dock?: string; instance?: string }) {
   // The declaration is a plain array behind a change channel, so a signal is what makes reading it

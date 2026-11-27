@@ -15,35 +15,39 @@
  * is already unlocked, and again after login().
  */
 import { consumeGuestBootTarget } from '@shared/guestLink';
+import { createAccountStore } from '@shared/stores/AccountStore';
+import { createAppStore } from '@shared/stores/AppStore';
+import { createBundleStore } from '@shared/stores/BundleStore';
+import { createChatStore } from '@shared/stores/ChatStore';
+import { createClockStore } from '@shared/stores/ClockStore';
+import { createDatasetStore } from '@shared/stores/DatasetStore';
+import { createDeviceStore } from '@shared/stores/DeviceStore';
+import { createEditorStore } from '@shared/stores/EditorStore';
+import { createEditTarget } from '@shared/stores/editTarget';
+import { createIdentityStore } from '@shared/stores/IdentityStore';
+import { createInterpretationStore } from '@shared/stores/InterpretationStore';
+import { createPresenceStore } from '@shared/stores/PresenceStore';
+import { createProfileStore } from '@shared/stores/ProfileStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
+import { createRuntimeStore } from '@shared/stores/RuntimeStore';
+import { createSessionStore } from '@shared/stores/SessionStore';
+import { createShapeStore } from '@shared/stores/ShapeStore';
+import { createTemplateStore } from '@shared/stores/TemplateStore';
+import { createThemeStore } from '@shared/stores/ThemeStore';
+import { createWorkflowStore } from '@shared/stores/WorkflowStore';
 import { trace } from '@we/backend-shared';
+import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
+import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { createAccountStore } from '../stores/AccountStore';
-import { createAppStore } from '../stores/AppStore';
-import { createBundleStore } from '../stores/BundleStore';
-import { createChatStore } from '../stores/ChatStore';
-import { createClockStore } from '../stores/ClockStore';
-import { createDatasetStore } from '../stores/DatasetStore';
-import { createDeviceStore } from '../stores/DeviceStore';
-import { createEditorStore } from '../stores/EditorStore';
-import { createEditTarget, EditTargetContext } from '../stores/editTarget';
-import { createIdentityStore } from '../stores/IdentityStore';
-import { createInterpretationStore } from '../stores/InterpretationStore';
-import { createPresenceStore } from '../stores/PresenceStore';
-import { createProfileStore } from '../stores/ProfileStore';
+import { solidLiveTemplates } from '../liveTemplate';
+import { startAppBridge } from '../services/appBridge';
 import { createRecordStore } from '../stores/RecordStore';
-import { createRuntimeStore } from '../stores/RuntimeStore';
-import { createSessionStore } from '../stores/SessionStore';
-import { createShapeStore } from '../stores/ShapeStore';
 import { createShellStore } from '../stores/ShellStore';
 import { createSpaceStore } from '../stores/SpaceStore';
-import { createTemplateStore } from '../stores/TemplateStore';
-import { createThemeStore } from '../stores/ThemeStore';
 import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
-import { createWorkflowStore } from '../stores/WorkflowStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
 
@@ -54,34 +58,97 @@ export function BootController(props: ParentProps) {
   // Depends on nothing: the app's address, read by templates, the space store and presence.
   const routeStore = createRouteStore({ reactivity: solidReactivity });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
-  const clockStore = createClockStore();
+  const clockStore = createClockStore({ reactivity: solidReactivity });
   const shellStore = createShellStore({ platform });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
-  const chatStore = createChatStore({ shellStore });
+  const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The
   // boot screen needs them while the session is still locked.
-  const accountStore = createAccountStore({ platform });
+  const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
   // Session → Dataset → Profile is the dependency spine: everything after reads them.
-  const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+  const sessionStore = createSessionStore({
+    reactivity: solidReactivity,
+    platform,
+    backend,
+    credential,
+    firstScreen,
+    shellStore,
+    chatStore,
+    accountStore,
+  });
+  /*
+    The bridge that hands embedded apps (e.g. Flux) their credentials, started synchronously and
+    before any async boot work, so a REQUEST_AD4M_CONFIG is never dropped — including during the
+    connector's auth flow on first load, where auth can take many seconds and the embedded app's
+    30-second timeout would otherwise expire. The session is usable once the post-unlock load
+    finishes, which is 'finishing' on a first run and 'ready' on every other boot.
+  */
+  startAppBridge({
+    isDesktop: platform.isDesktop,
+    port: sessionStore.port,
+    token: sessionStore.token,
+    serverUrl: sessionStore.serverUrl,
+    agentUnlocked: () => sessionStore.bootState() === 'ready' || sessionStore.bootState() === 'finishing',
+  });
   // Straight after the session: it reads only the port bundle, and its consent subscription must be
   // live before anything can mount an embedded app that asks for credentials.
-  const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
+  const runtimeStore = createRuntimeStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    platform,
+    sessionStore,
+    shellStore,
+  });
   // Beside Runtime and for the same reason: they read only the port bundle and the host's custody.
   // Identity before devices, whose changes it opens.
-  const identityStore = createIdentityStore({ sessionStore });
-  const deviceStore = createDeviceStore({ sessionStore, identityStore });
-  const datasetStore = createDatasetStore({ sessionStore });
+  const identityStore = createIdentityStore({ reactivity: solidReactivity, sessionStore });
+  const deviceStore = createDeviceStore({ reactivity: solidReactivity, sessionStore, identityStore });
+  const datasetStore = createDatasetStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    toasts: toastService,
+    sessionStore,
+  });
   // The shape adoption rail follows the current dataset, and everything that renders a space may
   // query the entities it registers.
-  const shapeStore = createShapeStore({ sessionStore, datasetStore });
+  const shapeStore = createShapeStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+  });
   // It offers a form for every model this space carries, which is the list the rail assembles.
   const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-  const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
-  const themeStore = createThemeStore({ sessionStore, datasetStore });
-  const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
-  /** What the editing session edits — the editor's plumbing, published to its host adapter. */
-  const editTarget = createEditTarget(templateStore);
+  const profileStore = createProfileStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    credential,
+    toasts: toastService,
+    sessionStore,
+    runtimeStore,
+    accountStore,
+  });
+  const themeStore = createThemeStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+  });
+  const templateStore = createTemplateStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    liveTemplates: solidLiveTemplates,
+    sessionStore,
+    datasetStore,
+    themeStore,
+    routeStore,
+  });
+  /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
+  const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
   const editorStore = createEditorStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    firstScreen,
     sessionStore,
     datasetStore,
     templateStore,
@@ -89,7 +156,7 @@ export function BootController(props: ParentProps) {
     shapeStore,
     editTarget,
   });
-  const appStore = createAppStore();
+  const appStore = createAppStore({ reactivity: solidReactivity });
   const spaceStore = createSpaceStore({
     sessionStore,
     datasetStore,
@@ -109,16 +176,40 @@ export function BootController(props: ParentProps) {
 
   // Presence follows the current dataset and the route. App-lifetime, not view-lifetime: it must
   // outlive navigation rather than being torn down with a view.
-  const presenceStore = createPresenceStore({ sessionStore, datasetStore, profileStore, routeStore });
+  const presenceStore = createPresenceStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    sessionStore,
+    datasetStore,
+    profileStore,
+    routeStore,
+  });
   // Beside presence, and for the same reasons: it follows the current dataset, reads the same
   // ephemeral port, and has to outlive the panel that started a pass — a call bar is still showing
   // an extraction after the transcript panel closes.
-  const interpretationStore = createInterpretationStore({ sessionStore, datasetStore, profileStore, spaceStore });
+  const interpretationStore = createInterpretationStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    sessionStore,
+    datasetStore,
+    profileStore,
+    spaceStore,
+  });
   // After the space store, whose task states, involvement kinds, archive list and administrator it reads.
-  const workflowStore = createWorkflowStore({ sessionStore, datasetStore, spaceStore, shapeStore });
+  const workflowStore = createWorkflowStore({
+    reactivity: solidReactivity,
+    firstScreen,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+    spaceStore,
+    shapeStore,
+  });
   // After every store an install writes through — templates, themes, record types, modules,
   // settings — none of which has to know what a bundle is.
   const bundleStore = createBundleStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
     sessionStore,
     datasetStore,
     templateStore,
@@ -136,6 +227,7 @@ export function BootController(props: ParentProps) {
     datasetStore,
     deviceStore,
     editorStore,
+    editTarget,
     identityStore,
     interpretationStore,
     presenceStore,
@@ -154,12 +246,10 @@ export function BootController(props: ParentProps) {
 
   return (
     <StoreRegistryContext.Provider value={stores}>
-      <EditTargetContext.Provider value={editTarget}>
-        {/* The editor's host port is built from every store above, so it sits inside the registry.
-            It provides only a context, so a deployment that ships no editing surface pays a context
-            and nothing else. */}
-        <EditorHostAdapter>{props.children}</EditorHostAdapter>
-      </EditTargetContext.Provider>
+      {/* The editor's host port is built from every store above, so it sits inside the registry.
+          It provides only a context, so a deployment that ships no editing surface pays a context
+          and nothing else. */}
+      <EditorHostAdapter>{props.children}</EditorHostAdapter>
     </StoreRegistryContext.Provider>
   );
 }

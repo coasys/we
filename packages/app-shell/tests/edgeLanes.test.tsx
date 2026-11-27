@@ -9,10 +9,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EdgeLanes } from '../src/frameworks/solid/components/EdgeLanes';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
+import { declareAppEdges } from '../src/frameworks/solid/hostState';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
-import { declareAppEdges } from '../src/shared/registries/appFrame';
 import {
   DOCK_FRAME_ATTR,
   dockFrame,

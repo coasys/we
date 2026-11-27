@@ -1,6 +1,16 @@
 import type { TemplatePanel } from '@we/schema-shared';
 
 /**
+ * The scope an instance lives in when it is not the current interface's — the app's own.
+ *
+ * Instances are otherwise kept per interface: an inspector opened in one template is not there in
+ * the next and returns when you go back, because the inputs only make sense where the declaration
+ * is. A chat is different — the global chat belongs to the app, not to the space you happened to
+ * open it from, so `openPanel` takes a scope and the chats pass this one.
+ */
+export const APP_PANEL_SCOPE = 'app';
+
+/**
  * Which panels belong on the screen right now — the shell's, the section's, and the route filter.
  *
  * Pure and out here for the reason `recordNavigation.ts` and `dockGeometry.ts` are: two decisions

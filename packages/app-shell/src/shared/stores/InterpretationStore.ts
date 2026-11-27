@@ -1,0 +1,526 @@
+/**
+ * InterpretationStore — what extraction is doing in this space, right now.
+ *
+ * Three things joined into one list: the backend's own report of passes running on this node, the
+ * relay's report of passes running on everyone else's, and the profile cache that turns a DID into
+ * a face and a name.
+ *
+ * ## Why it is a host store and not module state
+ *
+ * The module contract already argues this, for the watch rather than its readout: a standing watch
+ * is a dataset-level registration that outlives the module instance that asked for it, so handing
+ * it to a store whose lifetime is a panel being open invites one per mount. The same is true of the
+ * feed. A pass started by the transcribe panel is still running after that panel closes, and it is
+ * still worth showing — the call bar outlives the panel, and so should the row under it.
+ *
+ * Which also makes this the only layer that *can* hold it. The relay needs the ephemeral port and
+ * the current dataset; the runner's name needs the profile cache; neither is a module's to reach.
+ *
+ * ## Presentation lives here
+ *
+ * `label` and `elapsed` are strings, computed in the store. A schema has no arithmetic and no date
+ * formatting, so "0:42" and "Found 3 tasks" are unreachable from a template — the same reason
+ * `runtimeStore.aiModels` carries `statusText` and `themeStore` builds its own view models.
+ */
+import type {
+  BackendPorts,
+  InterpretationActivity,
+  InterpretationPhase,
+  InterpretationRelay,
+} from '@we/backend-shared';
+import {
+  byActivityInterest,
+  createInterpretationRelay,
+  displayName,
+  INTERPRETATION_ACTIVITY_CHANNEL,
+  isSettled,
+  trace,
+} from '@we/backend-shared';
+import type { DatasetProxy } from '@we/entities';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+
+import type { FirstScreen } from '../firstScreen';
+import { watchPassRecord } from '../interpretation/activityView';
+import { provideModuleHostServices } from '../registries/moduleHostServices';
+import { formatJson } from '../sources/formatJson';
+import { holdSubscription } from '../utils';
+import type { ProfileStore } from './ProfileStore';
+
+/** What the interpretation store reads of the stores it is built from. */
+export interface InterpretationStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: the probe and the watches wait for the first screen. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  sessionStore: {
+    me: Accessor<{ did?: string } | undefined>;
+    backendPorts: Accessor<Pick<BackendPorts, 'interpretation' | 'ephemeral'> | null>;
+  };
+  datasetStore: { currentDataset: Accessor<{ handle: DatasetProxy } | null> };
+  profileStore: Pick<ProfileStore, 'profiles' | 'fetchProfile'>;
+  spaceStore: { autoInterpret: Accessor<boolean>; autoInterpretFor: (collectionId: string) => boolean };
+}
+
+/** One pass, ready to render — every field a string or a boolean a schema can read directly. */
+export interface InterpretationActivityView {
+  passId: string;
+  /** The runner's agent id, or `''` when the backend could only say that somebody is working. */
+  runner: string;
+  /** Their display name, or "Someone" — never blank, since this is a sentence subject. */
+  name: string;
+  avatar: string;
+  /** True when this agent is the one running the pass. Gates the detail affordance. */
+  mine: boolean;
+  phase: InterpretationPhase;
+  /** True while the pass is still in flight. What a spinner and the "N running" count read. */
+  running: boolean;
+  /** A whole clause: "Anna is interpreting", "Waiting on the model", "Found 3 records". */
+  label: string;
+  /** `m:ss` since the pass was first seen. Empty once it has settled — a finished pass reports
+   *  what it did, and how long it took stops being the question. */
+  elapsed: string;
+  /**
+   * When the pass settled, ISO-8601, for a relative "2 minutes ago" beside the result. Empty while
+   * it is still running, where the elapsed clock is the more useful reading.
+   *
+   * An instant rather than a formatted string because `we-timestamp` re-renders itself every minute
+   * — a string computed here would be right when the row settled and wrong from then on, since the
+   * store's clock stops as soon as nothing is running.
+   */
+  finishedAt: string;
+  /** Why, for a pass that skipped or failed. Empty otherwise. */
+  detail: string;
+  /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
+   *  live; it arrives with the interpretation `ModelRun` once the pass settles. */
+  prompt: string;
+  response: string;
+  /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
+   *  explanation rather than opening an empty panel. */
+  hasDetail: boolean;
+  /**
+   * Whether the row should offer to open at all.
+   *
+   * `hasDetail` and either settled or slow enough to be worth investigating — see
+   * `OPENABLE_AFTER_MS`. One field rather than two conditions in the schema, so the caret's
+   * presence and the row's clickability cannot drift apart.
+   */
+  openable: boolean;
+}
+
+export interface InterpretationStore {
+  /** Every pass this agent knows about, running first, then most recent. */
+  activity: Accessor<InterpretationActivityView[]>;
+  /** How many are still in flight — what the collapsed bar counts. */
+  runningCount: Accessor<number>;
+  /** Whether there is anything at all to show. The bar mounts on this. */
+  hasActivity: Accessor<boolean>;
+  /**
+   * The feed split the two ways a readout draws it, and counted.
+   *
+   * Derivations of {@link activity} and nothing else, which is why they belong here rather than
+   * where they were: `@we/module-transcribe` published all five, filtering the feed the host had
+   * already assembled, so the same state had two names and nothing chose which was canonical. A
+   * module that re-exports a host capability is a dependency wearing a store member's clothes.
+   */
+  runningPasses: Accessor<InterpretationActivityView[]>;
+  settledPasses: Accessor<InterpretationActivityView[]>;
+  settledCount: Accessor<number>;
+  /**
+   * Whether this node can interpret at all — as distinct from being able to and having no model
+   * configured. False means no rebuild-free fix exists, so a UI should say so rather than offering
+   * a control that cannot work.
+   */
+  capable: Accessor<boolean>;
+  /** Forget every settled row, leaving anything still running. What a "clear" affordance calls. */
+  dismissSettled: () => void;
+}
+
+/**
+ * How long a pass must have been running before its prompt is worth offering.
+ *
+ * A caret on every running row was unusable in practice: on a fast model the pass completes before
+ * anybody can click, so all it did was flicker, and everything it would have shown is on the
+ * settled row a moment later alongside the response.
+ *
+ * It still earns its place on a pass that is slow or stuck — a hung pass never settles, so without
+ * this its prompt would be unreachable for the ten minutes until it goes stale, and "what did we
+ * actually send it?" is the first question anybody asks about a hang.
+ *
+ * Twenty seconds carries no principle beyond "long enough that a person starts wondering". Move it
+ * freely; nothing else depends on the number.
+ */
+const OPENABLE_AFTER_MS = 20_000;
+
+/** `m:ss`, which is the range a pass actually occupies — seconds to a few minutes. */
+function formatElapsed(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count: number): string {
+  const who = mine ? 'You are' : `${name} is`;
+  switch (phase) {
+    case 'queued':
+      return `${who} about to interpret`;
+    case 'gathering':
+      return `${who} reading the conversation`;
+    // Named as the wait it is, rather than as a step. This is nearly the whole duration, and
+    // "Running interpretation" tells somebody staring at it nothing they can act on.
+    case 'thinking':
+      return `${who} waiting on the model`;
+    // Second person for one's own pass, and "they" for anyone else's: the subject of the sentence
+    // is the runner, and "what it found" read as though a machine had run off with the work.
+    case 'writing':
+      return `${who} writing what ${mine ? 'you' : 'they'} found`;
+    case 'done':
+      // "Nothing to add" rather than "0 records": a pass over a conversation with no commitments in
+      // it succeeded, and a zero reads as a failure.
+      return count ? `Found ${count} ${count === 1 ? 'record' : 'records'}` : 'Nothing to add';
+    case 'skipped':
+      return 'Nothing to interpret';
+    case 'failed':
+      return 'Interpretation failed';
+  }
+}
+
+/** How long a burst of staged-suggestion changes is gathered before modules are told to re-read. */
+const PROPOSALS_COALESCE_MS = 250;
+
+export function createInterpretationStore({
+  reactivity,
+  firstScreen,
+  sessionStore: session,
+  datasetStore,
+  profileStore,
+  spaceStore,
+}: InterpretationStoreDeps): InterpretationStore {
+  const { signal, memo, effect, untrack, onCleanup } = reactivity;
+
+  const [rows, setRows] = signal<InterpretationActivity[]>([]);
+  const [now, setNow] = signal(Date.now());
+  const [dismissed, setDismissed] = signal<string[]>([]);
+  /*
+    Whether this node can interpret at all, as opposed to having no model configured.
+
+    Starts true and is corrected by the probe below. Optimistic because the alternative hides the
+    feature for the round trip it takes to answer, on every space change, including on every node
+    that can interpret perfectly well.
+  */
+  const [capable, writeCapable] = signal(true);
+  // Compared first: it is reset to true on every space change, nearly always from true, and modules
+  // read it inside derived values. Whether an equal write wakes them is not the port's to say.
+  const setCapable = (value: boolean) => {
+    if (untrack(capable) !== value) writeCapable(value);
+  };
+  /*
+    Bumped whenever the staged suggestions in this space may have changed, by anybody.
+
+    A count rather than the list because the list is a read a module makes for one conversation at a
+    time, and only it knows which it is showing. What this store can do that a module cannot is hold
+    the subscription for the space's lifetime.
+  */
+  const [proposalsRevision, writeProposalsRevision] = signal(0);
+  // Read untracked: it is bumped from inside the space effect, which must not come to depend on it.
+  const bumpProposalsRevision = () => writeProposalsRevision(untrack(proposalsRevision) + 1);
+
+  let relay: InterpretationRelay | null = null;
+  /** The space and connection the revision was last bumped for — see the effect below. */
+  let revisedFor: { handle: unknown; ports: unknown } | null = null;
+
+  /*
+    One relay and one subscription per space, torn down and rebuilt when the space changes.
+
+    Retaining rows across a switch would be worse than useless: they describe passes in a space the
+    user is no longer looking at, and every one of them is about to go stale with nobody there to
+    watch it happen.
+  */
+  effect(() => {
+    const handle = datasetStore.currentDataset()?.handle;
+    const ports = session.backendPorts();
+
+    relay?.dispose();
+    relay = null;
+    setRows([]);
+    setDismissed([]);
+    // Back to optimistic, not to the previous space's answer: a personal space and a hosted one can
+    // sit behind different executors, so the last node's capabilities say nothing about this one's.
+    setCapable(true);
+    // The suggestions on screen are a different set in a different space, so say so: a surface that
+    // asked about the space on screen asks again rather than marking this one's cards from the last.
+    // Only for a new space or connection: this effect also re-runs when the first screen opens, and
+    // a bump then made the Feed read its whole window again for suggestions that had not moved.
+    if (revisedFor?.handle !== handle || revisedFor?.ports !== ports) {
+      revisedFor = { handle, ports };
+      bumpProposalsRevision();
+    }
+
+    /*
+      Not before the first screen is up (`shared/firstScreen.ts`): the availability probe and the
+      staged-suggestion watch are the largest reads at boot, and nothing on the first page uses them.
+      Started later, this effect builds for the space on screen then, the same as after a switch.
+    */
+    if (!handle || !ports?.interpretation || !firstScreen.open()) return;
+
+    /*
+      Ask the executor what it can do, before anything offers it.
+
+      One round trip per space, and the reason it is here rather than inside the port is that the
+      answer has to be reactive: a module reads availability inside a derived value, and this
+      resolves a moment after the dataset changes. The port caches it too, for callers that are not
+      reactive at all.
+
+      Unawaited on purpose. Nothing below depends on the answer, and blocking the subscription setup
+      on a probe would delay the event stream for a node that is perfectly capable.
+    */
+    void ports.interpretation
+      .checkAvailability?.(handle)
+      .then(setCapable)
+      // A probe that fails to reach a conclusion leaves the optimistic default alone — the port
+      // makes the same choice, and for the same reason: hiding a working feature is worse than
+      // briefly offering one that turns out to be missing, which the call path now reports properly.
+      .catch(() => {});
+
+    // No neighbourhood — a personal space has no peers to hear from. The local stream below still
+    // runs, so a solo user watching their own extraction is unaffected.
+    const scope = ports.ephemeral?.(handle) ?? null;
+    const channel = scope?.channel(INTERPRETATION_ACTIVITY_CHANNEL) ?? null;
+
+    /*
+      A relay even with no channel, so there is one merge path rather than two.
+
+      The local-only fallback is a channel that swallows publishes and never delivers — which is
+      exactly a space with nobody in it, and means the store below reads `relay.rows()` whether or
+      not there is a network.
+    */
+    const local = createInterpretationRelay(channel ?? { publish: () => {}, onMessage: () => () => {} });
+    relay = local;
+
+    const sync = () => setRows(local.rows().sort(byActivityInterest));
+    const unwatch = local.onChange(sync);
+
+    /*
+      Log a watched pass as it settles, through the `interpretation` trace scope.
+
+      A log line, not a record in the space: a standing watch runs on every batch of every watched
+      conversation, and a record per pass filled the space with links that every peer synced. The
+      scope is on by default in a development build and off in a production build (see
+      `installConsoleTrace`); on the desktop app the lines go into the executor log.
+
+      The **merged** row, because the exchange and the outcome arrive on different events —
+      `llmRequestSent` carries the prompt, `processed` carries the ids, and several steps separate
+      them. `mine` narrows the lookup because a peer's row can carry the same pass id and is kept
+      under its own key. `written` makes it once: a settled row goes on receiving updates.
+    */
+    const written = new Set<string>();
+    const record = (activity: InterpretationActivity) => {
+      if (!isSettled(activity.phase) || written.has(activity.passId)) return;
+      const merged = local.rows().find((row) => row.passId === activity.passId && row.mine) ?? activity;
+      const fields = watchPassRecord({ ...merged, settled: isSettled(merged.phase) });
+      if (!fields) return;
+      written.add(activity.passId);
+      // Lengths, not text: the prompt is the conversation the pass read, the response and a
+      // failure's reason can quote it, and a log file is what gets attached to a bug report.
+      const { prompt, response, error, ...outcome } = fields;
+      trace('interpretation', 'pass', {
+        ...outcome,
+        promptChars: prompt?.length ?? 0,
+        responseChars: response?.length ?? 0,
+        ...(error === undefined ? {} : { errorChars: error.length }),
+      });
+    };
+
+    /*
+      Ask for the model exchange here, for this agent's own rows and for the extraction `ModelRun` record.
+
+      The backend's `detail` is a subscription-time choice and the events carry the payload over a
+      local socket regardless, so taking it costs nothing and is what makes the disclosure instant.
+      It never leaves this machine live — the relay does not send it; the record carries it.
+    */
+    const stop = holdSubscription(
+      ports.interpretation.observe?.(
+        handle,
+        (activity) => {
+          local.publish(activity);
+          record(activity);
+        },
+        { detail: true },
+      ),
+      (error) => {
+        // A runtime that cannot report progress is a runtime the surfaces below simply do not show
+        // a bar for. Not worth interrupting anyone over.
+        console.info('[interpretation] this runtime does not report pass progress', error);
+      },
+    );
+
+    /*
+      Hear about suggestions being staged and settled, whoever settles them.
+
+      Settling one used to reach only the screen it was settled on. The review list re-read when a
+      pass finished, and accepting is not a pass — so a card one member accepted stayed pending,
+      faded and offering its buttons, on everybody else's canvas until the next extraction ran.
+
+      Coalesced: a pass stages its suggestions in a burst, and accepting a whole record removes
+      several links at once, so an event per link would be a re-read per link.
+    */
+    let coalesce: ReturnType<typeof setTimeout> | undefined;
+    // Held rather than awaited: the watch takes a round trip to the backend to start, and a space
+    // switch inside it would otherwise leave it running for the life of the app.
+    const stopProposals = holdSubscription(
+      ports.interpretation.onProposalsChanged?.(handle, () => {
+        clearTimeout(coalesce);
+        coalesce = setTimeout(() => bumpProposalsRevision(), PROPOSALS_COALESCE_MS);
+      }),
+      (error) => {
+        // Settling still works without it; peers' screens just catch up on the next pass, as before.
+        console.info('[interpretation] this runtime does not report staged-suggestion changes', error);
+      },
+    );
+
+    onCleanup(() => {
+      unwatch();
+      stop();
+      stopProposals();
+      clearTimeout(coalesce);
+      local.dispose();
+    });
+  });
+
+  /*
+    A clock, but only while something is running.
+
+    The elapsed readout is the point of the surface — a pass on a local model is minutes of one
+    phase, and a timer is the only thing distinguishing "still going" from "stuck". A permanent
+    interval would be a wakeup every second forever in every space; this one exists exactly as long
+    as there is something to count.
+
+    It also drives the relay's own staleness pruning, which happens on read rather than on a timer:
+    without a tick, a peer who closed their laptop mid-pass would leave a row sitting there until
+    something unrelated changed.
+  */
+  effect(() => {
+    if (!rows().some((row) => !isSettled(row.phase))) return;
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      setRows(relay?.rows().sort(byActivityInterest) ?? []);
+    }, 1_000);
+    onCleanup(() => clearInterval(timer));
+  });
+
+  /**
+   * When each pass was first seen, which is what elapsed counts from.
+   *
+   * `activity.at` is the time of the *latest* update, deliberately — it is what staleness is judged
+   * against — so counting from it would restart the clock on every phase and report a pass that has
+   * been thinking for four minutes as three seconds old.
+   */
+  const startedAt = new Map<string, number>();
+
+  const activity = memo<InterpretationActivityView[]>(() => {
+    const me = session.me()?.did;
+    const at = now();
+    const hidden = new Set(dismissed());
+
+    return rows()
+      .filter((row) => !hidden.has(row.passId))
+      .map((row) => {
+        if (!startedAt.has(row.passId)) startedAt.set(row.passId, row.at);
+        const running = !isSettled(row.phase);
+        const mine = row.mine || (!!me && row.runner === me);
+        const profile = row.runner ? profileStore.profiles().find((p) => p.did === row.runner) : undefined;
+        // `displayName` rather than the concatenation this used to inline — the same rule as every
+        // byline, so one person is not "Anonymous" on their post and something else in this bar.
+        // 'Someone' survives as the fallback for a *missing* profile, which is a different fact
+        // from a profile that is present and unnamed, and reads better in the labels below.
+        const name = profile ? displayName(profile) : 'Someone';
+        const count = row.ids?.length ?? 0;
+
+        return {
+          passId: row.passId,
+          runner: row.runner ?? '',
+          name,
+          avatar: profile?.avatar ?? '',
+          mine,
+          phase: row.phase,
+          running,
+          label: labelFor(row.phase, name, mine, count),
+          elapsed: running ? formatElapsed(at - (startedAt.get(row.passId) ?? row.at)) : '',
+          finishedAt: running ? '' : new Date(row.at).toISOString(),
+          detail: row.detail ?? '',
+          prompt: formatJson({ text: row.llm?.prompt ?? '' }),
+          response: formatJson({ text: row.llm?.response ?? '' }),
+          hasDetail: !!(row.llm?.prompt || row.llm?.response),
+          openable:
+            !!(row.llm?.prompt || row.llm?.response) &&
+            (!running || at - (startedAt.get(row.passId) ?? row.at) >= OPENABLE_AFTER_MS),
+        };
+      });
+  });
+
+  /*
+    Ask for a profile we do not have, once the row naming it exists.
+
+    The store never blocks on this: an unresolved runner renders as "Someone" and becomes a name a
+    moment later, which is the same degradation every other agent-facing surface here accepts.
+  */
+  effect(() => {
+    for (const row of rows()) if (row.runner) void profileStore.fetchProfile(row.runner);
+  });
+
+  /*
+    Published to modules as a plain accessor.
+
+    The view type and the module's summary type are structurally identical today and are still kept
+    apart on purpose: a module contract naming an app-shell type would couple every module to the
+    shell's internals, and `phase` — the one field they differ on — is a backend vocabulary a module
+    has no business matching on. It reads `label` and `running` instead.
+  */
+  onCleanup(
+    provideModuleHostServices({
+      interpretationAvailable: () => capable(),
+      interpretationActivity: () => activity(),
+      interpretationProposalsRevision: () => proposalsRevision(),
+      /*
+        Whether automatic extraction is on, published because a module has to be able to *react* to
+        it.
+
+        Its only reader used to be a throw inside `datasetStore.watchCollection`, which meant switching
+        it on mid-call changed nothing — nothing re-ran the registration, so a call kept reporting that
+        auto-extraction was unavailable until everybody left and rejoined. Published here, a module's
+        watch effect depends on it and follows the toggle.
+
+        Asked about a *collection*: each holds its own answer, copied from the space's default when
+        it was made, so participants can stop a standing pass on their conversation without the
+        community changing its mind about every future one. Called with no id, it answers with the
+        space's default, which is what a surface asking "does this space do this at all" wants.
+      */
+      autoInterpretEnabled: (collectionId?: string) =>
+        collectionId ? spaceStore.autoInterpretFor(collectionId) : spaceStore.autoInterpret(),
+    }),
+  );
+
+  const runningCount = memo(() => activity().filter((row) => row.running).length);
+  const hasActivity = memo(() => activity().length > 0);
+  const runningPasses = memo(() => activity().filter((row) => row.running));
+  const settledPasses = memo(() => activity().filter((row) => !row.running));
+  const settledCount = memo(() => activity().filter((row) => !row.running).length);
+
+  const store: InterpretationStore = {
+    activity,
+    capable,
+    runningCount,
+    hasActivity,
+    runningPasses,
+    settledPasses,
+    settledCount,
+    // Only the settled ones, and only from this view: a running pass is not this agent's to
+    // dismiss, and the rows themselves belong to whoever is running them.
+    dismissSettled: () =>
+      setDismissed([
+        ...dismissed(),
+        ...activity()
+          .filter((row) => !row.running)
+          .map((row) => row.passId),
+      ]),
+  };
+
+  return store;
+}

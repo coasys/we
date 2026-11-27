@@ -25,6 +25,7 @@ import type {
   LocalAiStatus,
   ModelAdminPort,
 } from '@we/backend-shared';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { aiSection, signInForm } from '@we/template-shell';
@@ -43,7 +44,7 @@ const sessionStub = {
 // The settings page is open, so the store reads local AI and listens for progress.
 const shellStub = { activeShellView: () => 'settings' };
 
-import { createRuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
+import { createRuntimeStore } from '../src/shared/stores/RuntimeStore';
 
 const hardware: LocalAiHardware = {
   os: 'darwin',
@@ -132,6 +133,8 @@ function renderSection(node: SchemaNode = aiSection, refuse?: LocalAiPort['insta
   let install!: () => Promise<void>;
   const { container } = render(() => {
     const store = createRuntimeStore({
+      reactivity: solidReactivity,
+      toasts: { success: () => {}, error: () => {} },
       sessionStore: sessionStub as never,
       shellStore: shellStub as never,
       platform: { executor: undefined } as never,

@@ -83,7 +83,7 @@ that asks for agreement.
 
 ## The store
 
-`workflowStore` (`app-shell/src/frameworks/solid/stores/WorkflowStore.tsx`) is a host store, because the
+`workflowStore` (`app-shell/src/shared/stores/WorkflowStore.ts`) is a host store, because the
 board, a record's inspector and the Workflows page all call it. Its logic is in three framework-neutral
 files beside `workflowLanes.ts`: `workflowDraft.ts` (every edit to a workflow being written, and the presets) and
 `workflowViews.ts` (steps, requirements and a record's walk, in words). Saving, deleting and archiving are

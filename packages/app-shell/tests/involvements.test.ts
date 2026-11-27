@@ -8,9 +8,10 @@
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
+import { createTestReactivity } from '@we/reactivity/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { involvementOptimism } from '../src/shared/involvementOptimism';
+import { createInvolvementOptimism } from '../src/shared/involvementOptimism';
 import {
   createInvolvementActions,
   type InvolvementTypeView,
@@ -21,6 +22,8 @@ import {
 import { applyPendingInvolvements, involvement } from '../src/shared/sources/involvement';
 import { involvementMenu } from '../src/shared/sources/involvementMenu';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
+
+const involvementOptimism = createInvolvementOptimism(createTestReactivity().signal);
 
 const ME = 'did:key:me';
 const ANA = 'did:key:ana';

@@ -1606,7 +1606,7 @@
                             "$if": {
                               "condition": { "$": "startsWith(event.detail.value, 'theme|')" },
                               "then": {
-                                "$invoke": "spaceStore.applyTheme",
+                                "$invoke": "themeStore.applyTheme",
                                 "args": [{ "$": "split(event.detail.value, '|')[1]" }]
                               }
                             }
@@ -3190,7 +3190,7 @@
                                           "type": "$if",
                                           "props": {
                                             "condition": {
-                                              "$": "spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId"
+                                              "$": "themeStore.spaceThemePinned && theme.id == themeStore.currentThemeId"
                                             },
                                             "then": {
                                               "type": "we-tooltip",
@@ -3207,7 +3207,7 @@
                                                     "size": "sm",
                                                     "color": "text-faint",
                                                     "hoverProps": { "color": "text" },
-                                                    "onClick": { "$invoke": "spaceStore.clearSpaceThemePin" }
+                                                    "onClick": { "$invoke": "themeStore.clearSpaceThemePin" }
                                                   },
                                                   "children": [
                                                     {

@@ -4,12 +4,15 @@
  * `@we/optimism` proves the rules in isolation. What is left here is the composition — which rows
  * are reported, and what an empty list is allowed to mean.
  */
+import { createTestReactivity } from '@we/reactivity/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { signalOptimism } from '../src/shared/signalOptimism';
+import { createSignalOptimism } from '../src/shared/signalOptimism';
 
 const me = 'did:me';
 const held = () => signalOptimism.overlay().find((entry) => entry.record === 'post-1' && entry.type === 'st-like');
+
+const signalOptimism = createSignalOptimism(createTestReactivity().signal);
 
 beforeEach(() => signalOptimism.reset());
 

@@ -9,7 +9,7 @@ import {
   readAiSetupAnswer,
   recordAiSetupAnswer,
 } from '@shared/aiSetupStep';
-import { modelsForRoles } from '@solid/stores/aiModelDraft';
+import { modelsForRoles } from '@shared/stores/aiModelDraft';
 import { describe, expect, it } from 'vitest';
 
 /** The node's operator: local AI, the servers and the models are all theirs to set up. */

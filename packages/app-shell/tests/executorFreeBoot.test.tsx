@@ -160,10 +160,10 @@ const app = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
+vi.mock('../src/shared/stores/TemplateStore', async () => {
   const { createSignal, createEffect } = await import('solid-js');
   const { SpacePreference, AGENT_DEFAULT, FOLLOW_SPACE } = await import('@we/entities');
-  const { latestPerSpace } = await import('../src/frameworks/solid/stores/latestPerSpace');
+  const { latestPerSpace } = await import('../src/shared/stores/latestPerSpace');
   const [inUse, setInUse] = createSignal<AppInUse>({ id: 'we-app' });
   app.use = setInUse;
   return {
@@ -188,14 +188,17 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
         paints only through this path now, so a double that could not follow would hide the
         publish-to-repaint contract from every test below.
       */
-      let spaceLookup: () => { uuid?: string; url?: string; defaultTemplateId?: string }[] = () => [];
+      let appearance: {
+        spaces: () => { uuid?: string; url?: string; defaultTemplateId?: string }[];
+        setOverride: (datasetId: string, which: 'template' | 'theme', id: string) => Promise<void>;
+      } = { spaces: () => [], setOverride: async () => {} };
       let followed: { id: string; named: string | undefined } | null = null;
       // The real choose sequences overlapping follows, through the same per-space tracker, and
       // re-reads the record after the preference read — a stale choose must not paint an older
       // record over a newer follow's answer.
       const chooseLatestFor = latestPerSpace();
       const namedNow = (ds: { id: string; sharedId?: string | null }) =>
-        spaceLookup().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId;
+        appearance.spaces().find((s) => (ds.sharedId ? s.url === ds.sharedId : s.uuid === ds.id))?.defaultTemplateId;
       createEffect(() => {
         const ds = datasets.currentDataset() as { id: string; sharedId?: string | null } | undefined;
         const named = ds ? namedNow(ds) : undefined;
@@ -223,8 +226,17 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
 
       return {
         appTemplate: inUse,
-        provideSpaceLookup: (lookup: never) => {
-          spaceLookup = lookup;
+        provideSpaceAppearance: (lent: never) => {
+          appearance = lent;
+        },
+        /*
+          The real store's override, modelled: written through the space store's lent writer, and a
+          named template painted at once while its space is on screen.
+        */
+        setSpaceTemplateOverride: async (id: string, datasetId: string) => {
+          await appearance.setOverride(datasetId, 'template', id);
+          const template = app.templates.list.find((t) => t.id === id);
+          if (template && datasets.currentDataset()?.id === datasetId) setCurrent(template as never);
         },
         preloadSpaceTemplates: async () => {},
         allTemplates: () => app.templates.list,
@@ -238,7 +250,7 @@ vi.mock('../src/frameworks/solid/stores/TemplateStore', async () => {
   };
 });
 
-vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
+vi.mock('../src/shared/stores/ThemeStore', () => ({
   createThemeStore: () => ({
     allThemes: () => [],
     defaultThemeId: () => 'default',
@@ -247,6 +259,8 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
     replaceTheme: () => {},
     restorePersonalTheme: () => {},
     clearSpaceTheme: () => {},
+    provideSpaceAppearance: () => {},
+    explainSpaceThemeHidden: () => {},
   }),
 }));
 
@@ -255,21 +269,13 @@ import { completeResponse, runOperation } from '@we/entities';
 import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
+import { firstScreen } from '../src/frameworks/solid/firstScreen';
+import { solidLiveTemplates } from '../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
-import { createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
-import { createAppStore } from '../src/frameworks/solid/stores/AppStore';
-import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
-import { createDatasetStore, type DatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
-import { createProfileStore, type ProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
-import { createRuntimeStore, type RuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
-import { createSessionStore, type SessionStore } from '../src/frameworks/solid/stores/SessionStore';
-import { createShapeStore, type ShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
-import { createTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
-import { createThemeStore } from '../src/frameworks/solid/stores/ThemeStore';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
@@ -277,7 +283,17 @@ import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleReg
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
+import { createAccountStore } from '../src/shared/stores/AccountStore';
+import { createAppStore } from '../src/shared/stores/AppStore';
+import { createChatStore } from '../src/shared/stores/ChatStore';
+import { createDatasetStore, type DatasetStore } from '../src/shared/stores/DatasetStore';
+import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../src/shared/stores/RouteStore';
+import { createRuntimeStore, type RuntimeStore } from '../src/shared/stores/RuntimeStore';
+import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
+import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
+import { createTemplateStore } from '../src/shared/stores/TemplateStore';
+import { createThemeStore } from '../src/shared/stores/ThemeStore';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -285,6 +301,7 @@ interface Stores {
   session: SessionStore;
   datasets: DatasetStore;
   spaces: SpaceStore;
+  templates: { setSpaceTemplateOverride: (id: string, datasetId: string) => Promise<void> };
   records: RecordStore;
   shapes: ShapeStore;
   profiles: ProfileStore;
@@ -305,24 +322,70 @@ function mountShell(): Stores {
     const shellStore = createShellStore({ platform });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
     // BootController builds it.
-    const chatStore = createChatStore({ shellStore });
+    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
-    const accountStore = createAccountStore({ platform });
-    const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
+    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
+    const sessionStore = createSessionStore({
+      reactivity: solidReactivity,
+      platform,
+      backend,
+      credential,
+      firstScreen,
+      shellStore,
+      chatStore,
+      accountStore,
+    });
     // Setting up an account asks it whether there is an AI question, as the real order has it.
-    const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
-    const datasetStore = createDatasetStore({ sessionStore });
+    const runtimeStore = createRuntimeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      platform,
+      sessionStore,
+      shellStore,
+    });
+    const datasetStore = createDatasetStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      toasts: toastService,
+      sessionStore,
+    });
     // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
     // enroller, and hands the record layer the vocabularies this community owns — a task's own
     // states — so these are built in the order BootController uses.
-    const shapeStore = createShapeStore({ sessionStore, datasetStore });
+    const shapeStore = createShapeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-    const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
-    const themeStore = createThemeStore({ sessionStore, datasetStore });
-    const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
+    const profileStore = createProfileStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      credential,
+      toasts: toastService,
+      sessionStore,
+      runtimeStore,
+      accountStore,
+    });
+    const themeStore = createThemeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
+    const templateStore = createTemplateStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      liveTemplates: solidLiveTemplates,
+      sessionStore,
+      datasetStore,
+      themeStore,
+      routeStore,
+    });
     // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
-    const appStore = createAppStore();
+    const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       sessionStore,
       datasetStore,
@@ -342,6 +405,7 @@ function mountShell(): Stores {
       session: sessionStore,
       datasets: datasetStore,
       spaces: spaceStore,
+      templates: templateStore,
       records: recordStore,
       shapes: shapeStore,
     });
@@ -1782,7 +1846,7 @@ describe('dataset lifecycle through the real stores', () => {
       const saving = stores.spaces.setSpaceDefaultTemplate('second', uuid);
       await vi.waitFor(() => expect(app.templates.shown().id).toBe('second'));
 
-      await stores.spaces.setSpaceTemplateOverride('mine', uuid);
+      await stores.templates.setSpaceTemplateOverride('mine', uuid);
       expect(app.templates.shown().id).toBe('mine');
       const repaints = app.templates.repaints.length;
 

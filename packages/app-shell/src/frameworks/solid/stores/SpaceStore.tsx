@@ -1,4 +1,3 @@
-import { boardOptimism } from '@shared/boardOptimism';
 import { createBoardActions } from '@shared/boards';
 import { spaceStarterChoices } from '@shared/bundles/bundleStarter';
 import { installBundleWorkflows } from '@shared/bundles/installWorkflows';
@@ -14,7 +13,6 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { evidenceSubjectOf } from '@shared/evidenceSubjects';
 import { buildGuestLink } from '@shared/guestLink';
 import { isoOf } from '@shared/interpretation/callExport';
-import { involvementOptimism } from '@shared/involvementOptimism';
 import {
   createInvolvementActions,
   INVOLVEMENT_SEMANTICS,
@@ -49,6 +47,7 @@ import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
+import { overrideTemplateId, type SpaceAppearance } from '@shared/spaceAppearance';
 import {
   landmarksByName,
   readSpaceLandmarks,
@@ -89,6 +88,7 @@ import {
   syncSpaceToParent,
   withFields,
 } from '@shared/spaceSync';
+import { type AppDataset, canonicalSpaceId } from '@shared/stores/DatasetStore';
 import { isSystemDataset } from '@shared/systemDatasets';
 import {
   approvalsOf,
@@ -103,13 +103,6 @@ import {
   type TaskWorkflowRule,
   workflowStateOf,
 } from '@shared/taskWorkflow';
-import { taskWorkflowLive } from '@shared/taskWorkflowLive';
-import {
-  resolveSpaceTheme,
-  type SpaceThemeHiddenBy,
-  spaceThemeHiddenBy as hiddenBy,
-  type ThemeResolutionInput,
-} from '@shared/themeResolution';
 import { uploadOf } from '@shared/uploadOf';
 import { copyText, deriveSlug } from '@shared/utils';
 import type { ViewSetting } from '@shared/viewResolution';
@@ -152,7 +145,6 @@ import {
   runOperation,
 } from '@we/entities';
 import {
-  AGENT_DEFAULT,
   CollectionBlock,
   compressImageToFileData,
   type DatasetProxy,
@@ -180,15 +172,14 @@ import { type Latest, latest } from '@we/module-shared';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
-import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
+import { hasViewsMarker } from '@we/schema-shared';
 import { Accessor, batch, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { followLive } from '../../../shared/followLive';
 import { oneAtATime } from '../../../shared/oneAtATime';
-import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 import { firstScreen } from '../firstScreen';
-import { type AppDataset, canonicalSpaceId } from './DatasetStore';
+import { boardOptimism, involvementOptimism, signalOptimism, taskWorkflowLive } from '../hostState';
 import { createCallExports } from './space/callExports';
 import { moduleSettingsFrom, registeredModules, resolveEnabledModules } from './space/enabledModules';
 import { createInterpretationRuntime } from './space/interpretationRuntime';
@@ -333,20 +324,6 @@ export interface SpaceStore {
   myRoles: Accessor<string[]>;
   /** The space has been asked for its roles. An empty list is otherwise "not fetched yet". */
   rolesLoaded: Accessor<boolean>;
-  /** Options for the per-space template override picker, including a "follow the space" entry. */
-  templateOverrideOptions: Accessor<{ label: string; value: string }[]>;
-  /** Options for the per-space theme override picker, including a "follow the space" entry. */
-  themeOverrideOptions: Accessor<{ label: string; value: string }[]>;
-  /**
-   * Has this agent pinned a theme for the space on screen that diverges from what would otherwise
-   * apply — is there anything for a "reset" to undo? False outside a space.
-   */
-  spaceThemePinned: Accessor<boolean>;
-  /**
-   * What keeps this agent from seeing the space on screen's own theme: `'pin'`, `'agent-default'`,
-   * `'template'`, or `''` when nothing does.
-   */
-  spaceThemeHiddenBy: Accessor<SpaceThemeHiddenBy>;
   /** Feature modules this *agent* wants available anywhere. Personal; see AgentSettings.installedModules. */
   installedModules: Accessor<string[]>;
   /** Module ids the template on screen mounts components from — derived from the schema, not declared. */
@@ -674,17 +651,6 @@ export interface SpaceStore {
   reorderViews: (viewIds: string[], spaceUuid?: string) => Promise<void>;
   /** Show or hide a section for this agent in one space. Private to this agent. */
   setViewVisible: (viewId: string, visible: boolean, spaceUuid?: string) => Promise<void>;
-  /** Override the template this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
-  setSpaceTemplateOverride: (templateId: string, spaceUuid?: string) => Promise<void>;
-  /** Override the theme this agent sees in one space; FOLLOW_SPACE follows its default. Private. */
-  setSpaceThemeOverride: (themeId: string, spaceUuid?: string) => Promise<void>;
-  /**
-   * Apply a theme where the agent is: pinned to the space on screen, or their global default when
-   * there is no space. What the rail's theme picker calls.
-   */
-  applyTheme: (themeId: string) => Promise<void>;
-  /** Drop the theme pin for the space on screen, returning it to whatever would otherwise apply. */
-  clearSpaceThemePin: () => Promise<void>;
   launchModule: (moduleId: string) => void;
   /** Withdraw a signal type from use, or bring it back. Never removes the signals given with it. */
   setSignalTypeRetired: (signalTypeId: string, retired: boolean) => Promise<void>;
@@ -1103,42 +1069,6 @@ export function createSpaceStore(
   };
 
   /**
-   * Option lists for the per-space override pickers, with "follow the space" as a real entry.
-   *
-   * Built here rather than in the schema because the leading entry cannot be expressed there — the
-   * schema can `$map` a store array into options, but has no way to prepend one. And it has to
-   * exist: without it, overriding is one-way, since a picker offering only concrete templates gives
-   * someone no way back to the space's own choice.
-   *
-   * `createMemo` runs its body immediately, so everything these read must already be declared above
-   * them — a `const` referenced from an eagerly-run memo is a TDZ crash at provider construction,
-   * not a lazy failure later.
-   */
-
-  /** Name the thing an option resolves to, so "the space's default" is not a guess. */
-  const withResolved = (label: string, name: string | undefined) => (name ? `${label} (${name})` : label);
-
-  const templateOverrideOptions = createMemo(() => {
-    const byId = (id: string) => templateStore.allTemplates().find((t) => t.id === id)?.meta?.name;
-    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultTemplateId;
-    return [
-      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
-      { label: withResolved('Use my default', byId(templateStore.defaultTemplateId())), value: AGENT_DEFAULT },
-      ...templateStore.allTemplates().map((t) => ({ label: t.meta?.name || t.id || '', value: t.id || '' })),
-    ];
-  });
-
-  const themeOverrideOptions = createMemo(() => {
-    const byId = (id: string) => themeStore.allThemes().find((t) => t.id === id)?.name;
-    const spaceDefault = spaceForUuid(datasetStore.currentDataset()?.id ?? '')?.defaultThemeId;
-    return [
-      { label: withResolved("Use the space's default", byId(spaceDefault ?? '')), value: FOLLOW_SPACE },
-      { label: withResolved('Use my default', byId(themeStore.defaultThemeId())), value: AGENT_DEFAULT },
-      ...themeStore.allThemes().map((t) => ({ label: t.name || t.id, value: t.id })),
-    ];
-  });
-
-  /**
    * Every view this agent could put in a space: the ones compiled in, plus the ones installed.
    *
    * A view installed at runtime is an ordinary `Template` record whose `meta.role` is `'view'` —
@@ -1239,12 +1169,12 @@ export function createSpaceStore(
    * `''` defers to the community's choice; {@link AGENT_DEFAULT} defers to this agent's global one,
    * read live so it tracks a later change rather than freezing today's answer.
    */
-  const resolveTemplateFor = (uuid: string): string => {
-    const override = templateOverrideFor(uuid);
-    if (override === AGENT_DEFAULT) return templateStore.defaultTemplateId();
-    if (override === FOLLOW_SPACE) return spaceForUuid(uuid)?.defaultTemplateId || '';
-    return override;
-  };
+  const resolveTemplateFor = (uuid: string): string =>
+    overrideTemplateId(
+      templateOverrideFor(uuid),
+      spaceForUuid(uuid)?.defaultTemplateId,
+      templateStore.defaultTemplateId(),
+    );
 
   /**
    * Does the interface this agent would see in that space have sections at all?
@@ -1311,9 +1241,22 @@ export function createSpaceStore(
   */
   const spaceList: Accessor<SpaceListEntry[]> = spaceRows;
 
-  // TemplateStore mounts above this store and cannot read it directly — hand it the space lookup
-  // it needs to resolve a space's default template (see TemplateStore.provideSpaceLookup).
-  templateStore.provideSpaceLookup(mySpaces);
+  /*
+    The template and theme stores are composed before this one and cannot read it — lend them the
+    spaces' records and this agent's overrides, which they resolve which template and theme apply
+    from (see `spaceAppearance.ts`). The overrides are this agent's own, written to the root dataset.
+  */
+  const appearance: SpaceAppearance = {
+    spaces: mySpaces,
+    spaceFor: spaceForUuid,
+    overrideFor: (uuid) => ({ template: templateOverrideFor(uuid), theme: themeOverrideFor(uuid) }),
+    setOverride: (uuid, which, id) =>
+      which === 'template'
+        ? writeSpacePreference('setSpaceTemplateOverride', uuid, { template: id })
+        : writeSpacePreference('setSpaceThemeOverride', uuid, { theme: id }),
+  };
+  templateStore.provideSpaceAppearance(appearance);
+  themeStore.provideSpaceAppearance(appearance);
 
   /**
    * Modules that asked to hear about a removal — see `ModuleDatasetAccess.onRemoved`.
@@ -5102,168 +5045,6 @@ export function createSpaceStore(
     await writeSpacePreference('setModuleVisible', uuid, { module: moduleId, visible });
   }
 
-  /**
-   * The theme a template asks to be seen in, if this agent allows it and actually has that theme.
-   *
-   * A suggestion resolved live, never written — which is what makes template switching
-   * non-destructive: switching away and back restores the previous look by recomputation, and
-   * nobody's stored choice is touched on the way.
-   *
-   * A suggestion naming a theme this agent has not installed resolves to nothing rather than
-   * failing, mirroring how `?theme=` in a share link degrades. The caller reports it once.
-   */
-  /**
-   * The suggestion, read off the template **actually rendering**.
-   *
-   * `templateStore.currentTemplate` rather than `resolveTemplateFor(uuid)`, because those disagree
-   * on the path people actually use: the switcher calls `templateStore.switchTemplate`, which
-   * writes `AgentSettings.currentTemplateId` and leaves `SpacePreference.templateId` alone. Reading
-   * the preference meant the suggestion was computed from the space's default template while the
-   * agent was looking at the one they had just picked — so applying a template changed nothing.
-   *
-   * Only meaningful for the space on screen; `currentTemplate` is a single global. For any other
-   * space this returns nothing, which is right rather than merely safe: the only caller that passes
-   * a different uuid is `setSpaceThemeOverride`, which is writing a pin that outranks the
-   * suggestion anyway.
-   */
-  const templateThemeFor = (uuid: string): string => {
-    if (!themeStore.useTemplateTheme()) return '';
-    if (datasetStore.currentDataset()?.id !== uuid) return '';
-    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
-    if (!suggested) return '';
-    return themeStore.allThemes().some((t) => t.id === suggested) ? suggested : '';
-  };
-
-  /**
-   * Everything the precedence rule needs for one space, read off the signals.
-   *
-   * Split out from `resolveThemeFor` so the same inputs can be asked a second question with one
-   * field changed — see `unpinnedThemeFor`.
-   */
-  const themeResolutionInput = (uuid: string): ThemeResolutionInput => {
-    const current = datasetStore.currentDataset()?.id === uuid ? templateStore.currentTemplate?.id : undefined;
-    const spaceDefault = spaceForUuid(uuid)?.defaultTemplateId || '';
-    return {
-      themeOverride: themeOverrideFor(uuid),
-      // For a space that is not on screen there is no rendering template to compare, so fall back
-      // to what the preferences say would apply there.
-      templateIsSpaceDefault:
-        current !== undefined ? current === spaceDefault : templateOverrideFor(uuid) === FOLLOW_SPACE,
-      spaceTheme: spaceForUuid(uuid)?.defaultThemeId || '',
-      templateTheme: templateThemeFor(uuid),
-      agentTheme: themeStore.defaultThemeId(),
-      agentDefaultSentinel: AGENT_DEFAULT,
-      followSpaceSentinel: FOLLOW_SPACE,
-    };
-  };
-
-  /**
-   * Which theme this agent sees in one space.
-   *
-   * The precedence itself lives in `resolveSpaceTheme` — a pure function, because the rule is the
-   * feature and it was designed wrong once. This reads the signals it needs and hands them over.
-   */
-  const resolveThemeFor = (uuid: string): string => resolveSpaceTheme(themeResolutionInput(uuid));
-
-  /**
-   * What the space would show if this agent had not pinned a theme here.
-   *
-   * Only used to decide whether a pin is worth *mentioning*: one that happens to name what would
-   * have applied anyway is overriding nothing, and saying so would put a "reset" control in front
-   * of someone with nothing to reset. Asks the rule rather than comparing against the space default
-   * by hand, so it stays right as the precedence grows.
-   */
-  const unpinnedThemeFor = (uuid: string): string =>
-    resolveSpaceTheme({ ...themeResolutionInput(uuid), themeOverride: FOLLOW_SPACE });
-
-  /**
-   * Is this agent's theme for the space on screen a pin that diverges from what would otherwise
-   * apply — i.e. is there something for a "reset" to actually undo?
-   *
-   * False outside a space, false for the two sentinels (neither is a pin), and false for a pin that
-   * agrees with the resolution. Note it can become true later without anyone touching it: an
-   * administrator changing the space's default is exactly when a pin starts mattering, and that is
-   * exactly when it should start being visible.
-   */
-  const spaceThemePinned = createMemo<boolean>(() => {
-    const uuid = datasetStore.currentDataset()?.id;
-    if (!uuid) return false;
-    const pin = themeOverrideFor(uuid);
-    if (pin === FOLLOW_SPACE || pin === AGENT_DEFAULT) return false;
-    return pin !== unpinnedThemeFor(uuid);
-  });
-
-  /**
-   * What keeps this agent from seeing the space on screen's own theme, if anything — so setting the
-   * space's default while one of these holds can say why nothing changed, rather than looking as
-   * though it did not save.
-   */
-  const spaceThemeHiddenBy = createMemo<SpaceThemeHiddenBy>(() => {
-    const uuid = datasetStore.currentDataset()?.id;
-    return uuid ? hiddenBy(themeResolutionInput(uuid)) : '';
-  });
-
-  /**
-   * Override the template this agent sees in one space. {@link FOLLOW_SPACE} returns to its default.
-   *
-   * Applied immediately when the space is the one on screen, so the choice is visible where it was
-   * made; otherwise it takes effect next time that space is opened.
-   */
-  async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
-    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    await writeSpacePreference('setSpaceTemplateOverride', uuid, { template: templateId });
-    if (datasetStore.currentDataset()?.id !== uuid) return;
-    const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
-    if (template) templateStore.replaceTemplate(template);
-  }
-
-  /** Override the theme this agent sees in one space. {@link FOLLOW_SPACE} returns to its default. */
-  async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
-    const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    await writeSpacePreference('setSpaceThemeOverride', uuid, { theme: themeId });
-    if (datasetStore.currentDataset()?.id !== uuid) return;
-    const effective = resolveThemeFor(uuid);
-    // Explicit: this is only reached by someone choosing a theme, so it outranks an editing
-    // session on a different one. The recompute-on-entering-a-space path deliberately does not.
-    if (effective) themeStore.replaceTheme(effective, { explicit: true });
-    else themeStore.clearSpaceTheme();
-  }
-
-  /**
-   * Apply a theme *where the agent is* — what the rail's theme picker does.
-   *
-   * In a space this pins it there; outside one it sets their global default. The picker is a
-   * contextual control in contextual chrome, so "here" is the only reading of a click in it that
-   * does not surprise: the alternative — rewriting the global default from inside a space — makes
-   * per-space themes reachable only from Settings, which is backwards for the commonest act there is.
-   *
-   * A store method rather than a `$if` in the schema because `$if` inside an action's args resolves
-   * at render time, so it would freeze whichever branch happened to be true when the picker painted.
-   * Only the store can ask "where am I" at the moment of the click.
-   *
-   * Persisting at all is the point: `themeStore.setCurrentTheme` sets a signal and writes nothing, so
-   * a choice made through it lasts only until something recomputes the space theme.
-   */
-  async function applyTheme(themeId: string): Promise<void> {
-    const uuid = datasetStore.currentDataset()?.id;
-    if (uuid) await setSpaceThemeOverride(themeId, uuid);
-    else await themeStore.setDefaultTheme(themeId);
-  }
-
-  /**
-   * Drop this agent's theme pin for the space on screen, returning it to whatever would otherwise
-   * apply — the way back out of {@link applyTheme}.
-   *
-   * Exists so the picker can offer the escape hatch without naming {@link FOLLOW_SPACE}: a sentinel
-   * spelled into a schema is a literal that no longer moves when the constant does.
-   */
-  async function clearSpaceThemePin(): Promise<void> {
-    const uuid = datasetStore.currentDataset()?.id;
-    if (uuid) await setSpaceThemeOverride(FOLLOW_SPACE, uuid);
-  }
-
   /*
     Tell the shell which modules' chrome is live here.
 
@@ -5659,82 +5440,6 @@ export function createSpaceStore(
   const spaceDefaultTemplateId = createMemo(() => currentSpace()?.defaultTemplateId ?? '');
   const spaceDefaultThemeId = createMemo(() => currentSpace()?.defaultThemeId ?? '');
 
-  /**
-   * The answer the theme effect below acts on: which theme applies where the agent is, and the
-   * identity of the place it applies to.
-   *
-   * A memo with an explicit `equals` rather than the resolution inline in the effect, and that is
-   * the whole fix for a class of bug rather than a tidy-up. `resolveThemeFor` reaches through
-   * several stores, and any raw `agentSettings()` read anywhere down that path made this effect a
-   * subscriber to *every* agent-settings write — and `agentSettings` is deliberately
-   * `{ equals: false }`, so it notifies on every write whether or not anything changed. Toggling
-   * the theme scope switch, turning a module on, switching a template: each re-ran the resolution
-   * and pushed its answer over whatever the agent had actually chosen. Guarding on the resolved
-   * *value* fixes that for good, where a hand-maintained dependency list would only fix today's
-   * path and drift the first time the precedence grows a new input.
-   *
-   * Space identity is part of the value rather than merely tracked, because moving between two
-   * spaces that resolve to the same theme must still re-apply it: something else may have set the
-   * theme out of band in the meantime (a `?theme=` link, a theme being deleted), and arriving
-   * somewhere new is when that should be corrected.
-   */
-  const resolvedSpaceTheme = createMemo(
-    (): { datasetId: string; spaceUuid: string; themeId: string } => {
-      // This agent's own choice for this space wins over the community's default — that is what an
-      // override is for. `''` means they have not overridden it, so the space's default stands.
-      const datasetId = datasetStore.currentDataset()?.id ?? '';
-      return {
-        datasetId,
-        spaceUuid: currentSpace()?.uuid ?? '',
-        themeId: datasetId ? resolveThemeFor(datasetId) : spaceDefaultThemeId(),
-      };
-    },
-    undefined,
-    { equals: (a, b) => a.datasetId === b.datasetId && a.spaceUuid === b.spaceUuid && a.themeId === b.themeId },
-  );
-
-  // Apply the space's default theme when entering a space, restore personal theme when leaving.
-  // Only restore when there's genuinely no current dataset — not during the transient null
-  // window while switching between spaces (currentSpace loads async after the dataset changes).
-  createEffect(() => {
-    const { datasetId, themeId } = resolvedSpaceTheme();
-    if (themeId) {
-      themeStore.replaceTheme(themeId);
-    } else if (!datasetId) {
-      themeStore.restorePersonalTheme();
-    } else {
-      // In a space with no default theme — clear any previously scoped space theme.
-      themeStore.clearSpaceTheme();
-    }
-  });
-
-  /**
-   * Say once when a template asks for a theme this agent does not have.
-   *
-   * Separate from the effect that applies the theme, because that one runs on every space switch
-   * and every preference write — a toast in there would repeat. Reported per theme id, matching how
-   * `TemplateProvider` handles a `?theme=` suggestion it cannot honour: the intent is degraded
-   * rather than silently dropped, and said no more than once.
-   *
-   * Gated on `allThemes()` being populated so the boot frame, where nothing is loaded yet, does not
-   * read as "you don't have it".
-   */
-  const reportedMissingThemes = new Set<string>();
-  createEffect(() => {
-    if (!themeStore.useTemplateTheme()) return;
-    const uuid = datasetStore.currentDataset()?.id;
-    if (!uuid) return;
-    const themes = themeStore.allThemes();
-    if (!themes.length) return;
-
-    const suggested = templateThemeId(templateStore.currentTemplate?.meta);
-    if (!suggested || themes.some((t) => t.id === suggested)) return;
-    if (reportedMissingThemes.has(suggested)) return;
-
-    reportedMissingThemes.add(suggested);
-    toastService.warning(`This template suggests a theme ("${suggested}") you don't have — using your own.`);
-  });
-
   /*
     A default save paints its choice before it is stored, and two can be out at once — so what a
     failed save puts back is kept here rather than re-read off the screen, where mid-save it is
@@ -5859,7 +5564,7 @@ export function createSpaceStore(
     save.pending += 1;
     try {
       publishSpaceFields(ds, { defaultThemeId: themeId });
-      if (isCurrent(ds)) explainHiddenSpaceTheme();
+      if (isCurrent(ds)) themeStore.explainSpaceThemeHidden();
       await queueDefaultWrite(save, async () =>
         writeSpaceFields(ds, await spaceRowForSave(ds), { defaultThemeId: themeId }, isNewest),
       );
@@ -5872,23 +5577,6 @@ export function createSpaceStore(
       save.pending -= 1;
       if (!save.pending) defaultSaves.delete(save.key);
     }
-  }
-
-  /**
-   * Say why a space default just set is not what this agent sees. Members get it; the person who set
-   * it is the one looking at something else, and without this the setting reads as not having saved.
-   */
-  function explainHiddenSpaceTheme(): void {
-    const reason = spaceThemeHiddenBy();
-    const uuid = datasetStore.currentDataset()?.id;
-    if (!reason || !uuid) return;
-    const name = themeStore.allThemes().find((t) => t.id === resolveThemeFor(uuid))?.name ?? 'another theme';
-    if (reason === 'template') {
-      toastService.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
-      return;
-    }
-    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
-    toastService.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
   }
 
   /*
@@ -6093,10 +5781,6 @@ export function createSpaceStore(
     requiredModules,
     missingModules,
     activeModules,
-    templateOverrideOptions,
-    themeOverrideOptions,
-    spaceThemePinned,
-    spaceThemeHiddenBy,
     moduleInstallSettings,
     moduleLaunchers,
     spaceViews,
@@ -6156,10 +5840,6 @@ export function createSpaceStore(
     setViewEnabled,
     setViewVisible,
     reorderViews,
-    setSpaceTemplateOverride,
-    setSpaceThemeOverride,
-    applyTheme,
-    clearSpaceThemePin,
     launchModule,
     setSignalTypeRetired,
     createTaskState,

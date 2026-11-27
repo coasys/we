@@ -31,9 +31,10 @@ import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutatio
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
 import { deepClone } from '@shared/utils';
 import type { Stores } from '@solid/types';
-import type { TemplateSchema } from '@we/schema-shared';
-import { createStore } from 'solid-js/store';
+import { toastService } from '@we/components/solid';
+import { solidReactivity } from '@we/reactivity-solid';
 
+import { solidLiveTemplates } from '../liveTemplate';
 import type { ShellViewEntry } from './shellViews';
 
 /**
@@ -46,15 +47,16 @@ export function schemaTestsView(): ShellViewEntry {
   return {
     schema: schemaTestsTemplate,
     stores: (base: Stores) => {
-      const [schemaState, setSchemaState] = createStore<TemplateSchema>(deepClone(schemaTestsTemplate));
-      const mutations = schemaMutationActions(schemaState, setSchemaState);
+      const live = solidLiveTemplates(deepClone(schemaTestsTemplate));
+      const mutations = schemaMutationActions(live, toastService);
       return {
         templateStore: { ...base.templateStore, ...mutations },
         testStore: createTestStore(
+          solidReactivity,
           base.datasetStore.testDataset,
           () => base.sessionStore.backendPorts()?.schemas ?? null,
         ),
-        $schema: schemaState,
+        $schema: live.read(),
       };
     },
   };

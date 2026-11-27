@@ -7,7 +7,6 @@
  * and a menu row that faded out and back in under a still pointer. They live in how the pieces meet,
  * so this mounts the pieces.
  */
-import { involvementOptimism } from '@shared/involvementOptimism';
 import { hostSourceBag } from '@shared/sources';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import {
@@ -22,6 +21,7 @@ import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { involvementOptimism } from '../src/frameworks/solid/hostState';
 import { liveRows } from './liveRows';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 

@@ -103,7 +103,7 @@ export const SPACE_TEMPLATE_CHOICES = [
 // ── Themes ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Wear a theme here, by an expression naming its id — see the note on `themeChoice`'s `select`. */
-export const chooseTheme = (id: string): SchemaProp => ({ $invoke: 'spaceStore.applyTheme', args: [{ $: id }] });
+export const chooseTheme = (id: string): SchemaProp => ({ $invoke: 'themeStore.applyTheme', args: [{ $: id }] });
 
 /**
  * A theme row: the theme bound as `theme`. Choosing one does not take `after` — see `select`. Forking
@@ -134,8 +134,8 @@ export function themeChoice(after: SchemaProp[] = []): Choice {
         icon: 'push-pin',
         weight: 'fill',
         tooltip: "Pinned to this space — unpin to follow the space's theme",
-        when: { $: 'spaceStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
-        onClick: { $invoke: 'spaceStore.clearSpaceThemePin' },
+        when: { $: 'themeStore.spaceThemePinned && theme.id == themeStore.currentThemeId' },
+        onClick: { $invoke: 'themeStore.clearSpaceThemePin' },
       },
       {
         icon: 'pencil-simple',

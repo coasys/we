@@ -5,7 +5,6 @@ import { compressImageToFileData, ImageBlock } from '@we/entities';
 import type { TemplateSchema } from '@we/schema-shared';
 import type { ParentProps } from 'solid-js';
 
-import { useEditTarget } from '../stores/editTarget';
 import { useStore } from '../stores/useStore';
 import { createOwnersPort } from './ownersPort';
 
@@ -31,7 +30,7 @@ export function EditorHostAdapter(props: ParentProps) {
   const profileStore = useStore('profileStore');
   const space = useStore('spaceStore');
   const shell = useStore('shellStore');
-  const edit = useEditTarget();
+  const edit = useStore('editTarget');
 
   /*
     The template port the editor edits through, answering with the edit target rather than the

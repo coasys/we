@@ -651,9 +651,9 @@ const personalAppearanceSection: SchemaNode = {
           type: 'we-select',
           props: {
             value: { $: 'space.templateOverride' },
-            options: { $: 'spaceStore.templateOverrideOptions' },
+            options: { $: 'templateStore.templateOverrideOptions' },
             onChange: {
-              $invoke: 'spaceStore.setSpaceTemplateOverride',
+              $invoke: 'templateStore.setSpaceTemplateOverride',
               args: [{ $: 'event.detail' }, { $: 'space.id' }],
             },
           },
@@ -668,9 +668,9 @@ const personalAppearanceSection: SchemaNode = {
           type: 'we-select',
           props: {
             value: { $: 'space.themeOverride' },
-            options: { $: 'spaceStore.themeOverrideOptions' },
+            options: { $: 'themeStore.themeOverrideOptions' },
             onChange: {
-              $invoke: 'spaceStore.setSpaceThemeOverride',
+              $invoke: 'themeStore.setSpaceThemeOverride',
               args: [{ $: 'event.detail' }, { $: 'space.id' }],
             },
           },

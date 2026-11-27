@@ -1,12 +1,9 @@
 import { agentDataKernel, documentAccess } from '@shared/agentData';
-import { boardOptimism } from '@shared/boardOptimism';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
-import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
 import { operationFailureMessage } from '@shared/operationFailure';
 import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '@shared/recordsRead';
-import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { resolveParts, resolvePartsInRoutes } from '@shared/registries/moduleParts';
@@ -18,13 +15,11 @@ import { installRenderSettleOnExit, installSafeModeShortcut } from '@shared/safe
 import { hostSourceBag } from '@shared/sources';
 import { readSpaceRoot } from '@shared/spaceLandmarks';
 import { workflowStateOf } from '@shared/taskWorkflow';
-import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
 import { withInterpretationDefaults } from '@we/entities';
 import { completeResponse, respondsThrough, runOperation, threadSubject } from '@we/entities';
 
-import { signalOptimism } from '../../../shared/signalOptimism';
 import { signalOrder } from '../../../shared/signalOrder';
 
 /** A relation comes back as ids or as hydrated rows; read either, the way `arrangedBoard` does. */
@@ -76,9 +71,17 @@ import { EdgeLanes } from '../components/EdgeLanes';
 import { moduleBlockDisplays } from '../components/moduleBlockDisplays';
 import { PanelHost } from '../components/PanelHost';
 import { registerRecordGhost } from '../drag/recordGhost';
+import {
+  appFrame,
+  boardOptimism,
+  declareAppEdges,
+  declareAppFrame,
+  involvementOptimism,
+  signalOptimism,
+  taskWorkflowLive,
+} from '../hostState';
 import { PersistentAppFrames } from '../layouts/PersistentAppFrames';
 import { TemplateLayout } from '../layouts/TemplateLayout';
-import { useEditTarget } from '../stores/editTarget';
 import { useStore } from '../stores/useStore';
 import { buildRoutes } from '../utils/buildRoutes';
 
@@ -97,7 +100,7 @@ export default function TemplateProvider() {
   const themeStore = useStore('themeStore');
   const templateStore = useStore('templateStore');
   /** What the editor edits — the app is an edit surface only while it is the target. */
-  const editTarget = useEditTarget();
+  const editTarget = useStore('editTarget');
   const routeStore = useStore('routeStore');
   const shellStore = useStore('shellStore');
   const chatStore = useStore('chatStore');

@@ -18,34 +18,37 @@
  * `popstate`, which is what the app's router does with both.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
+import { toastService } from '@we/components/solid';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { solidReactivity } from '@we/reactivity-solid';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
 import { createEffect, createRoot, untrack } from 'solid-js';
 
+import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
+import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createAccountStore } from '../../src/frameworks/solid/stores/AccountStore';
-import { createAppStore } from '../../src/frameworks/solid/stores/AppStore';
-import { createChatStore } from '../../src/frameworks/solid/stores/ChatStore';
-import { createClockStore } from '../../src/frameworks/solid/stores/ClockStore';
-import { createDatasetStore } from '../../src/frameworks/solid/stores/DatasetStore';
-import { createPresenceStore } from '../../src/frameworks/solid/stores/PresenceStore';
-import { createProfileStore } from '../../src/frameworks/solid/stores/ProfileStore';
 import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
-import { createRuntimeStore } from '../../src/frameworks/solid/stores/RuntimeStore';
-import { createSessionStore } from '../../src/frameworks/solid/stores/SessionStore';
-import { createShapeStore } from '../../src/frameworks/solid/stores/ShapeStore';
 import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
 import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
-import { createTemplateStore } from '../../src/frameworks/solid/stores/TemplateStore';
-import { createThemeStore } from '../../src/frameworks/solid/stores/ThemeStore';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
+import { createAccountStore } from '../../src/shared/stores/AccountStore';
+import { createAppStore } from '../../src/shared/stores/AppStore';
+import { createChatStore } from '../../src/shared/stores/ChatStore';
+import { createClockStore } from '../../src/shared/stores/ClockStore';
+import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
+import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
+import { createProfileStore } from '../../src/shared/stores/ProfileStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
+import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
+import { createSessionStore } from '../../src/shared/stores/SessionStore';
+import { createShapeStore } from '../../src/shared/stores/ShapeStore';
+import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
+import { createThemeStore } from '../../src/shared/stores/ThemeStore';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
 
@@ -461,19 +464,65 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     window.addEventListener('popstate', report);
     report();
-    const clockStore = createClockStore();
+    const clockStore = createClockStore({ reactivity: solidReactivity });
     const shellStore = createShellStore({ platform });
-    const chatStore = createChatStore({ shellStore });
-    const accountStore = createAccountStore({ platform });
-    const sessionStore = createSessionStore({ platform, backend, shellStore, chatStore, accountStore });
-    const runtimeStore = createRuntimeStore({ platform, sessionStore, shellStore });
-    const datasetStore = createDatasetStore({ sessionStore });
-    const shapeStore = createShapeStore({ sessionStore, datasetStore });
+    const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
+    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
+    const sessionStore = createSessionStore({
+      reactivity: solidReactivity,
+      platform,
+      backend,
+      credential,
+      firstScreen,
+      shellStore,
+      chatStore,
+      accountStore,
+    });
+    const runtimeStore = createRuntimeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      platform,
+      sessionStore,
+      shellStore,
+    });
+    const datasetStore = createDatasetStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      toasts: toastService,
+      sessionStore,
+    });
+    const shapeStore = createShapeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
     const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
-    const profileStore = createProfileStore({ sessionStore, runtimeStore, accountStore });
-    const themeStore = createThemeStore({ sessionStore, datasetStore });
-    const templateStore = createTemplateStore({ sessionStore, datasetStore, themeStore, routeStore });
-    const appStore = createAppStore();
+    const profileStore = createProfileStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      credential,
+      toasts: toastService,
+      sessionStore,
+      runtimeStore,
+      accountStore,
+    });
+    const themeStore = createThemeStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+    });
+    const templateStore = createTemplateStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      liveTemplates: solidLiveTemplates,
+      sessionStore,
+      datasetStore,
+      themeStore,
+      routeStore,
+    });
+    const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
       sessionStore,
       datasetStore,
@@ -486,7 +535,14 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       themeStore,
       shellStore,
     });
-    const presenceStore = createPresenceStore({ datasetStore, profileStore, routeStore, sessionStore });
+    const presenceStore = createPresenceStore({
+      reactivity: solidReactivity,
+      firstScreen,
+      datasetStore,
+      profileStore,
+      routeStore,
+      sessionStore,
+    });
     startBoot({ sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     stores = {
       routeStore,

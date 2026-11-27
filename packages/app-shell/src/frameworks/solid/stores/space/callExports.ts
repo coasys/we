@@ -10,12 +10,11 @@ import {
   transcriptLine,
 } from '@shared/interpretation/callExport';
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import type { ProfileStore } from '@shared/stores/ProfileStore';
 import { displayName, type InterpretationPort } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { saveFile, type SaveOutcome } from '@we/design-utils';
 import { CollectionBlock, type DatasetProxy, getEntityForDataset } from '@we/entities';
-
-import type { ProfileStore } from '../ProfileStore';
 
 /** What the exports read from the space they are made in. */
 export interface CallExportDeps {

@@ -8,8 +8,8 @@ import { bundledTemplates } from '../src/shared/registries/bundledTemplates.gene
 import { templateRegistry } from '../src/shared/registries/templateRegistry';
 import { viewRegistry } from '../src/shared/registries/viewRegistry';
 
-const STORE = join(__dirname, '../src/frameworks/solid/stores/TemplateStore.tsx');
-const EDITOR_STORE = join(__dirname, '../src/frameworks/solid/stores/EditorStore.tsx');
+const STORE = join(__dirname, '../src/shared/stores/TemplateStore.ts');
+const EDITOR_STORE = join(__dirname, '../src/shared/stores/EditorStore.ts');
 
 /**
  * `node.id` is the visual editor's only handle on the tree.
@@ -30,18 +30,16 @@ const EDITOR_STORE = join(__dirname, '../src/frameworks/solid/stores/EditorStore
 describe('every schema that becomes the live template gets node ids', () => {
   const source = readFileSync(STORE, 'utf8');
 
-  it('setCurrentTemplate is called from exactly one place', () => {
-    const calls = source.match(/setCurrentTemplate\(/g) ?? [];
-    // The destructured signal declaration, plus the single call inside commitTemplate.
-    expect(calls.length, 'a new setCurrentTemplate call bypasses ensureNodeIds — route it through commitTemplate').toBe(
-      1,
-    );
+  it('the live document is replaced from exactly one place', () => {
+    const calls = source.match(/live\.replace\(/g) ?? [];
+    // The single call inside commitTemplate.
+    expect(calls.length, 'a new live.replace call bypasses ensureNodeIds — route it through commitTemplate').toBe(1);
   });
 
   it('that one place ensures ids before it sets', () => {
     const body = /function commitTemplate\([\s\S]*?\n  \}/.exec(source)?.[0] ?? '';
     expect(body, 'commitTemplate not found').toContain('ensureNodeIds');
-    expect(body.indexOf('ensureNodeIds')).toBeLessThan(body.indexOf('setCurrentTemplate'));
+    expect(body.indexOf('ensureNodeIds')).toBeLessThan(body.indexOf('live.replace'));
   });
 
   it('the boot template is ensured too, being the one tree no setter ever touches', () => {

@@ -31,10 +31,9 @@ import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { actingAs, answerAs } from '../../../shared/pretendPeople';
 import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
-import { signalOptimism } from '../../../shared/signalOptimism';
 import { reactions } from '../../../shared/sources/signalTally';
+import { actingAs, answerAs, signalOptimism } from '../hostState';
 import { useStore } from '../stores/useStore';
 
 type TypeRow = SignalTypeData & { id: string; name?: string };

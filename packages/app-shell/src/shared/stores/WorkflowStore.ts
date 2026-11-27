@@ -1,0 +1,993 @@
+/**
+ * WorkflowStore — the space's workflows, as the Workflows route, a record's inspector and a card read and change
+ * them.
+ *
+ * The store over three framework-neutral files: `shared/workflowLanes.ts` (a workflow as a main line,
+ * branches and a sequence rule), `shared/workflowDraft.ts` (every edit to a workflow being written) and
+ * `shared/workflowViews.ts` (lanes, requirements and a record's walk, in words). Everything a schema shows
+ * is computed there; this file decides only *when* — which workflow is open, what is being watched, and
+ * what a press does.
+ *
+ * ## What it watches
+ *
+ * - **The open workflow**: every record going through it, for the route's list of records.
+ * - **Every startable workflow**: so a card or the inspector can say which workflows a record is going
+ *   through, and where it stands in each (`recordWorkflows`). One watch per workflow; a space has a handful.
+ *
+ * The task-state workflow is listed and shown, but it is the board's: it is written from the space's
+ * task states and moved on the board, so it is never edited, started or moved from here
+ * (`managedBy: 'task-states'`).
+ *
+ * ## Who may change what
+ *
+ * Saving, deleting and archiving a workflow are for whoever administers the space — the same person the
+ * space's other shared settings answer to. Anybody may start a workflow on a record, ask for a move, and
+ * take back their own ask.
+ */
+import type {
+  Requirement,
+  WorkflowCapabilities,
+  WorkflowDefinition,
+  WorkflowItem,
+  WorkflowSummary,
+} from '@we/backend-shared';
+import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '@we/backend-shared';
+import { getEntityForDataset } from '@we/entities';
+import { CORE_MANIFEST } from '@we/entities/manifest';
+import type { Accessor, ReactivityPort } from '@we/reactivity';
+
+import { distinctSignal } from '../distinctSignal';
+import { evidenceSubjectOf } from '../evidenceSubjects';
+import type { FirstScreen } from '../firstScreen';
+import { modelLabel } from '../shapes/recordDisplay';
+import { TASK_WORKFLOW } from '../taskWorkflow';
+import type { Toasts } from '../toasts';
+import * as draftEdits from '../workflowDraft';
+import {
+  definitionOf,
+  type DraftEdit,
+  draftOf,
+  isRefusal,
+  presetDraft,
+  stateLabelOf,
+  type WorkflowDraft,
+  type WorkflowPreset,
+} from '../workflowDraft';
+import { toLanes, type WorkflowSequenceRule } from '../workflowLanes';
+import { subjectLabel, type SubjectName, subjectTitleOf } from '../workflowSubjects';
+import {
+  approvalsRule,
+  editorView,
+  historyView,
+  kindOf,
+  type RecordView,
+  recordView,
+  refusalWords,
+  type StepHistoryView,
+  type WorkflowEditorView,
+  type WorkflowLabels,
+} from '../workflowViews';
+import type { DatasetStore } from './DatasetStore';
+import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
+
+/** A workflow as a list shows it. */
+export interface WorkflowSummaryView {
+  name: string;
+  label: string;
+  /** It can be edited here: it reads back exactly, and nothing else writes it. */
+  editable: boolean;
+  /** How many records are going through it. */
+  records: number;
+  /**
+   * How many of them are still running: not at a final step (one with no move out of it). From the
+   * watched records, so it follows a run started or moved here or by anybody else; 0 for a workflow
+   * that is not watched (an archived one, the task-state one) or whose definition is not read yet.
+   */
+  running: number;
+  /** What writes it, when something other than this editor does. Empty otherwise. */
+  managedBy: '' | 'task-states';
+  archived: boolean;
+  /** Its steps, in order — empty until its definition has been read. */
+  steps: { name: string; label: string; final: boolean }[];
+  /** The moves between them. */
+  moves: { from: string; to: string }[];
+}
+
+/** The workflow on screen, and the records going through it. */
+export interface OpenWorkflowView extends WorkflowEditorView {
+  label: string;
+  editable: boolean;
+  managedBy: '' | 'task-states';
+  archived: boolean;
+  /** Newest first. */
+  records: RecordView[];
+  /**
+   * The records have been read. Until they have, an empty `records` is not yet an answer — so Delete,
+   * which is offered only for a workflow nothing is going through, waits for it rather than flashing.
+   */
+  recordsLoaded: boolean;
+  /** A record's moves, once asked for with `loadHistory`. */
+  history: Record<string, StepHistoryView[]>;
+}
+
+/** The workflow being written. */
+export interface WorkflowDraftView extends WorkflowEditorView {
+  label: string;
+  /** Not saved yet at all. */
+  isNew: boolean;
+  /** Differs from what is saved. */
+  dirty: boolean;
+  /** What a backend would refuse, as sentences. Saving is refused while there are any. */
+  problems: string[];
+}
+
+/** One workflow a record is going through, as a chip on its card says it. */
+export interface RecordWorkflowChip {
+  workflow: string;
+  label: string;
+  state: string | null;
+  stateLabel: string;
+  /** Moves asked for and not made. */
+  waiting: number;
+  stalled: boolean;
+  /** Where it may be asked to go from here — empty until the workflow's definition is read. */
+  next: RecordView['next'];
+  /** Each move asked for, with who asked and whether the viewer did — what Agree and Withdraw act on. */
+  asks: RecordView['waiting'];
+}
+
+/** One record still going through one of the space's workflows: a row of what is going on. */
+export interface ActiveRunView {
+  /**
+   * `<workflow>|<record>`: one row for one record in one workflow. With an id each row keeps its place
+   * in a list as the rows are rebuilt, which they are on every move anybody makes.
+   */
+  id: string;
+  workflow: string;
+  /** The workflow's name as a person reads it. */
+  label: string;
+  record: string;
+  /** What the record is called: its name, else its kind and a short id. Never empty. */
+  title: string;
+  /** What kind of record it is ("Task"), or empty where that is not known yet. */
+  kind: string;
+  state: string | null;
+  stateLabel: string;
+  /** When anything last happened to it, as an ISO date; empty where the backend cannot say. */
+  lastActivity: string;
+  /** Moves asked for and not made. */
+  waiting: number;
+  stalled: boolean;
+}
+
+export interface WorkflowStore {
+  /** This space has workflows at all: its backend offers them and it is a WE space. */
+  available: Accessor<boolean>;
+  /** What the backend can enforce, and how — see `WorkflowCapabilities`. `null` without workflows. */
+  capabilities: Accessor<WorkflowCapabilities | null>;
+  /** The viewer may save, delete and archive workflows here. */
+  canEdit: Accessor<boolean>;
+  /** Every workflow in the space, archived ones included. */
+  workflows: Accessor<WorkflowSummaryView[]>;
+  /**
+   * The backend has answered with this space's workflows. Until it has, an empty `workflows` is not yet an
+   * answer, and the list is drawn as loading rather than as "no workflows".
+   */
+  workflowsLoaded: Accessor<boolean>;
+  /** Workflows a record can be started on: not archived, not written by something else. */
+  startable: Accessor<{ name: string; label: string; entities: string[] }[]>;
+  /** The workflow on screen, or `null`. */
+  open: Accessor<OpenWorkflowView | null>;
+  /** The workflow being written, or `null`. */
+  draft: Accessor<WorkflowDraftView | null>;
+  /** By record id: every startable workflow the record is going through. */
+  recordWorkflows: Accessor<Record<string, RecordWorkflowChip[]>>;
+  /**
+   * Every record still going through a startable workflow — not at a final step — across all of them,
+   * the one with the latest activity first. A record in two workflows is two rows.
+   */
+  active: Accessor<ActiveRunView[]>;
+
+  refreshWorkflows: () => Promise<void>;
+  openWorkflow: (name: string) => Promise<void>;
+  closeWorkflow: () => void;
+  loadHistory: (record: string) => Promise<void>;
+
+  startWorkflow: (workflow: string, recordId: string) => Promise<void>;
+  moveRecord: (workflow: string, recordId: string, to: string, note?: string) => Promise<string>;
+  withdrawRecord: (workflow: string, recordId: string) => Promise<void>;
+
+  newWorkflow: (preset: WorkflowPreset, label: string, entities?: string[]) => Promise<void>;
+  editWorkflow: () => void;
+  cancelDraft: () => void;
+  saveDraft: () => Promise<void>;
+  deleteWorkflow: (name: string) => Promise<void>;
+
+  setDraftLabel: (label: string) => void;
+  setDraftHint: (hint: string) => void;
+  setDraftEntities: (entities: string[]) => void;
+  addStep: (lane: number, label: string, after?: string) => Promise<void>;
+  removeStep: (name: string) => void;
+  moveStep: (name: string, by: number) => void;
+  renameStep: (name: string, label: string) => void;
+  setStepHint: (name: string, hint: string) => void;
+  /**
+   * A step's name, hint and approvals at once — what a step's edit form saves. Applied as one edit,
+   * so a refusal (a name already used) leaves the step exactly as it was.
+   */
+  updateStep: (
+    name: string,
+    changes: { label?: string; hint?: string; approvals?: number; kind?: string },
+  ) => Promise<void>;
+  addBranch: (from: string, label: string, rejoins?: string) => Promise<void>;
+  setBranchEnd: (lane: number, rejoins: string) => void;
+  setRule: (rule: WorkflowSequenceRule) => void;
+  addException: (from: string, to: string) => void;
+  removeException: (from: string, to: string) => void;
+  setApprovals: (name: string, count: number, kind?: string) => void;
+  addEvidence: (name: string, entity: string, via?: string, min?: number) => Promise<void>;
+  removeEvidence: (name: string, index: number) => void;
+}
+
+/** A workflow's name from what a person typed: its words, capitalised and run together. */
+function workflowNameOf(label: string): string {
+  return label
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+}
+
+/** A workflow's name as a person reads it: "DesignReview" → "Design review". */
+function workflowLabelOf(name: string): string {
+  if (name === TASK_WORKFLOW) return 'Task states';
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** WE's own entities a record may be, searched for its name when a workflow names none. */
+const ANY_RECORD = ['TaskBlock', 'TextBlock', 'CollectionBlock', 'EventBlock'];
+
+/** A model a record's name is read from. */
+type Finder = { findAll(d: unknown, q: unknown): Promise<Record<string, unknown>[]> };
+
+/** A record not read yet: a row names it by a short id until it is. */
+const NO_SUBJECT: SubjectName = { title: '', entity: '' };
+
+/**
+ * Which of a workflow's records are still running: those not at a final step (one nothing leaves). A
+ * record the backend has not placed yet is running. Until the definition is read, which steps are
+ * final is not known, so nothing is running rather than everything.
+ */
+const stillRunning = (definition: WorkflowDefinition | undefined) => {
+  if (!definition) return () => false;
+  const leaving = new Set(definition.transitions.map((t) => t.from));
+  return (item: WorkflowItem) => !item.state || leaving.has(item.state);
+};
+
+/** A time from the backend as an ISO date, for a we-timestamp; empty where there is none. */
+const isoOf = (ms: number | undefined): string => (ms === undefined ? '' : new Date(ms).toISOString());
+
+/** What the workflow store reads of the space store: its words for steps, and who may edit. */
+export interface WorkflowSpace {
+  canAdministerCurrentSpace: Accessor<boolean>;
+  /** The space's task states, whose names the task-state workflow's steps read as. */
+  taskStates: Accessor<{ slug: string; name: string }[]>;
+  /** The space's involvement kinds, whose names an approval rule's kind reads as. */
+  involvementTypes: Accessor<{ slug: string; name: string }[]>;
+  archivedWorkflows: Accessor<string[]>;
+}
+
+export interface WorkflowStoreDeps {
+  reactivity: ReactivityPort;
+  /** The host's first-screen gate: the list is the sidebar's, and waits for it. */
+  firstScreen: Pick<FirstScreen, 'open'>;
+  toasts: Pick<Toasts, 'error' | 'info'>;
+  sessionStore: Pick<SessionStore, 'backendPorts' | 'me'>;
+  datasetStore: Pick<DatasetStore, 'isWeSpace' | 'currentDataset' | 'currentDatasetEntities'>;
+  spaceStore: WorkflowSpace;
+  /** The models the space adopted, which name a record. */
+  shapeStore: Pick<ShapeStore, 'spaceShapes'>;
+}
+
+export function createWorkflowStore(deps: WorkflowStoreDeps): WorkflowStore {
+  const { reactivity, firstScreen, toasts } = deps;
+  const { signal, memo, effect, untrack, batch, onCleanup } = reactivity;
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const spaceStore = deps.spaceStore;
+  const shapeStore = deps.shapeStore;
+
+  const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
+  const handle = () => datasetStore.currentDataset()?.handle;
+  const datasetId = () => datasetStore.currentDataset()?.id ?? '';
+  const me = () => session.me()?.did;
+
+  const available = () => Boolean(port() && handle());
+  const capabilities = () => port()?.capabilities ?? null;
+  const canEdit = () => available() && spaceStore.canAdministerCurrentSpace();
+
+  /**
+   * Words for a workflow's steps. The task-state workflow's steps are the space's task states, so they read as
+   * the community named them; any other workflow's read from their names.
+   */
+  const taskStateNames = memo(() => new Map(spaceStore.taskStates().map((s) => [s.slug, s.name])));
+  const kindNames = memo(() => new Map(spaceStore.involvementTypes().map((k) => [k.slug, k.name])));
+  const labelsFor = (workflow: string): WorkflowLabels => ({
+    state: (name) => (workflow === TASK_WORKFLOW ? taskStateNames().get(name) : undefined) ?? stateLabelOf(name),
+    kind: (slug) => kindNames().get(slug) ?? stateLabelOf(slug),
+  });
+
+  // ─── The list ────────────────────────────────────────────────────────────────
+
+  const [summaries, setSummaries] = signal<WorkflowSummary[]>([]);
+  /*
+    Which space the list last answered for, rather than a flag: a switch of space has to make the list
+    unanswered again at once, and a slow answer for the space somebody just left must not count for
+    the one they are in. On a shared node listing workflows takes seconds, and "no workflows" for those
+    seconds read as the space having lost them.
+  */
+  const [listedFor, setListedFor] = distinctSignal<string | null>(reactivity, null);
+  const workflowsLoaded = () => listedFor() === datasetId();
+
+  async function refreshWorkflows(): Promise<void> {
+    const p = port();
+    const h = handle();
+    const asked = datasetId();
+    if (!p || !h) {
+      setSummaries([]);
+      setListedFor(asked);
+      return;
+    }
+    try {
+      const listed = await p.list(h);
+      if (datasetId() !== asked) return;
+      setSummaries(listed);
+      setListedFor(asked);
+      // Every definition, once: the list says which workflows there are, and a map of the space's workflows
+      // draws their steps — a handful of workflows, each read once and kept until the space changes.
+      for (const summary of listed) void definitionOfWorkflow(summary.name).catch(() => {});
+    } catch (error) {
+      console.warn('WorkflowStore: could not list the workflows', error);
+      // An answer of a kind: waiting on a list that failed would spin for ever.
+      if (datasetId() === asked) setListedFor(asked);
+    }
+  }
+
+  // ─── Definitions, read once per workflow and kept ────────────────────────────────
+
+  // Declared before `workflows`, which reads them: a memo runs as soon as it is made, and a signal
+  // declared below it does not exist yet at that moment.
+  const [definitions, setDefinitions] = signal<Record<string, WorkflowDefinition>>({});
+  /** Hold one more definition, beside those already held. */
+  const holdDefinition = (name: string, definition: WorkflowDefinition) =>
+    setDefinitions({ ...untrack(definitions), [name]: definition });
+  /**
+   * A workflow's definition: the one already read, or — `fresh`, or none read yet — the backend's.
+   * A fresh read leaves the one held in place until it lands, so nothing reading it goes without.
+   */
+  const definitionOfWorkflow = async (name: string, fresh = false): Promise<WorkflowDefinition | null> => {
+    const known = untrack(definitions)[name];
+    if (known && !fresh) return known;
+    const p = port();
+    const h = handle();
+    if (!p || !h) return null;
+    const read = await p.read(h, name);
+    if (read) holdDefinition(name, read);
+    return read;
+  };
+
+  // Declared before `workflows` for the same reason: what each watched workflow holds, by its name.
+  const [items, setItems] = signal<Record<string, WorkflowItem[]>>({});
+
+  const workflows = memo<WorkflowSummaryView[]>(() => {
+    const archived = new Set(spaceStore.archivedWorkflows());
+    const defs = definitions();
+    const watched = items();
+    return summaries()
+      .map((s) => {
+        const managedBy = s.name === TASK_WORKFLOW ? ('task-states' as const) : ('' as const);
+        const definition = defs[s.name];
+        const labels = labelsFor(s.name);
+        const leaving = new Set(definition?.transitions.map((t) => t.from) ?? []);
+        return {
+          name: s.name,
+          label: workflowLabelOf(s.name),
+          editable: s.editable && !managedBy,
+          records: s.records,
+          running: (watched[s.name] ?? []).filter(stillRunning(definition)).length,
+          managedBy,
+          archived: archived.has(s.name),
+          steps: (definition?.states ?? []).map((state) => ({
+            name: state.name,
+            label: labels.state(state.name),
+            final: !leaving.has(state.name),
+          })),
+          moves: (definition?.transitions ?? []).map((t) => ({ from: t.from, to: t.to })),
+        };
+      })
+      .sort((a, b) => Number(Boolean(b.managedBy)) - Number(Boolean(a.managedBy)) || a.label.localeCompare(b.label));
+  });
+
+  /*
+    The names, as the same list while they read the same: the watches below follow it, and a list
+    rebuilt on every move anybody makes would close and open every watch each time.
+  */
+  let startableHeld: string[] = [];
+  const startableNames = memo(() => {
+    const names = workflows()
+      .filter((f) => !f.archived && !f.managedBy)
+      .map((f) => f.name);
+    if (names.join('\u0000') !== startableHeld.join('\u0000')) startableHeld = names;
+    return startableHeld;
+  });
+
+  const startable = memo(() => {
+    const defs = definitions();
+    return startableNames().map((name) => ({
+      name,
+      label: workflowLabelOf(name),
+      entities: defs[name]?.entities ?? [],
+    }));
+  });
+
+  // ─── Watching ────────────────────────────────────────────────────────────────
+
+  /** Watch these workflows, and only these, for as long as the space is on screen. */
+  function watchWorkflows(names: () => string[]) {
+    effect(() => {
+      const list = names();
+      const p = port();
+      const h = handle();
+      if (!p || !h || !list.length) return;
+      let cancelled = false;
+      const stops: (() => void)[] = [];
+      onCleanup(() => {
+        cancelled = true;
+        for (const stop of stops) stop();
+      });
+      for (const name of list) {
+        void definitionOfWorkflow(name).catch(() => {});
+        void p
+          .watch(h, name, (view) => {
+            if (!cancelled) setItems({ ...untrack(items), [name]: view.items });
+          })
+          .then(
+            (stop) => (cancelled ? stop() : stops.push(stop)),
+            (error: unknown) => console.warn('WorkflowStore: could not watch', name, error),
+          );
+      }
+    });
+  }
+
+  const [openName, setOpenName] = distinctSignal(reactivity, '');
+  watchWorkflows(startableNames);
+  watchWorkflows(() => (openName() && !startableNames().includes(openName()) ? [openName()] : []));
+
+  // ─── Subjects ────────────────────────────────────────────────────────────────
+
+  /**
+   * What each record going through a watched workflow is called, by record id — the open workflow's
+   * records and every running one the space lists. Only records that were found are kept: one not
+   * found yet — its model not registered for this space when it was looked for — is looked for again
+   * when the space's models arrive, rather than read as nameless for good.
+   */
+  const [subjects, setSubjects] = signal<Record<string, SubjectName>>({});
+  /**
+   * Which models each record was already looked for in and not found, so a run moving does not ask
+   * again. A read that failed is not kept, and opening a workflow forgets them all.
+   */
+  const searched = new Map<string, string>();
+
+  /**
+   * The property that names a record of each of the space's models. A model the space adopted is named
+   * as it declares (`namePropertyOf` reads `display.title` first), and wins over the foreign snapshot,
+   * which carries no declaration and so only ever gives the guess — the same precedence as
+   * `RecordStore.schemaFor`.
+   */
+  const nameProperties = memo(() => {
+    const out = new Map<string, string>();
+    for (const entry of datasetStore.currentDatasetEntities()) {
+      out.set(entry.name, nameFromProperties(entry.properties.filter((p) => !p.isCollection)));
+    }
+    for (const shape of shapeStore.spaceShapes()) {
+      const schema = shape.manifest?.entities[shape.name];
+      if (schema) out.set(shape.name, namePropertyOf(schema));
+      else if (!out.has(shape.name)) out.set(shape.name, '');
+    }
+    return out;
+  });
+  const namePropertyFor = (entity: string): string => {
+    const core = CORE_MANIFEST.entities[entity];
+    return nameProperties().get(entity) ?? (core ? namePropertyOf(core) : '');
+  };
+
+  /*
+    Every watched workflow's records, looked for in the models each workflow names — or, naming none,
+    WE's own and the space's. Records of workflows that look in the same models are looked for together,
+    and every model is read at once rather than one after another: a workflow over any record asks a
+    dozen models on a space with a dozen of its own.
+  */
+  effect(() => {
+    const h = handle();
+    const watched = items();
+    const defs = definitions();
+    // Tracked so a record whose model was not registered yet is looked for again once it is. The
+    // foreign snapshot is read on navigation; a model adopted since is only in the shape store's list.
+    const spaceModels = [...nameProperties().keys()];
+    if (!h) return;
+    const known = untrack(subjects);
+    const byModels = new Map<string, { models: { entity: string; Model: Finder }[]; missing: Set<string> }>();
+    for (const [name, list] of Object.entries(watched)) {
+      if (!list.length) continue;
+      const definition = defs[name];
+      const candidates = definition?.entities.length
+        ? definition.entities
+        : [...new Set([...ANY_RECORD, ...spaceModels])];
+      const models = candidates.flatMap((entity) => {
+        const Model = getEntityForDataset(entity, h) as Finder | undefined;
+        return Model ? [{ entity, Model }] : [];
+      });
+      const looking = models.map((m) => m.entity).join(',');
+      const group = byModels.get(looking) ?? { models, missing: new Set<string>() };
+      for (const { record } of list) {
+        if (!(record in known) && searched.get(record) !== looking) group.missing.add(record);
+      }
+      if (group.missing.size) byModels.set(looking, group);
+    }
+    for (const [looking, { models, missing }] of byModels) {
+      const wanted = [...missing];
+      for (const id of wanted) searched.set(id, looking);
+      void (async () => {
+        const reads = await Promise.allSettled(
+          models.map(async ({ entity, Model }) => ({
+            entity,
+            rows: await Model.findAll(h, { where: { id: wanted } }),
+          })),
+        );
+        // In the order the models are listed, so a record two of them answer for is named by the first.
+        const found: Record<string, SubjectName> = {};
+        for (const read of reads) {
+          if (read.status !== 'fulfilled') continue;
+          for (const row of read.value.rows) {
+            if (typeof row.id !== 'string' || found[row.id]) continue;
+            found[row.id] = {
+              title: subjectTitleOf(row, namePropertyFor(read.value.entity)),
+              entity: read.value.entity,
+            };
+          }
+        }
+        /*
+          A record no model answered for while a read failed is not answered: forget it was looked for,
+          so the next change to the list — a run moving, the workflow reopened — asks again. Bounded by
+          those changes, not by renders.
+        */
+        if (reads.some((read) => read.status === 'rejected')) {
+          for (const id of wanted) if (!found[id] && searched.get(id) === looking) searched.delete(id);
+        }
+        if (Object.keys(found).length) setSubjects({ ...untrack(subjects), ...found });
+      })();
+    }
+  });
+
+  // ─── The open workflow ───────────────────────────────────────────────────────────
+
+  const [history, setHistory] = signal<Record<string, StepHistoryView[]>>({});
+
+  async function openWorkflow(name: string): Promise<void> {
+    if (!name) return closeWorkflow();
+    searched.clear();
+    setOpenName(name);
+    setHistory({});
+    /*
+      Read again, as somebody may have changed it, but over the one held rather than after dropping it.
+      Dropped, the workflow had no definition until the read landed: `open` went to null — the tree lit
+      the group above the record just chosen — and none of its records counted as running, so every
+      row of Active flows for it went and came back.
+    */
+    try {
+      await definitionOfWorkflow(name, true);
+    } catch (error) {
+      console.error('WorkflowStore: could not read that workflow', error);
+      toasts.error('Could not open that workflow');
+      throw error;
+    }
+  }
+
+  function closeWorkflow(): void {
+    setOpenName('');
+    setHistory({});
+  }
+
+  const open = memo<OpenWorkflowView | null>(() => {
+    const name = openName();
+    const definition = definitions()[name];
+    if (!name || !definition) return null;
+    const summary = workflows().find((f) => f.name === name);
+    const labels = labelsFor(name);
+    const view = editorView(definition, labels);
+    const { model } = toLanes(definition);
+    const named = subjects();
+    return {
+      ...view,
+      label: workflowLabelOf(name),
+      editable: summary?.editable ?? false,
+      managedBy: summary?.managedBy ?? (name === TASK_WORKFLOW ? 'task-states' : ''),
+      archived: summary?.archived ?? false,
+      records: [...(items()[name] ?? [])]
+        .sort((a, b) => (b.since ?? 0) - (a.since ?? 0))
+        .map((item) => recordView(definition, model, item, named[item.record] ?? NO_SUBJECT, me(), labels)),
+      recordsLoaded: name in items(),
+      history: history(),
+    };
+  });
+
+  async function loadHistory(record: string): Promise<void> {
+    const p = port();
+    const h = handle();
+    const name = openName();
+    if (!p || !h || !name) return;
+    try {
+      const moves = await p.history(h, name, record);
+      setHistory({ ...untrack(history), [record]: historyView(moves, labelsFor(name)) });
+    } catch (error) {
+      console.error('WorkflowStore: could not read that record’s history', error);
+      toasts.error('Could not read what happened to that record');
+      throw error;
+    }
+  }
+
+  // ─── Records ─────────────────────────────────────────────────────────────────
+
+  const recordWorkflows = memo<Record<string, RecordWorkflowChip[]>>(() => {
+    const out: Record<string, RecordWorkflowChip[]> = {};
+    const all = items();
+    const defs = definitions();
+    for (const name of startableNames()) {
+      const definition = defs[name];
+      const model = definition ? toLanes(definition).model : null;
+      const labels = labelsFor(name);
+      for (const item of all[name] ?? []) {
+        const view = definition && model ? recordView(definition, model, item, NO_SUBJECT, me(), labels) : null;
+        (out[item.record] ??= []).push({
+          workflow: name,
+          label: workflowLabelOf(name),
+          state: item.state,
+          stateLabel: item.state ? labels.state(item.state) : '',
+          waiting: item.waiting.length,
+          stalled: item.stalled,
+          next: view?.next ?? [],
+          asks: view?.waiting ?? [],
+        });
+      }
+    }
+    return out;
+  });
+
+  /*
+    What is going on: every record still running through a startable workflow, the liveliest first. A
+    backend that cannot say when a record last saw activity is read by when it started; a tie goes to
+    the record's id, so two readers holding the same runs list them alike.
+  */
+  const active = memo<ActiveRunView[]>(() => {
+    const all = items();
+    const defs = definitions();
+    const named = subjects();
+    const rows: (ActiveRunView & { at: number })[] = [];
+    for (const name of startableNames()) {
+      const labels = labelsFor(name);
+      for (const item of (all[name] ?? []).filter(stillRunning(defs[name]))) {
+        const subject = named[item.record] ?? NO_SUBJECT;
+        const at = item.lastActivity ?? item.since;
+        rows.push({
+          id: `${name}|${item.record}`,
+          workflow: name,
+          label: workflowLabelOf(name),
+          record: item.record,
+          title: subjectLabel(subject, item.record),
+          kind: subject.entity ? modelLabel(subject.entity) : '',
+          state: item.state,
+          stateLabel: item.state ? labels.state(item.state) : '',
+          lastActivity: isoOf(at),
+          waiting: item.waiting.length,
+          stalled: item.stalled,
+          at: at ?? 0,
+        });
+      }
+    }
+    return rows
+      .sort((a, b) => b.at - a.at || (a.record < b.record ? -1 : a.record > b.record ? 1 : 0))
+      .map(({ at: _at, ...row }) => row);
+  });
+
+  const writable = (workflow: string) => {
+    if (workflow === TASK_WORKFLOW) throw new Error('Tasks move through their states on the board');
+    const p = port();
+    const h = handle();
+    if (!p || !h) throw new Error('This space has no workflows');
+    return { p, h };
+  };
+
+  async function startWorkflow(workflow: string, recordId: string): Promise<void> {
+    try {
+      const { p, h } = writable(workflow);
+      await p.start(h, workflow, recordId);
+    } catch (error) {
+      console.error('WorkflowStore: could not start that workflow', error);
+      toasts.error('Could not start that workflow');
+      throw error;
+    }
+  }
+
+  async function moveRecord(workflow: string, recordId: string, to: string, note?: string): Promise<string> {
+    let outcome: string;
+    try {
+      const { p, h } = writable(workflow);
+      const result = await p.move(h, workflow, recordId, to, note ? { note } : undefined);
+      outcome = result.outcome === 'refused' ? result.reason : result.outcome;
+    } catch (error) {
+      console.error('WorkflowStore: could not ask for that move', error);
+      toasts.error('Could not ask for that move');
+      throw error;
+    }
+    const from = untrack(items)[workflow]?.find((item) => item.record === recordId)?.state;
+    const why = refusalWords(untrack(definitions)[workflow], from, to, outcome, labelsFor(workflow));
+    if (outcome === 'unmet') toasts.error(why ?? 'Not yet — what that step asks for is not there');
+    else if (outcome === 'not-allowed') toasts.error(why ?? 'It cannot move there from where it is');
+    else if (outcome === 'stalled') toasts.error('Stuck between two agreed moves — one of them has to be withdrawn');
+    else if (outcome === 'pending') toasts.info('Still being counted — it will move when it has');
+    return outcome;
+  }
+
+  async function withdrawRecord(workflow: string, recordId: string): Promise<void> {
+    try {
+      const { p, h } = writable(workflow);
+      await p.withdraw(h, workflow, recordId);
+    } catch (error) {
+      console.error('WorkflowStore: could not withdraw that', error);
+      toasts.error('Could not withdraw that');
+      throw error;
+    }
+  }
+
+  // ─── Writing a workflow ──────────────────────────────────────────────────────────
+
+  const [draftState, setDraftState] = distinctSignal<{ draft: WorkflowDraft; saved: WorkflowDefinition | null } | null>(
+    reactivity,
+    null,
+  );
+
+  const draft = memo<WorkflowDraftView | null>(() => {
+    const state = draftState();
+    if (!state) return null;
+    const definition = definitionOf(state.draft);
+    const caps = capabilities();
+    const taken = !state.saved && workflows().some((f) => f.name === state.draft.name);
+    return {
+      ...editorView(definition, labelsFor(state.draft.name), state.draft.model),
+      label: workflowLabelOf(state.draft.name),
+      isNew: !state.saved,
+      dirty: !state.saved || JSON.stringify(state.saved) !== JSON.stringify(definition),
+      problems: [
+        ...(taken ? [`There is already a workflow called "${workflowLabelOf(state.draft.name)}".`] : []),
+        ...validateWorkflowDefinition(definition, caps ?? undefined),
+      ],
+    };
+  });
+
+  /** Apply one edit to the draft, or say why it cannot be made. Answers whether it applied. */
+  const edit = (change: (draft: WorkflowDraft) => DraftEdit): boolean => {
+    const state = draftState();
+    if (!state) return false;
+    const next = change(state.draft);
+    if (isRefusal(next)) {
+      toasts.error(next.refused);
+      return false;
+    }
+    setDraftState({ ...state, draft: next });
+    return true;
+  };
+
+  /*
+    The same edit, for an edit a form submits. A form closes in its action's `onSuccess`, which only
+    a promise has, so these resolve when the edit applied and reject when it was refused: the form
+    closes on the one and stays open, holding what was typed, on the other. The refusal has already
+    been said in a toast.
+  */
+  // eslint-disable-next-line @typescript-eslint/require-await -- Kept async so an edit that throws reaches the form as a rejection, which keeps it open, rather than as a synchronous throw.
+  const submitted = async (change: (draft: WorkflowDraft) => DraftEdit): Promise<void> => {
+    if (!edit(change)) throw new Error('That change was not made');
+  };
+
+  function newWorkflow(preset: WorkflowPreset, label: string, entities: string[] = ['TaskBlock']): Promise<void> {
+    const name = workflowNameOf(label) || 'NewWorkflow';
+    setDraftState({ draft: presetDraft(preset, name, entities), saved: null });
+    return Promise.resolve();
+  }
+
+  function editWorkflow(): void {
+    const view = open();
+    const definition = definitions()[openName()];
+    if (!view || !definition) return;
+    if (!view.editable) {
+      toasts.error(
+        view.managedBy === 'task-states'
+          ? 'Task states are edited in the space’s settings'
+          : 'This workflow was written by something that uses more than this editor can show',
+      );
+      return;
+    }
+    const read = draftOf(definition);
+    if (!read) {
+      toasts.error('This workflow does not read as lanes, so it cannot be edited here');
+      return;
+    }
+    setDraftState({ draft: read, saved: definition });
+  }
+
+  function cancelDraft(): void {
+    setDraftState(null);
+  }
+
+  async function saveDraft(): Promise<void> {
+    const state = draftState();
+    const view = draft();
+    if (!state || !view) return;
+    if (!canEdit()) throw new Error('Only whoever administers this space can save its workflows');
+    if (view.problems.length) {
+      toasts.error(view.problems[0]);
+      throw new Error(view.problems.join(' '));
+    }
+    const definition = definitionOf(state.draft);
+    try {
+      const { p, h } = writable(definition.name);
+      await p.install(h, definition);
+    } catch (error) {
+      console.error('WorkflowStore: could not save that workflow', error);
+      toasts.error('Could not save that workflow');
+      throw error;
+    }
+    setDraftState(null);
+    holdDefinition(definition.name, definition);
+    await refreshWorkflows();
+    await openWorkflow(definition.name);
+  }
+
+  async function deleteWorkflow(name: string): Promise<void> {
+    if (!canEdit()) throw new Error('Only whoever administers this space can delete its workflows');
+    try {
+      const { p, h } = writable(name);
+      await p.remove(h, name);
+    } catch (error) {
+      console.error('WorkflowStore: could not delete that workflow', error);
+      toasts.error('A workflow can only be deleted once nothing is going through it — archive it instead');
+      throw error;
+    }
+    if (openName() === name) closeWorkflow();
+    await refreshWorkflows();
+  }
+
+  /*
+    What the space on screen holds: forgotten when the space changes, and the list asked again
+    whenever the space changes or workflows become available; after a write, the write asks. Not
+    before the first screen is up (`shared/firstScreen.ts`): the list is the sidebar's, and each
+    workflow brings a definition read. Started late, it reads the space on screen then — and
+    `workflowsLoaded` stays false until it has, so nothing reads "no workflows" meanwhile.
+
+    One effect, forgetting first and then reading. They were five, and correct only because Solid ran
+    them in the order they were made — a definition read before the old space's were dropped would
+    have found the old one held. The port promises no order between siblings, so forgetting happens
+    here, in one update, before the list is asked for.
+  */
+  let seenSpace: string | undefined;
+  effect(() => {
+    const space = datasetId();
+    available();
+    const open = firstScreen.open();
+    untrack(() => {
+      batch(() => {
+        if (space !== seenSpace) {
+          seenSpace = space;
+          setDefinitions({});
+          setItems({});
+          setOpenName('');
+          setDraftState(null);
+          setSubjects({});
+          searched.clear();
+        }
+        setSummaries([]);
+      });
+      if (open) void refreshWorkflows();
+    });
+  });
+
+  const requirementsOf = (draftValue: WorkflowDraft, name: string): Requirement[] => [
+    ...(draftValue.states[name]?.requires ?? []),
+  ];
+
+  const store: WorkflowStore = {
+    available,
+    capabilities,
+    canEdit,
+    workflows,
+    workflowsLoaded,
+    startable,
+    open,
+    draft,
+    recordWorkflows,
+    active,
+    refreshWorkflows,
+    openWorkflow,
+    closeWorkflow,
+    loadHistory,
+    startWorkflow,
+    moveRecord,
+    withdrawRecord,
+    newWorkflow,
+    editWorkflow,
+    cancelDraft,
+    saveDraft,
+    deleteWorkflow,
+    setDraftLabel: (label) =>
+      edit((d) => {
+        const state = draftState();
+        if (state?.saved) return { refused: 'A saved workflow keeps its name.' };
+        const name = workflowNameOf(label);
+        return name ? { ...d, name } : { refused: 'A workflow needs a name.' };
+      }),
+    setDraftHint: (hint) => edit((d) => ({ ...d, ...(hint.trim() ? { hint: hint.trim() } : { hint: undefined }) })),
+    setDraftEntities: (entities) => edit((d) => ({ ...d, entities: [...new Set(entities.filter(Boolean))] })),
+    addStep: (lane, label, after) => submitted((d) => draftEdits.addStep(d, lane, label, after || undefined)),
+    removeStep: (name) => edit((d) => draftEdits.removeStep(d, name)),
+    moveStep: (name, by) => edit((d) => draftEdits.moveStep(d, name, by < 0 ? -1 : 1)),
+    renameStep: (name, label) => edit((d) => draftEdits.renameStep(d, name, label)),
+    setStepHint: (name, hint) => edit((d) => draftEdits.setStepHint(d, name, hint)),
+    updateStep: (name, changes) =>
+      submitted((d) => {
+        let next: DraftEdit = d;
+        if (changes.hint !== undefined) next = draftEdits.setStepHint(next, name, changes.hint);
+        if (!isRefusal(next) && (changes.approvals !== undefined || changes.kind !== undefined)) {
+          const current = next.states[name]?.requires ?? [];
+          const before = current.find((r) => r.kind === 'approvals');
+          const count = changes.approvals ?? (before?.kind === 'approvals' ? before.count : 1);
+          const rule = approvalsRule(count, changes.kind ?? (before?.kind === 'approvals' ? kindOf(before.from) : ''));
+          const rest = current.filter((r) => r.kind !== 'approvals');
+          next = draftEdits.setRequirements(next, name, rule ? [rule, ...rest] : rest);
+        }
+        // Renamed last: everything above names the step as it was.
+        if (!isRefusal(next) && changes.label !== undefined) next = draftEdits.renameStep(next, name, changes.label);
+        return next;
+      }),
+    addBranch: (from, label, rejoins) => submitted((d) => draftEdits.addBranch(d, from, label, rejoins || undefined)),
+    setBranchEnd: (lane, rejoins) => edit((d) => draftEdits.setBranchEnd(d, lane, rejoins || undefined)),
+    setRule: (rule) => edit((d) => draftEdits.setRule(d, rule)),
+    addException: (from, to) => edit((d) => draftEdits.addException(d, from, to)),
+    removeException: (from, to) => edit((d) => draftEdits.removeException(d, from, to)),
+    setApprovals: (name, count, kind = '') =>
+      edit((d) => {
+        const rule = approvalsRule(count, kind);
+        const rest = requirementsOf(d, name).filter((r) => r.kind !== 'approvals');
+        return draftEdits.setRequirements(d, name, rule ? [rule, ...rest] : rest);
+      }),
+    addEvidence: (name, entity, via, min = 1) =>
+      submitted((d) => {
+        if (!entity) return { refused: 'Say what kind of record has to be there.' };
+        const requirement: Requirement = {
+          kind: 'evidence',
+          ...evidenceSubjectOf(entity),
+          ...(min !== 1 ? { min } : {}),
+          ...(via ? { via: { relation: via } } : {}),
+        };
+        return draftEdits.setRequirements(d, name, [...requirementsOf(d, name), requirement]);
+      }),
+    removeEvidence: (name, index) =>
+      edit((d) => {
+        let seen = -1;
+        const kept = requirementsOf(d, name).filter((r) => r.kind !== 'evidence' || ++seen !== index);
+        return draftEdits.setRequirements(d, name, kept);
+      }),
+  };
+
+  return store;
+}

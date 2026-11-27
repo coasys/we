@@ -11,7 +11,7 @@
  *
  * `ShellStore` sits above the Router and is the only link in the chain that outlives the overlay, so
  * it is where the answer has to live. The overlay's half of the contract is covered in
- * `shellRouteStore.test.tsx`; this is the store's half.
+ * `shellRouterRoot.test.tsx`; this is the store's half.
  */
 import { render } from '@solidjs/testing-library';
 import { describe, expect, it } from 'vitest';

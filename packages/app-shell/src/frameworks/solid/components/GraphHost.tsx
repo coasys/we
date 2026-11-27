@@ -38,16 +38,10 @@ import { createStore, reconcile } from 'solid-js/store';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
 import { followRead, idsOf, readKey, readThroughWatch, wholeAnswer } from '../../../shared/graphWatch';
-import {
-  actAs,
-  actingAs,
-  pretendPeople,
-  pretendPeopleAvailable,
-  pretendSettings,
-  setPretendCount,
-} from '../../../shared/pretendPeople';
+import { pretendPeopleAvailable } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
+import { actAs, actingAs, pretendPeople, pretendSettings, setPretendCount } from '../hostState';
 import { chromeComponentRegistry } from '../registries/componentRegistry';
 import { useStore } from '../stores/useStore';
 import { nodeControls } from './graphControls';

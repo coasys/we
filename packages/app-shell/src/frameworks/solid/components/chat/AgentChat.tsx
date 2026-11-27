@@ -17,6 +17,7 @@
  * No streaming: a reply lands whole when its row settles. While it runs the steps show live and a
  * Stop button stands in for send.
  */
+import { type ChatInputs } from '@shared/stores/ChatStore';
 import {
   type AgentConversationMessage,
   type AgentConversationRef,
@@ -28,7 +29,6 @@ import { tokenVar } from '@we/design-utils';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 
 import { isSpaceSelf } from '../../../../shared/spaceSync';
-import { type ChatInputs } from '../../stores/ChatStore';
 import { useStore } from '../../stores/useStore';
 import { askBefore, lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
 

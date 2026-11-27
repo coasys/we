@@ -586,7 +586,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /**
    * One kind's devices as a picker's options, with "system default" at the top.
    *
-   * Built here rather than in the schema for the reason `templateOverrideOptions` is: a schema can
+   * Built here rather than in the schema for the reason `templateStore.templateOverrideOptions` is: a schema can
    * map a store array into options and cannot *prepend* to one, and without that first entry there
    * is no way back to having no opinion — a picker you can only ever set is one you have to clear
    * by knowing where the storage is.

@@ -7,15 +7,19 @@
  * useful to a template nor something a template should be able to name. A template reads what the
  * board makes of it — `arrangedBoard(…).workflow` — which is the reading, not the raw runs.
  */
-import { createSignal } from 'solid-js';
+import type { ReactivityPort } from '@we/reactivity';
 
 import type { TaskWorkflowView } from './taskWorkflow';
 
-const [view, setView] = createSignal<TaskWorkflowView | null>(null);
+export type TaskWorkflowLive = ReturnType<typeof createTaskWorkflowLive>;
 
-export const taskWorkflowLive = {
-  /** The workflow on screen, or `null`. Reactive: reading it makes the caller redraw when it changes. */
-  view,
-  /** What `SpaceStore` calls when a snapshot arrives, the rules change, or the space does. */
-  set: (next: TaskWorkflowView | null) => void setView(next),
-};
+/** One app's workflow on screen. The app keeps one (`frameworks/solid/hostState.ts`). */
+export function createTaskWorkflowLive(signal: ReactivityPort['signal']) {
+  const [view, setView] = signal<TaskWorkflowView | null>(null);
+  return {
+    /** The workflow on screen, or `null`. Reactive: reading it makes the caller redraw when it changes. */
+    view,
+    /** What `SpaceStore` calls when a snapshot arrives, the rules change, or the space does. */
+    set: (next: TaskWorkflowView | null) => void setView(next),
+  };
+}
