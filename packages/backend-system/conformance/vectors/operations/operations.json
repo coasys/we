@@ -4978,8 +4978,8 @@
       "manifest": {
         "version": "1",
         "operations": {
-          "linkTwo": {
-            "description": "Links two records under a holder, in the order given, through an ordered and an unordered relation.",
+          "linkFour": {
+            "description": "Links four records under a holder, in the order given, through an ordered and an unordered relation.",
             "params": {
               "holder": {
                 "type": "string",
@@ -4990,6 +4990,14 @@
                 "required": true
               },
               "second": {
+                "type": "string",
+                "required": true
+              },
+              "third": {
+                "type": "string",
+                "required": true
+              },
+              "fourth": {
                 "type": "string",
                 "required": true
               }
@@ -5025,6 +5033,30 @@
                   "id": {
                     "$": "holder"
                   },
+                  "relation": "children",
+                  "target": {
+                    "$": "third"
+                  }
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "holder"
+                  },
+                  "relation": "children",
+                  "target": {
+                    "$": "fourth"
+                  }
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "holder"
+                  },
                   "relation": "mentions",
                   "target": {
                     "$": "first"
@@ -5040,6 +5072,30 @@
                   "relation": "mentions",
                   "target": {
                     "$": "second"
+                  }
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "holder"
+                  },
+                  "relation": "mentions",
+                  "target": {
+                    "$": "third"
+                  }
+                }
+              },
+              {
+                "link": {
+                  "entity": "CollectionBlock",
+                  "id": {
+                    "$": "holder"
+                  },
+                  "relation": "mentions",
+                  "target": {
+                    "$": "fourth"
                   }
                 }
               }
@@ -5069,13 +5125,29 @@
           "fields": {
             "kind": "card"
           }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:Yew",
+          "fields": {
+            "kind": "card"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:Xi",
+          "fields": {
+            "kind": "card"
+          }
         }
       ],
-      "operation": "linkTwo",
+      "operation": "linkFour",
       "args": {
         "holder": "urn:example:holder",
         "first": "urn:example:alpha",
-        "second": "urn:example:Zed"
+        "second": "urn:example:Zed",
+        "third": "urn:example:Yew",
+        "fourth": "urn:example:Xi"
       },
       "invoker": "did:example:invoker",
       "invocationId": "00000000-0000-4000-8000-000000000040",
@@ -5093,6 +5165,14 @@
       "records": {
         "CollectionBlock": [
           {
+            "id": "urn:example:Xi",
+            "kind": "card"
+          },
+          {
+            "id": "urn:example:Yew",
+            "kind": "card"
+          },
+          {
             "id": "urn:example:Zed",
             "kind": "card"
           },
@@ -5103,8 +5183,8 @@
           {
             "id": "urn:example:holder",
             "kind": "board",
-            "children": ["urn:example:alpha", "urn:example:Zed"],
-            "mentions": ["urn:example:Zed", "urn:example:alpha"]
+            "children": ["urn:example:alpha", "urn:example:Zed", "urn:example:Yew", "urn:example:Xi"],
+            "mentions": ["urn:example:Xi", "urn:example:Yew", "urn:example:Zed", "urn:example:alpha"]
           }
         ]
       }
