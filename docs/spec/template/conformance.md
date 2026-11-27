@@ -21,13 +21,22 @@ never renamed or reused), and `note`, one line saying what it pins.
 | `query-compile.json`  | query-compile  | a `$query`, a where-object or a scope → its descriptor, its pruned form, or whether it is anchored | format            |
 | `render.json`         | render         | a template, data and a script of events → the drawn tree and the actions fired, after each         | format            |
 | `validate.json`       | validate       | a document → whether it is valid, and the path of each error                                       | format            |
-| `safety.json`         | safety         | a template, its grants and a script of events → the drawn tree, actions fired and confirmations    | format            |
-| `panels.json`         | panels         | panel declarations and an address → the panels present; a panel's three rungs → its placement      | format            |
+| `safety.json`         | safety         | a template, its grants and a script of events → the drawn tree, actions fired and confirmations    | host              |
+| `panels.json`         | panels         | panel declarations and an address → the panels present; a panel's three rungs → its placement      | host              |
 | `rdf.json`            | rdf            | a template → the triples it denotes through the [JSON-LD context](rdf.md), as canonical N-Quads    | format            |
 | `style.json`          | style          | design-system props and a theme → the style emitted and each token's value                         | core catalog      |
 | `tokens/<theme>.json` | tokens         | a theme → every token's computed value                                                             | core catalog      |
 | `host-functions.json` | host-functions | a host function and its options → value                                                            | WE's host catalog |
 | `query/query.json`    | query          | entity schemas, a dataset and a query → the rows it answers with; after writes, for a live case    | backend           |
+
+**Kind** says who runs a family. A `format` family is the format's own: every implementation of the
+class that runs it ([below](#which-families-a-class-runs)) passes it. A `host` family is the host
+profile's: `safety` judges the grants, gestures and confirmations a host makes when a template acts,
+and `panels` the panels a host resolves and places, so they run through a host's bag and its shell,
+not a renderer. **A renderer-only implementation MAY skip the host families**, and a renderer that
+passes every format family conforms as a renderer without them. A `core catalog` family is run by a
+host that provides the core catalog, `WE's host catalog` by one that provides WE's host functions,
+and `backend` by a backend.
 
 ### Values
 
@@ -110,7 +119,7 @@ a validator advises is its own, except in a case whose point is a warning the fo
 case carries `warnings`, as `errors`, and a validator SHOULD warn at each of its paths (the
 `validate.scope.*-advice` cases). The cases name only the core catalog's vocabulary.
 
-**safety.** A render case (below) with `grants`, the [capability groups](safety.md#capability-grants)
+**safety.** A host family: a renderer-only implementation MAY skip it. A render case (below) with `grants`, the [capability groups](safety.md#capability-grants)
 the template is granted, and `confirm`, the person's answer to every confirmation the host asks
 (default: declined). The template is drawn through the host's bag: a member outside the grant is
 absent, a write nobody asked for is refused, a destructive action asks first. Each `expect` entry
@@ -123,7 +132,7 @@ and canonicalize the result; `nquads` is each statement, one a line, sorted. Com
 then read them back as JSON ([Lossless both ways](rdf.md#lossless-both-ways)) and compare with
 `template` as JSON values.
 
-**panels.** `{ id, note, op, … }`. `op: "active"`: given the interface's declarations `shell`, the
+**panels.** A host family: a renderer-only implementation MAY skip it. `{ id, note, op, … }`. `op: "active"`: given the interface's declarations `shell`, the
 section's `view`, the app's `app` and the address as `segments`, `present` lists the panels on the
 screen, by id (and title, where the case gives one), in order. `op: "placement"`: given a panel's
 own bid `request` (`{ id, edge, size, float }`), the template's `declared` entry, the reader's
