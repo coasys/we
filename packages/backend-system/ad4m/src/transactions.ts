@@ -10,6 +10,12 @@
  * Where it falls short of "all or nothing" is the executor's commit, not this runner, and the live
  * conformance run says where. A write that goes to a language call rather than to the perspective
  * runs outside any batch, so it is not undone either.
+ *
+ * An operation's `expect` is degraded here. The runner re-reads each `expect` find before the commit,
+ * and the commit takes no condition, so a write landing between that re-read and the commit is not
+ * noticed. The executor can commit a batch conditionally (`commit_batch_if`), but only on a list of
+ * links, and no client can call it (ad4m-issue:expect-conditional-commit). When `commitBatch` takes
+ * an expectation over a query, the re-read moves into the commit and the window closes.
  */
 import { Ad4mModel, type PerspectiveProxy } from '@coasys/ad4m';
 import type { EntityTransactionRunner } from '@we/entities';
