@@ -193,6 +193,37 @@ function plain(value: unknown): unknown {
   return value;
 }
 
+/**
+ * A template or theme the host brought itself, as the file shows it. Which ones a host brings, what
+ * it calls them and the ids it gives them are its own, so no world can name them for every host.
+ */
+const HOST = { $host: true };
+
+/**
+ * The ids the case's world made — its records' ids, and the ids its templates give themselves. A
+ * template or theme with any other id is one the host brought.
+ */
+let worldMade = new Set<string>();
+
+function madeBy(world: ProfileWorld): Set<string> {
+  const made = new Set<string>();
+  for (const record of [...(world.own ?? []), ...(world.spaces ?? []).flatMap((s) => s.records ?? [])]) {
+    made.add(record.id);
+    const schema = record.entity === 'Template' ? record.fields.schema : undefined;
+    if (typeof schema === 'string') {
+      const id = (JSON.parse(schema) as { id?: unknown }).id;
+      if (typeof id === 'string') made.add(id);
+    }
+  }
+  return made;
+}
+
+/** A switcher row's id is WE's key for the row; what it names is the template, by its own id. */
+const SWITCHER_PREFIX = 'space::';
+const switched = (id: unknown) =>
+  typeof id === 'string' && id.startsWith(SWITCHER_PREFIX) ? id.slice(SWITCHER_PREFIX.length) : id;
+const named = (id: unknown) => (typeof id === 'string' && worldMade.has(id) ? id : HOST);
+
 const pick = (value: unknown, keys: readonly string[]): Record<string, unknown> => {
   const out: Record<string, unknown> = {};
   if (!value || typeof value !== 'object') return out;
@@ -273,6 +304,29 @@ function projected(path: string, value: unknown): unknown {
       return (value as Record<string, unknown>[]).map((row) =>
         pick(row, ['group', 'key', 'type', 'value', 'source', 'set', 'locked', 'lockedBy']),
       );
+    case 'templateStore.switcherGroups':
+      // A group's label is the host's words for it; its rows the world did not make are the host's own.
+      return (value as { items: Record<string, unknown>[] }[]).map((group) => ({
+        items: group.items
+          .filter((item) => named(switched(item.id)) !== HOST)
+          .map((item) => ({ ...pick(item, ['name', 'icon', 'editable']), id: switched(item.id) })),
+      }));
+    case 'templateStore.currentSwitcherId':
+      return named(switched(value));
+    case 'themeStore.currentThemeId':
+      return named(value);
+    case 'templateStore.templateOverrideOptions':
+    case 'themeStore.themeOverrideOptions':
+      // The first two options are the host's: following the space and following one's own default.
+      return (value as Record<string, unknown>[])
+        .filter((option) => named(option.value) !== HOST)
+        .map((option) => pick(option, ['label', 'value']));
+    case 'themeStore.builtInThemes':
+    case 'themeStore.installedThemes':
+    case 'themeStore.spaceThemes':
+      return (value as Record<string, unknown>[])
+        .filter((theme) => named(theme.id) !== HOST)
+        .map((theme) => pick(theme, ['id', 'name']));
     case 'shellStore.panelInstances':
       // An instance's id is the host's to mint; a case that needs one reads it (see `decodeArg`).
       return (value as Record<string, unknown>[]).map((instance) => pick(instance, ['panel', 'inputs', 'title']));
@@ -523,6 +577,7 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
   for (const path of input.observe) {
     if (!STATE_SET.has(path)) throw new Error(`${input.id}: ${path} is not a state member of any profile`);
   }
+  worldMade = madeBy(input.world);
   setTemplatePanels(input.world.panels as never, input.world.panels ? `vectors:${input.id}` : '');
   const registered = (input.world.modules ?? []).map((module) => {
     moduleRegistry.register(

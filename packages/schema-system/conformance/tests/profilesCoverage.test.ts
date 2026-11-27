@@ -14,13 +14,6 @@ const members = CAPABILITY_PROFILES.flatMap((profile) => profile.members);
 const actions = members.filter((m) => m.kind === 'action').map((m) => m.path);
 const states = members.filter((m) => m.kind === 'state').map((m) => m.path);
 
-/**
- * State no case can pin without naming the host's own catalogue. Which theme is on screen is the
- * host's resolution of the person's choice, the space's and the template's own, over the themes that
- * host has — so the value is a host's theme id, and the same world gives another host another one.
- */
-const UNPINNED = new Set(['themeStore.currentThemeId']);
-
 describe('profiles.json covers the profiles', () => {
   it('calls every action of every profile in some case', () => {
     const called = new Set(file.cases.map((c) => c.action).filter(Boolean));
@@ -29,8 +22,7 @@ describe('profiles.json covers the profiles', () => {
 
   it('reads every state member of every profile in some case', () => {
     const read = new Set(file.cases.flatMap((c) => c.observe));
-    expect(states.filter((path) => !read.has(path) && !UNPINNED.has(path))).toEqual([]);
-    for (const path of UNPINNED) expect(read.has(path), `${path} is read after all; take it off the list`).toBe(false);
+    expect(states.filter((path) => !read.has(path))).toEqual([]);
   });
 
   it('has cases for every profile, each naming one that exists', () => {

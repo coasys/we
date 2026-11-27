@@ -5,8 +5,8 @@
 A template reads and changes records through neutral surfaces every host provides: `$query`,
 `record.*` and declared operations ([Template format](../template/README.md),
 [Operations](../operations/README.md)). Some of what a template needs is not records: where the person
-is, what they are looking at, who else is here, who people are, and the settings of the space the
-template is drawn in. A **capability profile** is a named, versioned contract for that host state: a
+is, what they are looking at and how it is arranged, who else is here, who people are, the space the
+template is drawn in, and which template and theme are on screen. A **capability profile** is a named, versioned contract for that host state: a
 list of members, each a piece of state a template reads or an action it calls, and the change events
 that say when the state moves.
 
@@ -15,7 +15,7 @@ host's own: a signal graph, a struct updated each frame, a server round trip. Th
 template can rely on, never how a host is built.
 
 > **Why profiles.** Without them a template can name anything its first host happens to hold, and
-> every member becomes part of the contract by accident. Five coarse profiles are few enough for
+> every member becomes part of the contract by accident. Seven coarse profiles are few enough for
 > another host to implement on purpose and to test against, and coarse enough that a template's
 > needs are a short list.
 
@@ -32,10 +32,12 @@ template can rely on, never how a host is built.
 | Profile                                       | What it covers                                                                                                                                                             |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`navigation`](members.md#navigation)         | The address and moving around it: the path, its query, the person's spaces, the sections of the one on screen.                                                             |
-| [`view-state`](members.md#view-state)         | What is on screen and never stored in a space: the panels a template declared, the theme shown, named clocks.                                                              |
+| [`view-state`](members.md#view-state)         | What is on screen and never stored in a space: the panels a template declared and their instances, scrolling to something, named clocks. Every host that draws has these.  |
+| [`layout`](members.md#layout)                 | How declared panels are arranged where a host docks them in lanes: folded lanes, whether anything moved, putting it all back.                                              |
 | [`presence`](members.md#presence)             | Who else is in the space right now, and what this person says about themselves to them.                                                                                    |
 | [`identity`](members.md#identity)             | Who people are, as their profiles say: the person viewing, the people of the space, anybody named by a DID, and whom the person viewing has muted and what they have read. |
-| [`space-settings`](members.md#space-settings) | The space a template is drawn in and what a template may change about it: its look, its defaults, what this person sees.                                                   |
+| [`space-settings`](members.md#space-settings) | The space a template is drawn in, what this person sees of it and their own settings for it. The space's own record changes through its operations.                        |
+| [`appearance`](members.md#appearance)         | Which template and theme this person sees and may choose between: those on offer, those on screen, switching, and their own choice for the space on screen.                |
 
 The listing in [Members](members.md) and [`profiles.json`](profiles.json) is normative; the
 descriptions in it are part of each member's meaning.
@@ -82,17 +84,23 @@ A profile says what a host provides; the group still decides whether a template 
 as for anything else in the bag. A template granted some of a profile's groups sees those members
 and not the others, which are absent rather than blocked.
 
-Actions in `space-settings` are pinned to the space on screen: none takes an argument naming another
-space, and a host MUST NOT let one reach another.
+Actions in `space-settings` and `appearance` are pinned to the space on screen: none takes an argument
+naming another space, and a host MUST NOT let one reach another.
 
 ## Providing a profile
 
 A host that **provides** a profile at a version MUST provide every member that version lists, with
-the shapes, arguments and events it gives. A host MAY provide several profiles, all five, or none. A
+the shapes, arguments and events it gives. A host MAY provide several profiles, all seven, or none. A
 host that does not provide a profile answers its members as it answers any name outside the bag: no
 value, and an action that does nothing ([Degradation](../template/degradation-and-versioning.md#degradation)).
 
 A host SHOULD say which profiles, at which versions, it provides.
+
+A host that provides `layout` provides `view-state` too: the panels a layout arranges are the ones
+`view-state` declares and opens. The other way round does not hold. A host that shows one panel at a
+time, a phone, or a host that renders a page once and sends it MAY provide `view-state` alone: closing
+a declared panel and opening an instance still mean what they say, and nothing in `view-state` reads
+how panels are arranged.
 
 A host shows it provides a profile by passing that profile's vectors ([Conformance](#conformance)).
 
@@ -130,7 +138,8 @@ The profiles' suite is a set of **vectors**: language-neutral JSON cases, each a
 with, an address, and one action of a profile with its arguments, and what a conforming host's state
 reads before and after the action, with the change events it caused. A case with no action records
 what the host reads out of its world. A host runs every vector of the profiles it provides and
-compares; it conforms to a profile when every vector of that profile matches.
+compares; it conforms to a profile when every vector of that profile matches. A host providing
+`layout` runs `view-state`'s vectors too, as it provides that profile as well.
 
 The vectors name only profile members and plain values. They do not say how a host holds its state,
 and running them needs nothing of the reference implementation but the file.
@@ -150,15 +159,15 @@ the default where it has none.
 
 `worlds` holds what a case's host starts with, by name. A world is:
 
-| Key        | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `me`       | The viewing person's DID.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `profiles` | Profiles people have published, the viewing person's included: `{ "did", "firstName"?, "lastName"?, "handle"?, "bio"? }`. Anybody else named is somebody who published nothing.                                                                                                                                                                                                                                                                                             |
-| `spaces`   | The spaces the viewing person holds: `{ "id", "name", "shared"?, "members"?, "records"? }`. `id` is what the space's address names (`/space/<id>`) and what records name the space by. A `shared` space has `members` besides the viewing person, and presence; a personal one has neither. `records` are the records it holds, in the operations vectors' shape (`{ "entity", "id", "fields", "relations"? }`); its `Space` record is the one describing the space itself. |
-| `own`      | Records the viewing person holds for themselves, in the same shape: they follow the person into every space and nobody else sees them (whom they muted, what they read, what they hid in a space).                                                                                                                                                                                                                                                                          |
-| `peers`    | Other people present: `{ "did", "availability", "focus": { "space", "path" }, "activities"? }`, each in the space and on the page `focus` names, saying what `availability` and `activities` say.                                                                                                                                                                                                                                                                           |
-| `modules`  | Capabilities the host offers that declare settings, by their declaration alone: `{ "id", "name", "settings" }`, `settings` as a module declares them (`key`, `label`, `type`, `options`, `default`, `levels`).                                                                                                                                                                                                                                                              |
-| `panels`   | The panels the template on screen declares, as its `meta.panels` does ([Panels](../template/README.md)). Each one's `home` is its lane.                                                                                                                                                                                                                                                                                                                                     |
+| Key        | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `me`       | The viewing person's DID.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `profiles` | Profiles people have published, the viewing person's included: `{ "did", "firstName"?, "lastName"?, "handle"?, "bio"? }`. Anybody else named is somebody who published nothing.                                                                                                                                                                                                                                                                                                                                                                 |
+| `spaces`   | The spaces the viewing person holds: `{ "id", "name", "shared"?, "members"?, "records"? }`. `id` is what the space's address names (`/space/<id>`) and what records name the space by. A `shared` space has `members` besides the viewing person, and presence; a personal one has neither. `records` are the records it holds, in the operations vectors' shape (`{ "entity", "id", "fields", "relations"? }`); its `Space` record is the one describing the space itself, and a `Template` record's `schema` is the template's JSON, as text. |
+| `own`      | Records the viewing person holds for themselves, in the same shape: they follow the person into every space and nobody else sees them (whom they muted, what they read, what they hid in a space).                                                                                                                                                                                                                                                                                                                                              |
+| `peers`    | Other people present: `{ "did", "availability", "focus": { "space", "path" }, "activities"? }`, each in the space and on the page `focus` names, saying what `availability` and `activities` say.                                                                                                                                                                                                                                                                                                                                               |
+| `modules`  | Capabilities the host offers that declare settings, by their declaration alone: `{ "id", "name", "settings" }`, `settings` as a module declares them (`key`, `label`, `type`, `options`, `default`, `levels`).                                                                                                                                                                                                                                                                                                                                  |
+| `panels`   | The panels the template on screen declares, as its `meta.panels` does ([Panels](../template/README.md)). Each one's `home` is its lane.                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Each case:
 
@@ -202,7 +211,9 @@ For each case, on a host that starts with nothing but the case's world:
    noted in step 5. One change can be two events: a member named by two events of a profile puts both
    in the list.
 7. **Compare** `state`, or `before`, `after` and `events`, with the case, as JSON values: equal keys,
-   equal values, lists in the same order.
+   equal values, lists in the same order — `events` for the profiles this host provides. A case
+   records what its action did to every profile WE provides, so a host without `layout` leaves
+   `layout`'s entry out of the comparison, and one without `navigation` leaves that out.
 
 **Time does not pass in a case.** A clock that starts playing is read before it has moved, so a
 case's clock reads are exact.
@@ -223,6 +234,15 @@ more:
   in code-point order: neither profile promises an order.
 - An image the host stored is `{ "$image": true }`. What a host keeps for a picture is its own
   encoding of it; that one is set is what the profile promises.
+- **Template and theme ids are opaque.** Which templates and themes a host brings itself, what it
+  calls them and the ids it gives them are its own, so a vector names only those the world made — its
+  `Template` and `Theme` records, by their ids, and a template by the `id` its own JSON gives it. An
+  id naming one the host brought reads as `{ "$host": true }`; a list of templates or themes leaves
+  the host's own out (a theme compares by `id` and `name`); an override option list compares the
+  options naming what the world made, by `label` and `value`, leaving out the host's two that follow
+  the space and follow the person's own default. A switcher row's `id` is the host's key for that
+  choice and compares as the id of the template it offers; its group compares by its rows, its label
+  being the host's words for it.
 
 A section's label and icon, a moment's label, and an instance's id are a host's own words and names
 for them, and are not compared.
@@ -232,19 +252,20 @@ for them, and are not compared.
 | Profile          | What its cases show                                                                                                                                                                                                                                                                                                                                       |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `navigation`     | The address read apart, inside a space and out; each form of path `navigate` resolves (`~/`, `?`, `..`, absolute, a query of record ids); `setParam` writing, removing, pushing and writing what is there; Back; going to another space with and without the section on screen, or to one named; following a reference to a record, a space and a person. |
-| `view-state`     | Declared panels closed, put back, opened again with inputs, brought forward and closed by instance; lanes toggled and set; a reset; a scroll that is no state; a clock configured, played with and without a range, paused, toggled, sought by milliseconds, by date, to everything and by fraction, and its speed and loop set.                          |
+| `view-state`     | Declared panels closed and put back, opened again with inputs, brought forward and closed by instance; a scroll that is no state; a clock configured, played with and without a range, paused, toggled, sought by milliseconds, by date, to everything and by fraction, and its speed and loop set.                                                       |
+| `layout`         | The arrangement as declared; a declared panel closed and put back; lanes toggled, folded, unfolded and folded again; a reset, and a reset of nothing.                                                                                                                                                                                                     |
 | `presence`       | The roster of a shared space and of a personal one; availability, and invisible; activities said, replaced and withdrawn by id and by type; moving page.                                                                                                                                                                                                  |
 | `identity`       | Profiles, members, mutes and read markers as the world gives them; an unnamed person's assembled name; members following the space on screen while the person's own lists stay.                                                                                                                                                                           |
-| `space-settings` | The space on screen and outside one; its default template and theme; its avatar and cover image; a section hidden and shown again; a module hidden; this person's own setting set and cleared.                                                                                                                                                            |
+| `space-settings` | The space on screen and outside one, with its defaults; a picture made ready for the record, which changes nothing; a section hidden and shown again; a module hidden; this person's own setting set and cleared.                                                                                                                                         |
+| `appearance`     | What is on offer in a space and outside one, and the theme on screen in each; switching to the space's template; choosing it over the default; a theme chosen for the space, the one that shows anyway, withdrawn, chosen by option, and following the person's own default.                                                                              |
 
 Every action of every profile is called by at least one case, and every state member is read by at
-least one, but for `themeStore.currentThemeId` (below).
+least one.
 
 ### What a vector does not carry
 
-- **Which theme is on screen.** It is the host's resolution of the person's choice, the space's and
-  the template's own over the themes that host has, so the value is one of that host's theme ids, and
-  no world can name it for every host.
+- **The host's own templates and themes**, nor which of them is on screen when the world chose none
+  (above).
 - **The sections outside a space.** No case reads `spaceStore.viewNav` with no space on screen.
 - **Going back from the first entry.** Back at the start of the session's history does nothing;
   the vectors start each case inside a history that already has entries.

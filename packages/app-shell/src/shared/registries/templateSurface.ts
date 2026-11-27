@@ -985,7 +985,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     provideTemplates: WIRING,
     provideSpaceAppearance: WIRING,
     // ── the theme a space is seen in: this agent's override per space ──
-    themeOverrideOptions: state('space-admin'),
+    // `appearance` with the override it lists choices for: this agent's own choice for the space on
+    // screen, offered from the themes they already have.
+    themeOverrideOptions: state('appearance'),
     /*
       `appearance`, not `space-admin` beside its options list: this answers "is the theme you are
       looking at one you chose here", which is a fact about the current view rather than about
@@ -1144,7 +1146,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     toggleInstalled: action('library'),
     provideSpaceAppearance: WIRING,
     // This agent's override of the template one space shows — beside its theme twin in `themeStore`.
-    templateOverrideOptions: state('space-admin'),
+    templateOverrideOptions: state('appearance'),
     setSpaceTemplateOverride: hereOnly('appearance', 1),
     provideEditingProbe: WIRING,
     /*

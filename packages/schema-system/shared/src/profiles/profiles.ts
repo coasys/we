@@ -182,7 +182,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     version: '1.0.0',
     title: 'View state',
     description:
-      'What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, the theme on screen, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.',
+      'What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.',
     members: [
       {
         path: 'shellStore.panelInstances',
@@ -244,14 +244,6 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         description: 'Scrolls the element with that id into view.',
         ambient: true,
         events: [],
-      },
-      {
-        path: 'themeStore.currentThemeId',
-        kind: 'state',
-        group: 'view-state',
-        shape: 'string',
-        description: 'The id of the theme on screen.',
-        events: ['theme'],
       },
       {
         path: 'clockStore.clocks',
@@ -360,11 +352,6 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         name: 'panels',
         changes: ['shellStore.panelInstances'],
         description: 'A panel instance opened or closed.',
-      },
-      {
-        name: 'theme',
-        changes: ['themeStore.currentThemeId'],
-        description: 'A different theme is on screen.',
       },
       {
         name: 'clock',
@@ -721,6 +708,165 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         name: 'settings',
         changes: ['spaceStore.myModuleSettings'],
         description: 'A setting changed at any level this person’s value resolves through.',
+      },
+    ],
+  },
+  {
+    id: 'appearance',
+    version: '1.0.0',
+    title: 'Appearance',
+    description:
+      'Which template and theme this person is looking at, and what they may choose between: the templates and themes on offer here, the ones on screen, switching between them, and this person’s own choice for the space on screen. Choosing is always this person’s own — it changes what they see and nothing anybody else does. A space’s defaults are its record’s, and change through operations.',
+    members: [
+      {
+        path: 'templateStore.switcherGroups',
+        kind: 'state',
+        group: 'appearance',
+        shape: '{ label: string, items: { id: string, name: string, icon: string, editable: boolean }[] }[]',
+        description:
+          'The templates this person may switch to here, grouped as a switcher lists them: the space’s own, this person’s, and those the host brings. A row’s `id` is the host’s key for that choice — what `switchTemplate` takes and `currentSwitcherId` names — and `editable` says whether it can be changed in place rather than copied first.',
+        events: ['templates'],
+      },
+      {
+        path: 'templateStore.currentSwitcherId',
+        kind: 'state',
+        group: 'appearance',
+        shape: 'string',
+        description: 'The id of the switcher row for the template on screen.',
+        events: ['template'],
+      },
+      {
+        path: 'templateStore.templateOverrideOptions',
+        kind: 'state',
+        group: 'appearance',
+        shape: '{ label: string, value: string }[]',
+        description:
+          'What this person may choose to see in the space on screen instead of its default template, as a picker lists it: following the space, following their own default, then every template they have. A `value` is what `setSpaceTemplateOverride` takes.',
+        events: ['templates'],
+      },
+      {
+        path: 'themeStore.builtInThemes',
+        kind: 'state',
+        group: 'appearance',
+        shape: 'Theme[]',
+        description: 'The themes the host brings itself. A Theme is { id, name, … }.',
+        events: ['themes'],
+      },
+      {
+        path: 'themeStore.installedThemes',
+        kind: 'state',
+        group: 'appearance',
+        shape: 'Theme[]',
+        description: 'The themes this person keeps for themselves, which follow them into every space.',
+        events: ['themes'],
+      },
+      {
+        path: 'themeStore.spaceThemes',
+        kind: 'state',
+        group: 'appearance',
+        shape: 'Theme[]',
+        description: 'The themes the space on screen holds; empty outside a space.',
+        events: ['themes'],
+      },
+      {
+        path: 'themeStore.themeOverrideOptions',
+        kind: 'state',
+        group: 'appearance',
+        shape: '{ label: string, value: string }[]',
+        description:
+          'What this person may choose to see in the space on screen instead of its default theme, as `templateOverrideOptions` lists templates. A `value` is what `setSpaceThemeOverride` takes.',
+        events: ['themes'],
+      },
+      {
+        path: 'themeStore.currentThemeId',
+        kind: 'state',
+        group: 'view-state',
+        shape: 'string',
+        description:
+          'The id of the theme on screen: this person’s choice for the space on screen where they made one; else the space’s default or a theme the template on screen brings, the space’s first when that template is the space’s own default; else their own default.',
+        events: ['theme'],
+      },
+      {
+        path: 'themeStore.spaceThemePinned',
+        kind: 'state',
+        group: 'appearance',
+        shape: 'boolean',
+        description:
+          'This person has chosen a theme for the space on screen other than the one that would show anyway — whether a "use the space’s theme" control has anything to undo.',
+        events: ['theme'],
+      },
+      {
+        path: 'templateStore.switchTemplate',
+        kind: 'action',
+        group: 'appearance',
+        args: [{ name: 'id', type: 'string' }],
+        description:
+          'Shows the template a switcher row offers, by the row’s id, keeping the section on screen where the template has it — and the theme it brings, where it brings one. For now only: entering the space again shows what its default and this person’s choice say.',
+        events: ['template', 'theme'],
+      },
+      {
+        path: 'templateStore.setSpaceTemplateOverride',
+        kind: 'action',
+        group: 'appearance',
+        args: [{ name: 'value', type: 'string' }],
+        description:
+          'Chooses what this person sees in the space on screen instead of its default template, by a `templateOverrideOptions` value, and shows it, with the theme it brings where it brings one. Theirs alone: nobody else’s screen changes.',
+        events: ['template', 'templates', 'theme'],
+      },
+      {
+        path: 'themeStore.applyTheme',
+        kind: 'action',
+        group: 'appearance',
+        args: [{ name: 'themeId', type: 'string' }],
+        description:
+          'Shows a theme where this person is: chosen for the space on screen, or as their own default outside a space.',
+        events: ['theme'],
+      },
+      {
+        path: 'themeStore.clearSpaceThemePin',
+        kind: 'action',
+        group: 'appearance',
+        args: [],
+        description: 'Withdraws this person’s choice of theme for the space on screen, so its default shows again.',
+        events: ['theme'],
+      },
+      {
+        path: 'themeStore.setSpaceThemeOverride',
+        kind: 'action',
+        group: 'appearance',
+        args: [{ name: 'value', type: 'string' }],
+        description:
+          'Chooses what this person sees in the space on screen instead of its default theme, by a `themeOverrideOptions` value, and shows it.',
+        events: ['theme', 'themes'],
+      },
+    ],
+    events: [
+      {
+        name: 'templates',
+        changes: ['templateStore.switcherGroups', 'templateStore.templateOverrideOptions'],
+        description:
+          'The templates on offer changed — a different space is on screen, or one was added or removed — or what the space and this person default to did.',
+      },
+      {
+        name: 'template',
+        changes: ['templateStore.currentSwitcherId'],
+        description: 'A different template is on screen.',
+      },
+      {
+        name: 'themes',
+        changes: [
+          'themeStore.builtInThemes',
+          'themeStore.installedThemes',
+          'themeStore.spaceThemes',
+          'themeStore.themeOverrideOptions',
+        ],
+        description:
+          'The themes on offer changed — a different space is on screen, or one was added or removed — or what the space and this person default to did.',
+      },
+      {
+        name: 'theme',
+        changes: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
+        description: 'A different theme is on screen, or this person’s choice for the space on screen changed.',
       },
     ],
   },

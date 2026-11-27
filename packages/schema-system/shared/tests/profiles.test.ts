@@ -3,13 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, NEUTRAL_NAMESPACES, PROFILE_MEMBERS } from '../src/profiles';
 
 describe('capability profiles', () => {
-  it('are the five, each versioned', () => {
+  it('are the seven, each versioned', () => {
     expect(CAPABILITY_PROFILES.map((p) => p.id)).toEqual([
       'navigation',
       'view-state',
+      'layout',
       'presence',
       'identity',
       'space-settings',
+      'appearance',
     ]);
     for (const profile of CAPABILITY_PROFILES) expect(profile.version).toMatch(/^\d+\.\d+\.\d+$/);
   });

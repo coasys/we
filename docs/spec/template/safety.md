@@ -49,7 +49,7 @@ surface; a host's space tier SHOULD grant no more than reading and taking part i
 > probe. Absence says nothing, and matches what an uninstalled module already looks like.
 
 What any host provides, member by member and each with its group, is the
-[capability profiles](../profiles/README.md): five versioned member lists another host can provide
+[capability profiles](../profiles/README.md): seven versioned member lists another host can provide
 exactly.
 
 ---
