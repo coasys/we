@@ -232,6 +232,206 @@
           ]
         }
       ]
+    },
+    "planted": {
+      "me": "did:example:me",
+      "profiles": [
+        {
+          "did": "did:example:me",
+          "firstName": "Mae",
+          "lastName": "Rivers",
+          "handle": "mae"
+        },
+        {
+          "did": "did:example:ada",
+          "firstName": "Ada",
+          "lastName": "Lind",
+          "handle": "ada",
+          "bio": "Grows beans."
+        },
+        {
+          "did": "did:example:bo",
+          "handle": "bo"
+        }
+      ],
+      "spaces": [
+        {
+          "id": "garden",
+          "name": "Garden",
+          "shared": true,
+          "members": ["did:example:ada", "did:example:bo"],
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-garden",
+              "fields": {
+                "name": "Garden",
+                "description": "Plots and seeds",
+                "enabledViews": ["about", "cards", "boards"],
+                "moduleSettings": {
+                  "reader": {
+                    "density": "roomy"
+                  }
+                },
+                "defaultThemeId": "urn:example:theme-moss",
+                "defaultTemplateId": "plots"
+              }
+            },
+            {
+              "entity": "Theme",
+              "id": "urn:example:theme-moss",
+              "fields": {
+                "name": "Moss",
+                "slug": "moss"
+              }
+            },
+            {
+              "entity": "Template",
+              "id": "urn:example:template-plots",
+              "fields": {
+                "name": "Plots",
+                "icon": "plant",
+                "schema": "{\"schemaVersion\":1,\"id\":\"plots\",\"type\":\"Column\",\"meta\":{\"name\":\"Plots\",\"description\":\"Beds and what is in them\",\"icon\":\"plant\"},\"children\":[]}"
+              }
+            }
+          ]
+        },
+        {
+          "id": "orchard",
+          "name": "Orchard",
+          "shared": true,
+          "members": ["did:example:ada"],
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-orchard",
+              "fields": {
+                "name": "Orchard",
+                "description": "Trees",
+                "enabledViews": ["about", "cards"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "notebook",
+          "name": "Notebook",
+          "records": [
+            {
+              "entity": "Space",
+              "id": "urn:example:space-notebook",
+              "fields": {
+                "name": "Notebook",
+                "description": "Mine alone",
+                "enabledViews": ["about"]
+              }
+            }
+          ]
+        }
+      ],
+      "own": [
+        {
+          "entity": "MutedAgent",
+          "id": "urn:example:muted-bo",
+          "fields": {
+            "did": "did:example:bo"
+          }
+        },
+        {
+          "entity": "Theme",
+          "id": "urn:example:theme-dusk",
+          "fields": {
+            "name": "Dusk",
+            "slug": "dusk"
+          }
+        },
+        {
+          "entity": "ReadMarker",
+          "id": "urn:example:read-post",
+          "fields": {
+            "nodeId": "urn:example:post",
+            "spaceUuid": "garden",
+            "lastReadAt": "2026-11-01T10:00:00.000Z"
+          }
+        }
+      ],
+      "peers": [
+        {
+          "did": "did:example:ada",
+          "availability": "busy",
+          "focus": {
+            "space": "garden",
+            "path": "/space/garden/cards"
+          }
+        },
+        {
+          "did": "did:example:bo",
+          "availability": "available",
+          "focus": {
+            "space": "garden",
+            "path": "/space/garden/about"
+          },
+          "activities": [
+            {
+              "type": "typing",
+              "id": "urn:example:post"
+            }
+          ]
+        }
+      ],
+      "modules": [
+        {
+          "id": "reader",
+          "name": "Reader",
+          "settings": [
+            {
+              "key": "compact",
+              "label": "Compact rows",
+              "type": "boolean",
+              "default": false,
+              "levels": ["agent-in-space"]
+            },
+            {
+              "key": "density",
+              "label": "Density",
+              "type": "enum",
+              "options": [
+                {
+                  "label": "Roomy",
+                  "value": "roomy"
+                },
+                {
+                  "label": "Tight",
+                  "value": "tight"
+                }
+              ],
+              "default": "tight",
+              "levels": ["space", "agent-in-space"]
+            }
+          ]
+        }
+      ],
+      "panels": [
+        {
+          "id": "inspector",
+          "title": "Inspector",
+          "home": "side",
+          "order": 0,
+          "node": {
+            "type": "span"
+          }
+        },
+        {
+          "id": "outline",
+          "title": "Outline",
+          "home": "side",
+          "order": 1,
+          "node": {
+            "type": "span"
+          }
+        }
+      ],
+      "followSpaceTemplates": true
     }
   },
   "entities": {
@@ -506,7 +706,7 @@
       },
       "events": {
         "navigation": ["address"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -541,7 +741,7 @@
       },
       "events": {
         "navigation": ["address"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -594,7 +794,7 @@
       },
       "events": {
         "navigation": ["address"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -663,7 +863,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -886,7 +1086,7 @@
       },
       "events": {
         "navigation": ["address"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -950,7 +1150,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -1017,7 +1217,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -1084,7 +1284,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -1153,7 +1353,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -1220,7 +1420,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -2594,7 +2794,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -2805,7 +3005,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -3036,7 +3236,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -3301,7 +3501,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -3574,7 +3774,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -3832,7 +4032,7 @@
         ]
       },
       "events": {
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -3899,7 +4099,7 @@
       },
       "events": {
         "navigation": ["address"],
-        "presence": ["roster", "address"]
+        "presence": ["roster"]
       }
     },
     {
@@ -4013,7 +4213,7 @@
       },
       "events": {
         "navigation": ["address", "space"],
-        "presence": ["roster", "address"],
+        "presence": ["roster"],
         "identity": ["members"],
         "space-settings": ["space", "settings"],
         "appearance": ["templates", "themes"]
@@ -4537,6 +4737,24 @@
           "$host": true
         },
         "appearance.spaceThemePinned": false
+      }
+    },
+    {
+      "id": "appearance.read-the-space-template",
+      "profile": "appearance",
+      "note": "A space that names its own template, on a host that follows the space: that template is on screen on arrival, with the space’s theme.",
+      "world": "planted",
+      "address": "/space/garden",
+      "observe": ["appearance.currentSwitcherId", "appearance.currentThemeId", "appearance.templateOverrideOptions"],
+      "state": {
+        "appearance.currentSwitcherId": "plots",
+        "appearance.currentThemeId": "urn:example:theme-moss",
+        "appearance.templateOverrideOptions": [
+          {
+            "label": "Plots",
+            "value": "plots"
+          }
+        ]
       }
     },
     {

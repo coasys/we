@@ -158,6 +158,21 @@ export const PROFILE_WORLDS: Record<string, ProfileWorld> = {
   community: COMMUNITY,
   // Somebody alone with a space of their own, who has published nothing about themselves.
   unnamed: { me: ME, profiles: [{ did: ME }], spaces: [COMMUNITY.spaces![2]] },
+  // The same, with the garden naming its own template, on a host that shows a space that way.
+  planted: {
+    ...COMMUNITY,
+    followSpaceTemplates: true,
+    spaces: COMMUNITY.spaces!.map((s) =>
+      s.id === 'garden'
+        ? {
+            ...s,
+            records: s.records!.map((r) =>
+              r.entity === 'Space' ? { ...r, fields: { ...r.fields, defaultTemplateId: 'plots' } } : r,
+            ),
+          }
+        : s,
+    ),
+  },
 };
 
 type Shape = Omit<ProfileCase, 'world'> & { world?: string };
@@ -819,6 +834,14 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'In a space: its own template and theme on offer beside this person’s, under a template the host brings that brings a theme of its own.',
     address: '/space/garden',
     observe: [...TEMPLATES, ...THEMES],
+  }),
+  c({
+    id: 'appearance.read-the-space-template',
+    profile: 'appearance',
+    note: 'A space that names its own template, on a host that follows the space: that template is on screen on arrival, with the space’s theme.',
+    world: 'planted',
+    address: '/space/garden',
+    observe: ['appearance.currentSwitcherId', 'appearance.currentThemeId', 'appearance.templateOverrideOptions'],
   }),
   c({
     id: 'appearance.read-outside-a-space',

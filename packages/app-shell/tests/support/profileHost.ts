@@ -35,6 +35,7 @@ import { plainLiveTemplates } from '../../src/shared/liveTemplate';
 import { createTestPlatform } from '../../src/shared/platform/testPlatform';
 import type { PlatformAdapter } from '../../src/shared/platform/types';
 import { createAppFrame } from '../../src/shared/registries/appFrame';
+import { DEFAULT_APP_ID } from '../../src/shared/registries/appTemplates';
 import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { createPanelInstances } from '../../src/shared/registries/panelInstances';
@@ -44,7 +45,8 @@ import { provideSeed } from '../../src/shared/seedRegistry';
 import { signalOrder } from '../../src/shared/signalOrder';
 import { createTaskWorkflowLive } from '../../src/shared/taskWorkflowLive';
 
-provideSeed({ name: 'profile-vectors', modules: [] } as never);
+const SEED = { name: 'profile-vectors', modules: [] };
+provideSeed(SEED as never);
 
 /** A record the world holds, in the operations vectors' shape. */
 export interface WorldRecord {
@@ -102,6 +104,12 @@ export interface ProfileWorld {
   modules?: WorldModule[];
   /** The panels the template on screen declares, as its `meta.panels` does. */
   panels?: Record<string, unknown>[];
+  /**
+   * The host shows each space with the template the space names, wherever this person has chosen
+   * none. Without it a host may draw every space its own way first — WE's app does — so a case about
+   * a space's own default template needs a host that follows the space.
+   */
+  followSpaceTemplates?: boolean;
 }
 
 /** A call of a profile action: the member and its arguments, as JSON. */
@@ -586,6 +594,8 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
     if (!STATE_SET.has(path)) throw new Error(`${input.id}: ${path} is not a state member of any profile`);
   }
   worldMade = madeBy(input.world);
+  // WE's own app, which draws no space its own way: every space then opens with the template it names.
+  provideSeed((input.world.followSpaceTemplates ? { ...SEED, host: { ui: { app: DEFAULT_APP_ID } } } : SEED) as never);
   setTemplatePanels(input.world.panels as never, input.world.panels ? `vectors:${input.id}` : '');
   const registered = (input.world.modules ?? []).map((module) => {
     moduleRegistry.register(
@@ -657,6 +667,7 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
     dispose();
     for (const id of registered) moduleRegistry.unregister(id);
     setTemplatePanels(undefined);
+    provideSeed(SEED as never);
     env.close();
     await tick(50);
   }
