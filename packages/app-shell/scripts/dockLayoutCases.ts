@@ -32,7 +32,6 @@ import {
   seatLanes,
   type SnapPoint,
   snapTargetRects,
-  stackCandidates,
   type Viewport,
 } from '../src/shared/dockGeometry';
 
@@ -485,14 +484,22 @@ export function dockLayoutScenarios(): DockScenario[] {
             declared: { [requests[0].id]: 'window' },
           },
         ]);
-      // What the first panel would clear if it were carried off, and the cards it could stack onto.
+      // The snap targets free to the first panel carried off — as a tab, and as itself.
       const first = requests[0].id;
-      add(`${first} carried as a tab`, 'occupiedById', [ref('requests'), first, ref('viewport'), true]);
-      if (drags[name]) add(`${first} staying`, 'occupiedById', [ref('requests'), first, ref('viewport'), false]);
-      add(undefined, 'stackCandidates', [ref('requests'), ref('seatLanes.hidden'), first]);
-      add(undefined, 'takenSnapsOf', [ref('requests'), ref('seatLanes.hidden'), [first]]);
+      const moment = (moving: string, carryingTab: boolean) => ({
+        requests: ref('requests'),
+        moving,
+        seat: [],
+        hidden: ref('seatLanes.hidden'),
+        viewport: ref('viewport'),
+        carryingTab,
+        chrome: ref('chrome'),
+      });
+      add(`${first} carried as a tab`, 'dragSnapTargets', [moment(first, true)]);
+      if (drags[name]) add(`${first} carried itself`, 'dragSnapTargets', [moment(first, false)]);
 
-      // A drag over it: every panel's box as the shell measures it, and what each carried box is offered.
+      // A drag over it: every panel's box as the shell measures it, what each carried box is offered,
+      // and which offer a pointer at its centre means.
       const drag = viewport === desktop ? drags[name] : undefined;
       if (!drag) continue;
       for (const request of requests)
@@ -503,33 +510,58 @@ export function dockLayoutScenarios(): DockScenario[] {
           `box ${request.id}`,
         );
       const boxes = Object.fromEntries(requests.map((request) => [request.id, ref(`box ${request.id}`)]));
-      for (const [label, moving, carried] of drag.moves)
-        add(label, 'edgeDropSlots', [
-          {
-            requests: ref('requests'),
-            moving,
-            boxes,
-            hidden: ref('seatLanes.hidden'),
-            viewport: ref('viewport'),
-            inset: drag.inset,
-            occupied: drag.inset,
-            carried,
-          },
-        ]);
-      if (drag.stackFor)
-        add(`the cards ${drag.stackFor} could stack onto`, 'stackDropSlots', [
-          stackCandidates(
-            requests,
-            seatLanes({ requests, viewport, chrome, touched, titles }).hidden,
-            drag.stackFor,
-          ).map((index) => ref(`box ${requests[index].id}`)),
-        ]);
+      const moves: [string, string, Rect | null][] = [
+        ...drag.moves,
+        ...(drag.stackFor
+          ? [
+              [`${drag.stackFor} carried over the cards it could stack onto`, drag.stackFor, null] as [
+                string,
+                string,
+                null,
+              ],
+            ]
+          : []),
+      ];
+      for (const [label, moving, carried] of moves) {
+        add(
+          label,
+          'dragDropSlots',
+          [{ ...moment(moving, false), boxes, inset: drag.inset, carried, homes: [] }],
+          `slots ${label}`,
+        );
+        if (carried)
+          add(`${label}, the pointer at its centre`, 'dragTarget', [
+            {
+              ...moment(moving, false),
+              slots: ref(`slots ${label}`),
+              pointer: { x: carried.x + carried.w / 2, y: carried.y + carried.h / 2 },
+              rect: carried,
+            },
+          ]);
+      }
     }
 
   begin('a panel carried that is not there', {
     requests: scenario('two sidebars sharing a left band, and a card on the right').requests,
   });
-  add(undefined, 'occupiedById', [ref('requests'), 'gone', desktop, true]);
+  add(undefined, 'dragSnapTargets', [
+    { requests: ref('requests'), moving: 'gone', seat: [], hidden: {}, viewport: desktop, carryingTab: true, chrome },
+  ]);
+  add(undefined, 'dragDropSlots', [
+    {
+      requests: ref('requests'),
+      moving: null,
+      seat: [],
+      hidden: {},
+      viewport: desktop,
+      carryingTab: false,
+      chrome,
+      boxes: {},
+      inset: NONE,
+      carried: null,
+      homes: [],
+    },
+  ]);
 
   // ── The seated layout: what a moment adds on top of the arrangement ─────────
   {
@@ -707,139 +739,247 @@ export function dockLayoutScenarios(): DockScenario[] {
     ]);
 
   // ── During a drag: the snaps offered, and the one a card is over ────────────
-  begin('a card carried over the snaps');
-  add('the eight', 'snapTargetRects', [desktop, NONE, chrome]);
-  add('beside a sidebar, narrow', 'snapTargetRects', [narrow, { ...NONE, right: 300 }, chrome]);
-  add('a squeezed region under a top bar', 'snapTargetRects', [
-    { ...narrow, frame: topBar },
-    { ...NONE, left: 300, right: 300 },
-    chrome,
-  ]);
-  for (const [label, rect] of [
-    ['over the top-right target', { x: 1100, y: 10, w: 300, h: 200 }],
-    ['in the middle of the screen', { x: 600, y: 350, w: 200, h: 200 }],
-    ['over the left edge', { x: 40, y: 360, w: 200, h: 200 }],
-    ['tall across a corner and an edge centre', { x: 1100, y: 300, w: 300, h: 600 }],
-  ] as const) {
-    add(label, 'snapCandidate', [rect, desktop, NONE, chrome]);
-    add(`${label}, pointer given`, 'snapCandidate', [rect, desktop, NONE, chrome, { x: rect.x + 10, y: rect.y + 10 }]);
-  }
   {
-    const corner = snapTargetRects(desktop, NONE, chrome).find((target) => target.id === 'bottom-left')!;
-    add('the pointer on a corner’s target, the card across an edge centre', 'snapCandidate', [
-      { x: corner.x, y: 300, w: 300, h: 600 },
-      desktop,
-      NONE,
+    const mover = dock('mover', card({ snap: null }));
+    const aside = dock('aside', card({ snap: 'right', displace: true, w: 300 }));
+    const carrying = (requests: DockRequest[], viewport: Viewport, over: Record<string, unknown> = {}) => ({
+      requests,
+      moving: 'mover',
+      seat: [],
+      hidden: {},
+      viewport,
+      carryingTab: false,
       chrome,
-      { x: corner.x + corner.w / 2, y: corner.y + corner.h / 2 },
+      ...over,
+    });
+    begin('a card carried over the snaps');
+    add('the eight', 'dragSnapTargets', [carrying([mover], desktop)]);
+    add('beside a sidebar, narrow', 'dragSnapTargets', [carrying([mover, aside], narrow)]);
+    add('a squeezed region under a top bar', 'dragSnapTargets', [
+      carrying(
+        [
+          mover,
+          dock('l', card({ snap: 'left', displace: true, w: 300 })),
+          dock('r', card({ snap: 'right', displace: true, w: 300 })),
+        ],
+        { ...narrow, frame: topBar },
+      ),
+    ]);
+    add('between drags, every snap but the ones held', 'dragSnapTargets', [
+      carrying([mover, dock('held', card({ snap: 'top-left' }))], desktop, { moving: null }),
+    ]);
+    const aimed = (rect: Rect, pointer: { x: number; y: number }, requests: DockRequest[] = [mover], slots = []) => [
+      { ...carrying(requests, desktop), slots, pointer, rect },
+    ];
+    for (const [label, rect] of [
+      ['over the top-right target', { x: 1100, y: 10, w: 300, h: 200 }],
+      ['in the middle of the screen', { x: 600, y: 350, w: 200, h: 200 }],
+      ['over the left edge', { x: 40, y: 360, w: 200, h: 200 }],
+      ['tall across a corner and an edge centre', { x: 1100, y: 300, w: 300, h: 600 }],
+    ] as const) {
+      add(label, 'dragTarget', aimed(rect, { x: rect.x + 10, y: rect.y + 10 }));
+      add(`${label}, the pointer off the card`, 'dragTarget', aimed(rect, { x: 720, y: 450 }));
+    }
+    {
+      const corner = snapTargetRects(desktop, NONE, chrome).find((target) => target.id === 'bottom-left')!;
+      add(
+        'the pointer on a corner’s target, the card across an edge centre',
+        'dragTarget',
+        aimed({ x: corner.x, y: 300, w: 300, h: 600 }, { x: corner.x + corner.w / 2, y: corner.y + corner.h / 2 }),
+      );
+      add(
+        'the corner another card holds',
+        'dragTarget',
+        aimed(
+          { x: corner.x, y: corner.y, w: 300, h: 200 },
+          { x: corner.x + corner.w / 2, y: corner.y + corner.h / 2 },
+          [mover, dock('held', card({ snap: 'bottom-left' }))],
+        ),
+      );
+    }
+    begin('the snaps a drop is refused: a hidden card, one pushing aside, one at home, one maximised', {
+      requests: [
+        dock('a', card({ snap: 'top-left' })),
+        dock('b', card({ snap: 'top' })),
+        dock('c', card({ snap: 'left', displace: true })),
+        dock('d', card({ snap: 'home', home: 'side' })),
+        dock('e', card({ snap: 'right', maximised: true })),
+        dock('f', card({ snap: 'bottom' })),
+        dock('g', card({ snap: 'bottom-left' }), { size: 'full' }),
+      ],
+    });
+    add('carrying the one at the bottom', 'dragSnapTargets', [
+      {
+        requests: ref('requests'),
+        moving: 'f',
+        seat: [],
+        hidden: { b: true },
+        viewport: desktop,
+        carryingTab: false,
+        chrome,
+      },
+    ]);
+    add('carrying it with the one at the top as its mate', 'dragSnapTargets', [
+      {
+        requests: ref('requests'),
+        moving: 'f',
+        seat: ['a'],
+        hidden: {},
+        viewport: desktop,
+        carryingTab: false,
+        chrome,
+      },
     ]);
   }
-  add('the snaps a drop is refused: a hidden card, one pushing aside, one at home, one maximised', 'takenSnapsOf', [
-    [
-      dock('a', card({ snap: 'top-left' })),
-      dock('b', card({ snap: 'top' })),
-      dock('c', card({ snap: 'left', displace: true })),
-      dock('d', card({ snap: 'home', home: 'side' })),
-      dock('e', card({ snap: 'right', maximised: true })),
-      dock('f', card({ snap: 'bottom' })),
-      dock('g', card({ snap: 'bottom-left' }), { size: 'full' }),
-    ],
-    { b: true },
-    ['f'],
-  ]);
 
   // ── During a drag: the edge slots, stacks and home lanes offered ────────────
   begin('a drag over boxes the host did not measure', {
     requests: scenario('two sidebars sharing a left band, and a card on the right').requests,
   });
-  add('a card carried to the left band', 'edgeDropSlots', [
+  const offered = (over: Record<string, unknown>) => ({
+    requests: ref('requests'),
+    moving: 'c',
+    seat: [],
+    hidden: {},
+    viewport: desktop,
+    carryingTab: false,
+    chrome,
+    boxes: {},
+    inset: { ...NONE, left: 300 },
+    carried: { x: 60, y: 300, w: 360, h: 300 },
+    homes: [],
+    ...over,
+  });
+  add('a card carried to the left band', 'dragDropSlots', [offered({})]);
+  add('no card to stack onto, nothing carried', 'dragDropSlots', [offered({ carried: null })]);
+
+  begin('a panel carried over a template’s lanes', {
+    requests: [dock('carried', card({ snap: null, x: 100, y: 250, w: 200, h: 200 }))],
+  });
+  const overLanes = (carried: Rect, homes: unknown[]) => [
     {
       requests: ref('requests'),
-      moving: 'c',
-      boxes: {},
+      moving: 'carried',
+      seat: [],
       hidden: {},
       viewport: desktop,
-      inset: { ...NONE, left: 300 },
-      occupied: { ...NONE, left: 300 },
-      carried: { x: 60, y: 300, w: 360, h: 300 },
+      carryingTab: false,
+      chrome,
+      boxes: {},
+      inset: NONE,
+      carried,
+      homes,
     },
-  ]);
-
-  add('no card to stack onto', 'stackDropSlots', [[]]);
-  begin('a panel carried over a template’s lanes');
-  add('a column lane of two', 'homeDropSlots', [
-    'side',
-    'column',
-    [
-      { x: 0, y: 0, w: 300, h: 200 },
-      { x: 0, y: 200, w: 300, h: 300 },
-    ],
-    { x: 0, y: 0, w: 300, h: 600 },
-    { x: 100, y: 250, w: 200, h: 200 },
-  ]);
-  add('a column lane, the panel carried nowhere near it', 'homeDropSlots', [
-    'side',
-    'column',
-    [{ x: 0, y: 0, w: 300, h: 200 }],
-    { x: 0, y: 0, w: 300, h: 600 },
-    { x: 900, y: 300, w: 200, h: 200 },
-  ]);
-  add('a row lane of one', 'homeDropSlots', [
-    'main',
-    'row',
-    [{ x: 0, y: 0, w: 500, h: 600 }],
-    { x: 0, y: 0, w: 1000, h: 600 },
-    { x: 1020, y: 100, w: 200, h: 200 },
-  ]);
-  add('an empty, collapsed lane', 'homeDropSlots', [
-    'side',
-    'column',
-    [],
-    { x: 10, y: 10, w: 0, h: 0 },
-    { x: 40, y: 40, w: 200, h: 200 },
-  ]);
+  ];
+  add(
+    'a column lane of two',
+    'dragDropSlots',
+    overLanes({ x: 100, y: 250, w: 200, h: 200 }, [
+      {
+        lane: 'side',
+        direction: 'column',
+        sections: [
+          { x: 0, y: 0, w: 300, h: 200 },
+          { x: 0, y: 200, w: 300, h: 300 },
+        ],
+        box: { x: 0, y: 0, w: 300, h: 600 },
+      },
+    ]),
+  );
+  add(
+    'a column lane, the panel carried nowhere near it',
+    'dragDropSlots',
+    overLanes({ x: 900, y: 300, w: 200, h: 200 }, [
+      {
+        lane: 'side',
+        direction: 'column',
+        sections: [{ x: 0, y: 0, w: 300, h: 200 }],
+        box: { x: 0, y: 0, w: 300, h: 600 },
+      },
+    ]),
+  );
+  add(
+    'a row lane of one',
+    'dragDropSlots',
+    overLanes({ x: 1020, y: 100, w: 200, h: 200 }, [
+      {
+        lane: 'main',
+        direction: 'row',
+        sections: [{ x: 0, y: 0, w: 500, h: 600 }],
+        box: { x: 0, y: 0, w: 1000, h: 600 },
+      },
+    ]),
+  );
+  add(
+    'an empty, collapsed lane',
+    'dragDropSlots',
+    overLanes({ x: 40, y: 40, w: 200, h: 200 }, [
+      { lane: 'side', direction: 'column', sections: [], box: { x: 10, y: 10, w: 0, h: 0 } },
+    ]),
+  );
 
   // ── During a drag: which offer the pointer means ────────────────────────────
-  begin('the offer a pointer means');
-  const hits = [
-    { mode: 'band', hit: { x: 0, y: 0, w: 20, h: 900 } },
-    { mode: 'lane', hit: { x: 0, y: 400, w: 300, h: 20 } },
-    { mode: 'tab', hit: { x: 0, y: 0, w: 300, h: 400 } },
-    { mode: 'home', hit: { x: 0, y: 600, w: 300, h: 20 } },
-  ];
-  add('the pointer inside two, the smaller wins', 'chooseTarget', [
-    hits,
-    { x: 10, y: 405 },
-    { x: 0, y: 380, w: 300, h: 300 },
-  ]);
-  add('the pointer in none, the card covering a line and a region', 'chooseTarget', [
-    hits,
-    { x: 600, y: 600 },
-    { x: 0, y: 380, w: 300, h: 300 },
-  ]);
-  add('the pointer in none, the card covering two lines', 'chooseTarget', [
-    hits,
-    { x: 600, y: 600 },
-    { x: 100, y: 410, w: 300, h: 200 },
-  ]);
-  add('nothing under it', 'chooseTarget', [hits, { x: 900, y: 900 }, { x: 800, y: 800, w: 40, h: 40 }]);
-  add('a snap, no slot', 'snapBeatsSlot', [{ x: 0, y: 0, w: 100, h: 100 }, null, { x: 50, y: 50 }]);
-  add('no snap', 'snapBeatsSlot', [null, { x: 0, y: 0, w: 100, h: 100 }, { x: 50, y: 50 }]);
-  add('the pointer in the snap only', 'snapBeatsSlot', [
-    { x: 0, y: 0, w: 100, h: 100 },
-    { x: 200, y: 0, w: 10, h: 10 },
-    { x: 50, y: 50 },
-  ]);
-  add('the pointer in both', 'snapBeatsSlot', [
-    { x: 0, y: 0, w: 100, h: 100 },
-    { x: 40, y: 40, w: 20, h: 20 },
-    { x: 50, y: 50 },
-  ]);
-  add('the pointer in neither', 'snapBeatsSlot', [
-    { x: 0, y: 0, w: 100, h: 100 },
-    { x: 40, y: 40, w: 20, h: 20 },
-    { x: 500, y: 500 },
-  ]);
+  begin('the offer a pointer means', { requests: [dock('mover', card({ snap: null }))] });
+  {
+    const slot = (mode: string, hit: Rect, key: string) => ({
+      mode,
+      hit,
+      key,
+      index: 0,
+      edge: '',
+      lane: '',
+      top: '',
+      left: '',
+      width: '',
+      height: '',
+    });
+    const hits = [
+      slot('band', { x: 0, y: 0, w: 20, h: 900 }, 'band:left::0'),
+      slot('lane', { x: 0, y: 400, w: 300, h: 20 }, 'lane:left:0:1'),
+      slot('tab', { x: 0, y: 0, w: 300, h: 400 }, 'tab:left:0:0'),
+      slot('home', { x: 0, y: 600, w: 300, h: 20 }, 'home:side::0'),
+    ];
+    const pointing = (slots: unknown[], pointer: { x: number; y: number }, rect: Rect) => [
+      {
+        requests: ref('requests'),
+        moving: 'mover',
+        seat: [],
+        hidden: {},
+        viewport: desktop,
+        carryingTab: false,
+        chrome,
+        slots,
+        pointer,
+        rect,
+      },
+    ];
+    add(
+      'the pointer inside two, the smaller wins',
+      'dragTarget',
+      pointing(hits, { x: 10, y: 405 }, { x: 0, y: 380, w: 300, h: 300 }),
+    );
+    add(
+      'the pointer in none, the card covering a line and a region',
+      'dragTarget',
+      pointing(hits, { x: 600, y: 600 }, { x: 0, y: 380, w: 300, h: 300 }),
+    );
+    add(
+      'the pointer in none, the card covering two lines',
+      'dragTarget',
+      pointing(hits, { x: 600, y: 600 }, { x: 100, y: 410, w: 300, h: 200 }),
+    );
+    add('nothing under it', 'dragTarget', pointing(hits, { x: 900, y: 600 }, { x: 800, y: 500, w: 40, h: 40 }));
+    // Against the snaps: a slot in the corner the top-left target sits in, and one beside it.
+    const corner = snapTargetRects(desktop, NONE, chrome).find((target) => target.id === 'top-left')!;
+    const inCorner = slot('lane', { x: corner.x + 4, y: corner.y + 4, w: 10, h: 10 }, 'lane:left:0:0');
+    const besideCorner = slot('lane', { x: corner.x + corner.w + 200, y: corner.y, w: 10, h: 10 }, 'lane:left:0:2');
+    const overCorner = { x: corner.x, y: corner.y, w: 200, h: 150 };
+    const atCorner = { x: corner.x + 8, y: corner.y + 8 };
+    add('a snap, no slot', 'dragTarget', pointing([], atCorner, overCorner));
+    add('the pointer in the snap only', 'dragTarget', pointing([besideCorner], atCorner, overCorner));
+    add('the pointer in both, the slot smaller', 'dragTarget', pointing([inCorner], atCorner, overCorner));
+    add('a slot, the pointer off every snap', 'dragTarget', pointing([inCorner], { x: 720, y: 450 }, overCorner));
+  }
 
   // ── What a drop writes ──────────────────────────────────────────────────────
   {
@@ -887,15 +1027,57 @@ export function dockLayoutScenarios(): DockScenario[] {
   begin('a drop onto a snap', {
     requests: scenario('cards in open space: a column of two, a corner, a loose stack, one closed, one full').requests,
   });
-  add('after the cards on the edge', 'edgeSeatOrder', [ref('requests'), ['l1'], 'right', ABSENT]);
-  add('keeping the seat it held', 'edgeSeatOrder', [ref('requests'), ['r2'], 'right', 1]);
-  add('its seat taken, after the last', 'edgeSeatOrder', [ref('requests'), ['l1'], 'right', 0]);
-  add('a snap nobody holds', 'edgeSeatOrder', [ref('requests'), [], 'top-left', ABSENT]);
-  add('to a corner', 'unlaned', [
+  const dropping = (moving: string, seat: string[] = []) => ({ requests: ref('requests'), moving, seat });
+  add('after the cards on the edge', 'snapDrop', [dropping('l1'), card({ snap: null }), 'right']);
+  add('keeping the seat it held', 'snapDrop', [dropping('r2'), card({ snap: 'right', order: 1 }), 'right']);
+  add('its seat taken, after the last', 'snapDrop', [dropping('l1'), card({ snap: null, order: 0 }), 'right']);
+  add('an edge nobody holds, the loose seat key dropped', 'snapDrop', [
+    dropping('l1', ['x']),
+    card({ snap: null, seat: 'loose', displace: true }),
+    'left',
+  ]);
+  add('to a corner', 'snapDrop', [
+    dropping('l1'),
     card({ band: 0, order: 1, tab: 0, seat: 's', stowed: true, displace: true }),
     'top-left',
   ]);
-  add('into the air', 'unlaned', [card({ band: 0, order: 1 }), null]);
+  add('to a corner with its stack', 'snapDrop', [dropping('l1', ['m']), card({ snap: null, seat: 's' }), 'top-left']);
+  {
+    const open = scenario('cards in open space: a column of two, a corner, a loose stack, one closed, one full');
+    begin('a drop onto another card', {
+      requests: open.requests,
+      hidden: seatLanes({ requests: open.requests, viewport: desktop, chrome, touched: open.touched, titles }).hidden,
+    });
+    const onto = { requests: ref('requests'), hidden: ref('hidden'), viewport: desktop };
+    add('the corner card onto a stack, which keeps its seat', 'stackDrop', [onto, 'corner', 0]);
+    add('a card no stack is offered past the last', 'stackDrop', [onto, 'corner', 1]);
+    add('a card that is not there', 'stackDrop', [onto, 'gone', 0]);
+    add('two cards nobody has placed, each seeded', 'stackDrop', [
+      {
+        requests: [
+          dock('bare', null, { edge: 'right', float: true }),
+          dock('joiner', null, { edge: 'left', float: true }),
+        ],
+        hidden: {},
+        viewport: desktop,
+      },
+      'joiner',
+      0,
+    ]);
+    add('two loose cards, the one landed on naming the seat', 'stackDrop', [
+      {
+        requests: [
+          dock('p', card({ snap: null, x: 100 })),
+          dock('q', card({ snap: null, x: 800, tab: 3 })),
+          dock('seedless', null, { float: true }),
+        ],
+        hidden: {},
+        viewport: desktop,
+      },
+      'q',
+      0,
+    ]);
+  }
   begin('a stack’s mates following it');
   add('to an edge', 'followSeat', [
     card({ snap: null, seat: 'x', tab: 1, w: 200 }),

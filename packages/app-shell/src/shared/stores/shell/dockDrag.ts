@@ -5,29 +5,25 @@
  * Part of `ShellStore` — see `../ShellStore.ts`.
  */
 import {
-  chooseTarget,
   displaces,
   type DockRequest,
-  edgeDropSlots,
+  dragDropSlots,
+  type DragMoment,
+  dragSnapTargets,
+  dragTarget,
   edgeOfSnap,
-  edgeSeatOrder,
   type FloatPlacement,
   floorOf,
   followSeat,
-  homeDropSlots,
   liftedCard,
   movedBoundary,
   type Rect,
   resizedBox,
   RESTORE_DRAG_PX,
   seatSize,
-  snapBeatsSlot,
-  snapCandidate,
+  snapDrop,
   type SnapPoint,
-  snapTargetRects,
-  stackDropSlots,
   STOW_DRAG_PX,
-  takenSnapsOf,
   thicknessOf,
   TITLE_BAR_PX,
   unlaned,
@@ -63,7 +59,6 @@ export function createShellDockDrag(deps: {
     | 'movingDock'
     | 'movingSeat'
     | 'movingSeatKey'
-    | 'occupiedForId'
     | 'placementOf'
     | 'resolvedPlacement'
     | 'setDragCarry'
@@ -72,7 +67,6 @@ export function createShellDockDrag(deps: {
     | 'setMovingSeat'
     | 'setSeatFolded'
     | 'setStowPending'
-    | 'stackTargets'
     | 'stowPending'
     | 'viewport'
   > & { members: Pick<ShellDocks['members'], 'breakOut' | 'insertDock' | 'insertHome' | 'stackDock'> };
@@ -92,7 +86,6 @@ export function createShellDockDrag(deps: {
     movingDock,
     movingSeat,
     movingSeatKey,
-    occupiedForId,
     placementOf,
     resolvedPlacement,
     setDragCarry,
@@ -101,7 +94,6 @@ export function createShellDockDrag(deps: {
     setMovingSeat,
     setSeatFolded,
     setStowPending,
-    stackTargets,
     stowPending,
     viewport,
   } = deps.docks;
@@ -161,45 +153,29 @@ export function createShellDockDrag(deps: {
    */
   let tabGesture: { id: string; x: number; y: number; dragging: boolean } | null = null;
   /**
-   * The snap a drop would take, once the places that are already occupied are struck out.
-   *
-   * See `takenSnaps` for why. The panel being dragged is excluded along with the seat-mates riding
-   * with it — a stack must not be refused the place it is leaving, or a drag that changes its mind
-   * has nowhere to put it back.
+   * The drag as the kernel is asked about it: every panel, who is carried and the mates riding with
+   * it, the seating, the window, whether a tab is carried as an outline, the chrome floats clear.
    */
-  const snapFor = (rect: Rect, id: string | null, pointer: { x: number; y: number }) => {
-    const candidate = snapCandidate(rect, viewport(), occupiedForId(id), floatChrome(), pointer);
-    if (!candidate || takenSnapPoints(id).includes(candidate)) return null;
-    const hit = snapTargetRects(viewport(), occupiedForId(id), floatChrome()).find((t) => t.id === candidate);
-    return hit ? { snap: candidate, hit } : null;
-  };
+  const dragMoment = (moving: string | null): DragMoment => ({
+    requests: dockRequests(),
+    moving,
+    seat: movingSeat(),
+    hidden: laneSeating().hidden,
+    viewport: viewport(),
+    carryingTab: Boolean(dragCarry()),
+    chrome: floatChrome(),
+  });
 
   /**
-   * What a drag is pointing at right now, across both families of target.
-   *
-   * The slots describe places *within* an arrangement and the eight describe places to put a card,
-   * and they are arbitrated separately before being weighed against each other here — see
-   * `snapBeatsSlot`. One place rather than two so a titlebar drag and a tab drag cannot drift apart.
+   * What a drag is pointing at right now, across both families of target — `dragTarget`. One place
+   * rather than two so a titlebar drag and a tab drag cannot drift apart.
    */
   const settleTargets = (id: string, pointer: { x: number; y: number }, would: Rect) => {
-    const slot = chooseTarget(members.insertSlots(), pointer, would);
-    const snap = snapFor(would, id, pointer);
-    const snapWins = snapBeatsSlot(snap?.hit ?? null, slot?.hit ?? null, pointer);
-    setActiveInsert(snapWins ? null : (slot?.key ?? null));
-    setActiveSnap(snapWins || !slot ? (snap?.snap ?? null) : null);
+    const { insert, snap } = dragTarget({ ...dragMoment(id), slots: members.insertSlots(), pointer, rect: would });
+    setActiveInsert(insert);
+    setActiveSnap(snap);
   };
 
-  /**
-   * The seat a panel snapping to an edge takes in that edge's floating lane — see `seatOrder`.
-   *
-   * The mover and the seat-mates coming with it are left out of what counts as taken: they are the
-   * ones being placed, and a stack must be allowed to land back on the number it already holds.
-   */
-  const laneSeatOrder = (id: string, snap: SnapPoint, mine: number | undefined) =>
-    edgeSeatOrder(dockRequests(), [id, ...movingSeat()], snap, mine);
-
-  const takenSnapPoints = (moving: string | null) =>
-    takenSnapsOf(dockRequests(), laneSeating().hidden, moving ? [moving, ...movingSeat()] : []);
   /*
     A drag carried on from the window once its grip is gone.
 
@@ -822,11 +798,7 @@ export function createShellDockDrag(deps: {
           is off every lane, so a stack landing in one stays a stack, and a panel *taken out* of a
           stack must not, or parking a torn-out tab in a corner puts it straight back.
         */
-        const { seat: _seat, ...bare } = current;
-        if (edgeOfSnap(snap))
-          writePlacement(id, { ...bare, snap, displace: false, order: laneSeatOrder(id, snap, current.order) });
-        else
-          writePlacement(id, movingSeat().length > 0 ? { ...current, snap, displace: false } : unlaned(current, snap));
+        writePlacement(id, snapDrop({ ...dragMoment(id), moving: id }, current, snap));
       }
 
       /*
@@ -919,56 +891,44 @@ export function createShellDockDrag(deps: {
       /*
         The home lanes: every `$panels` outlet on screen that would take this panel, measured, because an
         outlet is an element the template laid out and only it knows where it is. Only for a panel an
-        interface declared at home in a lane — a lane keeps nothing else (see `placementOf`) — and only
-        an outlet it has been carried to, which `homeDropSlots` decides from the outlet's box.
+        interface declared at home in a lane — a lane keeps nothing else (see `placementOf`); which of
+        them it has been carried near enough to is the kernel's.
       */
-      const homeSlots = () => {
-        if (!declarationFor()[moving]?.home || !carried) return [];
-        const panelId = moving.replace(/^template:/, '');
-        return homeLanes().flatMap((outlet) => {
-          // An instance is taken where the panel it is of is.
-          if (outlet.accepts.length > 0 && !outlet.accepts.includes(declaredPanelOf(moving))) return [];
-          const drawn = outlet.el.getBoundingClientRect();
-          const box = { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height };
-          const sections = [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
-            .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
-            .map((section) => {
-              const at = section.getBoundingClientRect();
-              return { x: at.x, y: at.y, w: at.width, h: at.height };
+      const panelId = moving.replace(/^template:/, '');
+      const homes = !declarationFor()[moving]?.home
+        ? []
+        : homeLanes()
+            // An instance is taken where the panel it is of is.
+            .filter((outlet) => outlet.accepts.length === 0 || outlet.accepts.includes(declaredPanelOf(moving)))
+            .map((outlet) => {
+              const drawn = outlet.el.getBoundingClientRect();
+              return {
+                lane: outlet.lane,
+                direction: outlet.direction,
+                box: { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height },
+                sections: [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
+                  .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
+                  .map((section) => {
+                    const at = section.getBoundingClientRect();
+                    return { x: at.x, y: at.y, w: at.width, h: at.height };
+                  }),
+              };
             });
-          return homeDropSlots(outlet.lane, outlet.direction, sections, box, carried);
-        });
-      };
 
-      const edgeSlots = edgeDropSlots({
-        requests,
-        moving,
-        boxes,
-        hidden: laneSeating().hidden,
-        viewport: viewport(),
-        inset: inset(),
-        occupied: occupiedForId(moving),
-        carried,
-      });
-      const stackSlots = stackDropSlots(stackTargets(moving).map(({ request }) => boxes[request.id]));
-      return [...homeSlots(), ...edgeSlots, ...stackSlots];
+      return dragDropSlots({ ...dragMoment(moving), boxes, inset: inset(), carried, homes });
     },
 
     activeInsert,
     dragGhost,
 
     snapTargets: () =>
-      snapTargetRects(viewport(), occupiedForId(movingDock()), floatChrome())
-        // Not drawn where a panel already is — see `takenSnaps`. Half the complaint was the target
-        // sitting on top of the card being aimed at, hiding the seams and the seat behind it.
-        .filter((target) => !takenSnapPoints(movingDock()).includes(target.id))
-        .map((target) => ({
-          id: target.id,
-          top: `${target.y}px`,
-          left: `${target.x}px`,
-          width: `${target.w}px`,
-          height: `${target.h}px`,
-        })),
+      dragSnapTargets(dragMoment(movingDock())).map((target) => ({
+        id: target.id,
+        top: `${target.y}px`,
+        left: `${target.x}px`,
+        width: `${target.w}px`,
+        height: `${target.h}px`,
+      })),
 
     toggleMaximiseDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);

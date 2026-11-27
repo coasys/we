@@ -35,27 +35,21 @@ export {
   resolveDocks,
   seatLanes,
   withChromeCovered,
-  // During a drag: what the carried panel clears, every panel's box as a rectangle where the host has
-  // drawn nothing to measure, the snaps and slots it is offered, which of them the pointer means.
-  chooseTarget,
-  edgeDropSlots,
-  homeDropSlots,
-  occupiedById,
+  // During a drag: every panel's box as a rectangle where the host has drawn nothing to measure; the
+  // snap targets free to the carried panel, every slot it is offered, and which of them the pointer
+  // means.
+  dragDropSlots,
+  dragSnapTargets,
+  dragTarget,
   rectOf,
-  snapBeatsSlot,
-  snapCandidate,
-  snapTargetRects,
-  stackCandidates,
-  stackDropSlots,
-  takenSnapsOf,
-  // What a drop writes: the edge or home lane renumbered, the seat a snap takes, a panel leaving its
-  // lane, and the seat-mates that follow it.
+  // What a drop writes: the edge or home lane renumbered, a snap taken, another card stacked onto,
+  // the seat-mates that follow the panel that led, and the size a seat gives whoever joins it.
   arrangeDrop,
   arrangeHomeDrop,
-  edgeSeatOrder,
   followSeat,
   seatSize,
-  unlaned,
+  snapDrop,
+  stackDrop,
   // Gestures: a resize, the boundary between two seats, a panel pulled off what it was attached to.
   liftedCard,
   movedBoundary,

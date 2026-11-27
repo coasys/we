@@ -20,7 +20,6 @@ import {
   edgeOfSnap,
   fitPlacement,
   type FloatPlacement,
-  followSeat,
   laneable,
   laneSectionsOf,
   NO_INSET,
@@ -34,7 +33,7 @@ import {
   seatLanes,
   seatSize,
   SIDEBAR_PX,
-  stackCandidates,
+  stackDrop,
   TITLE_BAR_PX,
   type TopChrome,
   unlaned,
@@ -298,26 +297,7 @@ export function createShellDocks(deps: {
    * `columnSlots`' targets, so the two never fight over the same pixels. Big enough to land on
    * without aiming; small enough that a drag across a lane does not light every seat it passes.
    */
-  /**
-   * The floating panels a dragged one could stack onto, in a fixed order.
-   *
-   * Two panels in open space had no way to become a stack: every drop target is built per edge, out
-   * of the lanes on it, and a float is in no lane. Now that a seat can exist off the lanes there is
-   * somewhere for such a drop to land, so this is the list of places — one per panel you can point
-   * at, which is why the ones stacked *behind* another are left out. There is only ever one card on
-   * top to aim for, and it is the one that answers for its seat.
-   *
-   * Ordered by the registry, and derived here rather than at either call site, because the slot and
-   * the drop have to agree on what "the third one" means — the same reason the edge slots are keyed
-   * by position rather than by a panel's id, which cannot go in a key that splits on colons.
-   */
-  const stackTargets = (moving: string | null) => {
-    const requests = dockRequests();
-    return stackCandidates(requests, laneSeating().hidden, moving).map((index) => ({
-      request: requests[index],
-      index,
-    }));
-  };
+
   /**
    * Fold or unfold a panel and every tab stacked with it.
    *
@@ -1252,22 +1232,19 @@ export function createShellDocks(deps: {
     },
 
     stackDock: (id, position) => {
-      const target = stackTargets(id)[position];
-      const joiner = dockRequests().find((entry) => entry.id === id);
-      if (!target || !joiner) return;
-
       /*
         Two floats become a stack, which needs a name for the seat they are now both in — see
-        `FloatPlacement.seat`. Whichever was already there supplies it: it is the one the other was
-        dropped onto, so naming the seat after it survives the newcomer being dragged out again.
-
-        A seat it is already in keeps its key, so a third panel joins the stack rather than pairing
-        off with whichever tab happened to be showing.
+        `FloatPlacement.seat` and `stackDrop`, which decides it. The cards on offer are the ones
+        `insertSlots` numbered by position, in registry order, so the slot and the drop agree on
+        what "the third one" means.
       */
-      const held = placementOf(target.request);
-      const seat = held.seat ?? target.request.id;
-      if (held.seat === undefined) writePlacement(target.request.id, { ...held, seat });
-      writePlacement(id, followSeat(placementOf(joiner), { ...held, seat }));
+      const writes = stackDrop(
+        { requests: dockRequests(), hidden: laneSeating().hidden, viewport: viewport() },
+        id,
+        position,
+      );
+      if (!writes[id]) return;
+      for (const [dock, placement] of Object.entries(writes)) writePlacement(dock, placement);
       // The newcomer shows, which is what dropping something on top of something else looks like —
       // and its tab flashes, since the card it landed on did not move. See `insertDock`.
       raise(id);
@@ -1383,7 +1360,6 @@ export function createShellDocks(deps: {
     setPanelsHiddenByUser,
     setSeatFolded,
     setStowPending,
-    stackTargets,
     stowPending,
     viewport,
   };

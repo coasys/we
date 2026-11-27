@@ -432,9 +432,10 @@ keep a card's heading.
   viewport and a list of panels. Tested without a browser; that is the point of it being pure.
   `src/shared/kernels/dockLayout.ts` names the entry points a second host reproduces the layout
   with — where a panel is placed (`resolvePlacement`, `fitPlacement`, `arrangedPanel`), the seated
-  layout (`seatLanes`, `resolveDocks`, `edgeLaneLayout`, the insets, `panelFramesOf`), a drag's
-  targets (`edgeDropSlots`, `stackDropSlots`, `homeDropSlots`, the snaps, `chooseTarget`), what a
-  drop writes (`arrangeDrop`, `arrangeHomeDrop`, the seat-mates) and the gestures (`resizedBox`,
+  layout (`seatLanes`, `resolveDocks`, `edgeLaneLayout`, the insets, `panelFramesOf`), a drag at
+  one moment, each a whole answer (`dragSnapTargets`, `dragDropSlots`, `dragTarget`, which slot or
+  snap the pointer means), what a drop writes (`arrangeDrop`, `arrangeHomeDrop`, `snapDrop`,
+  `stackDrop`, the seat-mates and the seat's size) and the gestures (`resizedBox`,
   `movedBoundary`, `liftedCard`) — against the scenarios recorded beside it
   (`vectors/dockLayout.json`). The rest of the file is how WE computes those answers, pinned by
   `tests/dockGeometry.test.ts` rather than by the vectors, so it can change shape without them.
