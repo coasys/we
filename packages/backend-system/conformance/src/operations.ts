@@ -371,18 +371,22 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       { create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } },
     ],
   },
-  linkTwo: {
-    description: 'Links two records under a holder, in the order given, through an ordered and an unordered relation.',
+  linkFour: {
+    description: 'Links four records under a holder, in the order given, through an ordered and an unordered relation.',
     params: {
       holder: { type: 'string', required: true },
       first: { type: 'string', required: true },
       second: { type: 'string', required: true },
+      third: { type: 'string', required: true },
+      fourth: { type: 'string', required: true },
     },
     steps: [
-      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: 'first' } } },
-      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: 'second' } } },
-      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: 'first' } } },
-      { link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: 'second' } } },
+      ...(['first', 'second', 'third', 'fourth'] as const).map((target) => ({
+        link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: target } },
+      })),
+      ...(['first', 'second', 'third', 'fourth'] as const).map((target) => ({
+        link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: target } },
+      })),
     ],
   },
 };
@@ -906,15 +910,25 @@ const CASES: OperationCase[] = [
   },
   {
     id: 'relation-order',
+    // Written in the reverse of code-point order, four of them: a backend that loses the written
+    // order shows it, rather than happening to answer in it.
     note: 'an ordered relation reads back in the order written, an unordered one compares as a set, and records list by id in code-point order',
     operations: OPERATIONS,
     dataset: [
       { entity: 'CollectionBlock', id: 'urn:example:holder', fields: { kind: 'board' } },
       { entity: 'CollectionBlock', id: 'urn:example:alpha', fields: { kind: 'card' } },
       { entity: 'CollectionBlock', id: 'urn:example:Zed', fields: { kind: 'card' } },
+      { entity: 'CollectionBlock', id: 'urn:example:Yew', fields: { kind: 'card' } },
+      { entity: 'CollectionBlock', id: 'urn:example:Xi', fields: { kind: 'card' } },
     ],
-    operation: 'linkTwo',
-    args: { holder: 'urn:example:holder', first: 'urn:example:alpha', second: 'urn:example:Zed' },
+    operation: 'linkFour',
+    args: {
+      holder: 'urn:example:holder',
+      first: 'urn:example:alpha',
+      second: 'urn:example:Zed',
+      third: 'urn:example:Yew',
+      fourth: 'urn:example:Xi',
+    },
     invocationId: '00000000-0000-4000-8000-000000000040',
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children', 'mentions'] }],
