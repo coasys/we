@@ -2,9 +2,12 @@
  * A conversation in the list opens from a button — finding 8. Enter, Space and a switch reach a
  * row the way a pointer's click does, because the row is a `<button>` and not a div listening.
  */
-import { cleanup, render } from '@solidjs/testing-library';
+import { cleanup, render as mount } from '@solidjs/testing-library';
 import type { AgentConversationsPort } from '@we/backend-shared';
+import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 
 const follow = vi.fn((_ref: unknown, _cb: (next: never[]) => void) => () => {});
 const conversations = {
@@ -20,21 +23,27 @@ const conversations = {
   follow,
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({ useDatasetStore: () => ({ datasets: () => [] }) }));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({ useSpaceStore: () => ({ mySpaces: () => [] }) }));
-vi.mock('../src/frameworks/solid/stores/ChatStore', () => ({
-  useChatStore: () => ({
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+  chatStore: {
     openChat: vi.fn(),
     takePending: () => undefined,
     rememberedConversation: () => undefined,
     rememberConversation: () => {},
-  }),
-}));
+  },
+} as unknown as Partial<StoreRegistry>;
+
+/** Render inside the store registry, as the host's composition hands it to every component. */
+function render(ui: () => JSX.Element) {
+  return mount(ui, {
+    wrapper: (props) => <StoreRegistryContext.Provider value={stores}>{props.children}</StoreRegistryContext.Provider>,
+  });
+}
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
 

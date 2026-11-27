@@ -5,7 +5,8 @@
  * the mark moves at once — the score and the filled glyph — rather than a second later when the write
  * comes back through a subscription, which is what makes a press read as having worked.
  */
-import { render } from '@solidjs/testing-library';
+import { render as mount } from '@solidjs/testing-library';
+import type { JSX } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { writes } = vi.hoisted(() => ({ writes: [] as [string, string, number | null][] }));
@@ -23,27 +24,29 @@ vi.mock('@we/entities', async () => {
     Signal: { findAll: async () => [] },
   };
 });
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ currentDataset: () => ({ id: 'ds', handle: {} }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ me: () => ({ did: 'did:me' }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', async () => {
-  const { signalOptimism } = await import('../src/shared/signalOptimism');
-  return {
-    useSpaceStore: () => ({
-      mutedDids: () => [],
-      upsertSignal: async (node: string, type: string, value: number | null) => {
-        writes.push([node, type, value]);
-        signalOptimism.hold(node, type, value);
-      },
-    }),
-  };
-});
-
 import { ReactionBadge } from '../src/frameworks/solid/components/ReactionBadge';
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { signalOptimism } from '../src/shared/signalOptimism';
+
+/** What the badge reads from the registry, as the host composes it. */
+const stores = {
+  datasetStore: { currentDataset: () => ({ id: 'ds', handle: {} }) },
+  sessionStore: { me: () => ({ did: 'did:me' }) },
+  spaceStore: {
+    mutedDids: () => [],
+    upsertSignal: async (node: string, type: string, value: number | null) => {
+      writes.push([node, type, value]);
+      signalOptimism.hold(node, type, value);
+    },
+  },
+} as unknown as Partial<StoreRegistry>;
+
+/** Render inside the store registry, as the host's composition hands it to every component. */
+function render(ui: () => JSX.Element) {
+  return mount(ui, {
+    wrapper: (props) => <StoreRegistryContext.Provider value={stores}>{props.children}</StoreRegistryContext.Provider>,
+  });
+}
 
 beforeEach(() => {
   writes.length = 0;

@@ -1,19 +1,16 @@
 import { markReactive, REACTIVE_ACCESSOR } from '@we/expressions';
+import type { ReactivityPort } from '@we/reactivity';
 import { describe, expect, it, vi } from 'vitest';
 
 import { noMemo, resolveProp, resolveProps, splitProps } from '../src/propResolvers';
 import type { LocalFieldMeta } from '../src/propResolvers/local';
 import { resolveResetLocalProp, resolveSetLocalProp, resolveTouchProp } from '../src/propResolvers/local';
-import type { Memo } from '../src/propResolvers/types';
 
 /**
- * A memo that hands the thunk back rather than calling it, so the accessor itself can be inspected.
- *
- * The declared `Memo` type says a memo answers with the VALUE, which is true of `noMemo` and not of a real
- * framework's `createMemo` — that answers with an accessor. The cast is that gap, and it is here rather
- * than inline because the test below asserts on the accessor and would pass vacuously without it.
+ * A memo that hands the thunk back as its accessor, so the accessor itself can be inspected: the
+ * test below asserts on it and would pass vacuously against a memo that evaluated eagerly.
  */
-const keepThunk = ((fn: () => unknown) => fn) as unknown as Memo;
+const keepThunk: ReactivityPort['memo'] = (fn) => fn;
 
 const unwrap = (value: unknown): unknown =>
   typeof value === 'function' && REACTIVE_ACCESSOR in value ? (value as unknown as () => unknown)() : value;
@@ -89,8 +86,7 @@ describe('propResolvers (combined)', () => {
     // Tagged, because that is what a store bag contains: the host marks state accessors when it
     // builds a template's bag, and an expression calls only those.
     const stores = { s: { nested: { val: markReactive(() => 5) } } };
-    const memo = (fn: () => number) => () => fn();
-    const res = resolveProp({ $: 's.nested.val' }, stores, {}, memo as <T>(fn: () => T) => T) as () => number;
+    const res = resolveProp({ $: 's.nested.val' }, stores, {}, keepThunk) as () => number;
     expect(typeof res).toBe('function');
     expect(res()).toBe(5);
   });
@@ -594,7 +590,7 @@ describe('$invoke arg unwrapping', () => {
     const context = { $local: { name: accessor } };
     const action = { $invoke: 'myStore.method', args: [{ $: 'local.name' }] };
     // A render-time memo hands the handler an accessor, read when the handler fires.
-    const fn = resolveProp(action, stores, context, ((fn: () => unknown) => fn) as <T>(fn: () => T) => T) as () => void;
+    const fn = resolveProp(action, stores, context, keepThunk) as () => void;
 
     // Change the value before calling — unwrap should read current value
     value = 'updated';

@@ -5,7 +5,7 @@
  * on the Router so it has access to useNavigate()/useLocation() from SolidJS Router.
  *
  * Responsibilities:
- * - Wire navigate + location into routeStore (same pattern as RouteStoreProvider)
+ * - Wire navigate + location into routeStore (as the overlay's ShellRouterRoot does for its own)
  * - Render the content viewport (offset from shell sidebar, AI panel)
  * - Render the active template (visibility-hidden when an app is active)
  * - Render the shell overlay (profile, settings, etc.) above the template
@@ -16,7 +16,7 @@
  * app mid-use. They're rendered by PersistentAppFrames instead, mounted once
  * alongside the shell chrome in TemplateProvider, outside the keyed Router.
  *
- * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
+ * The shell overlay uses its own route store + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
 import { datasetAddressedBy } from '@shared/datasetIdentity';
@@ -31,7 +31,7 @@ import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
+import { createShellRouteStore, ShellRouterRoot } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
@@ -102,7 +102,7 @@ export function computeBottomOffset(stores: Stores): string {
 }
 
 // ---------------------------------------------------------------------------
-// Shell overlay inner — rendered inside ShellRouteStoreProvider + MemoryRouter
+// Shell overlay inner — its own route store, and the MemoryRouter that store mirrors
 // ---------------------------------------------------------------------------
 
 function ShellOverlayInner(props: {
@@ -112,7 +112,8 @@ function ShellOverlayInner(props: {
   chromeStores: Stores;
   view: ShellViewEntry;
 }) {
-  const shellRouteStore = useShellRouteStore();
+  // The overlay's own router state, for this overlay's life: another view is another overlay.
+  const shellRouteStore = createShellRouteStore();
   // The overlay is its own surface: it is a sibling of the template's box, not inside it, so a
   // settings page adapts to the overlay's width rather than to whatever the space behind it is.
   const overlaySurface = createSurface();
@@ -166,7 +167,7 @@ function ShellOverlayInner(props: {
   return (
     <MemoryRouter
       root={(props) => (
-        <ShellRouterRoot>
+        <ShellRouterRoot store={shellRouteStore}>
           {/*
             `height: 100%`, because this surface is the one host site that adds a box.
 
@@ -621,11 +622,7 @@ export function TemplateLayout(
                   {/* Keyed: the overlay is built for one view, so another view is a new overlay rather than
                       the last one's schema and stores under a new name. */}
                   <Show when={view()} keyed>
-                    {(entry) => (
-                      <ShellRouteStoreProvider>
-                        <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry} />
-                      </ShellRouteStoreProvider>
-                    )}
+                    {(entry) => <ShellOverlayInner stores={stores} chromeStores={props.chromeStores} view={entry} />}
                   </Show>
                 </TemplateBoundary>
               </Column>

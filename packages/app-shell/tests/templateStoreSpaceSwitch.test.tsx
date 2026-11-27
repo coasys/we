@@ -7,44 +7,24 @@ import { encodeTemplateFile, registerEntity } from '@we/entities';
 import { createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createTemplateStore, type TemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { liveRows } from './liveRows';
 
-const h = vi.hoisted(() => ({
-  setCurrent: (() => {}) as (ds: unknown) => void,
-  setSpaces: (() => {}) as (spaces: { uuid: string; defaultTemplateId?: string }[]) => void,
-}));
-
-vi.mock('../src/frameworks/solid/stores/DatasetStore', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../src/frameworks/solid/stores/DatasetStore')>();
-  const { createSignal } = await import('solid-js');
-  const [current, setCurrent] = createSignal<unknown>(undefined);
-  h.setCurrent = setCurrent;
-  const root = { id: 'root', name: 'root', handle: { dataset: 'root' } };
-  return {
-    ...original,
-    useDatasetStore: () => ({
-      currentDataset: current,
-      rootDataset: () => root,
-      datasets: () => [],
-      agentSettings: () => undefined,
-      marketplaceDataset: () => undefined,
-      refreshAgentSettings: async () => {},
-      updateAgentSettings: async () => {},
-    }),
-  };
-});
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ me: () => undefined, devTools: () => false }),
-}));
-vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
-  useThemeStore: () => ({ allThemes: () => [], provideAppTheme: () => {}, setDefaultTheme: () => {} }),
-}));
-vi.mock('../src/frameworks/solid/stores/RouteStore', () => ({
-  useRouteStore: () => ({ navigate: () => {}, segments: () => [] }),
-}));
-
-import { TemplateStoreProvider, useTemplateStore } from '../src/frameworks/solid/stores/TemplateStore';
+const [current, setCurrent] = createSignal<unknown>(undefined);
+const root = { id: 'root', name: 'root', handle: { dataset: 'root' } };
+const datasetStub = {
+  currentDataset: current,
+  rootDataset: () => root,
+  datasets: () => [],
+  agentSettings: () => undefined,
+  marketplaceDataset: () => undefined,
+  refreshAgentSettings: async () => {},
+  updateAgentSettings: async () => {},
+};
+const sessionStub = { me: () => undefined, devTools: () => false };
+const themeStub = { allThemes: () => [], provideAppTheme: () => {}, setDefaultTheme: () => {} };
+const routeStub = { navigate: () => {}, segments: () => [] };
 
 type Held<T> = { promise: Promise<T>; release: (value: T) => void };
 const held = <T,>(): Held<T> => {
@@ -68,7 +48,7 @@ const record = (id: string, name: string) => ({
 provideSeed({ name: 'test', modules: [] } as never);
 
 describe('the template store across a switch of space', () => {
-  let store: ReturnType<typeof useTemplateStore>;
+  let store: TemplateStore;
   let dispose: () => void;
   let setNamed: (id: string | undefined) => void;
   let reads: { space: string; read: Held<unknown[]> }[] = [];
@@ -95,18 +75,18 @@ describe('the template store across a switch of space', () => {
       },
     } as never);
     // The doubled dataset store outlives a test: no space is on screen until the test puts one there.
-    h.setCurrent(undefined);
+    setCurrent(undefined);
     createRoot((d) => {
       dispose = d;
       const [named, setNamedSignal] = createSignal<string | undefined>(undefined);
       setNamed = setNamedSignal;
-      TemplateStoreProvider({
-        get children() {
-          store = useTemplateStore();
-          store.provideSpaceLookup(() => [{ uuid: 'A', defaultTemplateId: named() } as never]);
-          return null;
-        },
+      store = createTemplateStore({
+        sessionStore: sessionStub as never,
+        datasetStore: datasetStub as never,
+        themeStore: themeStub as never,
+        routeStore: routeStub as never,
       });
+      store.provideSpaceLookup(() => [{ uuid: 'A', defaultTemplateId: named() } as never]);
     });
   });
 
@@ -153,10 +133,10 @@ describe('the template store across a switch of space', () => {
 
   it('does not repaint the space switched to with a choice for the one left, still being read', async () => {
     const [builtInOne] = shellTemplateIds();
-    h.setCurrent(dataset('A'));
+    setCurrent(dataset('A'));
     await vi.waitFor(() => expect(reads.filter((r) => r.space === 'A')).toHaveLength(1));
     const before = store.currentTemplate.id;
-    h.setCurrent(dataset('B'));
+    setCurrent(dataset('B'));
     await vi.waitFor(() => expect(reads.filter((r) => r.space === 'B')).toHaveLength(1));
 
     // A's own override names a template that exists; B is the space on screen now.
@@ -168,7 +148,7 @@ describe('the template store across a switch of space', () => {
 
   it('does not repaint over a newer choice for the same space with an older one that answers late', async () => {
     const [builtInOne, builtInTwo] = shellTemplateIds();
-    h.setCurrent(dataset('A'));
+    setCurrent(dataset('A'));
     await vi.waitFor(() => expect(reads).toHaveLength(1));
     // The arrival's own choice settles with nothing to say, so later changes to the default follow.
     reads[0].read.release([]);

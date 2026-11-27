@@ -195,13 +195,15 @@ function extractClassified(surfaceFile: string, test: (initializer: string) => b
 /**
  * Store interfaces, read from the app shell.
  *
- * Keyed on the `export interface *Store` declarations rather than on the provider functions: the
- * interface is the contract a template is written against, and it is one declaration per store with
- * no conditional assembly to interpret.
+ * Keyed on the `export interface *Store` declarations rather than on the factories: the interface
+ * is the contract a template is written against, and it is one declaration per store with no
+ * conditional assembly to interpret. Read from every directory stores live in — the neutral ones
+ * under `shared/stores/` and those still written in Solid — since a store moves between them as it
+ * is converted, and the surface it offers must not.
  */
-export function extractStores(storesDir: string): ExtractedStore[] {
+export function extractStores(storesDirs: string[]): ExtractedStore[] {
   const project = new Project({ skipAddingFilesFromTsConfig: true });
-  project.addSourceFilesAtPaths(`${storesDir}/*.tsx`);
+  for (const dir of storesDirs) project.addSourceFilesAtPaths([`${dir}/*.ts`, `${dir}/*.tsx`]);
 
   const stores: ExtractedStore[] = [];
 

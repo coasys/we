@@ -19,16 +19,8 @@
  * screen renders no account controls.
  */
 import type { Account } from '@shared/platform/types';
-import { usePlatform } from '@solid/providers/PlatformProvider';
-import {
-  type Accessor,
-  createContext,
-  createMemo,
-  createSignal,
-  onMount,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import type { PlatformAdapter } from '@shared/platform/types';
+import { type Accessor, createMemo, createSignal, onMount } from 'solid-js';
 
 /**
  * The last-known account list, so the sign-in screen can draw itself before any IPC has answered.
@@ -161,10 +153,8 @@ export interface AccountStore {
   clearError: () => void;
 }
 
-const AccountContext = createContext<AccountStore>();
-
-export function AccountStoreProvider(props: ParentProps) {
-  const platform = usePlatform();
+export function createAccountStore(deps: { platform: PlatformAdapter }): AccountStore {
+  const platform = deps.platform;
 
   // Seeded synchronously, before the first paint — see the cache notes above.
   const [accounts, setAccounts] = createSignal<Account[]>(readCachedAccounts());
@@ -384,11 +374,5 @@ export function AccountStoreProvider(props: ParentProps) {
     clearError: () => setError(''),
   };
 
-  return <AccountContext.Provider value={store}>{props.children}</AccountContext.Provider>;
-}
-
-export function useAccountStore(): AccountStore {
-  const context = useContext(AccountContext);
-  if (!context) throw new Error('useAccountStore must be used within the AccountStoreProvider');
-  return context;
+  return store;
 }

@@ -10,7 +10,7 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity, registerEntityWriteCheck } from '@we/entities';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'kind-1';
@@ -30,44 +30,31 @@ const model = (name: string) => getEntity(name) as unknown as Model;
 */
 let handle: unknown;
 
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({
-    currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
-    datasets: () => [],
-    personalDataset: () => null,
-    currentDatasetEntities: () => [],
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ me: () => ({ did: 'did:key:z6Mk' }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({
-    spaceShapes: () => [],
-    interpretationCandidates: () => [],
-    interpretationCandidatesLoaded: () => true,
-  }),
-  BLOCK_ICONS: {},
-}));
+const datasetStub = {
+  currentDataset: () => ({ id: 'ds', handle, name: 'Space' }),
+  datasets: () => [],
+  personalDataset: () => null,
+  currentDatasetEntities: () => [],
+};
+const sessionStub = { me: () => ({ did: 'did:key:z6Mk' }) };
+const shapeStub = {
+  spaceShapes: () => [],
+  interpretationCandidates: () => [],
+  interpretationCandidatesLoaded: () => true,
+};
 
-import {
-  connectionKey,
-  type RecordStore,
-  RecordStoreProvider,
-  useRecordStore,
-} from '../src/frameworks/solid/stores/RecordStore';
+import { connectionKey, createRecordStore, type RecordStore } from '../src/frameworks/solid/stores/RecordStore';
 
 function mount(): RecordStore {
   let store!: RecordStore;
-  function Capture() {
-    store = useRecordStore();
+  render(() => {
+    store = createRecordStore({
+      datasetStore: datasetStub as never,
+      sessionStore: sessionStub as never,
+      shapeStore: shapeStub as never,
+    });
     return null;
-  }
-  render(() => (
-    <RecordStoreProvider>
-      <Capture />
-    </RecordStoreProvider>
-  ));
+  });
   return store;
 }
 

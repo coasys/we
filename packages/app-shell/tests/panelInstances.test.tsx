@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { APP_PANEL_SCOPE, panelInstances, publishPanelInstances } from '../src/shared/registries/panelInstances';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
@@ -45,20 +46,18 @@ afterEach(() => {
 
 function mount() {
   let store!: ShellStore;
-  const Grab = () => {
-    store = useShellStore();
+  const { container } = render(() => {
+    store = createShellStore();
     // The store keeps instances under a DID — as SessionStore provides it in the app.
     store.provideAgentDid(() => 'did:test:me');
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
-    return null;
-  };
-  const { container } = render(() => (
-    <ShellStoreProvider>
-      <Grab />
-      <PanelLane lane="side" width="320px" />
-      <PanelHost />
-    </ShellStoreProvider>
-  ));
+    return (
+      <StoreRegistryContext.Provider value={{ shellStore: store }}>
+        <PanelLane lane="side" width="320px" />
+        <PanelHost />
+      </StoreRegistryContext.Provider>
+    );
+  });
   const shown = () =>
     [...container.querySelectorAll('.inspecting')]
       .filter((el) => !el.closest('[style*="display: none"]'))

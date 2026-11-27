@@ -1,5 +1,6 @@
-import { useDatasetStore, useRouteStore, useSessionStore, useShellStore, useThemeStore } from '@we/app-shell/solid';
 import { createEffect } from 'solid-js';
+
+import { useStore } from '../../../packages/app-shell/src/frameworks/solid/stores/useStore';
 
 /**
  * Puts the app on the fixture's space and route, once the boot has finished.
@@ -19,15 +20,15 @@ import { createEffect } from 'solid-js';
  * so the preview host states both halves explicitly instead: select the dataset, then navigate.
  *
  * Doing it in a component rather than in the connector is what makes it possible at all — stores
- * only exist inside `StoreProvider`, which is why `src/index.tsx` composes the root from
- * `StoreProvider` + `TemplateProvider` rather than using the packaged `<App/>`.
+ * only exist inside `BootController`, which is why `src/index.tsx` composes the root from
+ * `BootController` + `TemplateProvider` rather than using the packaged `<App/>`.
  */
 export function PreviewBootstrap(props: { datasetId: string; route: string }) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const routeStore = useRouteStore();
-  const shellStore = useShellStore();
-  const themeStore = useThemeStore();
+  const session = useStore('sessionStore');
+  const datasetStore = useStore('datasetStore');
+  const routeStore = useStore('routeStore');
+  const shellStore = useStore('shellStore');
+  const themeStore = useStore('themeStore');
 
   let done = false;
 

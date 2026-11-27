@@ -45,6 +45,7 @@
  * Without it, pressing undo after switching canvases moves a card on a canvas nobody is looking at,
  * which is the most confusing thing an undo can do.
  */
+import type { ReactivityPort } from '@we/reactivity';
 
 /** One reversible act, as the store that performed it describes it. */
 export interface HistoryEntry {
@@ -118,15 +119,12 @@ export interface History {
 }
 
 /**
- * A history whose state is held in whatever signal primitive the host injects.
+ * A history whose state is held in a signal from the host's reactivity port.
  *
- * The same shape `@we/optimism` takes, and for the same reason: this package must not depend on a
- * framework, and its consumers are all reactive. A host passes `createSignal`; a test passes two
- * closures over a variable.
+ * Injected rather than imported, as `@we/optimism` takes it and for the same reason: this package
+ * must not depend on a framework, and its consumers are all reactive.
  */
-export type SignalFactory = <T>(initial: T) => [() => T, (next: T) => void];
-
-export function createHistory(signal: SignalFactory, options: { limit?: number } = {}): History {
+export function createHistory(signal: ReactivityPort['signal'], options: { limit?: number } = {}): History {
   const limit = options.limit ?? DEFAULT_LIMIT;
   const [state, setState] = signal<HistoryState>(EMPTY);
 

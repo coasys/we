@@ -1,0 +1,77 @@
+/**
+ * The host's stores, as Solid components reach them.
+ *
+ * The stores are composed once, at `BootController`: each is built with the stores it reads passed
+ * in as arguments, and the finished set is this registry. A component asks for one by name —
+ * `useStore('spaceStore')` — and gets it typed. This hook is the only thing here that is Solid's;
+ * a host on another framework writes its own over the same composed instances.
+ *
+ * Keyed by the names the stores already go by everywhere else: a template reads
+ * `{ $: 'spaceStore.x' }`, the store bag (`Stores`) and the template surface list `spaceStore`, and
+ * the AI context describes `spaceStore`. One name per store, whichever side reaches for it.
+ */
+import type { RouteStore } from '@shared/stores/RouteStore';
+import { createContext, useContext } from 'solid-js';
+
+import type { AccountStore } from './AccountStore';
+import type { AppStore } from './AppStore';
+import type { BundleStore } from './BundleStore';
+import type { ChatStore } from './ChatStore';
+import type { ClockStore } from './ClockStore';
+import type { DatasetStore } from './DatasetStore';
+import type { DeviceStore } from './DeviceStore';
+import type { EditorStore } from './EditorStore';
+import type { IdentityStore } from './IdentityStore';
+import type { InterpretationStore } from './InterpretationStore';
+import type { PresenceStore } from './PresenceStore';
+import type { ProfileStore } from './ProfileStore';
+import type { RecordStore } from './RecordStore';
+import type { RuntimeStore } from './RuntimeStore';
+import type { SessionStore } from './SessionStore';
+import type { ShapeStore } from './ShapeStore';
+import type { ShellStore } from './ShellStore';
+import type { SpaceStore } from './SpaceStore';
+import type { TemplateStore } from './TemplateStore';
+import type { ThemeStore } from './ThemeStore';
+import type { WorkflowStore } from './WorkflowStore';
+
+/** Every app-lifetime store the host composes, by name. */
+export interface StoreRegistry {
+  accountStore: AccountStore;
+  appStore: AppStore;
+  bundleStore: BundleStore;
+  chatStore: ChatStore;
+  clockStore: ClockStore;
+  datasetStore: DatasetStore;
+  deviceStore: DeviceStore;
+  editorStore: EditorStore;
+  identityStore: IdentityStore;
+  interpretationStore: InterpretationStore;
+  presenceStore: PresenceStore;
+  profileStore: ProfileStore;
+  recordStore: RecordStore;
+  routeStore: RouteStore;
+  runtimeStore: RuntimeStore;
+  sessionStore: SessionStore;
+  shapeStore: ShapeStore;
+  shellStore: ShellStore;
+  spaceStore: SpaceStore;
+  templateStore: TemplateStore;
+  themeStore: ThemeStore;
+  workflowStore: WorkflowStore;
+}
+
+export type StoreKey = keyof StoreRegistry;
+
+/**
+ * The composed stores. Partial in its type so a test can hand a component only the stores it
+ * reads; `BootController` hands it every one, and its own type checks that it does.
+ */
+export const StoreRegistryContext = createContext<Partial<StoreRegistry>>();
+
+/** The store named `key`, from the registry `BootController` composed. */
+export function useStore<K extends StoreKey>(key: K): StoreRegistry[K] {
+  const store = useContext(StoreRegistryContext)?.[key];
+  if (!store) throw new Error(`useStore('${key}') has no ${key} to give: it is composed at BootController`);
+  return store;
+}

@@ -20,7 +20,7 @@
 import { DOCK_FRAME_ATTR } from '@shared/registries/dockRegistry';
 import { createEffect, onCleanup } from 'solid-js';
 
-import { useShellStore } from '../stores/ShellStore';
+import { useStore } from '../stores/useStore';
 
 /** As long as a frame's own transition (`300`) at the default animation speed. */
 const MOTION_MS = 300;
@@ -35,7 +35,7 @@ interface Seen {
 }
 
 export function PanelMotion() {
-  const shellStore = useShellStore();
+  const shellStore = useStore('shellStore');
   const seen = new Map<string, Seen>();
   /*
     The box each frame is heading for while it plays — what it is measured as until it gets there. A

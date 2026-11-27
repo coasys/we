@@ -10,6 +10,8 @@ packages:
   - packages/backend-system/*
   - packages/graph-system/*
   - packages/graph-system/frameworks/*
+  - packages/reactivity-system/*
+  - packages/reactivity-system/frameworks/*
   - packages/templates/*
   - packages/editor
   # Feature modules — the developer rung above blocks (see notes/we/August-2026/feature-modules.md)

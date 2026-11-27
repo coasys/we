@@ -7,12 +7,12 @@
  * evaluated when the handler fires, with the event in scope.
  */
 import { REACTIVE_ACCESSOR } from '@we/expressions';
+import type { ReactivityPort } from '@we/reactivity';
 
 import { defineFormFunctions } from '../formFunctions';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
-import type { Memo, Props } from './types';
-import { noMemo } from './types';
+import { noMemo, type Props } from './types';
 
 /**
  * Template-authoring mistakes ($setLocal on an undeclared field, $touch on an unknown one, …)
@@ -153,7 +153,7 @@ export function resolveToggleLocalInProp(
   value: { $toggleLocalIn: string; value: unknown },
   stores: Props,
   context: Props,
-  resolve: (value: unknown, stores: Props, context: Props, memo: Memo) => unknown,
+  resolve: (value: unknown, stores: Props, context: Props, memo: ReactivityPort['memo']) => unknown,
 ): (event?: unknown) => void {
   const localState = context.$local as Record<string, () => unknown> | undefined;
   const localSetters = context.$localSetters as Record<string, (v: unknown) => void> | undefined;

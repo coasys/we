@@ -11,7 +11,7 @@
  */
 import { createSignal, onCleanup, Show } from 'solid-js';
 
-import { useChatStore } from '../../stores/ChatStore';
+import { useStore } from '../../stores/useStore';
 import AgentChat from './AgentChat';
 
 /** How tall the sheet sits before being pulled up — most of the screen, the space still behind it. */
@@ -22,7 +22,7 @@ const FOCUSABLE =
   'button, [href], input, textarea, select, details, [tabindex]:not([tabindex="-1"]), we-button, we-input';
 
 export function AgentChatSheet() {
-  const chat = useChatStore();
+  const chat = useStore('chatStore');
   const [raised, setRaised] = createSignal(false);
   let sheet!: HTMLDivElement;
 

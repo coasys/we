@@ -34,7 +34,8 @@ import PanelLane from '@solid/components/PanelLane';
 import { MissingMarker, PresentPart } from '@solid/components/PartFrame';
 import { injectDSInteropStyles } from '@solid/dsInterop';
 import { componentRegistry } from '@solid/registries/componentRegistry';
-import { ShellStoreProvider, useShellStore } from '@solid/stores/ShellStore';
+import { createShellStore, type ShellStore } from '@solid/stores/ShellStore';
+import { StoreRegistryContext } from '@solid/stores/useStore';
 import { createInMemoryBackend } from '@we/backend-inmemory';
 import { BlockHostProvider } from '@we/block-solid';
 import type { ToastLook } from '@we/components/solid';
@@ -67,7 +68,7 @@ import { applyThemeVars, clearThemeVars, setDisplayPreferences, setThemeLive } f
 import { RenderSchema } from '@we/schema-solid';
 import { VisualEditorProvider } from '@we/schema-solid';
 import { THEME_PRESETS } from '@we/themes/presets';
-import { createComponent, createEffect, createSignal } from 'solid-js';
+import { createComponent, createEffect, createSignal, type JSX } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { insert, render } from 'solid-js/web';
 
@@ -1112,7 +1113,21 @@ const [probeOpen, setProbeOpen] = createSignal<Record<string, boolean>>({});
 function dockProbeOpen(id: string): void {
   setProbeOpen((open) => ({ ...open, [id]: true }));
 }
-let dockProbeShell: ReturnType<typeof useShellStore> | undefined;
+/**
+ * A shell store, composed as the host composes it, with what `render` builds reading it through
+ * `useStore` as the app's components do.
+ */
+function withShellStore(build: (shellStore: ShellStore) => JSX.Element): JSX.Element {
+  const shellStore = createShellStore();
+  return createComponent(StoreRegistryContext.Provider, {
+    value: { shellStore },
+    get children() {
+      return createComponent(() => build(shellStore), {});
+    },
+  });
+}
+
+let dockProbeShell: ShellStore | undefined;
 function dockProbe(panels: DockProbePanel[]): void {
   // A clean arrangement: what an earlier probe left stored (a stowed lane, a dragged card) is not this one's.
   for (const key of Object.keys(localStorage)) if (key.startsWith('we-local:shell.')) localStorage.removeItem(key);
@@ -1168,8 +1183,7 @@ function dockProbe(panels: DockProbePanel[]): void {
     unregisterHostDockStore('probe');
     dockProbeShell = undefined;
   });
-  const Chrome = () => {
-    const shellStore = useShellStore();
+  const Chrome = (shellStore: ShellStore) => {
     dockProbeShell = shellStore;
     // Wrapped as the app wraps chrome's stores, so an expression reads a member's value, not its accessor.
     const bag = buildTemplateBag({ shellStore } as never, { grants: CHROME_TIER }) as never;
@@ -1217,15 +1231,7 @@ function dockProbe(panels: DockProbePanel[]): void {
     insert(lane, () => laneChildren);
     return [space, lane, ...frames, createComponent(EdgeLanes, {}), createComponent(PanelHost, {})];
   };
-  const dispose = render(
-    () =>
-      createComponent(ShellStoreProvider, {
-        get children() {
-          return createComponent(Chrome, {});
-        },
-      }),
-    root,
-  );
+  const dispose = render(() => withShellStore(Chrome), root);
   probeDisposers.unshift(dispose);
 }
 
@@ -1429,15 +1435,11 @@ function laneRoomProbe(): void {
   };
   const dispose = render(
     () =>
-      createComponent(ShellStoreProvider, {
-        get children() {
-          return [
-            createComponent(PanelLane, { lane: 'room-a', width: '280px', minWidth: '220px', resize: 'end' }),
-            view(),
-            createComponent(PanelLane, { lane: 'room-b', width: '300px', minWidth: '220px', resize: 'start' }),
-          ];
-        },
-      }),
+      withShellStore(() => [
+        createComponent(PanelLane, { lane: 'room-a', width: '280px', minWidth: '220px', resize: 'end' }),
+        view(),
+        createComponent(PanelLane, { lane: 'room-b', width: '300px', minWidth: '220px', resize: 'start' }),
+      ]),
     root,
   );
   probeDisposers.push(() => {

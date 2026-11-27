@@ -26,19 +26,13 @@ const failing = new Map<string, number>();
 const stored: Record<string, Record<string, unknown>[]> = {};
 const workflowPort = createInMemoryWorkflowPort(() => 'did:test:me');
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ me: () => ({ did: 'did:test:me' }), backendPorts: () => ({ workflows: workflowPort }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({
-    isWeSpace: () => true,
-    currentDataset: () => ({ id: dataset.id, handle: dataset }),
-    currentDatasetEntities: foreignModels,
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/ShapeStore', () => ({
-  useShapeStore: () => ({ spaceShapes: adoptedShapes }),
-}));
+const sessionStub = { me: () => ({ did: 'did:test:me' }), backendPorts: () => ({ workflows: workflowPort }) };
+const datasetStub = {
+  isWeSpace: () => true,
+  currentDataset: () => ({ id: dataset.id, handle: dataset }),
+  currentDatasetEntities: foreignModels,
+};
+const shapeStub = { spaceShapes: adoptedShapes };
 vi.mock('@we/entities', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   getEntityForDataset: (entity: string) =>
@@ -73,32 +67,26 @@ async function openOn(workflow: string, record: string, entities: string[] = [])
   await store.openWorkflow(workflow);
   return store;
 }
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({
-    taskStates: () => [],
-    involvementTypes: () => [],
-    archivedWorkflows: () => [],
-    canAdministerCurrentSpace: () => true,
-  }),
-}));
+const spaceStub = {
+  taskStates: () => [],
+  involvementTypes: () => [],
+  archivedWorkflows: () => [],
+  canAdministerCurrentSpace: () => true,
+};
 
-import {
-  useWorkflowStore,
-  type WorkflowStore,
-  WorkflowStoreProvider,
-} from '../src/frameworks/solid/stores/WorkflowStore';
+import { createWorkflowStore, type WorkflowStore } from '../src/frameworks/solid/stores/WorkflowStore';
 
 function mount(): WorkflowStore {
   let store!: WorkflowStore;
-  function Capture() {
-    store = useWorkflowStore();
+  render(() => {
+    store = createWorkflowStore({
+      sessionStore: sessionStub as never,
+      datasetStore: datasetStub as never,
+      spaceStore: spaceStub as never,
+      shapeStore: shapeStub as never,
+    });
     return null;
-  }
-  render(() => (
-    <WorkflowStoreProvider>
-      <Capture />
-    </WorkflowStoreProvider>
-  ));
+  });
   return store;
 }
 

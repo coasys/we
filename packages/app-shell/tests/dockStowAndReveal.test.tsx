@@ -9,7 +9,7 @@ import { cleanup, render } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { COLLAPSED_PX, STRIP_PX } from '../src/shared/dockGeometry';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 
@@ -20,15 +20,10 @@ const B = `${STORE}:b`;
 
 function mountShellStore(): ShellStore {
   let store!: ShellStore;
-  const Grab = () => {
-    store = useShellStore();
+  render(() => {
+    store = createShellStore();
     return null;
-  };
-  render(() => (
-    <ShellStoreProvider>
-      <Grab />
-    </ShellStoreProvider>
-  ));
+  });
   return store;
 }
 

@@ -1,5 +1,5 @@
 import { moduleRegistry, type RegisteredEmbed } from '@shared/registries/moduleRegistry';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal } from 'solid-js';
 
 import weLogo from '../../../shared/assets/we-icon.png';
 
@@ -38,9 +38,7 @@ export interface AppStore {
 
 const WE_SENTINEL: RegisteredEmbed = { id: 'we', name: 'WE', image: weLogo, icon: '', url: '', allow: '' };
 
-const AppContext = createContext<AppStore>();
-
-export function AppStoreProvider(props: ParentProps) {
+export function createAppStore(): AppStore {
   const [installedModules, setInstalledModules] = createSignal<(() => string[]) | null>(null);
   const [activeAppId, setActiveAppId] = createSignal<string | null>(null);
 
@@ -87,13 +85,5 @@ export function AppStoreProvider(props: ParentProps) {
     provideInstalledModules: (lookup) => setInstalledModules(() => lookup),
   };
 
-  return <AppContext.Provider value={store}>{props.children}</AppContext.Provider>;
+  return store;
 }
-
-export function useAppStore(): AppStore {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useAppStore must be used within AppStoreProvider');
-  return ctx;
-}
-
-export default AppStoreProvider;

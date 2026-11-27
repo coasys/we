@@ -20,7 +20,7 @@ import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 /**
  * A dock whose store arrives after the shell has already looked has to be recoverable.
  *
- * This is the theme panel's bug, reduced: `ShellStoreProvider` wraps `EditorStoreProvider`, so the
+ * This is the theme panel's bug, reduced: the shell store is composed before the editor store, so the
  * shell resolves dock edges before the editor has published its store. The lookup finds nothing,
  * the resolving memo therefore never touches the edge accessor, and — with no dependency on it —
  * nothing can make it try again. The panel's flag went true and no panel appeared, through any

@@ -10,6 +10,8 @@
  * boot controller via `onSessionUnlocked` — this store only knows *when* the session becomes
  * usable, not what the app loads into it.
  */
+import type { BackendConnector } from '@shared/backend/types';
+import type { PlatformAdapter } from '@shared/platform/types';
 import {
   type AgentIdentity,
   type AgentSessionPort,
@@ -22,26 +24,14 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted, setTestPeopleOn, testPeopleEnabled } from '@we/module-shared';
-import {
-  Accessor,
-  batch,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  ParentProps,
-  useContext,
-} from 'solid-js';
+import { Accessor, batch, createEffect, createMemo, createSignal } from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
-import { useAccountStore } from './AccountStore';
-import { useChatStore } from './ChatStore';
-import { useShellStore } from './ShellStore';
+import type { StoreRegistry } from './useStore';
 
 /**
  * Where boot has got to.
@@ -232,13 +222,16 @@ export interface SessionStore {
   onSessionUnlocked: (handler: () => Promise<void>) => void;
 }
 
-const SessionContext = createContext<SessionStore>();
-
-export function SessionStoreProvider(props: ParentProps) {
-  const platform = usePlatform();
-  const backend = useBackend();
-  const shellStore = useShellStore();
-  const chatStore = useChatStore();
+export function createSessionStore(
+  deps: Pick<StoreRegistry, 'accountStore' | 'chatStore' | 'shellStore'> & {
+    platform: PlatformAdapter;
+    backend: BackendConnector;
+  },
+): SessionStore {
+  const platform = deps.platform;
+  const backend = deps.backend;
+  const shellStore = deps.shellStore;
+  const chatStore = deps.chatStore;
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
@@ -249,7 +242,7 @@ export function SessionStoreProvider(props: ParentProps) {
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
   /** A first run is holding the app back for the AI step — see `holdForAiSetup`. */
   const [aiStepHeld, setAiStepHeld] = createSignal(false);
-  const accounts = useAccountStore();
+  const accounts = deps.accountStore;
   const signInStep = createMemo(() =>
     stepOf({
       bootState: bootState(),
@@ -666,11 +659,5 @@ export function SessionStoreProvider(props: ParentProps) {
     onSessionUnlocked,
   };
 
-  return <SessionContext.Provider value={store}>{props.children}</SessionContext.Provider>;
-}
-
-export function useSessionStore(): SessionStore {
-  const context = useContext(SessionContext);
-  if (!context) throw new Error('useSessionStore must be used within the SessionStoreProvider');
-  return context;
+  return store;
 }

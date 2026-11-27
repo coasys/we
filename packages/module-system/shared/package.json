@@ -20,6 +20,7 @@
     "@we/backend-shared": "workspace:*",
     "@we/clock": "workspace:*",
     "@we/entities": "workspace:*",
+    "@we/reactivity": "workspace:*",
     "@we/schema-shared": "workspace:*"
   },
   "devDependencies": {
@@ -28,5 +29,8 @@
     "tsup": "^9.0.0",
     "vitest": "^5.0.5"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "we": {
+    "neutral": true
+  }
 }

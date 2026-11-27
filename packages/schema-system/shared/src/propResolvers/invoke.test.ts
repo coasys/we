@@ -1,3 +1,4 @@
+import type { ReactivityPort } from '@we/reactivity';
 import { describe, expect, it, vi } from 'vitest';
 
 import { resolveProp } from './dispatcher';
@@ -167,7 +168,7 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
       { $invoke: 'myStore.save', args: [{ $: "'a' + 'b'" }] },
       { myStore: { save } },
       {},
-      (fn) => fn(),
+      (fn) => fn,
     );
     (handler as () => void)();
     expect(save).toHaveBeenCalledWith('ab');
@@ -180,7 +181,7 @@ describe('lifecycle dispatch resolves without a reactive owner', () => {
   against its own address (`resolvePath`, `RouteStore.navigate`).
 */
 describe('navigating from a route', () => {
-  const memo = ((fn: () => unknown) => fn) as <T>(fn: () => T) => T;
+  const memo: ReactivityPort['memo'] = (fn) => fn;
 
   /**
    * A nav strip's `args: [{ $: 'view.path' }]` resolves through the renderer's `createMemo`, so the

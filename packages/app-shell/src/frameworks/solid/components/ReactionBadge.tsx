@@ -35,9 +35,7 @@ import { actingAs, answerAs } from '../../../shared/pretendPeople';
 import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
 import { signalOptimism } from '../../../shared/signalOptimism';
 import { reactions } from '../../../shared/sources/signalTally';
-import { useDatasetStore } from '../stores/DatasetStore';
-import { useSessionStore } from '../stores/SessionStore';
-import { useSpaceStore } from '../stores/SpaceStore';
+import { useStore } from '../stores/useStore';
 
 type TypeRow = SignalTypeData & { id: string; name?: string };
 type ReactionRow = { signalTypeId: string; value: number; author: string };
@@ -68,9 +66,9 @@ export function ReactionBadge(props: {
   recordType?: string;
   keepStill?: (on: boolean) => void;
 }) {
-  const datasetStore = useDatasetStore();
-  const sessionStore = useSessionStore();
-  const spaceStore = useSpaceStore();
+  const datasetStore = useStore('datasetStore');
+  const sessionStore = useStore('sessionStore');
+  const spaceStore = useStore('spaceStore');
 
   const typeId = () => {
     const value = props.node.data?.weightType;

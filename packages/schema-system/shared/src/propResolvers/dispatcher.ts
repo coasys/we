@@ -16,6 +16,7 @@
  * `{ $: 'item.name' }` now; there is nothing for a string to be but itself.
  */
 import { REACTIVE_ACCESSOR } from '@we/expressions';
+import type { ReactivityPort } from '@we/reactivity';
 
 import { hasToken } from '../predicates';
 import { resolveIfHandler } from './conditional';
@@ -29,8 +30,7 @@ import {
   resolveToggleLocalProp,
   resolveTouchProp,
 } from './local';
-import type { Memo, Props } from './types';
-import { noMemo } from './types';
+import { noMemo, type Props } from './types';
 
 /** Check if an object contains any schema tokens (keys starting with $) */
 function hasAnyToken(value: unknown): boolean {
@@ -46,7 +46,13 @@ function hasAnyToken(value: unknown): boolean {
  * @param memo - Memoization function (framework-specific)
  * @param depth - Current recursion depth (for safety limit)
  */
-export function resolveProp(value: unknown, stores: Props, context: Props, memo: Memo = noMemo, depth = 0): unknown {
+export function resolveProp(
+  value: unknown,
+  stores: Props,
+  context: Props,
+  memo: ReactivityPort['memo'] = noMemo,
+  depth = 0,
+): unknown {
   // Safety: prevent infinite recursion
   if (depth > 10) {
     console.warn('resolveProp: Maximum recursion depth exceeded');
@@ -120,7 +126,12 @@ export function resolveProp(value: unknown, stores: Props, context: Props, memo:
 }
 
 // Resolve all props in an object
-export function resolveProps(props: Props | undefined, stores: Props, context: Props, memo: Memo = noMemo): Props {
+export function resolveProps(
+  props: Props | undefined,
+  stores: Props,
+  context: Props,
+  memo: ReactivityPort['memo'] = noMemo,
+): Props {
   const resolvedProps: Props = {};
   for (const [key, value] of Object.entries(props ?? {}))
     resolvedProps[key] = resolveProp(value, stores, context, memo);

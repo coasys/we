@@ -4,7 +4,8 @@ import { PlatformAdapter } from '@shared/platform/types';
 import { createModuleStoreDeps } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { provideFileSaver } from '@we/design-utils';
-import { createContext, createEffect, createSignal, onCleanup, ParentComponent, untrack, useContext } from 'solid-js';
+import { solidReactivity } from '@we/reactivity-solid';
+import { createContext, onCleanup, ParentComponent, untrack, useContext } from 'solid-js';
 
 import type { WeSeedFile } from '../../../types/seed';
 import { firstScreen } from '../firstScreen';
@@ -36,19 +37,19 @@ export const PlatformProvider: ParentComponent<{
   const seed = untrack(() => props.seed);
 
   // Initialize integrations with platform adapter BEFORE rendering children
-  // This must run synchronously so the launcher template is ready when TemplateStoreProvider reads the registry
+  // This must run synchronously so the launcher template is ready when the template store reads the registry
   // Components are handed over here, where the framework is known — `initializeIntegrations` itself
   // stays framework-neutral.
   initializeIntegrations(platform, seed, {
     // The framework halves of the modules that have one, lent so their packages never import Solid.
     components: moduleHostComponents,
-    // Reactivity lent to module stores. Solid's primitives already have the shapes the port asks
-    // for, so a module store gets reactivity without importing a framework. The remaining deps
-    // (transport, presence, the current dataset) are bound late — the stores that own them mount
-    // below this provider. See moduleHostServices.ts.
+    // Reactivity lent to module stores: the Solid implementation of the port, so a module store gets
+    // reactivity without importing a framework. The remaining deps (transport, presence, the
+    // current dataset) are bound late — the stores that own them mount below this provider. See
+    // moduleHostServices.ts.
     storeDeps: createModuleStoreDeps({
-      signal: <T,>(initial: T) => createSignal(initial) as [() => T, (next: T) => void],
-      effect: (fn) => createEffect(fn),
+      signal: solidReactivity.signal,
+      effect: solidReactivity.effect,
       // So the Feed can say when its first page is up, and a call's policy waits until it is.
       firstScreen,
     }),

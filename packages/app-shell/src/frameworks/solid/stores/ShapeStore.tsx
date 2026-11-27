@@ -38,16 +38,7 @@ import { createJsonShapeStore, getRegisteredEntityNames, Shape } from '@we/entit
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { latest } from '@we/module-shared';
 import type { BundleRecordType } from '@we/schema-shared';
-import {
-  Accessor,
-  batch,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  ParentProps,
-  useContext,
-} from 'solid-js';
+import { Accessor, batch, createEffect, createMemo, createSignal } from 'solid-js';
 
 import {
   generateShapeDraft as runShapeGeneration,
@@ -70,8 +61,7 @@ import {
   type ShapeDraftMember,
   syncDerived,
 } from '../../../shared/shapes/shapeDraft';
-import { useDatasetStore } from './DatasetStore';
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 /** A we-select option row: icon drawn beside the label, group rendered once as a heading. */
 export interface RelationshipTargetOption {
@@ -382,11 +372,9 @@ export interface ShapeStore {
   resetHintEditor: () => Promise<void>;
 }
 
-const ShapeStoreContext = createContext<ShapeStore>();
-
-export function ShapeStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
+export function createShapeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore'>): ShapeStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
 
   const [spaceShapes, setSpaceShapes] = createSignal<SpaceShapeView[]>([]);
   const [shapesLoaded, setShapesLoaded] = createSignal(false);
@@ -1555,11 +1543,5 @@ export function ShapeStoreProvider(props: ParentProps) {
     resetHintEditor,
   };
 
-  return <ShapeStoreContext.Provider value={store}>{props.children}</ShapeStoreContext.Provider>;
-}
-
-export function useShapeStore(): ShapeStore {
-  const ctx = useContext(ShapeStoreContext);
-  if (!ctx) throw new Error('useShapeStore must be used within ShapeStoreProvider');
-  return ctx;
+  return store;
 }

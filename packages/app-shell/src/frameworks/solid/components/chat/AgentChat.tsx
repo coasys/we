@@ -28,10 +28,8 @@ import { tokenVar } from '@we/design-utils';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 
 import { isSpaceSelf } from '../../../../shared/spaceSync';
-import { type ChatInputs, useChatStore } from '../../stores/ChatStore';
-import { useDatasetStore } from '../../stores/DatasetStore';
-import { useSessionStore } from '../../stores/SessionStore';
-import { useSpaceStore } from '../../stores/SpaceStore';
+import { type ChatInputs } from '../../stores/ChatStore';
+import { useStore } from '../../stores/useStore';
 import { askBefore, lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
 
 /** What an open chat was asked for — `panel.inputs` on desktop, the sheet's on a phone. */
@@ -98,10 +96,10 @@ function ago(ms: number): string {
 }
 
 export function AgentChat(props: { inputs?: AgentChatInputs }) {
-  const session = useSessionStore();
-  const spaceStore = useSpaceStore();
-  const datasetStore = useDatasetStore();
-  const chat = useChatStore();
+  const session = useStore('sessionStore');
+  const spaceStore = useStore('spaceStore');
+  const datasetStore = useStore('datasetStore');
+  const chat = useStore('chatStore');
 
   const port = () => session.backendPorts()?.agents?.conversations;
 

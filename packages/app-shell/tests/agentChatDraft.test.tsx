@@ -7,11 +7,15 @@
  * and the chat body spends it once. A forged `{ draft, at }` is an input nothing reads; a nonce
  * nobody issued answers nothing.
  */
-import { cleanup, render, waitFor } from '@solidjs/testing-library';
+import { cleanup, render as mount, waitFor } from '@solidjs/testing-library';
+import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 
 const create = vi.fn(async () => ({ id: 'c9' }));
 const send = vi.fn(async () => {});
+const takePending = vi.fn<(nonce: string) => { text: string; perspectiveUuid?: string } | undefined>(() => undefined);
 
 vi.mock('../src/frameworks/solid/components/chat/agentConversationHost', () => ({
   useAgentConversationsPort: () => () => ({
@@ -23,8 +27,9 @@ vi.mock('../src/frameworks/solid/components/chat/agentConversationHost', () => (
   }),
 }));
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
     backendPorts: () => ({
       agents: {
         conversations: {
@@ -38,20 +43,23 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
         },
       },
     }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({ useDatasetStore: () => ({ datasets: () => [] }) }));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({ useSpaceStore: () => ({ mySpaces: () => [] }) }));
-
-const takePending = vi.fn<(nonce: string) => { text: string; perspectiveUuid?: string } | undefined>(() => undefined);
-vi.mock('../src/frameworks/solid/stores/ChatStore', () => ({
-  useChatStore: () => ({
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+  chatStore: {
     openChat: vi.fn(),
     takePending,
     rememberedConversation: vi.fn(() => undefined),
     rememberConversation: vi.fn(),
-  }),
-}));
+  },
+} as unknown as Partial<StoreRegistry>;
+
+/** Render inside the store registry, as the host's composition hands it to every component. */
+function render(ui: () => JSX.Element) {
+  return mount(ui, {
+    wrapper: (props) => <StoreRegistryContext.Provider value={stores}>{props.children}</StoreRegistryContext.Provider>,
+  });
+}
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
 

@@ -15,14 +15,7 @@ import { registerHostDockStore, unregisterHostDockStore } from '@shared/registri
 import { EDITOR_STORE_ID } from '@shared/registries/editorDocks';
 import { sameTemplateContent } from '@shared/templateSync';
 import { deepClone } from '@shared/utils';
-import {
-  type EditingTheme,
-  useDatasetStore,
-  useSessionStore,
-  useShapeStore,
-  useTemplateStore,
-  useThemeStore,
-} from '@solid/stores';
+import { type EditingTheme } from '@solid/stores';
 import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
 import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
@@ -32,17 +25,7 @@ import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink, TEMPLATE_SCHEMA_VERSION } from '@we/schema-shared';
 import { buildValidationContext, withEntities, withOperations } from '@we/schema-shared';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import {
   appendMessage,
@@ -54,7 +37,8 @@ import {
   startChat,
 } from '../../../shared/editorChats';
 import { firstScreen } from '../firstScreen';
-import { createEditTarget, EditTargetContext } from './editTarget';
+import type { EditTargetPort } from './editTarget';
+import type { StoreRegistry } from './useStore';
 
 export interface ChatMessage {
   id: string;
@@ -67,7 +51,7 @@ export interface ChatMessage {
 type HistoryEntry = { type: 'template'; snapshot: TemplateSchema } | { type: 'theme'; snapshot: EditingTheme };
 
 // Base validation context built once from the static generated context data.
-// External perspective models are merged in reactively inside EditorStoreProvider.
+// External perspective models are merged in reactively inside the editor store.
 const baseValidationCtx = buildValidationContext(contextData);
 
 export interface EditorStore {
@@ -209,8 +193,6 @@ function devLog(...args: unknown[]): void {
   if (import.meta.env.DEV) console.log(...args);
 }
 
-const EditorContext = createContext<EditorStore>();
-
 let msgIdCounter = 0;
 
 function createMessage(role: ChatMessage['role'], content: string, status?: ChatMessage['status']): ChatMessage {
@@ -247,15 +229,20 @@ const starterTemplate: SchemaNode = {
   ],
 };
 
-export function EditorStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const templateStore = useTemplateStore();
+export function createEditorStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore' | 'templateStore' | 'themeStore'> & {
+    /** What the session edits. Composed beside this store rather than inside it, because the editor's host adapter reads it too. */
+    editTarget: EditTargetPort;
+  },
+): EditorStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const templateStore = deps.templateStore;
   /** What the session edits — the template on screen, or another drawn with it. See `editTarget.ts`. */
-  const edit = createEditTarget(templateStore);
-  const themeStore = useThemeStore();
+  const edit = deps.editTarget;
+  const themeStore = deps.themeStore;
 
-  const shapeStore = useShapeStore();
+  const shapeStore = deps.shapeStore;
 
   /*
     The models a template edited here may query: WE's own and the modules', plus what the space on
@@ -1365,17 +1352,5 @@ export function EditorStoreProvider(props: ParentProps) {
   registerHostDockStore(EDITOR_STORE_ID, store as unknown as Record<string, unknown>);
   onCleanup(() => unregisterHostDockStore(EDITOR_STORE_ID));
 
-  return (
-    <EditorContext.Provider value={store}>
-      <EditTargetContext.Provider value={edit}>{props.children}</EditTargetContext.Provider>
-    </EditorContext.Provider>
-  );
+  return store;
 }
-
-export function useEditorStore(): EditorStore {
-  const ctx = useContext(EditorContext);
-  if (!ctx) throw new Error('useEditorStore must be used within EditorStoreProvider');
-  return ctx;
-}
-
-export default EditorStoreProvider;

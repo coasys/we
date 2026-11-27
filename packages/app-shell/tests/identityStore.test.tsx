@@ -13,32 +13,25 @@ import type {
 } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
 import { createSignal } from 'solid-js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 const [ports, setPorts] = createSignal<{ identity?: IdentityPort } | null>(null);
 const [bootState, setBootState] = createSignal('ready');
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
-    backendPorts: ports,
-    bootState,
-    // As the session reads them from the port: linking a device needs a way to sign changes.
-    identityCapabilities: () => ({
-      ...NO_IDENTITY_CAPABILITIES,
-      keyLog: true,
-      devices: true,
-      linkDevice: !!ports()?.identity?.change,
-    }),
+const sessionStub = {
+  backendPorts: ports,
+  bootState,
+  // As the session reads them from the port: linking a device needs a way to sign changes.
+  identityCapabilities: () => ({
+    ...NO_IDENTITY_CAPABILITIES,
+    keyLog: true,
+    devices: true,
+    linkDevice: !!ports()?.identity?.change,
   }),
-}));
+};
 
-import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/frameworks/solid/stores/DeviceStore';
-import {
-  type IdentityStore,
-  IdentityStoreProvider,
-  startNowKey,
-  useIdentityStore,
-} from '../src/frameworks/solid/stores/IdentityStore';
+import { createDeviceStore, type DeviceStore } from '../src/frameworks/solid/stores/DeviceStore';
+import { createIdentityStore, type IdentityStore, startNowKey } from '../src/frameworks/solid/stores/IdentityStore';
 
 const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -125,18 +118,11 @@ function custody(port: IdentityPort, onChange: (change: IdentityChange) => void,
 function mount(): { identity: IdentityStore; devices: DeviceStore } {
   let identity!: IdentityStore;
   let deviceStore!: DeviceStore;
-  function Capture() {
-    identity = useIdentityStore();
-    deviceStore = useDeviceStore();
+  render(() => {
+    identity = createIdentityStore({ sessionStore: sessionStub as never });
+    deviceStore = createDeviceStore({ sessionStore: sessionStub as never, identityStore: identity });
     return null;
-  }
-  render(() => (
-    <IdentityStoreProvider>
-      <DeviceStoreProvider>
-        <Capture />
-      </DeviceStoreProvider>
-    </IdentityStoreProvider>
-  ));
+  });
   return { identity, devices: deviceStore };
 }
 

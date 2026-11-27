@@ -87,6 +87,7 @@
  * read through `include`, while a subscription's trigger did not follow the include tree.
  * `upsertSignal` deleted and re-created a reaction for exactly that reason until it did.)
  */
+import type { ReactivityPort } from '@we/reactivity';
 
 /** One held write, and what the data read as when it was issued. */
 export interface Held<V> {
@@ -282,9 +283,6 @@ export function reconcile<V>(
   return next;
 }
 
-/** A signal, in the one shape both Solid and an injected module reactivity agree on. */
-export type SignalFactory = <T>(initial: T) => [() => T, (next: T) => void];
-
 /** What {@link createOptimism} hands back — the holder, with the rules already bound. */
 export interface Optimism<V> {
   /** Everything held right now. Reading it is what makes a drawer redraw on a press. */
@@ -320,10 +318,9 @@ export interface Optimism<V> {
  *
  * The signal is injected rather than imported so this works in both places it is needed: the host,
  * which has Solid, and a feature module, which is handed `deps.signal` and imports no framework at
- * all. The setter is called with a value rather than an updater for the same reason — a module's
- * signal takes only the former.
+ * all. The setter is called with a value, which is all the port's setter takes.
  */
-export function createOptimism<V>(signal: SignalFactory, rules: Rules<V>): Optimism<V> {
+export function createOptimism<V>(signal: ReactivityPort['signal'], rules: Rules<V>): Optimism<V> {
   const [holds, setHolds] = signal<Holds<V>>({});
   const update = (next: (current: Holds<V>) => Holds<V>) => setHolds(next(holds()));
 

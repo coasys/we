@@ -9,25 +9,18 @@ import type { Account, AccountHost } from '@shared/platform/types';
 import { render } from '@solidjs/testing-library';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { type AccountStore, createAccountStore } from '../src/frameworks/solid/stores/AccountStore';
+
 let accountHost: AccountHost | undefined;
-
-vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ isDesktop: true, isDevelopment: true, accounts: accountHost }),
-}));
-
-import { type AccountStore, AccountStoreProvider, useAccountStore } from '../src/frameworks/solid/stores/AccountStore';
 
 function mount(): AccountStore {
   let store!: AccountStore;
-  function Capture() {
-    store = useAccountStore();
+  render(() => {
+    store = createAccountStore({
+      platform: { isDesktop: true, isDevelopment: true, accounts: accountHost } as never,
+    });
     return null;
-  }
-  render(() => (
-    <AccountStoreProvider>
-      <Capture />
-    </AccountStoreProvider>
-  ));
+  });
   return store;
 }
 

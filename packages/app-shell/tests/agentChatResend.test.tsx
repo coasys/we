@@ -7,16 +7,12 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import {
-  type ChatInputs,
-  type ChatStore,
-  ChatStoreProvider,
-  useChatStore,
-} from '../src/frameworks/solid/stores/ChatStore';
+import { type ChatInputs, type ChatStore, createChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 const [listAnswer, setListAnswer] = createSignal<Promise<unknown[]>>(Promise.resolve([]));
@@ -36,21 +32,7 @@ const conversations = {
   }),
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
-    backendPorts: () => (
-      convsVersion(),
-      { agents: { conversations: conversations as unknown as AgentConversationsPort } }
-    ),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({ useDatasetStore: () => ({ datasets: () => [] }) }));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({ useSpaceStore: () => ({ mySpaces: () => [] }) }));
-
 const mockOpenPanel = vi.fn(() => '');
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel: mockOpenPanel }),
-}));
 
 const msg = (partial: Partial<AgentConversationMessage>): AgentConversationMessage => ({
   id: 'm',
@@ -66,12 +48,33 @@ const type = (container: HTMLElement, text: string) =>
 const enter = (container: HTMLElement, isComposing = false) =>
   input(container).dispatchEvent(new CustomEvent('keydown', { detail: { key: 'Enter', isComposing } }));
 
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
+    backendPorts: () => (
+      convsVersion(),
+      { agents: { conversations: conversations as unknown as AgentConversationsPort } }
+    ),
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+  shellStore: { openPanel: mockOpenPanel },
+} as unknown as Partial<StoreRegistry>;
+
+/** The chat store itself, over the stubs above — composed as the host composes it. */
+function ChatStores(props: ParentProps) {
+  const chatStore = createChatStore({ shellStore: stores.shellStore! });
+  return (
+    <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
+  );
+}
+
 /** The chat mounted over the real store, a conversation open in it. */
 async function openConversation(inputs: ChatInputs = { perspectiveUuid: 'uuid-9' }) {
   const { container } = render(() => (
-    <ChatStoreProvider>
+    <ChatStores>
       <AgentChat inputs={inputs} />
-    </ChatStoreProvider>
+    </ChatStores>
   ));
   await vi.waitFor(() => expect(container.querySelector('.agent-chat-row-open')).not.toBeNull());
   (container.querySelector('.agent-chat-row-open') as HTMLElement).click();
@@ -181,9 +184,9 @@ describe('a refresh that lands', () => {
   it('clears the error a failed one left', async () => {
     setListAnswer(Promise.reject(new Error('executor offline')));
     const { container } = render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         <AgentChat inputs={{}} />
-      </ChatStoreProvider>
+      </ChatStores>
     ));
     await vi.waitFor(() => expect(container.textContent).toContain('executor offline'));
 
@@ -199,15 +202,15 @@ describe('a space switch and back', () => {
     const [mounted, setMounted] = createSignal(true);
     let store!: ChatStore;
     render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         {(() => {
-          store = useChatStore();
+          store = useStore('chatStore');
           return null;
         })()}
         <Show when={mounted()}>
           <AgentChat inputs={{ perspectiveUuid: 'uuid-9' }} />
         </Show>
-      </ChatStoreProvider>
+      </ChatStores>
     ));
     const container = document.body;
 

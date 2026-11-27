@@ -42,22 +42,9 @@ import type { WorkflowDefinition } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { type Bundle, type BundleRecordType, readBundle, type TemplateSchema } from '@we/schema-shared';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal } from 'solid-js';
 
-import { useDatasetStore } from './DatasetStore';
-import { useSessionStore } from './SessionStore';
-import { useShapeStore } from './ShapeStore';
-import { useSpaceStore } from './SpaceStore';
-import { useTemplateStore } from './TemplateStore';
-import { useThemeStore } from './ThemeStore';
+import type { StoreRegistry } from './useStore';
 
 /** Bigger than any app has reason to be, small enough that reading one cannot hang the page. */
 const MAX_BUNDLE_BYTES = 5 * 1024 * 1024;
@@ -146,8 +133,6 @@ export interface BundleStore {
   removeBundle: (bundleId: string) => Promise<void>;
 }
 
-const BundleContext = createContext<BundleStore>();
-
 /** What setting a space up needs to know of a bundle, wherever it came from. */
 interface SetUpSource {
   id: string;
@@ -173,13 +158,18 @@ function fileOf(input: unknown): File | null {
   return typeof File !== 'undefined' && first instanceof File ? first : null;
 }
 
-export function BundleStoreProvider(props: ParentProps) {
-  const templateStore = useTemplateStore();
-  const themeStore = useThemeStore();
-  const shapeStore = useShapeStore();
-  const spaceStore = useSpaceStore();
-  const datasetStore = useDatasetStore();
-  const session = useSessionStore();
+export function createBundleStore(
+  deps: Pick<
+    StoreRegistry,
+    'datasetStore' | 'sessionStore' | 'shapeStore' | 'spaceStore' | 'templateStore' | 'themeStore'
+  >,
+): BundleStore {
+  const templateStore = deps.templateStore;
+  const themeStore = deps.themeStore;
+  const shapeStore = deps.shapeStore;
+  const spaceStore = deps.spaceStore;
+  const datasetStore = deps.datasetStore;
+  const session = deps.sessionStore;
 
   /*
     Keep what the app somebody is in was drawn with, for the first frame of the next reload — see
@@ -672,13 +662,5 @@ export function BundleStoreProvider(props: ParentProps) {
     removeBundle,
   };
 
-  return <BundleContext.Provider value={store}>{props.children}</BundleContext.Provider>;
+  return store;
 }
-
-export function useBundleStore(): BundleStore {
-  const ctx = useContext(BundleContext);
-  if (!ctx) throw new Error('useBundleStore must be used within BundleStoreProvider');
-  return ctx;
-}
-
-export default BundleStoreProvider;

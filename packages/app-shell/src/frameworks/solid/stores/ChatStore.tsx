@@ -28,17 +28,9 @@
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createSignal,
-  onCleanup,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createSignal, onCleanup } from 'solid-js';
 
-import { useShellStore } from './ShellStore';
+import type { StoreRegistry } from './useStore';
 
 /** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
@@ -135,8 +127,8 @@ function keyFor(input: ChatOpen): string {
   return input.perspectiveUuid ?? 'global';
 }
 
-export function ChatStoreProvider(props: ParentProps) {
-  const shellStore = useShellStore();
+export function createChatStore(deps: Pick<StoreRegistry, 'shellStore'>): ChatStore {
+  const shellStore = deps.shellStore;
 
   const [isNarrow, setNarrow] = createSignal(
     typeof window === 'undefined' ? false : window.innerWidth < NARROW_VIEWPORT_PX,
@@ -243,15 +235,5 @@ export function ChatStoreProvider(props: ParentProps) {
     provideAgentDid: (did) => setDidOf(() => did),
   };
 
-  return <ChatContext.Provider value={store}>{props.children}</ChatContext.Provider>;
+  return store;
 }
-
-const ChatContext = createContext<ChatStore>();
-
-export function useChatStore(): ChatStore {
-  const ctx = useContext(ChatContext);
-  if (!ctx) throw new Error('useChatStore must be used within ChatStoreProvider');
-  return ctx;
-}
-
-export default ChatStoreProvider;

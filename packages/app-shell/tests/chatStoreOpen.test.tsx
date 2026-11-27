@@ -10,27 +10,37 @@
  * anything being sent.
  */
 import { render } from '@solidjs/testing-library';
-import { createSignal } from 'solid-js';
+import { createSignal, type ParentProps } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatStore } from '../src/frameworks/solid/stores/ChatStore';
-import { ChatStoreProvider, useChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { createChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 
 const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel }),
-}));
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  shellStore: { openPanel },
+} as unknown as Partial<StoreRegistry>;
+
+/** The chat store itself, over the stubs above — composed as the host composes it. */
+function ChatStores(props: ParentProps) {
+  const chatStore = createChatStore({ shellStore: stores.shellStore! });
+  return (
+    <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
+  );
+}
 
 function withStore(): ChatStore {
   let store: ChatStore | undefined;
   render(() => (
-    <ChatStoreProvider>
+    <ChatStores>
       {(() => {
-        store = useChatStore();
+        store = useStore('chatStore');
         return null;
       })()}
-    </ChatStoreProvider>
+    </ChatStores>
   ));
   return store!;
 }
@@ -104,13 +114,13 @@ describe('an identity change', () => {
     const [did, setDid] = createSignal<string | undefined>('did:test:agent-a');
     let store: ChatStore | undefined;
     render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         {(() => {
-          store = useChatStore();
+          store = useStore('chatStore');
           store.provideAgentDid(() => did());
           return null;
         })()}
-      </ChatStoreProvider>
+      </ChatStores>
     ));
     return { store: store!, setDid };
   }

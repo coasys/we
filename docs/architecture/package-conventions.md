@@ -44,6 +44,7 @@ packages/
 ├── block-system/     ← @we/block-shared, @we/block-solid
 ├── backend-system/   ← @we/backend-shared, @we/backend-ad4m, @we/backend-inmemory, @we/backend-conformance
 ├── module-system/    ← @we/module-shared, @we/module-globe, @we/module-call, …
+├── reactivity-system/ ← @we/reactivity, @we/reactivity-solid
 ├── templates/        ← @we/template-shell, @we/template-default  (data, no build step)
 ```
 
@@ -154,7 +155,7 @@ directory becomes a grab-bag.
 The cost is one extra `pnpm-workspace.yaml` glob per grouped system. Legibility while reading beats
 brevity while globbing.
 
-**Current state:** `frameworks/` in `schema-system` and `block-system`; flat in `backend-system` and
+**Current state:** `frameworks/` in `schema-system`, `block-system` and `reactivity-system`; flat in `backend-system` and
 `module-system`. If `backend-system` ever needs framework-specific bindings, `frameworks/` appears
 then, beside the flat backends — which is what the rule predicts.
 
@@ -253,6 +254,61 @@ failure this prevents is documented in `docs/guides/writing-a-module.md`: a bund
 reactive runtime gets a _second_ one, and reactivity silently stops crossing the boundary. It is
 also why a module store is built from injected `deps.signal` / `deps.effect` rather than importing a
 framework.
+
+## Neutral stores and neutral packages
+
+**A store, a module store and the prop resolvers take their reactivity from one `ReactivityPort`**
+(`@we/reactivity`: signal, memo, effect, untrack, batch, root, onCleanup), never from a framework.
+The host lends its implementation — `@we/reactivity-solid` under Solid — and tests also run under
+`@we/reactivity/testing`'s second one, so a store that passes both is neutral in fact rather than
+only in its imports. A store may rely on the port's three timing guarantees and nothing else; they
+are in that package's README.
+
+Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
+checks) holds them to it:
+
+- **`packages/app-shell/src/shared/`**, where stores move once they are written against the port.
+  Any import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
+  alias, a relative path into `frameworks/solid/`, or a workspace package that depends on solid-js
+  fails. The files there that still import Solid are listed in
+  `scripts/neutral-stores-allowlist.txt`, which **may only shrink**: a listed file that stops
+  importing Solid fails the check until its line is deleted, so the list is always exactly what is
+  left to convert.
+- **A package marked `"we": { "neutral": true }`** in its package.json — the contract packages a
+  host on another framework installs (`@we/reactivity`, `@we/backend-shared`, `@we/schema-shared`,
+  `@we/module-shared`, …). Its `src/` is held to the same import rule with no allowlist, and it may
+  not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
+  when you add it.
+
+**How a neutral store is written and composed.** `RouteStore` (`app-shell/src/shared/stores/`) is
+the first, and the shape the rest copy:
+
+- The factory takes one object: `reactivity` (the port) and the stores it reads, by the registry's
+  names — `createXStore({ reactivity, sessionStore, datasetStore })`. Nothing is looked up.
+- `BootController` is the composition point. It builds every store once, in dependency order,
+  passing `solidReactivity` and the stores already built; a store needing a later one is lent it
+  through a method afterwards (`provideSpaceLookup`), never by reordering.
+- Components reach the result through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`),
+  the only Solid piece. A second framework writes its own hook over the same composed instances.
+- Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
+  `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
+  for free and the port does not — a signal's `equals`, an updater setter — is written out in the
+  store: an equal write is skipped by comparing first, a function is stored as the value.
+- A backend read is followed through `followLive` (`app-shell/src/shared/followLive.ts`), called in
+  the effect that owns it, or held whole as signals with `followRows`. It disposes the handle with
+  its owner, drops anything for an input the store has moved on from, says when the rows are in,
+  and reads the stored rows once when the handle cannot open and an empty answer would mean
+  something (`stored`). A store does not keep its own `stopped` flag.
+- A list is handed out plain, rebuilt freely, with an `id` on every row. The renderer keeps a list's
+  rows by `id` (`keepRows` in `@we/schema-solid`), so a row whose fields change keeps its mount; a
+  store does not reconcile a list to keep its rows. A lookup that must wake only the readers of one
+  key is a signal per key (`app-shell/src/shared/keyedSignals.ts`), not a nested store.
+
+A Pattern B package with a neutral core and a Solid binding says which exports are which with
+`"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its
+`./signals` and `./step-words`. Importing a listed export from a neutral place is fine; any other
+export of a package that depends on solid-js counts as Solid. List an export only when nothing it
+reaches imports a framework.
 
 ## Adding a new package
 

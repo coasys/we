@@ -2,9 +2,9 @@
 import '@we/app-shell/shared/index.scss';
 
 import {
+  BootController,
   componentRegistry,
   PlatformProvider,
-  StoreProvider,
   TemplateProvider,
   templateRegistry,
   type WeSeedFile,
@@ -152,7 +152,7 @@ const routeOverride = params.get('route');
 /**
  * The root, composed rather than the packaged `<App/>`.
  *
- * `<App/>` is exactly `StoreProvider > TemplateProvider + ToastContainer`; spelling it out is what
+ * `<App/>` is exactly `BootController > TemplateProvider + ToastContainer`; spelling it out is what
  * lets {@link PreviewBootstrap} sit *inside* the store scope, which it has to, because selecting the
  * fixture's dataset and route is store work. See its docstring for why a URL cannot do it.
  */
@@ -185,11 +185,11 @@ if (bare) {
   render(
     () => (
       <PlatformProvider seed={previewSeed} platform={previewPlatform} backend={inMemoryConnector}>
-        <StoreProvider>
+        <BootController>
           <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={startRoute(fixture)} />
           <TemplateProvider />
           <ToastContainer />
-        </StoreProvider>
+        </BootController>
       </PlatformProvider>
     ),
     document.getElementById('root')!,

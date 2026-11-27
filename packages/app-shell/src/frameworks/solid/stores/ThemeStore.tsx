@@ -33,21 +33,10 @@ import {
 } from '@we/schema-shared';
 import type { SanitiseCssOptions } from '@we/themes/sanitiseCss';
 import { sanitiseCss } from '@we/themes/sanitiseCss';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
 
 import { safeMode } from '../../../shared/safeMode';
-import { useDatasetStore } from './DatasetStore';
-import { useSessionStore } from './SessionStore';
+import type { StoreRegistry } from './useStore';
 
 const THEME_KEY = 'we.theme';
 /*
@@ -295,8 +284,6 @@ export interface ThemeStore {
   requestNamedThemes: (schema: unknown) => void;
 }
 
-const ThemeContext = createContext<ThemeStore>();
-
 function registryToThemeData(key: string): ThemeData {
   const t = themeRegistry[key] ?? { name: key, icon: 'palette', css: null, overrides: null };
   return {
@@ -518,9 +505,9 @@ function populateMissingOverrides(
   return readThemeSettings(result, getComputedStyle(from));
 }
 
-export function ThemeStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
+export function createThemeStore(deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore'>): ThemeStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
 
   /*
     The theme an agent who has not chosen one wears: the one the app in use offers first, else what
@@ -2008,13 +1995,5 @@ export function ThemeStoreProvider(props: ParentProps) {
     requestNamedThemes,
   };
 
-  return <ThemeContext.Provider value={store}>{props.children}</ThemeContext.Provider>;
+  return store;
 }
-
-export function useThemeStore(): ThemeStore {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useThemeStore must be used within ThemeStoreProvider');
-  return ctx;
-}
-
-export default ThemeStoreProvider;

@@ -5,16 +5,12 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import {
-  type ChatInputs,
-  type ChatStore,
-  ChatStoreProvider,
-  useChatStore,
-} from '../src/frameworks/solid/stores/ChatStore';
+import { type ChatInputs, type ChatStore, createChatStore } from '../src/frameworks/solid/stores/ChatStore';
+import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 
 const conversations = {
   create: vi.fn(async () => ({ id: 's1' })),
@@ -25,18 +21,6 @@ const conversations = {
   messages: vi.fn(async () => []),
   follow: vi.fn((_ref: unknown, _cb: (next: AgentConversationMessage[]) => void) => () => {}),
 };
-
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
-    backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ datasets: () => [] }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ mySpaces: () => [] }),
-}));
 
 const input = (container: HTMLElement) => container.querySelector('we-input')!;
 
@@ -52,27 +36,42 @@ const sendButton = (container: HTMLElement) =>
   container.querySelector('we-icon[name="paper-plane-tilt"]')!.closest('we-button')! as HTMLElement;
 
 const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel }),
-}));
+
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
+    backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+  shellStore: { openPanel },
+} as unknown as Partial<StoreRegistry>;
+
+/** The chat store itself, over the stubs above — composed as the host composes it. */
+function ChatStores(props: ParentProps) {
+  const chatStore = createChatStore({ shellStore: stores.shellStore! });
+  return (
+    <StoreRegistryContext.Provider value={{ ...stores, chatStore }}>{props.children}</StoreRegistryContext.Provider>
+  );
+}
 
 /**
  * Mount the chat as it would have been opened — `openChat` holds the question, the nonce it
- * issued is all the inputs carry. One provider, so the store that issued it is the one spent.
+ * issued is all the inputs carry. One registry, so the store that issued it is the one spent.
  */
 function openedChat(draft: string) {
   const [inputs, setInputs] = createSignal<ChatInputs>({});
   let store!: ChatStore;
   const result = render(() => (
-    <ChatStoreProvider>
+    <ChatStores>
       {(() => {
-        store = useChatStore();
+        store = useStore('chatStore');
         return null;
       })()}
       <Show when={inputs().nonce}>
         <AgentChat inputs={inputs()} />
       </Show>
-    </ChatStoreProvider>
+    </ChatStores>
   ));
   store.openChat({ draft });
   setInputs(openPanel.mock.calls.at(-1)![1] as ChatInputs);
@@ -97,9 +96,9 @@ describe('the send path', () => {
         }),
     );
     const { container } = render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         <AgentChat inputs={{}} />
-      </ChatStoreProvider>
+      </ChatStores>
     ));
 
     type(container, 'the question');
@@ -127,9 +126,9 @@ describe('the send path', () => {
   it('keeps the typed question too when creating the conversation fails', async () => {
     conversations.create.mockRejectedValueOnce(new Error('executor offline'));
     const { container } = render(() => (
-      <ChatStoreProvider>
+      <ChatStores>
         <AgentChat inputs={{}} />
-      </ChatStoreProvider>
+      </ChatStores>
     ));
 
     type(container, 'still here');

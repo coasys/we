@@ -53,10 +53,6 @@ import {
   type WorkflowLabels,
 } from '@shared/workflowViews';
 import { firstScreen } from '@solid/firstScreen';
-import { useDatasetStore } from '@solid/stores/DatasetStore';
-import { useSessionStore } from '@solid/stores/SessionStore';
-import { useShapeStore } from '@solid/stores/ShapeStore';
-import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type {
   Requirement,
   WorkflowCapabilities,
@@ -68,17 +64,9 @@ import { nameFromProperties, namePropertyOf, validateWorkflowDefinition } from '
 import { toastService } from '@we/components/solid';
 import { getEntityForDataset } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  type ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, onCleanup, untrack } from 'solid-js';
+
+import type { StoreRegistry } from './useStore';
 
 /** A workflow as a list shows it. */
 export interface WorkflowSummaryView {
@@ -239,8 +227,6 @@ export interface WorkflowStore {
   removeEvidence: (name: string, index: number) => void;
 }
 
-const WorkflowContext = createContext<WorkflowStore>();
-
 /** A workflow's name from what a person typed: its words, capitalised and run together. */
 function workflowNameOf(label: string): string {
   return label
@@ -280,11 +266,13 @@ const stillRunning = (definition: WorkflowDefinition | undefined) => {
 /** A time from the backend as an ISO date, for a we-timestamp; empty where there is none. */
 const isoOf = (ms: number | undefined): string => (ms === undefined ? '' : new Date(ms).toISOString());
 
-export function WorkflowStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const spaceStore = useSpaceStore();
-  const shapeStore = useShapeStore();
+export function createWorkflowStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore' | 'spaceStore'>,
+): WorkflowStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const spaceStore = deps.spaceStore;
+  const shapeStore = deps.shapeStore;
 
   const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
@@ -966,11 +954,5 @@ export function WorkflowStoreProvider(props: ParentProps) {
       }),
   };
 
-  return <WorkflowContext.Provider value={store}>{props.children}</WorkflowContext.Provider>;
-}
-
-export function useWorkflowStore(): WorkflowStore {
-  const store = useContext(WorkflowContext);
-  if (!store) throw new Error('useWorkflowStore must be used within a WorkflowStoreProvider');
   return store;
 }

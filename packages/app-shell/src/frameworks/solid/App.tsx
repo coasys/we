@@ -1,6 +1,6 @@
 import { installStaleBuildReload, watchForNewBuild } from '@shared/buildFreshness';
 import { currentProductName } from '@shared/bundles/brand';
-import StoreProvider from '@solid/providers/StoreProvider';
+import { BootController } from '@solid/providers/BootController';
 import TemplateProvider from '@solid/providers/TemplateProvider';
 import { ToastContainer, toastService } from '@we/components/solid';
 import { ErrorBoundary, onCleanup, onMount } from 'solid-js';
@@ -48,7 +48,7 @@ export default function App() {
 
   return (
     <ErrorBoundary fallback={(error: unknown) => <AppFailure error={error} />}>
-      <StoreProvider>
+      <BootController>
         <TemplateProvider />
         {/*
           Outside the template, and after it, deliberately.
@@ -60,7 +60,7 @@ export default function App() {
         */}
         <LiveViewHost />
         <ToastContainer />
-      </StoreProvider>
+      </BootController>
     </ErrorBoundary>
   );
 }

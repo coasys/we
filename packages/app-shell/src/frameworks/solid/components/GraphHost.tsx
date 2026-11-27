@@ -49,14 +49,7 @@ import {
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
 import { chromeComponentRegistry } from '../registries/componentRegistry';
-import { useDatasetStore } from '../stores/DatasetStore';
-import { useProfileStore } from '../stores/ProfileStore';
-import { useRecordStore } from '../stores/RecordStore';
-import { useSessionStore } from '../stores/SessionStore';
-import { useShapeStore } from '../stores/ShapeStore';
-import { useShellStore } from '../stores/ShellStore';
-import { useSpaceStore } from '../stores/SpaceStore';
-import { useWorkflowStore } from '../stores/WorkflowStore';
+import { useStore } from '../stores/useStore';
 import { nodeControls } from './graphControls';
 import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
 import { ReactionBadge } from './ReactionBadge';
@@ -117,7 +110,7 @@ function BlockCard(props: { node: GraphNode }) {
  * because a card is clipped: the end of a long note is exactly what does not show.
  */
 function WorkflowBadges(props: { node: GraphNode }) {
-  const workflowStore = useWorkflowStore();
+  const workflowStore = useStore('workflowStore');
   const workflows = createMemo(() => {
     const id = parseAddress(props.node.id)?.id;
     return (id && workflowStore.recordWorkflows()[id]) || [];
@@ -173,7 +166,7 @@ function PropertyCard(props: { node: GraphNode }) {
 
 /** A composed document drawn in full, or `fallback` for a record that has none. */
 function DocumentCard(props: { node: GraphNode; fallback: JSX.Element }) {
-  const datasetStore = useDatasetStore();
+  const datasetStore = useStore('datasetStore');
 
   const editorState = createMemo(() => {
     const raw = props.node.data?.editorState;
@@ -209,8 +202,8 @@ const NO_COMPONENTS: RenderProps['registry'] = {};
  * state dragged on a board repaints one span on the card rather than remounting it.
  */
 function RecordCard(props: { node: GraphNode }) {
-  const recordStore = useRecordStore();
-  const spaceStore = useSpaceStore();
+  const recordStore = useStore('recordStore');
+  const spaceStore = useStore('spaceStore');
 
   // A state's colour is the community's where it chose one, else the fill its semantic implies — the
   // board's column headings and the workshop's key read the same table.
@@ -265,11 +258,11 @@ function RecordCard(props: { node: GraphNode }) {
 }
 
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
-  const datasetStore = useDatasetStore();
-  const recordStore = useRecordStore();
-  const shellStore = useShellStore();
-  const sessionStore = useSessionStore();
-  const profileStore = useProfileStore();
+  const datasetStore = useStore('datasetStore');
+  const recordStore = useStore('recordStore');
+  const shellStore = useStore('shellStore');
+  const sessionStore = useStore('sessionStore');
+  const profileStore = useStore('profileStore');
 
   /**
    * The neutral read surface, built the same way the template renderer builds its own.
@@ -305,7 +298,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    *
    * Core first, so a foreign schema that happens to share a name cannot shadow WE's own.
    */
-  const shapeStore = useShapeStore();
+  const shapeStore = useStore('shapeStore');
   const manifest = createMemo(() => {
     const core = manifestEntries(CORE_MANIFEST);
     const known = new Set(core.map((entry) => entry.name));

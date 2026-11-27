@@ -32,26 +32,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
-    backendPorts: () => ports,
-    signInStep: () => 'ready',
-    me: () => ({ id: 'did:test:me' }),
-    holdForAiSetup: () => {},
-    finishSetup: () => {},
-  }),
-}));
+const sessionStub = {
+  backendPorts: () => ports,
+  signInStep: () => 'ready',
+  me: () => ({ id: 'did:test:me' }),
+  holdForAiSetup: () => {},
+  finishSetup: () => {},
+};
 
 // The settings page is open, so the store reads local AI and listens for progress.
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ activeShellView: () => 'settings' }),
-}));
+const shellStub = { activeShellView: () => 'settings' };
 
-vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
-  usePlatform: () => ({ executor: undefined }),
-}));
-
-import { RuntimeStoreProvider, useRuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
+import { createRuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
 
 const hardware: LocalAiHardware = {
   os: 'darwin',
@@ -138,17 +130,17 @@ function renderSection(node: SchemaNode = aiSection, refuse?: LocalAiPort['insta
   const local = localPort(refuse, status);
   ports = { models: local.models };
   let install!: () => Promise<void>;
-  const { container } = render(() => (
-    <RuntimeStoreProvider>
-      {(() => {
-        const store = useRuntimeStore();
-        install = store.installLocalAi;
-        // The bag the settings overlay renders against: chrome tier, members as the template sees them.
-        const stores = buildTemplateBag({ runtimeStore: store } as never, { grants: CHROME_TIER, gesture: 'report' });
-        return <RenderSchema node={node as never} stores={stores} registry={componentRegistry as never} />;
-      })()}
-    </RuntimeStoreProvider>
-  ));
+  const { container } = render(() => {
+    const store = createRuntimeStore({
+      sessionStore: sessionStub as never,
+      shellStore: shellStub as never,
+      platform: { executor: undefined } as never,
+    });
+    install = store.installLocalAi;
+    // The bag the settings overlay renders against: chrome tier, members as the template sees them.
+    const stores = buildTemplateBag({ runtimeStore: store } as never, { grants: CHROME_TIER, gesture: 'report' });
+    return <RenderSchema node={node as never} stores={stores} registry={componentRegistry as never} />;
+  });
   return { container, progress: local.progress, install: () => install() };
 }
 

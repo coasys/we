@@ -95,10 +95,14 @@ generated schema reference (the bulk of `CLAUDE.md`).
 The seam is drawn so framework choice is isolated to thin adapters:
 
 - **Tokens, themes, primitives** — framework-neutral by construction (CSS vars; Lit web components).
-- **`@we/schema-shared`** — all schema semantics + a reactivity _port_ (`memo` + `markReactive`).
+- **`@we/reactivity`** — the one `ReactivityPort` (signal, memo, effect, untrack, batch, root,
+  onCleanup) that the prop resolvers, module stores and host stores take, with the three timing
+  guarantees a store may rely on. `@we/reactivity-solid` is Solid's implementation; a test-only one
+  in `@we/reactivity/testing` is what store tests also run under.
+- **`@we/schema-shared`** — all schema semantics, taking the port's `memo`, plus `markReactive`.
   Nothing framework-specific leaks in.
-- **`@we/schema-solid`** — a thin renderer that injects Solid's `createMemo` and maps control flow.
-  A React/Vue/Svelte adapter is a new package of the same shape.
+- **`@we/schema-solid`** — a thin renderer that hands the resolvers the Solid port's `memo` and maps
+  control flow. A React/Vue/Svelte adapter is a new package of the same shape.
 - **`@we/components` / `@we/widgets`** — currently Solid (`.types.ts` + `.solid.tsx`). Layout
   primitives (Row/Column) stay per-framework on purpose (highest cardinality, pure styling, cheap to
   replicate, worst web-component cost); their DS-props → CSS computation is shared in

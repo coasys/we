@@ -6,25 +6,35 @@
  * the drag's window listeners. In the list, a conversation opens from a `<button>` — Enter and
  * Space reach it, not only a pointer's click.
  */
-import { cleanup, render } from '@solidjs/testing-library';
+import { cleanup, render as mount } from '@solidjs/testing-library';
+import type { JSX } from 'solid-js';
 import { createSignal } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatInputs } from '../src/frameworks/solid/stores/ChatStore';
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 
 const [sheet, setSheet] = createSignal<ChatInputs | null>(null);
 const closeSheet = vi.fn(() => setSheet(null));
 
-vi.mock('../src/frameworks/solid/stores/ChatStore', () => ({
-  useChatStore: () => ({
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  chatStore: {
     sheet,
     closeSheet,
     openChat: vi.fn(),
     takePending: () => undefined,
     rememberedConversation: () => undefined,
     rememberConversation: () => {},
-  }),
-}));
+  },
+} as unknown as Partial<StoreRegistry>;
+
+/** Render inside the store registry, as the host's composition hands it to every component. */
+function render(ui: () => JSX.Element) {
+  return mount(ui, {
+    wrapper: (props) => <StoreRegistryContext.Provider value={stores}>{props.children}</StoreRegistryContext.Provider>,
+  });
+}
 
 // The chat itself is mocked — the sheet's own accessibility is what is under test here.
 vi.mock('../src/frameworks/solid/components/chat/AgentChat', () => ({

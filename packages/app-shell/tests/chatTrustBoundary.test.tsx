@@ -10,12 +10,14 @@
  * The shell's own chat panels render through `chromeComponentRegistry`, which still knows the
  * name — asserted below, so the guard and not a broken lazy import is what the first test sees.
  */
-import { cleanup, render } from '@solidjs/testing-library';
+import { cleanup, render as mount } from '@solidjs/testing-library';
 import type { AgentConversationsPort } from '@we/backend-shared';
 import { RenderSchema } from '@we/schema-solid';
+import type { JSX } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chromeComponentRegistry, componentRegistry } from '../src/frameworks/solid/registries/componentRegistry';
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 
 const conversations = {
   create: vi.fn(async () => ({ id: 's1' })),
@@ -26,24 +28,26 @@ const conversations = {
   follow: vi.fn(() => () => {}),
 };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({
+/** What the components read from the registry, as the host composes it. */
+const stores = {
+  sessionStore: {
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
-  }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ datasets: () => [] }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ mySpaces: () => [] }),
-}));
-vi.mock('../src/frameworks/solid/stores/ChatStore', () => ({
-  useChatStore: () => ({
+  },
+  datasetStore: { datasets: () => [] },
+  spaceStore: { mySpaces: () => [] },
+  chatStore: {
     takePending: () => undefined,
     rememberedConversation: () => undefined,
     rememberConversation: () => {},
-  }),
-}));
+  },
+} as unknown as Partial<StoreRegistry>;
+
+/** Render inside the store registry, as the host's composition hands it to every component. */
+function render(ui: () => JSX.Element) {
+  return mount(ui, {
+    wrapper: (props) => <StoreRegistryContext.Provider value={stores}>{props.children}</StoreRegistryContext.Provider>,
+  });
+}
 
 /** A template tree naming the chat, as a synced interface would write it. */
 const templateTree = {

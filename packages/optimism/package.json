@@ -22,6 +22,9 @@
   "files": [
     "dist"
   ],
+  "dependencies": {
+    "@we/reactivity": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@we/cli": "workspace:*",
@@ -29,5 +32,8 @@
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "we": {
+    "neutral": true
+  }
 }

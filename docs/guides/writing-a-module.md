@@ -227,7 +227,10 @@ createStore: ({ signal, state, action, kernels, selfId, notify }) => {
 
 Reactivity is **injected** — `signal`, `effect` — so a store never imports a framework. That is not
 tidiness: a module bundle importing its own copy of a reactive framework gets a second runtime, and
-reactivity silently stops crossing the boundary.
+reactivity silently stops crossing the boundary. Both come from the host's `ReactivityPort`
+(`@we/reactivity`), the same port the host's own stores and the renderer take; its README lists the
+three timing guarantees a store may rely on, and nothing else is promised. A setter takes a value,
+never an updater.
 
 **Members are private by default.** `deps.state(accessor, doc)` and `deps.action(fn, doc)` publish a
 member with a required one-sentence description; everything else is visible only to your own panels

@@ -9,20 +9,14 @@
 import { render } from '@solidjs/testing-library';
 import { describe, expect, it } from 'vitest';
 
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { createShellStore, type ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 
 function mountShellStore(): ShellStore {
   let store!: ShellStore;
-  const Grab = () => {
-    store = useShellStore();
+  render(() => {
+    store = createShellStore();
     return null;
-  };
-  render(() => (
-    <ShellStoreProvider>
-      <Grab />
-    </ShellStoreProvider>
-  ));
+  });
   return store;
 }
 

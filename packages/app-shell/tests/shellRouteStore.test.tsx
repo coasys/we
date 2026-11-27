@@ -13,32 +13,24 @@
  */
 import { createMemoryHistory, MemoryRouter, Route } from '@solidjs/router';
 import { render, waitFor } from '@solidjs/testing-library';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { RouteStore } from '../src/frameworks/solid/stores/RouteStore';
-import {
-  ShellRouterRoot,
-  ShellRouteStoreProvider,
-  useShellRouteStore,
-} from '../src/frameworks/solid/stores/ShellRouteStore';
+import { createShellRouteStore, ShellRouterRoot } from '../src/frameworks/solid/stores/ShellRouteStore';
+import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { RouteStore } from '../src/shared/stores/RouteStore';
 
-/**
- * A stand-in for the store above the overlay, mutable so a test can steer it.
- *
- * Hoisted because `vi.mock` is: the factory runs before the module body, so it cannot close over an
- * ordinary `const`.
- */
-const shellMock = vi.hoisted(() => ({
+/** A stand-in for the store above the overlay, mutable so a test can steer it. */
+const shellMock = {
   pending: null as string | null,
   remembered: [] as string[],
-}));
+};
 
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({
+const stores = {
+  shellStore: {
     takePendingPath: () => shellMock.pending,
     rememberShellPath: (path: string) => shellMock.remembered.push(path),
-  }),
-}));
+  },
+} as unknown as Partial<StoreRegistry>;
 
 beforeEach(() => {
   shellMock.pending = null;
@@ -47,23 +39,27 @@ beforeEach(() => {
 
 async function mountStore(initial = '/settings'): Promise<RouteStore> {
   let store!: RouteStore;
-  const Grab = () => {
-    store = useShellRouteStore();
-    return null;
-  };
 
   // A memory history seeded before mount — the overlay's location, entirely separate from the
   // browser's. There is no `initialEntries` on this router; the history *is* the seam.
   const history = createMemoryHistory();
   history.set({ value: initial });
 
-  render(() => (
-    <ShellRouteStoreProvider>
-      <MemoryRouter root={ShellRouterRoot} history={history}>
-        <Route path="*" component={Grab} />
-      </MemoryRouter>
-    </ShellRouteStoreProvider>
-  ));
+  render(() => {
+    // Made where the overlay is built, as `TemplateLayout` makes it, and handed to its router root.
+    const shellRoute = createShellRouteStore();
+    store = shellRoute;
+    return (
+      <StoreRegistryContext.Provider value={stores}>
+        <MemoryRouter
+          root={(props) => <ShellRouterRoot store={shellRoute}>{props.children}</ShellRouterRoot>}
+          history={history}
+        >
+          <Route path="*" component={() => null} />
+        </MemoryRouter>
+      </StoreRegistryContext.Provider>
+    );
+  });
 
   // The store's signals start empty; ShellRouterRoot fills them from inside the router context.
   await waitFor(() => expect(store?.currentPath()).toBe(initial.split('?')[0]));

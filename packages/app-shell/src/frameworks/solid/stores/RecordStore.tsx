@@ -64,21 +64,12 @@ import {
 import { heldByChild } from '@we/graph-protocol';
 import { createHistory, type HistoryState } from '@we/history';
 import { createOptimism, DEFAULT_TTL_MS, keyOf, sameValue } from '@we/optimism';
-import {
-  Accessor,
-  batch,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { solidReactivity } from '@we/reactivity-solid';
+import { Accessor, batch, createEffect, createMemo, createSignal, untrack } from 'solid-js';
 
 import { bringIn as decideBringIn, type BringInItem, type BroughtIn } from '../../../shared/bringIn';
 import { routeWrite } from '../../../shared/edgeRoute';
+import { followLive } from '../../../shared/followLive';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { hostSlot } from '../../../shared/hostSlot';
 import { isRank, isUnder, rowFor, seatInRow } from '../../../shared/kernels/treeRanks';
@@ -113,9 +104,9 @@ import {
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
 import { modelManifestEntries, parseSpine, type Spine } from '../../../shared/sources/treeSpines';
-import { type AppDataset, useDatasetStore } from './DatasetStore';
-import { useSessionStore } from './SessionStore';
-import { BLOCK_ICONS, useShapeStore } from './ShapeStore';
+import { type AppDataset } from './DatasetStore';
+import { BLOCK_ICONS } from './ShapeStore';
+import type { StoreRegistry } from './useStore';
 
 /** A `we-select` row: the model's name, drawn with its icon and grouped by where it comes from. */
 export interface CreatableEntity {
@@ -745,11 +736,11 @@ export interface RecordStore {
   ) => Promise<void>;
 }
 
-const RecordStoreContext = createContext<RecordStore>();
-
-export function RecordStoreProvider(props: ParentProps) {
-  const datasetStore = useDatasetStore();
-  const session = useSessionStore();
+export function createRecordStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'sessionStore' | 'shapeStore'>,
+): RecordStore {
+  const datasetStore = deps.datasetStore;
+  const session = deps.sessionStore;
 
   /**
    * Run one of the canvas operations (`core.placeCard` …) as the signed-in agent. The writes are
@@ -770,7 +761,7 @@ export function RecordStoreProvider(props: ParentProps) {
     const id = await runOp<string>('core.connectRecords', { ...ends, ...extra }, handle);
     return String(id ?? '');
   }
-  const shapeStore = useShapeStore();
+  const shapeStore = deps.shapeStore;
 
   const [recordDraft, setRecordDraft] = createSignal<RecordDraft | null>(null);
   const [recordErrors, setRecordErrors] = createSignal<string[]>([]);
@@ -2359,7 +2350,7 @@ export function RecordStoreProvider(props: ParentProps) {
     each answers for itself. The patch-per-record shape survives only as {@link pendingCardStyle},
     which is what the graph host draws from.
   */
-  const cardStyle = createOptimism<unknown>(createSignal, { same: sameValue });
+  const cardStyle = createOptimism<unknown>(solidReactivity.signal, { same: sameValue });
 
   const hold = (nodeId: string, patch: Record<string, unknown>) => {
     for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
@@ -2392,7 +2383,7 @@ export function RecordStoreProvider(props: ParentProps) {
    * an AD4M delete drops the links, a re-create earns a new id, and everything pointing at the old
    * one breaks silently. `deleteRecords` says as much in the host's own confirmation.
    */
-  const history = createHistory(createSignal);
+  const history = createHistory(solidReactivity.signal);
 
   /** One card's move, with where it came from — `from` is null for a card that was not on the canvas. */
   type CardMove = {
@@ -2543,7 +2534,7 @@ export function RecordStoreProvider(props: ParentProps) {
     | { kind: 'added'; source: string; target: string; id?: string; data?: Record<string, string> }
     | { kind: 'moved'; id: string; end: 'source' | 'target'; to: string }
     | { kind: 'removed'; id: string };
-  const connections = createOptimism<string | number>(createSignal, { same: sameValue });
+  const connections = createOptimism<string | number>(solidReactivity.signal, { same: sameValue });
   const connectionHolds = new Map<string, ConnectionHold>();
   let addedSerial = 0;
 
@@ -3043,12 +3034,6 @@ export function RecordStoreProvider(props: ParentProps) {
   }
   createEffect(() => {
     const dataset = datasetStore.currentDataset();
-    let stopped = false;
-    let watch: LiveQuery<Page<KeyRow>> | undefined;
-    onCleanup(() => {
-      stopped = true;
-      watch?.dispose();
-    });
     setSpacePresentation({});
     if (!dataset) return;
     const query = (TypeStyle as unknown as { query?: (dataset: unknown, q: object) => LiveQuery<Page<KeyRow>> }).query;
@@ -3057,34 +3042,34 @@ export function RecordStoreProvider(props: ParentProps) {
       void untrack(reloadSpacePresentation);
       return;
     }
-    void untrack(async () => {
-      const space = (await Space.findOne(dataset.handle)) as { id?: string } | null;
-      return datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
-    })
-      .then((spaceId) => {
-        if (stopped) return;
-        if (spaceId) {
-          /*
-            The watch asks what the layer is — the space's own styles, not every canvas's — and its
-            first result is the layer as it stands, so nothing is read separately before it.
-          */
-          watch = query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) });
-          watch.subscribe((snapshot) => {
-            if (!stopped && snapshot.data) applySpacePresentation(snapshot.data.results);
-          });
-        } else {
-          /*
-            No space record to scope to yet — a dataset that becomes a space later. Any style written is
-            the cue to look for the space again, so this watch only signals, and asks for ids alone.
-          */
-          watch = query.call(TypeStyle, dataset.handle, { properties: ['id'] });
-          watch.subscribe((snapshot) => {
-            if (!stopped && snapshot.status === 'ready' && !snapshot.initial) void reloadSpacePresentation();
-          });
-        }
-        watch.first.catch((error: unknown) => console.warn("RecordStore: could not watch the space's types", error));
-      })
-      .catch((error: unknown) => console.warn("RecordStore: could not read the space's presentation", error));
+    let spaceId: string | undefined;
+    followLive(
+      solidReactivity,
+      async (current) => {
+        const space = (await untrack(() => Space.findOne(dataset.handle))) as { id?: string } | null;
+        if (!current()) return undefined;
+        spaceId = datasetStore.currentDataset()?.id === dataset.id ? space?.id : undefined;
+        /*
+          The watch asks what the layer is — the space's own styles, not every canvas's — and its first
+          result is the layer as it stands, so nothing is read separately before it.
+
+          With no space record to scope to yet — a dataset that becomes a space later — any style
+          written is the cue to look for the space again, so that watch only signals, and asks for ids
+          alone.
+        */
+        return spaceId
+          ? query.call(TypeStyle, dataset.handle, { parent: spaceTypeStyles(spaceId) })
+          : query.call(TypeStyle, dataset.handle, { properties: ['id'] });
+      },
+      {
+        store: 'RecordStore',
+        what: "the space's types",
+        apply: (rows, opened) => {
+          if (spaceId) applySpacePresentation(rows);
+          else if (!opened) void reloadSpacePresentation();
+        },
+      },
+    );
   });
 
   async function setSpaceTypePresentation(
@@ -3728,13 +3713,7 @@ export function RecordStoreProvider(props: ParentProps) {
     saveRecord,
   };
 
-  return <RecordStoreContext.Provider value={store}>{props.children}</RecordStoreContext.Provider>;
-}
-
-export function useRecordStore(): RecordStore {
-  const ctx = useContext(RecordStoreContext);
-  if (!ctx) throw new Error('useRecordStore must be used within RecordStoreProvider');
-  return ctx;
+  return store;
 }
 
 // Re-exported so a consumer needs one import for the store and the shape of what it holds.

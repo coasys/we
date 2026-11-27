@@ -77,6 +77,12 @@ jobs:
       - name: Check we-* props
         run: pnpm check:we-props
 
+      # Same kind again, and needs nothing built. A Solid import under app-shell's shared/ or in a
+      # package marked neutral compiles and passes every test under Solid; only a host on another
+      # framework would notice. The allowlist of files not yet converted may only shrink.
+      - name: Check neutral stores
+        run: pnpm check:neutral-stores
+
   build:
     name: Build
     runs-on: ubuntu-latest

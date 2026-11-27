@@ -20,18 +20,12 @@ const interpretation = {
 };
 const ports = { interpretation };
 
-vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ backendPorts: () => ports, me: () => ({ did: 'did:key:z6MkOwn' }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
-  useDatasetStore: () => ({ currentDataset: () => ({ handle: 'space-handle' }) }),
-}));
-vi.mock('../src/frameworks/solid/stores/ProfileStore', () => ({
-  useProfileStore: () => ({ fetchProfile: async () => undefined, profiles: () => [] }),
-}));
-vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ autoInterpret: () => false, autoInterpretFor: () => false }),
-}));
+const deps = {
+  sessionStore: { backendPorts: () => ports, me: () => ({ did: 'did:key:z6MkOwn' }) },
+  datasetStore: { currentDataset: () => ({ handle: 'space-handle' }) },
+  profileStore: { fetchProfile: async () => undefined, profiles: () => [] },
+  spaceStore: { autoInterpret: () => false, autoInterpretFor: () => false },
+};
 
 let published: ModuleHostServices = {};
 vi.mock('../src/shared/registries/moduleHostServices', () => ({
@@ -42,13 +36,16 @@ vi.mock('../src/shared/registries/moduleHostServices', () => ({
 }));
 
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
-import { InterpretationStoreProvider } from '../src/frameworks/solid/stores/InterpretationStore';
+import { createInterpretationStore } from '../src/frameworks/solid/stores/InterpretationStore';
 
 describe('interpretation while the first screen is coming up', () => {
   it('starts once the first page is drawn, without telling modules the suggestions moved', async () => {
     firstScreen.hold();
     firstScreen.waiting();
-    render(() => <InterpretationStoreProvider>{null}</InterpretationStoreProvider>);
+    render(() => {
+      createInterpretationStore(deps as never);
+      return null;
+    });
 
     expect(interpretation.checkAvailability).not.toHaveBeenCalled();
     const revision = published.interpretationProposalsRevision?.();

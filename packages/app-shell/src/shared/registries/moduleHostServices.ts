@@ -3,14 +3,14 @@
  *
  * ## Why this exists at all
  *
- * Modules are registered in `PlatformProvider`, which sits *above* `StoreProvider`: the launcher
- * template has to be in the registry before the stores render, so registration cannot wait. But the
+ * Modules are registered in `PlatformProvider`, which sits *above* `BootController`: the launcher
+ * template has to be in the registry before the stores are built, so registration cannot wait. But the
  * ports a module wants (transport, presence, the current dataset) all live in stores that do not
  * exist yet at that moment.
  *
  * Rather than reorder the tree, the deps handed to a module store are **stable objects whose methods
  * dereference at call time**. A module holds `deps.kernels.presence` forever; what it points at is
- * filled in when `PresenceStoreProvider` mounts. Every accessor answers safely before then, which is
+ * filled in when the presence store is built. Every accessor answers safely before then, which is
  * the same degrade-don't-throw contract the kernels already require for a personal space with no
  * neighbourhood.
  *
@@ -51,6 +51,7 @@ import type {
   ViewKernel,
 } from '@we/module-shared';
 import { coalesceByKey } from '@we/module-shared';
+import type { ReactivityPort } from '@we/reactivity';
 
 import { clockRegistry } from '../clocks';
 import type { FirstScreen } from '../firstScreen';
@@ -359,17 +360,18 @@ export const HOST_KERNELS: readonly KernelName[] = [
 /**
  * Build the deps bag handed to every module store.
  *
- * `signal` and `effect` come from the framework, because only the host knows which one it is running.
+ * `signal` and `effect` come from the host's reactivity port, because only the host knows which
+ * framework it is running.
  * Everything else reads through the late-bound registry above. The registry narrows `kernels` per
  * module and injects `state`, `action`, `onDispose` and `settings`; the placeholders here are what a
  * store built with the bag directly — a test — gets.
  */
-export function createModuleStoreDeps(framework: {
-  signal: <T>(initial: T) => [() => T, (next: T) => void];
-  effect: (fn: () => void) => void;
-  /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
-  firstScreen?: FirstScreen;
-}): ModuleStoreDeps {
+export function createModuleStoreDeps(
+  framework: Pick<ReactivityPort, 'signal' | 'effect'> & {
+    /** The host's first-screen gate — see `shared/firstScreen.ts`. Absent: nothing is held. */
+    firstScreen?: FirstScreen;
+  },
+): ModuleStoreDeps {
   // A signal for the published stream, so a consumer reading `input()` inside a derived value re-runs
   // when the publisher changes it.
   const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);

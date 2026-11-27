@@ -45,23 +45,14 @@ import {
   SpaceTemplatePreference,
   Template,
 } from '@we/entities';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode, TemplateMeta, TemplateSchema } from '@we/schema-shared';
 import { ensureNodeIds, hasViewsMarker, TEMPLATE_SCHEMA_VERSION, templateThemeIds } from '@we/schema-shared';
 import { updateSchema } from '@we/schema-solid';
-import {
-  Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-  ParentProps,
-  untrack,
-  useContext,
-} from 'solid-js';
+import { Accessor, createEffect, createMemo, createSignal, on, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 
+import { followLive } from '../../../shared/followLive';
 import { CHROME_TIER, SPACE_TIER } from '../../../shared/registries/templateSurface';
 import { beginRender, leaveSafeMode, safeMode, type SafeModeState } from '../../../shared/safeMode';
 import {
@@ -77,14 +68,12 @@ import {
   TEMPLATE_WATCH_FIELDS,
   templateChanges,
 } from '../../../shared/templateSync';
-import { type AppDataset, canonicalSpaceId, useDatasetStore } from './DatasetStore';
+import { type AppDataset, canonicalSpaceId } from './DatasetStore';
 import { latestPerSpace } from './latestPerSpace';
-import { useRouteStore } from './RouteStore';
-import { useSessionStore } from './SessionStore';
 import { createSpaceRecordWait } from './spaceRecordWait';
 import { createSpaceTemplateChoosing } from './spaceTemplateChoosing';
 import { createTemplateDrafts } from './templateDrafts';
-import { useThemeStore } from './ThemeStore';
+import type { StoreRegistry } from './useStore';
 
 const emptyMeta: TemplateMeta = { name: '', description: '', icon: '' };
 const emptyTemplate: TemplateSchema = {
@@ -381,15 +370,15 @@ export interface TemplateStore {
  */
 const roleOf = (schema: { meta?: { role?: string } }): string => (schema.meta?.role === 'view' ? 'view' : '');
 
-const TemplateContext = createContext<TemplateStore>();
-
 const SPACE_PREFIX = 'space::';
 
-export function TemplateStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const themeStore = useThemeStore();
-  const routeStore = useRouteStore();
+export function createTemplateStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'routeStore' | 'sessionStore' | 'themeStore'>,
+): TemplateStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const themeStore = deps.themeStore;
+  const routeStore = deps.routeStore;
 
   /*
     Map template ID → the model instance, for we-root and for the current space's templates.
@@ -1725,26 +1714,22 @@ export function TemplateStoreProvider(props: ParentProps) {
     editing = probe;
   }
 
-  /** Watch one dataset's templates, calling `onChange` with the records added, changed or removed. */
-  function watchTemplates(handle: unknown, onChange: (records: string[]) => void): () => void {
+  /**
+   * Follow one dataset's templates for as long as the calling effect lives, calling `onChange` with
+   * the records added, changed or removed.
+   */
+  function watchTemplates(handle: unknown, onChange: (records: string[]) => void): void {
     let stamps: Map<string, string> | undefined;
-    let stopped = false;
-    const take = (rows: { id: string; version?: unknown; updatedAt?: unknown }[]) => {
-      if (stopped) return;
-      const { next, changed, removed } = templateChanges(stamps, rows, ownSaves);
-      stamps = next;
-      if (changed.length || removed.length) onChange([...changed, ...removed]);
-    };
-    const watch = Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] });
     // Called with the rows it opened on, then with each change.
-    watch.subscribe((snapshot) => {
-      if (snapshot.status === 'ready' && snapshot.data) take(snapshot.data.results);
+    followLive(solidReactivity, Template.query(handle, { properties: [...TEMPLATE_WATCH_FIELDS] }), {
+      store: 'TemplateStore',
+      what: 'templates',
+      apply: (rows) => {
+        const { next, changed, removed } = templateChanges(stamps, rows, ownSaves);
+        stamps = next;
+        if (changed.length || removed.length) onChange([...changed, ...removed]);
+      },
     });
-    watch.first.catch((error: unknown) => console.warn('[TemplateStore] watching templates failed', error));
-    return () => {
-      stopped = true;
-      watch.dispose();
-    };
   }
 
   /**
@@ -1831,7 +1816,7 @@ export function TemplateStoreProvider(props: ParentProps) {
   createEffect(() => {
     const root = datasetStore.rootDataset();
     if (!root) return;
-    onCleanup(watchTemplates(root.handle, syncLibrary));
+    watchTemplates(root.handle, syncLibrary);
   });
 
   createEffect(() => {
@@ -1841,7 +1826,7 @@ export function TemplateStoreProvider(props: ParentProps) {
       await refreshSpaceTemplatesInPlace(dataset);
       if (datasetStore.currentDataset()?.id === dataset.id) followChange(true, records);
     });
-    onCleanup(watchTemplates(dataset.handle, syncSpace));
+    watchTemplates(dataset.handle, syncSpace);
   });
 
   /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
@@ -2623,13 +2608,5 @@ export function TemplateStoreProvider(props: ParentProps) {
     getTemplateRecord,
   };
 
-  return <TemplateContext.Provider value={store}>{props.children}</TemplateContext.Provider>;
+  return store;
 }
-
-export function useTemplateStore(): TemplateStore {
-  const ctx = useContext(TemplateContext);
-  if (!ctx) throw new Error('useTemplateStore must be used within TemplateStoreProvider');
-  return ctx;
-}
-
-export default TemplateStoreProvider;

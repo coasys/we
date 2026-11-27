@@ -26,10 +26,6 @@ import { watchPassRecord } from '@shared/interpretation/activityView';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { holdSubscription } from '@shared/utils';
 import { firstScreen } from '@solid/firstScreen';
-import { useDatasetStore } from '@solid/stores/DatasetStore';
-import { useProfileStore } from '@solid/stores/ProfileStore';
-import { useSessionStore } from '@solid/stores/SessionStore';
-import { useSpaceStore } from '@solid/stores/SpaceStore';
 import type { InterpretationActivity, InterpretationPhase, InterpretationRelay } from '@we/backend-shared';
 import {
   byActivityInterest,
@@ -39,16 +35,9 @@ import {
   isSettled,
   trace,
 } from '@we/backend-shared';
-import {
-  type Accessor,
-  createContext,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-  type ParentProps,
-  useContext,
-} from 'solid-js';
+import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from 'solid-js';
+
+import type { StoreRegistry } from './useStore';
 
 /** One pass, ready to render — every field a string or a boolean a schema can read directly. */
 export interface InterpretationActivityView {
@@ -124,8 +113,6 @@ export interface InterpretationStore {
   dismissSettled: () => void;
 }
 
-const InterpretationStoreContext = createContext<InterpretationStore>();
-
 /**
  * Indented if it is JSON, left alone if it is not.
  *
@@ -199,11 +186,13 @@ function labelFor(phase: InterpretationPhase, name: string, mine: boolean, count
 /** How long a burst of staged-suggestion changes is gathered before modules are told to re-read. */
 const PROPOSALS_COALESCE_MS = 250;
 
-export function InterpretationStoreProvider(props: ParentProps) {
-  const session = useSessionStore();
-  const datasetStore = useDatasetStore();
-  const profileStore = useProfileStore();
-  const spaceStore = useSpaceStore();
+export function createInterpretationStore(
+  deps: Pick<StoreRegistry, 'datasetStore' | 'profileStore' | 'sessionStore' | 'spaceStore'>,
+): InterpretationStore {
+  const session = deps.sessionStore;
+  const datasetStore = deps.datasetStore;
+  const profileStore = deps.profileStore;
+  const spaceStore = deps.spaceStore;
 
   const [rows, setRows] = createSignal<InterpretationActivity[]>([]);
   const [now, setNow] = createSignal(Date.now());
@@ -525,11 +514,5 @@ export function InterpretationStoreProvider(props: ParentProps) {
       ]),
   };
 
-  return <InterpretationStoreContext.Provider value={store}>{props.children}</InterpretationStoreContext.Provider>;
-}
-
-export function useInterpretationStore(): InterpretationStore {
-  const store = useContext(InterpretationStoreContext);
-  if (!store) throw new Error('useInterpretationStore must be used within an InterpretationStoreProvider');
   return store;
 }

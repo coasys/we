@@ -28,8 +28,9 @@ import {
   readValue,
   referencedRoots,
 } from '@we/expressions';
+import type { ReactivityPort } from '@we/reactivity';
 
-import { type Memo, noMemo, type Props } from './types';
+import { noMemo, type Props } from './types';
 
 /** Tags a function the action dispatcher must call with the callback argument to get the value. */
 export const DEFERRED_ARG = Symbol('schema-deferred-arg');
@@ -138,7 +139,12 @@ export function buildEnvironment(stores: Props, context: Props): EvaluationEnv {
  * where the mistake is, and a template that renders a hole is recoverable where one that throws
  * during paint is not.
  */
-export function resolveExpressionProp(token: { $: string }, stores: Props, context: Props, memo: Memo): unknown {
+export function resolveExpressionProp(
+  token: { $: string },
+  stores: Props,
+  context: Props,
+  memo: ReactivityPort['memo'],
+): unknown {
   let ast;
   try {
     ast = parseCached(token.$);
@@ -181,10 +187,10 @@ export function resolveExpressionProp(token: { $: string }, stores: Props, conte
     return readValue(evaluateExpression(current, env));
   });
   /*
-    A real memo hands back an accessor, which is tagged so the renderer reads it. `noMemo` hands
-    back the value itself — and tagging a *value* that happens to be a function (a callback's
-    `save()`, on its way into a function-typed local) would make it read as an accessor and be
-    called instead of kept.
+    A real memo's accessor is tagged so the renderer reads it. Under `noMemo` there is nothing to
+    follow, so the value itself is handed back — and tagging a *value* that happens to be a
+    function (a callback's `save()`, on its way into a function-typed local) would make it read as
+    an accessor and be called instead of kept.
   */
-  return memo === noMemo ? computed : markReactive(computed);
+  return memo === noMemo ? computed() : markReactive(computed);
 }

@@ -33,10 +33,7 @@ import {
   untrack,
 } from 'solid-js';
 
-import { useDatasetStore } from '../stores/DatasetStore';
-import { useEditorStore } from '../stores/EditorStore';
-import { useShellStore } from '../stores/ShellStore';
-import { useSpaceStore } from '../stores/SpaceStore';
+import { useStore } from '../stores/useStore';
 
 const humanise = (name: string) => name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
 
@@ -47,9 +44,9 @@ export function PartFrame(props: {
   subject?: unknown;
   children?: JSX.Element;
 }) {
-  const spaceStore = useSpaceStore();
-  const datasetStore = useDatasetStore();
-  const editorStore = useEditorStore();
+  const spaceStore = useStore('spaceStore');
+  const datasetStore = useStore('datasetStore');
+  const editorStore = useStore('editorStore');
 
   const moduleId = () => props.part.split('.')[0] ?? '';
 
@@ -206,10 +203,10 @@ function frameAttrs(of: { part: string; at?: string }) {
  * needs a module you cannot turn on" is a problem with no answer.
  */
 function MissingPart(props: { part: string; at?: string; why: MissingPartReason }) {
-  const spaceStore = useSpaceStore();
-  const shellStore = useShellStore();
-  const editorStore = useEditorStore();
-  const datasetStore = useDatasetStore();
+  const spaceStore = useStore('spaceStore');
+  const shellStore = useStore('shellStore');
+  const editorStore = useStore('editorStore');
+  const datasetStore = useStore('datasetStore');
 
   const moduleId = () => props.part.split('.')[0] ?? '';
   const moduleName = () => moduleRegistry.get(moduleId())?.definition.manifest.name ?? humanise(moduleId());

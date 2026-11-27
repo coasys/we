@@ -32,7 +32,13 @@ const SOLID_TESTS = [
   // build, where `createEffect` never runs again — so every count would be 1 and the test would
   // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.
   'tests/profileIndex.test.tsx',
-  'tests/routeStore.test.tsx',
+  // A plain store test under both ports: jsdom for window.history, and the browser build of solid-js
+  // so the Solid port's effects re-run at all.
+  'tests/routeStore.test.ts',
+  // The same, for following a live query: a page arriving must wake the port's effects.
+  'tests/followLive.test.ts',
+  // And for a lookup of one signal per key: a write must wake the port's effects for its own key.
+  'tests/keyedSignals.test.ts',
   'tests/shellRouteStore.test.tsx',
   'tests/shellPathMemory.test.tsx',
   'tests/spaceSettingsTab.test.tsx',
@@ -99,7 +105,7 @@ const SOLID_TESTS = [
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
   'tests/canvasHistory.test.tsx',
   // Mounts the workflow store, whose memos run as they are made — a boot crash the pure tests cannot see.
-  'tests/workflowStoreProvider.test.tsx',
+  'tests/workflowStore.test.tsx',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
   // And for a drag on a tree whose spine is a model relation rather than a connection kind.
