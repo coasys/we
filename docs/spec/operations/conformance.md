@@ -118,15 +118,16 @@ and nothing it wrote lands.
 
 **The runner's own rules**, over a few small operations written for the suite:
 
-| Case                | What it shows                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------ |
-| `create-and-link`   | Creates and links in a `forEach`; the ids the derivation gives for a board and its columns.            |
-| `forEach-keys`      | The same invocation with the list reordered: every record gets the id it got before.                   |
-| `upsert-existing`   | A `find` that matches skips a `when`-guarded `create`; `returns` gives what was found.                 |
-| `upsert-missing`    | A `find` that matches nothing lets the guarded `create` run; `returns` gives what was made.            |
-| `rollback-on-check` | A failed `check` fails with its named precondition error, and the record made before it does not land. |
-| `second-write`      | An `update` of a record created earlier in the same operation lands on it.                             |
-| `strict-link`       | A strict `link` of a member fails as `alreadyLinked` and changes nothing.                              |
+| Case                | What it shows                                                                                            |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `create-and-link`   | Creates and links in a `forEach`; the ids the derivation gives for a board and its columns.              |
+| `forEach-keys`      | The same invocation with the list reordered: every record gets the id it got before.                     |
+| `upsert-existing`   | A `find` that matches skips a `when`-guarded `create`; `returns` gives what was found.                   |
+| `upsert-missing`    | A `find` that matches nothing lets the guarded `create` run; `returns` gives what was made.              |
+| `found-carries-id`  | A found record carries its `id`: a step reads it by name, and a `forEach` over found records keys by it. |
+| `rollback-on-check` | A failed `check` fails with its named precondition error, and the record made before it does not land.   |
+| `second-write`      | An `update` of a record created earlier in the same operation lands on it.                               |
+| `strict-link`       | A strict `link` of a member fails as `alreadyLinked` and changes nothing.                                |
 
 **WE's own operations**, run under the suite's namespace, for the shapes a community's data is
 mostly made of:
