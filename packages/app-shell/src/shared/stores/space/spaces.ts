@@ -664,11 +664,13 @@ export function createSpaceList(deps: SpaceListDeps) {
 
       // Process avatar image if provided
       const avatarData = avatarFile
-        ? await compressImageToFileData(avatarFile, 'space-avatar', SPACE_AVATAR_PX)
+        ? await compressImageToFileData(platform.images, avatarFile, 'space-avatar', SPACE_AVATAR_PX)
         : undefined;
 
       // Process cover image if provided
-      const coverImageData = coverImageFile ? await compressImageToFileData(coverImageFile, 'space-cover') : undefined;
+      const coverImageData = coverImageFile
+        ? await compressImageToFileData(platform.images, coverImageFile, 'space-cover')
+        : undefined;
 
       // Assemble Space + optional location data — used for both own and parent datasets
       const spaceData = {
@@ -830,7 +832,7 @@ export function createSpaceList(deps: SpaceListDeps) {
 
     let avatarData: FileData | undefined;
     if (avatarValue instanceof File) {
-      avatarData = await compressImageToFileData(avatarValue, 'space-avatar', SPACE_AVATAR_PX);
+      avatarData = await compressImageToFileData(platform.images, avatarValue, 'space-avatar', SPACE_AVATAR_PX);
     } else if (typeof avatarValue === 'string' && avatarValue) {
       // Untouched prefill from the foreign app's own resolved (data-URI) image value —
       // round-tripped back through FILE_STORAGE_LANGUAGE rather than re-compressed.

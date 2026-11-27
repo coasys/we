@@ -21,6 +21,7 @@ import { trace } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
 
 import type { BackendConnector } from './backend/types';
+import { createAppClocks, provideAppClocks } from './clocks';
 import type { Credential } from './credential';
 import type { FirstScreen } from './firstScreen';
 import { consumeGuestBootTarget } from './guestLink';
@@ -80,8 +81,14 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
 
   // Depends on nothing: the app's address, read by templates, the space store and presence.
   const routeStore = createRouteStore({ reactivity, platform });
-  // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
-  const clockStore = createClockStore({ reactivity });
+  /*
+    Depends on nothing but the platform's frames: the app's clocks are one registry, read by
+    templates (this store), modules and the globe (lent to both), and gone with the composition.
+  */
+  const clocks = createAppClocks(platform);
+  reactivity.onCleanup(provideAppClocks(clocks));
+  reactivity.onCleanup(() => clocks.dispose());
+  const clockStore = createClockStore({ reactivity, clocks });
   const shellStore = createShellStore({ reactivity, platform, host: deps.shellHost });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
   const chatStore = createChatStore({ reactivity, platform, shellStore });
@@ -111,7 +118,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
   // query the entities it registers.
   const shapeStore = createShapeStore({ reactivity, toasts, sessionStore, datasetStore });
   // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({ reactivity, toasts, sessionStore, datasetStore, shapeStore });
+  const recordStore = createRecordStore({ reactivity, toasts, sessionStore, datasetStore, shapeStore, platform });
   const profileStore = createProfileStore({
     reactivity,
     firstScreen,
@@ -120,6 +127,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     sessionStore,
     runtimeStore,
     accountStore,
+    platform,
   });
   const themeStore = createThemeStore({ reactivity, platform, toasts, sessionStore, datasetStore });
   const templateStore = createTemplateStore({

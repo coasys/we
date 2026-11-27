@@ -4,6 +4,8 @@
  *
  * The one place outside `frameworks/` the stores' environment touches the window's globals.
  */
+import { canvasImageCodec } from '@we/entities';
+
 import type { PlatformDocument, PlatformEvents, PlatformPort, PlatformStorage } from './port';
 
 /**
@@ -135,6 +137,8 @@ export function createBrowserPlatform(): PlatformPort {
       window.addEventListener(type, handler, capture);
       return () => window.removeEventListener(type, handler, capture);
     },
+    // A picture drawn on a canvas at its new size and read back as PNG.
+    images: canvasImageCodec,
     frame: (callback) => {
       if (typeof window.requestAnimationFrame !== 'function') {
         const timer = setTimeout(callback, 16);

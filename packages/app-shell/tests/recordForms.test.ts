@@ -10,6 +10,7 @@ import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordCanvas } from '../src/shared/stores/records/canvas';
 import { createRecordConnections } from '../src/shared/stores/records/connections';
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
@@ -55,7 +56,14 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
         const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
         const connections = createRecordConnections({ ...context, kinds });
         const canvas = createRecordCanvas({ ...context, connections, contentHome: (c) => c });
-        forms = createRecordForms({ ...context, kinds, connections, canvas, contentHome: (c) => c });
+        forms = createRecordForms({
+          ...context,
+          kinds,
+          connections,
+          canvas,
+          contentHome: (c) => c,
+          images: createTestPlatform().images,
+        });
       }),
     );
     return forms;

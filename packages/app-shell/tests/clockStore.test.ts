@@ -4,33 +4,57 @@
  *
  * A plain store test, run once under each reactivity port.
  */
+import type { ClockRegistry } from '@we/clock';
 import type { ReactivityPort } from '@we/reactivity';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { clockRegistry } from '../src/shared/clocks';
+import { createAppClocks } from '../src/shared/clocks';
+import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { type ClockStore, createClockStore } from '../src/shared/stores/ClockStore';
 import { reactivityPorts } from './support/engines';
 
 const DAY = 86_400_000;
 let named = 0;
-/** A clock name no other test has used: the registry is app-wide and keeps every clock it makes. */
+/** A clock name no other case has used, so a case reads only the clock it made. */
 const fresh = (label: string) => `${label}-${++named}`;
 
 describe.each(reactivityPorts)('clockStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
+  let platform: TestPlatform;
+  let clockRegistry: ClockRegistry;
   const disposers: (() => void)[] = [];
 
   function mountStore(): ClockStore {
     let store!: ClockStore;
-    disposers.push(port.root(() => (store = createClockStore({ reactivity: port }))));
+    disposers.push(port.root(() => (store = createClockStore({ reactivity: port, clocks: clockRegistry }))));
     return store;
   }
 
   beforeEach(() => {
     port = makePort();
+    platform = createTestPlatform();
+    clockRegistry = createAppClocks(platform);
   });
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    clockRegistry.dispose();
+    vi.restoreAllMocks();
+  });
+
+  it('plays on the platform’s frames, so a clock moves only when the host paints', () => {
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const id = fresh('frames');
+    const store = mountStore();
+    store.configure(id, { from: 0, to: DAY, duration: 10 });
+    store.play(id);
+    now += 1_000;
+    // No frame has been painted: the clock has not moved, however much time went by.
+    expect(clockRegistry.get(id).get().at).toBe(0);
+    platform.flushFrames();
+    // A tenth of its ten-second run, at the frame.
+    expect(clockRegistry.get(id).get().at).toBe(DAY / 10);
+    store.pause(id);
   });
 
   it('publishes the clocks that exist, and each one made later, by name', () => {

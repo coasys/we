@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen, type FirstScreen } from '../src/shared/firstScreen';
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { reactivityPorts } from './support/engines';
 
@@ -69,6 +70,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             error: (message) => toasts.push(message),
           },
           sessionStore: (options.session ?? sessionStub) as never,
+          platform: createTestPlatform(),
           accountStore: accountsStub,
           runtimeStore: runtimeStub,
         });

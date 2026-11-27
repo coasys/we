@@ -381,7 +381,7 @@ const SPACE_PREFIX = 'space::';
 export interface TemplateStoreDeps {
   reactivity: ReactivityPort;
   /** The window, whose name and icon follow the app's. */
-  platform: Pick<PlatformPort, 'document'>;
+  platform: Pick<PlatformPort, 'document' | 'images'>;
   toasts: Toasts;
   /**
    * How a template being drawn is held: the renderer adapter's live documents. The template on
@@ -1973,6 +1973,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   const flow = createLibraryFlow<Template, PendingInstall>({
     reactivity,
     toasts,
+    images: platform.images,
     entity: Template as unknown as LibraryEntity<Template>,
     noun: 'template',
     marketplace: () => datasetStore.marketplaceDataset()?.handle,

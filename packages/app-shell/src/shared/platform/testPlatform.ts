@@ -138,6 +138,12 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
         if (at >= 0) list.splice(at, 1);
       };
     },
+    /*
+      A host with no renderer stores a picture as it came: the bytes untouched, labelled PNG as the
+      browser's codec labels what it draws. What a store does around the encoding — what it uploads,
+      what it shows — is then the same as in a browser.
+    */
+    images: { resize: async (image) => new Blob([await image.arrayBuffer()], { type: 'image/png' }) },
     frame: (callback) => {
       frames.push(callback);
       return () => {

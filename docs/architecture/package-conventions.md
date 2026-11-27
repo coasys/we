@@ -266,14 +266,17 @@ are in that package's README.
 
 **Its environment comes from one `PlatformPort` in the same way** (`app-shell/src/shared/platform/`):
 storage and session storage, the address and its history, a reload, the window's size, media
-queries, the window's input events, animation frames, and the document (custom properties and
-attributes on its root, style sheets, an element by id, a drawn box measured, the title and icon).
+queries, the window's input events, animation frames, an image codec (how a picture is scaled
+and encoded before it is stored: a canvas in a browser, the bytes as they came in a test), and the
+document (custom properties and attributes on its root, style sheets, an element by id, a drawn
+box measured, the title and icon). The app's clocks play on the platform's frames: `composeStores`
+makes the one registry (`createAppClocks`) and lends it to the module services and the globe.
 A store reads `platform.storage`, never `localStorage`. The port is the environment half of
 `PlatformAdapter`, which extends it, so the adapter an app supplies is the `platform` every store
 takes; a browser renderer spreads `createBrowserPlatform()` into its adapter, and a host that is not
 a browser implements the port itself. `createTestPlatform()` is the test implementation: storage in
 maps, an address and history in memory, a window a test resizes, events a test sends, frames a test
-runs (`flushFrames`), and a document that records what was written to its root (`drawn`). Timers and
+runs (`flushFrames`), an image codec that keeps the bytes, and a document that records what was written to its root (`drawn`). Timers and
 `performance.now()` are not on it: every JavaScript runtime has them, and a test's fake clock
 controls them. A measured input that changes the answer rides on the argument (the app's chrome
 frame is `Viewport.frame`), never on module state.

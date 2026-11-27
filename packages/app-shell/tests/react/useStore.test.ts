@@ -8,7 +8,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { clockRegistry } from '../../src/shared/clocks';
+import { createAppClocks } from '../../src/shared/clocks';
 import { createTestPlatform } from '../../src/shared/platform/testPlatform';
 import { type ClockStore, createClockStore } from '../../src/shared/stores/ClockStore';
 import { createRouteStore, type RouteStore } from '../../src/shared/stores/RouteStore';
@@ -50,9 +50,11 @@ describe.each(reactivityPorts)('stores in React, on %s', (_name, makePort) => {
   beforeEach(async () => {
     reactivity = makePort();
     const platform = createTestPlatform({ url: '/home' });
+    const clocks = createAppClocks(platform);
     disposeStores = reactivity.root(() => {
       routeStore = createRouteStore({ reactivity, platform });
-      clockStore = createClockStore({ reactivity });
+      clockStore = createClockStore({ reactivity, clocks });
+      reactivity.onCleanup(() => clocks.dispose());
     });
     // The host's router: write the address, then say where it is.
     routeStore.setNavigateFunction((to) => {
@@ -76,7 +78,6 @@ describe.each(reactivityPorts)('stores in React, on %s', (_name, makePort) => {
     act(() => root.unmount());
     container.remove();
     disposeStores();
-    clockRegistry.dispose();
   });
 
   it('draws what the stores hold', () => {

@@ -63,6 +63,7 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
     const fileData = await compressImageToFileData(
+      deps.platform.images,
       imageFile,
       field === 'avatar' ? 'space-image' : 'space-cover',
       field === 'avatar' ? SPACE_AVATAR_PX : undefined,

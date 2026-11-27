@@ -9,6 +9,7 @@
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import {
   createLibraryFlow,
   type InstallDestination,
@@ -83,6 +84,7 @@ describe.each(reactivityPorts)('the library flow under %s', (_name, makePort) =>
       reactivity.root(() => {
         flow = createLibraryFlow<Held, Judged>({
           reactivity,
+          images: createTestPlatform().images,
           toasts: {
             info: (m) => told.push(m),
             success: (m) => told.push(m),

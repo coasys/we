@@ -8,6 +8,7 @@ import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
 
@@ -56,6 +57,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             datasets: () => [],
           } as never,
           shapeStore: { spaceShapes: () => [] },
+          platform: createTestPlatform(),
         });
       }),
     );

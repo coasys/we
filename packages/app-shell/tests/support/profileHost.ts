@@ -28,7 +28,6 @@ import type { ReactivityPort } from '@we/reactivity';
 import { createTestReactivity } from '@we/reactivity/testing';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
 
-import { clockRegistry } from '../../src/shared/clocks';
 import { composeStores, type StoreCompositionDeps } from '../../src/shared/composeStores';
 import { createCredential } from '../../src/shared/credential';
 import { createFirstScreen, type FirstScreen } from '../../src/shared/firstScreen';
@@ -374,17 +373,11 @@ export const asAdapter = <T extends object>(platform: T): PlatformAdapter =>
  * The stores on the test port and the test platform: no framework, no DOM, no window. Toasts are
  * dropped — no profile member reads them.
  *
- * Time does not pass in a case, so a playing clock is read before it has moved. The app's clocks
- * take their frames from the runtime rather than from the platform port, falling back to a timer
- * where there are no animation frames, so this host gives them frames that never come, as the
- * Solid host does over jsdom.
+ * Time does not pass in a case, so a playing clock is read before it has moved: the app's clocks
+ * play on the platform's frames, and nothing here runs the test platform's.
  */
 export const neutralProfileHost: ProfileHostKit = {
   open(entries) {
-    const runtime = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
-    const frames = { request: runtime.requestAnimationFrame, cancel: runtime.cancelAnimationFrame };
-    runtime.requestAnimationFrame = () => 0;
-    runtime.cancelAnimationFrame = () => {};
     const reactivity = createTestReactivity();
     const [first, ...rest] = entries;
     const platform = createTestPlatform({ url: first });
@@ -402,10 +395,7 @@ export const neutralProfileHost: ProfileHostKit = {
       liveTemplates: plainLiveTemplates(reactivity),
       shellHost: { appFrame, appEdgeFrames, laneFrames, publishPanelInstances },
       spaceHost: { signalOrder, taskWorkflowLive: createTaskWorkflowLive(reactivity.signal) },
-      close: () => {
-        runtime.requestAnimationFrame = frames.request;
-        runtime.cancelAnimationFrame = frames.cancel;
-      },
+      close: () => {},
     };
   },
 };
@@ -533,7 +523,6 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
   for (const path of input.observe) {
     if (!STATE_SET.has(path)) throw new Error(`${input.id}: ${path} is not a state member of any profile`);
   }
-  clockRegistry.dispose();
   setTemplatePanels(input.world.panels as never, input.world.panels ? `vectors:${input.id}` : '');
   const registered = (input.world.modules ?? []).map((module) => {
     moduleRegistry.register(
@@ -605,7 +594,6 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
     dispose();
     for (const id of registered) moduleRegistry.unregister(id);
     setTemplatePanels(undefined);
-    clockRegistry.dispose();
     env.close();
     await tick(50);
   }

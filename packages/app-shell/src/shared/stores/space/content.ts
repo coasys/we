@@ -183,7 +183,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     if (!profiles) return null;
     try {
       const fileData = file.type.startsWith('image/')
-        ? await compressImageToFileData(file, name ?? file.name)
+        ? await compressImageToFileData(deps.platform.images, file, name ?? file.name)
         : // Non-images go through unchanged. `dataURIToFileData` is the same decode the image path
           // ends with, so both arrive at the port in one shape.
           dataURIToFileData(await fileAsDataURI(file), name ?? file.name);

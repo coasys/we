@@ -309,6 +309,7 @@ const datasetStub = {
 const sessionStub = { me: () => ({ did: 'did:key:z6Mk' }) };
 const shapeStub = { spaceShapes: () => [], interpretationCandidates: () => [] };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
 
@@ -337,6 +338,7 @@ function mount(): RecordStore {
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );

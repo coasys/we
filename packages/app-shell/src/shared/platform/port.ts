@@ -13,6 +13,7 @@
  * these with {@link createBrowserPlatform}. Timers and `performance.now()` are not here: every
  * JavaScript runtime has them, and a test controls them with its runner's fake clock.
  */
+import type { ImageCodec } from '@we/entities';
 
 /** A string store by key, as `localStorage` is. Reads of a key never written answer null. */
 export interface PlatformStorage {
@@ -126,5 +127,10 @@ export interface PlatformPort {
   ): () => void;
   /** Call `callback` before the next frame is painted. Returns a cancel. */
   frame(callback: () => void): () => void;
+  /**
+   * How a picture is scaled down and encoded before it is stored — an avatar, a cover, an image in a
+   * post. Drawing one needs a renderer, which is the host's: a browser's canvas, or none at all.
+   */
+  images: ImageCodec;
   document: PlatformDocument;
 }

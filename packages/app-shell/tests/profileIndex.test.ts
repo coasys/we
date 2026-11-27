@@ -17,6 +17,7 @@
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
 import { reactivityPorts } from './support/engines';
 
@@ -53,6 +54,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           sessionStore: sessionStub as never,
           accountStore: accountsStub,
           runtimeStore: { openAiStep: async () => false },
+          platform: createTestPlatform(),
         });
       }),
     );

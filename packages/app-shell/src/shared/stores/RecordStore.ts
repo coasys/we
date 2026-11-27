@@ -35,6 +35,7 @@ import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { type BringInItem } from '../bringIn';
 import { hostSlot } from '../hostSlot';
+import type { PlatformPort } from '../platform/port';
 import { type CreatableEntity } from '../shapes/creatableKinds';
 import { type TypePresentation } from '../shapes/presentation';
 import { fieldEditValue, type RecordDisplay } from '../shapes/recordDisplay';
@@ -526,6 +527,8 @@ export interface RecordStoreDeps {
   datasetStore: RecordDatasets;
   /** The space's own models, which it offers forms and displays for beside WE's. */
   shapeStore: Pick<ShapeStore, 'spaceShapes'>;
+  /** How a picture filled into a form is scaled down and encoded before it is stored. */
+  platform: Pick<PlatformPort, 'images'>;
 }
 
 export function createRecordStore(deps: RecordStoreDeps): RecordStore {
@@ -547,7 +550,14 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
 
   const onCanvas = createRecordCanvas({ ...context, connections, contentHome });
   const tree = createRecordTree({ ...context, shapeStore: deps.shapeStore, kinds, connections, canvas: onCanvas });
-  const forms = createRecordForms({ ...context, kinds, connections, canvas: onCanvas, contentHome });
+  const forms = createRecordForms({
+    ...context,
+    kinds,
+    connections,
+    canvas: onCanvas,
+    contentHome,
+    images: deps.platform.images,
+  });
   const drops = createRecordDrops({ ...context, kinds, canvas: onCanvas, contentHome });
 
   async function updateRecordField(entity: string, id: string, field: string, value: unknown): Promise<void> {

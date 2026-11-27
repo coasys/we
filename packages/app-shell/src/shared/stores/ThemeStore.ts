@@ -545,7 +545,7 @@ function populateMissingOverrides(
 /** What the theme store reads off the stores composed before it. */
 export interface ThemeStoreDeps {
   reactivity: ReactivityPort;
-  platform: Pick<PlatformPort, 'storage' | 'sessionStorage' | 'matchMedia' | 'document'>;
+  platform: Pick<PlatformPort, 'storage' | 'sessionStorage' | 'matchMedia' | 'document' | 'images'>;
   toasts: Toasts;
   sessionStore: Pick<SessionStore, 'devTools' | 'me'>;
   datasetStore: Pick<
@@ -1703,6 +1703,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   const flow = createLibraryFlow<Theme, Theme>({
     reactivity,
     toasts,
+    images: platform.images,
     entity: Theme as unknown as LibraryEntity<Theme>,
     noun: 'theme',
     marketplace: () => datasetStore.marketplaceDataset()?.handle,

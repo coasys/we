@@ -54,6 +54,7 @@ const shapeStub = {
   interpretationCandidatesLoaded: () => true,
 };
 
+import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
 
@@ -82,6 +83,7 @@ function mount(): RecordStore {
         datasetStore: datasetStub as never,
         sessionStore: sessionStub as never,
         shapeStore: shapeStub as never,
+        platform: createTestPlatform(),
       });
     }),
   );

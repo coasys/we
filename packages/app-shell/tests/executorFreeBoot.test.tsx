@@ -373,6 +373,7 @@ function mountShell(): Stores {
       sessionStore,
       datasetStore,
       shapeStore,
+      platform,
     });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,
@@ -382,6 +383,7 @@ function mountShell(): Stores {
       sessionStore,
       runtimeStore,
       accountStore,
+      platform,
     });
     const themeStore = createThemeStore({
       reactivity: solidReactivity,
