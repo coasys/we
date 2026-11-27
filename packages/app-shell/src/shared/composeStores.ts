@@ -5,7 +5,11 @@
  * reactivity port, and the platform the app supplied) and the stores it reads passed in as
  * arguments, in an order that is the dependency graph: nothing is built before what it reads. An
  * upward dependency — a store that needs one built after it — is lent later through a method
- * (`templateStore.provideSpaceLookup`, `appStore.provideInstalledModules`), never by reordering.
+ * (`templateStore.provideSpaceAppearance`, `appStore.provideInstalledModules`), never by reordering.
+ * Where the store lending is composed later, it returns what it lends and the hand-over is made here
+ * (`createSpaceStore`'s `lends`), rather than inside its own builder, so the binding is visible in the
+ * composition. A composed store's own parts still lend each other inside it; those are not between
+ * stores.
  *
  * Neutral, so that every host composes the same graph the same way: the Solid app calls it from
  * `BootController` with Solid's port and its module-level host state, and a host on another engine,
@@ -140,6 +144,12 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     themeStore,
     routeStore,
   });
+  // The shell cannot see the template on screen or a library to save into, for "save this
+  // arrangement as a template": the template store's to lend.
+  shellStore.provideTemplateSaver({
+    current: () => templateStore.currentTemplate,
+    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
+  });
   /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
   const editTarget = createEditTarget({ reactivity, templateStore });
   const editorStore = createEditorStore({
@@ -155,7 +165,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     editTarget,
   });
   const appStore = createAppStore({ reactivity });
-  const spaceStore = createSpaceStore({
+  const { store: spaceStore, lends: spaceLends } = createSpaceStore({
     reactivity,
     platform,
     toasts,
@@ -168,10 +178,13 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     profileStore,
     routeStore,
     templateStore,
-    appStore,
-    themeStore,
     shellStore,
   });
+  // Composed before the space store, and lent what it reads of it: the spaces and this agent's
+  // overrides (which template and theme apply), and the modules installed (which apps the switcher offers).
+  templateStore.provideSpaceAppearance(spaceLends.appearance);
+  themeStore.provideSpaceAppearance(spaceLends.appearance);
+  appStore.provideInstalledModules(spaceLends.installedModules);
 
   // Registered before the stores below are built, as it always has been: they follow the dataset
   // the sequence opens, so they are composed after it is set up.

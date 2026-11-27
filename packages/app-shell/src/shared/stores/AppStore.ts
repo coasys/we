@@ -34,7 +34,7 @@ export interface AppStore {
    * Lend this store the installed-module set.
    *
    * `SpaceStore` computes it but mounts below this one, so it hands the accessor down rather than
-   * being reached upward for — the same arrangement as `templateStore.provideSpaceLookup`. Until it
+   * being reached upward for — `composeStores` hands it over, as it does `templateStore.provideSpaceAppearance`. Until it
    * is provided every registered embed counts as installed: nothing has decided otherwise yet, and
    * hiding apps during boot is a worse guess than showing them.
    */

@@ -402,9 +402,8 @@ function mountShell(): Stores {
       themeStore,
       routeStore,
     });
-    // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
     const appStore = createAppStore({ reactivity: solidReactivity });
-    const spaceStore = createSpaceStore({
+    const { store: spaceStore, lends } = createSpaceStore({
       reactivity: solidReactivity,
       platform,
       toasts: toastService,
@@ -417,9 +416,15 @@ function mountShell(): Stores {
       profileStore,
       routeStore,
       templateStore,
-      appStore,
-      themeStore,
       shellStore,
+    });
+    // Handed over as `composeStores` does.
+    templateStore.provideSpaceAppearance(lends.appearance);
+    themeStore.provideSpaceAppearance(lends.appearance);
+    appStore.provideInstalledModules(lends.installedModules);
+    shellStore.provideTemplateSaver({
+      current: () => templateStore.currentTemplate,
+      save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
     });
     startBoot({ platform, firstScreen, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     Object.assign(out, {
