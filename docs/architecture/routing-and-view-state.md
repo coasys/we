@@ -208,8 +208,10 @@ How it is wired, in case it needs changing: the renderer knows which route a
 node is in (`$nav`, from `buildRoutes`) and hands that depth to `navigate` at the
 moment of the press, so a path that arrives with the event resolves too. The
 router resolves it against its own address, never the browser's. A relative
-`href` goes through `routeStore.resolve`, the same resolution without the
-navigation.
+`href` is resolved by the renderer itself (`resolveHref` in `@we/schema-shared`),
+by the same rule, from the navigation profile's `currentPath`, `segments` and
+`templateSegments`: no host router is asked, so another host draws the same
+links.
 
 **After a template changes**, the address goes to its root when it is not one of
 the new template's pages (forking a template from one of the old one's pages,
@@ -223,8 +225,7 @@ a broken link is what the template's own catch-all is for.
 as `{ $: 'navigation.params.<name>' }`),
 `navigation.setParam(name, value | null, { push? })`, and
 `navigation.navigate(to, { query? })`, which resolves a relative `to` (above)
-and writes `query` the way `setParam` writes a value, and `routeStore.resolve(to)`,
-the address `navigate` would go to. `setParam` writes
+and writes `query` the way `setParam` writes a value. `setParam` writes
 history directly — the path doesn't change, so the route tree must not
 re-resolve.
 

@@ -23,7 +23,7 @@ import { expandDefinitions, REF_TYPE, type RefProps, unresolvedRef } from './def
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
-import { describeHostOnly, hostOnlyUses } from './profiles';
+import { catalogsNamedBy, describeHostOnly, hostOnlyUses, PROFILE_NAMESPACES } from './profiles';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
 import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
@@ -3040,6 +3040,8 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     });
   }
 
+  checkRequires(schema, hostMembers, errors);
+
   const panels = (
     schema as {
       meta?: { panels?: { id?: unknown; node?: unknown; open?: unknown; module?: unknown; dock?: unknown }[] };
@@ -3132,6 +3134,70 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
     valid: errors.filter((e) => e.severity === 'error').length === 0,
     errors,
   };
+}
+
+/**
+ * A template's `meta.requires` against what it names.
+ *
+ * Absent, nothing is checked: the template is written for WE's host, and a host-only use is advice.
+ * Present, the declaration is a promise a host relies on before drawing anything, so:
+ *
+ * - every module the template names (`modules.<id>`, a part of its, a panel placing it) must be in
+ *   `modules`, or a host that lacks it would find out only by drawing absences;
+ * - with `profiles` written, the template declares itself portable: every profile whose namespace it
+ *   names must be listed, a listed id must be a profile, and every WE-host-only use is a warning
+ *   rather than advice, since a portable template that leans on WE's stores is not one.
+ *
+ * `modules` alone keeps its earlier meaning — a WE template saying which modules it leans on — so a
+ * template that lists modules and no profiles is not judged as portable.
+ */
+function checkRequires(
+  schema: unknown,
+  hostMembers: ReadonlyMap<string, ReadonlySet<string>>,
+  errors: ValidationError[],
+): void {
+  const requires = (schema as { meta?: { requires?: unknown } } | null)?.meta?.requires;
+  if (!requires || typeof requires !== 'object') return;
+  const { profiles: listedProfiles, modules: listedModules } = requires as { profiles?: unknown; modules?: unknown };
+  const strings = (value: unknown) =>
+    new Set(Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : []);
+  const modules = strings(listedModules);
+  const named = catalogsNamedBy(schema);
+
+  for (const [id, via] of named.modules)
+    if (!modules.has(id))
+      errors.push({
+        path: 'meta.requires.modules',
+        message: `Names the "${id}" module (${via}), which meta.requires.modules does not list. A host reads the list before drawing; add "${id}" to it.`,
+        severity: 'error',
+      });
+
+  if (listedProfiles === undefined) return;
+  const profiles = strings(listedProfiles);
+  const known = new Set([...PROFILE_NAMESPACES.values()].map((profile) => profile.id));
+  [...profiles].forEach((id) => {
+    if (!known.has(id))
+      errors.push({
+        path: 'meta.requires.profiles',
+        message: `"${id}" is not a capability profile. The profiles are: ${[...known].join(', ')}.`,
+        severity: 'error',
+      });
+  });
+  for (const [id, via] of named.profiles)
+    if (!profiles.has(id))
+      errors.push({
+        path: 'meta.requires.profiles',
+        message: `Names ${via}, a member of the "${id}" profile, which meta.requires.profiles does not list. Add "${id}" to it.`,
+        severity: 'error',
+      });
+
+  const uses = hostOnlyUses(schema, hostMembers);
+  if (uses.length)
+    errors.push({
+      path: 'meta.requires',
+      message: `Declares what it requires (meta.requires.profiles), so it is meant to run on any host providing those, but it uses members only WE has. ${describeHostOnly(uses)}`,
+      severity: 'warning',
+    });
 }
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {

@@ -1,6 +1,7 @@
 # Capability profiles
 
-**Spec version 1.0.** Each profile carries its own semantic version ([Versioning](#versioning)).
+**Spec version 1.0.** Each profile carries its own semantic version, and every profile is still a
+draft at `0.x` ([Versioning](#versioning)).
 
 A template reads and changes records through neutral surfaces every host provides: `$query`,
 `record.*` and declared operations ([Template format](../template/README.md),
@@ -126,9 +127,10 @@ different: board arrangement and tree ranks answer with data other members of a 
 card a column shows and where a card sits — so a host that draws boards or trees MUST give their
 answers.
 
-> **Planned.** A template names the profiles it needs, with the version it was written against, in
-> `meta.requires` ([Declaring what a template requires](../template/catalogs.md#declaring-what-a-template-requires)),
-> so a host can say what it lacks before drawing.
+A template names the profiles it needs, by id, in `meta.requires.profiles`
+([Declaring what a template requires](../template/catalogs.md#declaring-what-a-template-requires)),
+so a host can say what it lacks before drawing. Writing the list declares the template portable, and a
+validator then errs on a profile it names but does not list and warns on every host-only member it uses.
 
 ## WE-host-only
 
@@ -146,14 +148,32 @@ part of a profile; only a new profile version can.
 
 Each profile carries a semantic version, `major.minor.patch`.
 
-- **Minor** adds: a member, an event, an optional trailing argument, a member to an event's list
-  where the member already changed then.
-- **Major** is anything else: a member removed or renamed, a shape or an argument changed, a required
-  argument added, an action that newly needs a gesture, a member moved to a different group.
+**Every profile is a draft, `0.x`, until a second host implements it.** While WE is the only host
+providing a profile, the profile MAY change in place: a member added, removed, renamed or reshaped,
+an event dropped, with the minor version raised (`0.1.0` to `0.2.0`) and the vectors re-recorded. A
+template written against a draft relies on it at its own risk, and a host providing a draft provides
+the version its vectors were recorded against, not an earlier one.
+
+> **Why drafts.** A contract with one implementation is a description of that implementation. The
+> profiles took members and lost them while the first host was being reshaped around them; calling
+> each of those states `1.0.0` claimed a stability nobody had tested. The version says what is true:
+> nothing outside WE depends on a profile yet.
+
+**A profile freezes at `1.0.0`** when a second host implements it and passes its vectors. From then
+on it changes under the rules the operations borrow from AT Protocol Lexicon
+([Changing an operation](../operations/versioning.md#changing-an-operation)): a change that could
+make an existing template wrong is never made under the same major version.
+
+- **Minor** adds, and only optionally: a member, an event, an optional trailing argument, a member to
+  an event's list where the member already changed then.
+- **Major** is anything else: a member removed or renamed, a shape or an argument retyped, a required
+  argument added, an action that newly needs a gesture, a member moved to a different group. A
+  removal is always a new major version, never a minor one.
 - **Patch** changes descriptions without changing meaning.
 
-A host providing a profile at `1.2` provides everything `1.0` and `1.1` did. A template written
-against `1.0` runs on any `1.x` host.
+From `1.0.0` on, a host providing a profile at `1.2` provides everything `1.0` and `1.1` did, and a
+template written against `1.0` runs on any `1.x` host. No such promise holds between two `0.x`
+versions.
 
 ## Conformance
 

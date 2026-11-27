@@ -43,12 +43,13 @@ export const cardsView: TemplateSchema = {
     segment: 'cards',
     /*
       The modules this section reaches by name — `modules.call.*` in the header's Call button and the
-      calls list, `modules.transcribe.*` on each call's card. Declared because nothing can derive it:
+      calls list, `modules.transcribe.*` on each call's card, `modules.flux.*` in a Flux space's
+      conversation list. Declared because nothing can derive it:
       the host walks the component types a schema mounts, and an expression naming a store is
       invisible to that walk. A deployment shipping neither module sees the reason instead of a blank
       button, and `spaceStore.missingModules` can say which.
     */
-    requires: { modules: ['call', 'transcribe'] },
+    requires: { modules: ['call', 'flux', 'transcribe'] },
   },
   $localState: {
     createPostOpen: { type: 'boolean', initial: false },

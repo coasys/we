@@ -407,6 +407,16 @@ The ROOT node carries two more, and both are required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+- meta.requires: { profiles?, modules? } — what the template needs of a host. modules lists every
+  module it names (modules.<id>.…, a module's $part, a panel placing one); once requires is written,
+  leaving one out is an error, and installing it where a listed module is absent is refused.
+  profiles lists, by id, the capability profiles whose members it names (navigation, view-state,
+  layout, presence, identity, space-settings, appearance). Writing profiles declares the template
+  portable — it runs on any host with those profiles and modules — so a profile it names and does not
+  list is an error, and every store member only WE has (spaceStore.…, recordStore.…) is warned about.
+  profiles: [] is a template that needs only records, $query and ops. Leave requires out for a
+  template written for WE alone.
+
 ## Shapes the template says once: $defs and $ref
 
 A template often uses the same shape in several places — a card drawn in two display modes, a
@@ -3080,15 +3090,15 @@ Read state in an expression ({ "$": "storeName.member" }) and call actions with 
 For ephemeral/form state, use $localState with local.* reads and $setLocal writes instead of stores (see Dynamic Logic).
 
 Capability profiles come first. A profile's members are written under its namespace — navigation, viewState, layout, presence, identity, spaceSettings, appearance — and every host providing the profile offers them under the same name: { "$": "navigation.params.id" }, { "$invoke": "viewState.openPanel", "args": [...] }. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A name under a store (spaceStore.policy) works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it. A profile member is never reachable under the store that holds it in WE; the validator names the namespace to write instead.
-- navigation (navigation 1.0.0): currentPath, segments, templateSegments, params, navigate, setParam, back, mySpaces, spacePath, viewNav, navigateToSpace, openRecordRef
-- viewState (view-state 1.0.0): panelInstances, openTemplatePanel, closeTemplatePanel, openPanel, closePanel, scrollToId, clocks, play, pause, toggle, seek, seekProgress, setSpeed, setLoop, configure
-- layout (layout 1.0.0): layoutDirty, collapsedLanes, toggleLane, setLaneCollapsed, resetTemplateLayout
-- presence (presence 1.0.0): available, peers, online, onlineHere, setAvailability, setActivity, clearActivity
-- identity (identity 1.0.0): ownProfile, ownProfileLoaded, profiles, memberDids, mutedDids, readMarkers
-- spaceSettings (space-settings 1.0.0): currentSpace, canAdministerCurrentSpace, spaceDefaultTemplateId, spaceDefaultThemeId, myModuleSettings, prepareSpaceImage, setViewVisible, setModuleVisible, setMyModuleSetting
-- appearance (appearance 1.0.0): switcherGroups, currentSwitcherId, templateOverrideOptions, builtInThemes, installedThemes, spaceThemes, themeOverrideOptions, currentThemeId, spaceThemePinned, switchTemplate, setSpaceTemplateOverride, applyTheme, clearSpaceThemePin, setSpaceThemeOverride
+- navigation (navigation 0.1.0): currentPath, segments, templateSegments, params, navigate, setParam, back, mySpaces, spacePath, viewNav, navigateToSpace, openRecordRef
+- viewState (view-state 0.1.0): panelInstances, openTemplatePanel, closeTemplatePanel, openPanel, closePanel, scrollToId, clocks, play, pause, toggle, seek, seekProgress, setSpeed, setLoop, configure
+- layout (layout 0.1.0): layoutDirty, collapsedLanes, toggleLane, setLaneCollapsed, resetTemplateLayout
+- presence (presence 0.1.0): available, peers, online, onlineHere, setAvailability, setActivity, clearActivity
+- identity (identity 0.1.0): ownProfile, ownProfileLoaded, profiles, memberDids, mutedDids, readMarkers
+- spaceSettings (space-settings 0.1.0): currentSpace, canAdministerCurrentSpace, spaceDefaultTemplateId, spaceDefaultThemeId, myModuleSettings, prepareSpaceImage, setViewVisible, setModuleVisible, setMyModuleSetting
+- appearance (appearance 0.1.0): switcherGroups, currentSwitcherId, templateOverrideOptions, builtInThemes, installedThemes, spaceThemes, themeOverrideOptions, currentThemeId, spaceThemePinned, switchTemplate, setSpaceTemplateOverride, applyTheme, clearSpaceThemePin, setSpaceThemeOverride
 
-navigation (the navigation profile, 1.0.0):
+navigation (the navigation profile, 0.1.0):
 - State:
   - currentPath: string (the current route path)
   - segments: string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])
@@ -3098,13 +3108,13 @@ navigation (the navigation profile, 1.0.0):
   - spacePath: string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which
   - viewNav: { id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree
 - Actions:
-  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'navigation.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as navigation.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
+  - navigate(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href on we-link, we-button or a is drawn by the same rule, by the renderer itself, so a link goes where a press would — write the path, never a computed address. A record's id goes in `query`, never in the path: { $invoke: 'navigation.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as navigation.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly
   - setParam(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly
   - back(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history
   - navigateToSpace(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together
   - openRecordRef(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens
 
-viewState (the view-state profile, 1.0.0):
+viewState (the view-state profile, 0.1.0):
 - State:
   - panelInstances: { id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one
   - clocks: Record<name, { at, atIso, atLabel, ticks, from, fromIso, to, toIso, progress, playing, speed, loop, canPlay }> — the app's clocks by name. A clock is the moment something shows and the playback that moves it: a globe given `clock: "events"` follows the clock of that name, and every control reading or driving "events" moves it too. `at` is milliseconds since 1970, or null until somebody plays or seeks, which shows everything; `from`/`to` are the range, which the globe works out from its layers' data; `atIso` is ready for a we-timestamp, and `atLabel` is the moment already written as precisely as the range calls for (with the time across a day, the month alone across decades); `ticks` are marks along the range, { at, fraction, label }, on round moments at the scale it calls for — hours, days, months or years — to place at `fraction` of a scrubber's width; `progress` is 0–1 through the range, for a we-slider (max 1, step 0.001). Published about five times a second while playing. A name nothing has used yet reads as undefined, so guard a control on it: { $: 'viewState.clocks.events.canPlay' }
@@ -3123,7 +3133,7 @@ viewState (the view-state profile, 1.0.0):
   - setLoop(name: string, loop: boolean): starts again at the end rather than stopping
   - configure(name: string, settings: { from?, to?, speed?, duration?, rate?, loop? }): several at once. `duration` is how long the whole range takes to play at speed 1 — seconds or a span ("45s", "2m"), default 30s; `rate` instead runs at a fixed pace (1 is real time, for a countdown); from/to fix the range rather than taking it from the data
 
-layout (the layout profile, 1.0.0):
+layout (the layout profile, 0.1.0):
 - State:
   - layoutDirty: boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels
   - collapsedLanes: string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "'tree' in layout.collapsedLanes" }
@@ -3132,7 +3142,7 @@ layout (the layout profile, 1.0.0):
   - setLaneCollapsed(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped
   - resetTemplateLayout(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty
 
-presence (the presence profile, 1.0.0):
+presence (the presence profile, 0.1.0):
 - State:
   - available: boolean — a presence transport exists. False in a personal space, where there is nobody to be present to; gate presence UI on it rather than rendering an empty roster
   - peers: PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness
@@ -3143,7 +3153,7 @@ presence (the presence profile, 1.0.0):
   - setActivity(activity: Activity): adds or replaces a published activity — a call, an edit, a work claim — keyed by its type and id
   - clearActivity(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type
 
-identity (the identity profile, 1.0.0):
+identity (the identity profile, 0.1.0):
 - State:
   - ownProfile: AgentProfileSummary | undefined — reactive accessor for the current user's own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name
   - ownProfileLoaded: boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded
@@ -3153,7 +3163,7 @@ identity (the identity profile, 1.0.0):
   - readMarkers: { nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(identity.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row
 - Actions:
 
-spaceSettings (the space-settings profile, 1.0.0):
+spaceSettings (the space-settings profile, 0.1.0):
 - State:
   - currentSpace: Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, taskWorkflowRule, autoInterpret, plus id/author/createdAt). taskWorkflowRule is '' | 'next' | 'next-and-back': how a task may move between the space's states — anywhere, on to the next only, or on and back one; anything but '' runs the states as a workflow, so say so beside a picker of states. autoInterpret says whether a NEW collection here starts out interpreted (a conversation keeps its own answer, autoInterpretFor). The records the space names as its landmarks (its canvas, its board) are SpaceLandmark records { name, node }: bind $queries { spaceLandmarks: { entity: 'SpaceLandmark' } } and read find(local.spaceLandmarks, { name: 'board' }).node, gating a 'no board yet' on local.spaceLandmarksLoaded
   - canAdministerCurrentSpace: boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space
@@ -3166,7 +3176,7 @@ spaceSettings (the space-settings profile, 1.0.0):
   - setModuleVisible(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare — wrapping it in another token would evaluate at render time and send a constant
   - setMyModuleSetting(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it
 
-appearance (the appearance profile, 1.0.0):
+appearance (the appearance profile, 0.1.0):
 - State:
   - switcherGroups: TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.
   - currentSwitcherId: string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect
@@ -3467,7 +3477,6 @@ routeStore (WE-host-only):
 - State:
   - page: string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page
 - Actions:
-  - resolve(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it
 
 runtimeStore (WE-host-only):
 - State:

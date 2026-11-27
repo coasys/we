@@ -1166,6 +1166,327 @@
       },
       "valid": true,
       "errors": []
+    },
+    {
+      "id": "validate.requires.absent",
+      "note": "with no meta.requires nothing is checked against it: a template for its own host may name modules freely",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "modules.call.active"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "navigation.params.tab"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.requires.module-unlisted",
+      "note": "once meta.requires is written, a module the template names and does not list is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "modules": []
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "modules.call.active"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "requires", "modules"],
+          "message": "Names the \"call\" module (modules.call.active), which meta.requires.modules does not list. A host reads the list before drawing; add \"call\" to it."
+        }
+      ]
+    },
+    {
+      "id": "validate.requires.module-part-unlisted",
+      "note": "a module's part counts as naming the module",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "modules": []
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$part",
+            "props": {
+              "id": "call.tile"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "requires", "modules"],
+          "message": "Names the \"call\" module ($part call.tile), which meta.requires.modules does not list. A host reads the list before drawing; add \"call\" to it."
+        }
+      ]
+    },
+    {
+      "id": "validate.requires.module-listed",
+      "note": "a module the template names and lists is valid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "modules": ["call"]
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "modules.call.active"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.requires.profile-unlisted",
+      "note": "with profiles written, a profile namespace the template names and does not list is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "profiles": []
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "navigation.params.tab"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "requires", "profiles"],
+          "message": "Names navigation.params, a member of the \"navigation\" profile, which meta.requires.profiles does not list. Add \"navigation\" to it."
+        }
+      ]
+    },
+    {
+      "id": "validate.requires.profile-listed",
+      "note": "a profile the template names and lists, by id, is valid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "profiles": ["navigation", "view-state"]
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "navigation.params.tab"
+              }
+            ]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "onClick": {
+                "$invoke": "viewState.closePanel",
+                "args": ["side"]
+              }
+            },
+            "children": ["x"]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.requires.profile-unknown",
+      "note": "a listed profile that is not a capability profile is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "profiles": ["navigation", "nowhere"]
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "navigation.params.tab"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "requires", "profiles"],
+          "message": "\"nowhere\" is not a capability profile. The profiles are: navigation, view-state, layout, presence, identity, space-settings, appearance."
+        }
+      ]
+    },
+    {
+      "id": "validate.requires.modules-only-not-portable",
+      "note": "modules alone do not declare a template portable: profiles it names need not be listed",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "modules": []
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "navigation.params.tab"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.requires.host-only-warned",
+      "note": "a template that writes profiles declares itself portable, so a member only its first host has is warned about",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "profiles": []
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "spaceStore.root.name"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        {
+          "at": ["meta", "requires"],
+          "message": "Declares what it requires (meta.requires.profiles), so it is meant to run on any host providing those, but it uses members only WE has. WE-host-only: 1 use of 1 store member outside every capability profile. With a neutral equivalent: spaceStore.root → spaceSettings.currentSpace.root."
+        }
+      ]
+    },
+    {
+      "id": "validate.requires.unknown-key",
+      "note": "meta.requires holds profiles and modules only; another key is an error, not something a host may skip",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "requires": {
+            "profiles": [],
+            "engines": ["forest"]
+          }
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["x"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "requires"],
+          "message": "Unrecognized key: \"engines\""
+        }
+      ]
     }
   ]
 }

@@ -1137,7 +1137,7 @@ export const seedBundles: Bundle[] = [
           description:
             'A space as one tree and one view: its channels, calls, workflows and people beside what you chose.',
           icon: 'tree-structure',
-          requires: { modules: ['call', 'transcribe', 'feed', 'graph'] },
+          requires: { modules: ['call', 'feed', 'transcribe', 'graph'] },
           panels: [
             {
               id: 'tree',

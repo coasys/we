@@ -1,13 +1,13 @@
 {
   "version": 1,
   "profiles": {
-    "navigation": "1.0.0",
-    "view-state": "1.0.0",
-    "layout": "1.0.0",
-    "presence": "1.0.0",
-    "identity": "1.0.0",
-    "space-settings": "1.0.0",
-    "appearance": "1.0.0"
+    "navigation": "0.1.0",
+    "view-state": "0.1.0",
+    "layout": "0.1.0",
+    "presence": "0.1.0",
+    "identity": "0.1.0",
+    "space-settings": "0.1.0",
+    "appearance": "0.1.0"
   },
   "worlds": {
     "community": {

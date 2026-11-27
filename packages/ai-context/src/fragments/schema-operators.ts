@@ -80,6 +80,16 @@ The ROOT node carries two more, and both are required:
   template was designed with, panels for the surfaces the interface has (see Panels), and
   chromeReserve for a band the shell pins over the content. A root node without meta is refused.
 
+- meta.requires: { profiles?, modules? } — what the template needs of a host. modules lists every
+  module it names (modules.<id>.…, a module's $part, a panel placing one); once requires is written,
+  leaving one out is an error, and installing it where a listed module is absent is refused.
+  profiles lists, by id, the capability profiles whose members it names (navigation, view-state,
+  layout, presence, identity, space-settings, appearance). Writing profiles declares the template
+  portable — it runs on any host with those profiles and modules — so a profile it names and does not
+  list is an error, and every store member only WE has (spaceStore.…, recordStore.…) is warned about.
+  profiles: [] is a template that needs only records, $query and ops. Leave requires out for a
+  template written for WE alone.
+
 ## Shapes the template says once: $defs and $ref
 
 A template often uses the same shape in several places — a card drawn in two display modes, a

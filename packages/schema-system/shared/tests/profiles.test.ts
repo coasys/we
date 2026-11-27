@@ -23,6 +23,12 @@ describe('capability profiles', () => {
     for (const profile of CAPABILITY_PROFILES) expect(profile.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
+  it('are drafts at 0.x while WE is the only host providing them', () => {
+    // A profile freezes at 1.0.0 when a second host passes its vectors; raising one here is that
+    // decision, made on purpose. See the profiles spec, "Versioning".
+    for (const profile of CAPABILITY_PROFILES) expect(profile.version).toMatch(/^0\.\d+\.\d+$/);
+  });
+
   it('are written under namespaces of their own, never a store name', () => {
     expect(CAPABILITY_PROFILES.map((p) => p.namespace)).toEqual([
       'navigation',

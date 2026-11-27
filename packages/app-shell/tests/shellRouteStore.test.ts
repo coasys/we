@@ -8,6 +8,7 @@
  * binding fills the store from a mounted router is `shellRouterRoot.test.tsx`.
  */
 import type { ReactivityPort } from '@we/reactivity';
+import { resolveHref } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createShellRouteStore, type ShellRouteStore } from '../src/shared/stores/ShellRouteStore';
@@ -54,7 +55,14 @@ describe.each(reactivityPorts)('shellRouteStore, under %s', (_name, makePort) =>
     const { store } = mountStore('/settings/ai');
     store.navigate('../modules', { base: { depth: 2 } });
     expect(store.currentPath()).toBe('/settings/modules');
-    expect(store.resolve('./x', { base: { depth: 1 } })).toBe('/settings/x');
+    expect(
+      resolveHref('./x', {
+        currentPath: store.currentPath(),
+        segments: store.segments(),
+        templateSegments: store.templateSegments(),
+        depth: 1,
+      }),
+    ).toBe('/settings/x');
 
     store.navigate('~/profile');
     expect(store.currentPath()).toBe('/profile');

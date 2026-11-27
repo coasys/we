@@ -96,6 +96,12 @@ export interface StoreEntry {
    * tell a template naming it under the store where it is written now.
    */
   homes?: Record<string, string>;
+  /**
+   * The capability group each member is granted under (`session`, `content`, `runtime-admin`), by
+   * member. Absent on a profile namespace. What the schema CLI sorts a template's WE-host-only uses
+   * by, so the report says which kinds of host state a template leans on.
+   */
+  groups?: Record<string, string>;
 }
 
 /** A token category (e.g. space, color, size) */
