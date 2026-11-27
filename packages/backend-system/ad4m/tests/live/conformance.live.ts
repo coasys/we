@@ -2,7 +2,10 @@
  * The AD4M backend against the shared conformance suite, on a real executor.
  *
  * Run with `pnpm --filter @we/backend-ad4m test:live`; `executor.ts` starts the executor. Each case
- * gets a perspective of its own with the space SDNA installed, and loses it afterwards.
+ * gets a perspective of its own and loses it afterwards. It holds the space SDNA and the root SDNA
+ * both, so every record type WE has is there: the operations suite seeds per-agent records
+ * (`core.markRead`'s `ReadMarker`), which only the root holds, and the in-memory backend, having no
+ * schemas to install, would never say a case needed them.
  *
  * Writes come back over the executor's subscription socket rather than synchronously, so a case
  * waits seconds for them. The known gaps are the executor's, and each one says what is wrong.
@@ -37,6 +40,7 @@ describeBackendConformance('AD4M', {
     const { ports, agent } = await connect();
     const ref = await ports.lifecycle.create(`conformance-${Date.now()}`);
     await ports.schemas.installSpace(ref.handle, []);
+    await ports.schemas.installRoot(ref.handle);
     datasetIds.set(ref.handle as object, ref.id);
     return { ports, dataset: ref.handle, agent };
   },

@@ -79,7 +79,10 @@ export {
 /** One fresh backend, ready for a case to write into. */
 export interface ConformanceSubject {
   ports: BackendPorts;
-  /** A dataset with the host's space schema installed and no records in it. */
+  /**
+   * A dataset with no records in it, holding every record type the host has: a space's, and the
+   * per-agent ones only an agent's own dataset holds, which the operations cases also write.
+   */
   dataset: DatasetHandle;
   /** The id the ports' context answers `selfId()` with. */
   agent: string;
