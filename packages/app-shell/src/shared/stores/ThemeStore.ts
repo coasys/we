@@ -149,11 +149,6 @@ export interface ThemeStore {
   /** Drop the theme pin for the space on screen, returning it to whatever would otherwise apply. */
   clearSpaceThemePin: () => Promise<void>;
   /**
-   * Say why a default just set for the space on screen is not what this agent sees, if something
-   * hides it. Called by the space store when the default is set. Wiring, not template API.
-   */
-  explainSpaceThemeHidden: () => void;
-  /**
    * The role the theme editor should jump to, kebab-case, or empty.
    *
    * Set by whatever sent somebody to the panel — the inspector's role readout, chiefly, where the
@@ -1994,24 +1989,6 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     if (datasetId) await setSpaceThemeOverride(FOLLOW_SPACE, datasetId);
   }
 
-  /*
-    Members see a space's new default; the person who set it is the one looking at something else,
-    and without this the setting reads as not having saved.
-  */
-  function explainSpaceThemeHidden(): void {
-    const reason = untrack(spaceThemeHiddenBy);
-    const datasetId = datasetStore.currentDataset()?.id;
-    if (!reason || !datasetId) return;
-    const resolved = untrack(() => resolveThemeFor(datasetId));
-    const name = untrack(allThemes).find((t) => t.id === resolved)?.name ?? 'another theme';
-    if (reason === 'template') {
-      toasts.info(`Saved. You won't see it while this template brings its own theme, ${name}.`, 8000);
-      return;
-    }
-    const useSpaceTheme = { label: "Use the space's theme", run: () => void clearSpaceThemePin() };
-    toasts.info(`Saved. You won't see it while you're using ${name} in this space.`, 8000, useSpaceTheme);
-  }
-
   const store: ThemeStore = {
     automaticThemes,
     builtInThemes,
@@ -2046,7 +2023,6 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     setSpaceThemeOverride,
     applyTheme,
     clearSpaceThemePin,
-    explainSpaceThemeHidden,
     focusedRole,
     focusRole,
     setSystemTheme,

@@ -363,13 +363,5 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
       expect(mine.value).toBe(AGENT_DEFAULT);
       expect(rest.some((option) => option.value === 'retro')).toBe(true);
     });
-
-    it('explains a new space default the agent will not see, and offers the way back', async () => {
-      const { store, setSpaceRecord } = await mount({ space: true, spaceTheme: 'retro' });
-      await store.applyTheme('cyberpunk');
-      setSpaceRecord({ uuid: 'space', defaultThemeId: 'dark', defaultTemplateId: '' });
-      store.explainSpaceThemeHidden();
-      expect(told.at(-1)).toMatch(/^Saved\. You won't see it while you're using .* in this space\.$/);
-    });
   });
 });

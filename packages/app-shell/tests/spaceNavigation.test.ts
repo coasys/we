@@ -81,7 +81,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           templateStore: { preloadSpaceTemplates: () => Promise.resolve(), currentTemplate: {} } as never,
           shellStore: { activeShellView: () => null, closeShellView: () => {}, provideSpaceGate: () => {} } as never,
           spaces,
-          writes: { pendingDefaults: () => pending as never },
+          writes: { pendingSaves: () => pending as never },
           onScreen,
           modules: { usesSectionsFor: () => true, members: { routableViews: () => [], spaceViews: () => [] } },
         });

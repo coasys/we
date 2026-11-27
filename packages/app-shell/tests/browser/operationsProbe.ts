@@ -10,15 +10,20 @@
  */
 import { invokeOperation } from '@shared/invokeOperation';
 import { withPredictedReads } from '@shared/predictedBindings';
-import { buildTemplateBag, SPACE_TIER } from '@shared/registries/templateSurface';
+import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { createSpaceList } from '@shared/stores/space/spaces';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import { clearPredictions, getEntity, registerTransactionRunner } from '@we/entities';
+import { clearPredictions, getEntity, registerTransactionRunner, Space } from '@we/entities';
+import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { giveSignal } from '@we/template-kit';
+import { spaceSettingsPanel } from '@we/template-shell';
 import { render } from 'solid-js/web';
+
+import { spaceHarness } from '../support/spaceParts';
 
 const ME = 'did:me';
 
@@ -98,12 +103,109 @@ async function seed(kind: 'reaction' | 'board', dataset: unknown): Promise<{ nod
   return { node, ids: { card: one.id, todo: todo.id, doing: doing.id, board: board.id } };
 }
 
+/**
+ * The space settings page's Appearance tab, as chrome draws it for a space: its rows from the space
+ * store's own spaces part, over the in-memory backend, and its "Set as default" presses running the
+ * space's operations through the host, real runs held. The space is not the one on screen — the page
+ * configures whichever space was clicked — so what the row shows is the held record with the
+ * pending write drawn over it, and nothing else would show it before the write lands.
+ */
+async function mountDefaults(): Promise<ProbeIds> {
+  const h = await spaceHarness(solidReactivity, [{ id: 'ds-a', name: 'Allotment' }]);
+  const ds = await h.datasets.get('ds-a');
+  await Space.create(ds.handle as never, { uuid: 'ds-a', name: 'The Allotment' } as never);
+  registerTransactionRunner((target, fn) =>
+    held
+      ? new Promise<void>((resolve) => waiting.push(resolve)).then(() => runInMemoryTransaction(target, fn))
+      : runInMemoryTransaction(target, fn),
+  );
+  let spaceList!: () => unknown[];
+  const disposeParts = solidReactivity.root(() => {
+    const spaces = createSpaceList({
+      ...h.ctx,
+      routeStore: { segments: () => [], navigate: () => {} },
+      templateStore: { appTemplate: () => null, preloadSpaceTemplates: () => Promise.resolve() } as never,
+      shapeStore: { addRecordTypes: () => Promise.resolve([]) } as never,
+    });
+    spaceList = solidReactivity.memo(() =>
+      h.ctx.datasetStore.orderedDatasets().map((d) =>
+        spaces.listRow(d, () => ({
+          canAdminister: true,
+          modules: [],
+          views: [],
+          usesSections: true,
+          templateOverride: '',
+          themeOverride: '',
+        })),
+      ),
+    );
+    void spaces.members.loadSpaces();
+  });
+  const template = (id: string, name: string) => ({ id, type: 'Column', meta: { name, icon: 'layout' } });
+  const stores = {
+    $me: { did: ME },
+    $currentDataset: () => ({ id: 'ds-a' }),
+    ops: {
+      run: (name: string, params?: Record<string, unknown>, options?: { space?: string }) =>
+        h.datasets.get(options?.space ?? 'ds-a').then((target) =>
+          invokeOperation(name, params ?? {}, {
+            dataset: target.handle,
+            invoker: h.ctx.sessionStore.me()?.did ?? '',
+          }),
+        ),
+    },
+    shellStore: { spaceSettingsTab: 'appearance' },
+    // The page draws the dataset it is told of; the spaces part, which nothing told, has none on screen.
+    datasetStore: { currentDataset: { id: 'ds-a' }, marketplaceConfigured: false },
+    templateStore: {
+      builtInTemplates: [template('default', 'Default'), template('garden', 'Garden')],
+      spaceTemplates: [],
+      templateOverrideOptions: [],
+    },
+    themeStore: {
+      builtInThemes: [{ id: 'light', name: 'Light', icon: 'sun' }],
+      automaticThemes: [],
+      spaceThemes: [],
+      spaceThemeHiddenBy: '',
+      themeOverrideOptions: [],
+    },
+    spaceStore: {
+      get spaceList() {
+        return spaceList();
+      },
+      mutedDids: [],
+      myModuleSettings: [],
+      agentModuleSettings: [],
+      spaceModuleSettings: [],
+    },
+  };
+  const host = document.getElementById('mount') as HTMLElement;
+  host.innerHTML = '';
+  host.style.width = '720px';
+  const bag = buildTemplateBag(stores, { grants: CHROME_TIER });
+  const node = {
+    type: 'Column',
+    props: { width: '100%', height: '900px' },
+    children: [spaceSettingsPanel],
+  } as SchemaNode;
+  const unmount = render(
+    () => RenderSchema({ node, stores: bag, registry: componentRegistry } as never) as never,
+    host,
+  );
+  dispose = () => {
+    unmount();
+    disposeParts();
+  };
+  return { space: 'ds-a' };
+}
+
 /** Mount the probe's schema over a fresh in-memory dataset, real runs held. Resolves with the ids it seeded. */
-export async function operationsProbe(kind: 'reaction' | 'board'): Promise<ProbeIds> {
+export async function operationsProbe(kind: 'reaction' | 'board' | 'defaults'): Promise<ProbeIds> {
   dispose?.();
   clearPredictions();
   waiting = [];
   held = true;
+  if (kind === 'defaults') return mountDefaults();
   const ports = createInMemoryBackendPorts(
     { selfId: () => ME },
     { agent: { id: ME, unlocked: true }, datasets: [{ id: 'ds-probe', name: 'Probe' }] },

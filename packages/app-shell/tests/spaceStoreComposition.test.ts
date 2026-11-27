@@ -97,7 +97,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           saveTemplateAs: () => Promise.resolve(undefined),
         } as never,
         themeStore: {
-          explainSpaceThemeHidden: () => {},
           provideSpaceAppearance: (appearance: SpaceAppearance) => void lent.appearance.push(appearance),
         },
         host: {

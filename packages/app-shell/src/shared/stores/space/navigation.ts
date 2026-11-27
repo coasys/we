@@ -38,7 +38,7 @@ export interface SpaceNavigationDeps extends SpaceContext {
   spaces: Pick<SpaceList, 'holdSpace' | 'onRemoved'> & {
     members: Pick<SpaceList['members'], 'mySpaces' | 'orderedSidebarItems'>;
   };
-  writes: Pick<SpaceWrites, 'pendingDefaults'>;
+  writes: Pick<SpaceWrites, 'pendingSaves'>;
   /** The space on screen, which this part fills from the live read. */
   onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'showPushed'>;
   /** The sections a space has, from the modules-and-views part — read when somebody goes somewhere. */
@@ -61,7 +61,7 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     modules,
   } = deps;
   const { memo, effect, untrack, batch, onCleanup } = reactivity;
-  const { pendingDefaults } = writes;
+  const { pendingSaves } = writes;
 
   const { currentSpace, showPushed } = onScreen;
   const sections = {
@@ -86,9 +86,9 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     });
     const handleResult = (results: Space[]) => {
       const row = results[0] ?? null;
-      // A default still being saved stays shown over the row the record last took, which is the
-      // older choice until the write lands.
-      const pending = row ? pendingDefaults(ds) : {};
+      // An interpretation list still being saved stays shown over the row the record last took,
+      // which is the older list until the write lands.
+      const pending = row ? pendingSaves(ds) : {};
       const space = row && Object.keys(pending).length ? withFields(row, pending) : row;
       showPushed(space);
     };

@@ -305,9 +305,8 @@ describe('space-configuring actions are pinned to the space on screen', () => {
     {
       spaceStore: {
         updateSpaceMeta: record(),
-        setSpaceDefaultTemplate: record(),
         setModuleEnabled: record(),
-        updateSpaceImage: record(),
+        setViewVisible: record(),
       },
     },
     { grants: SPACE_TIER },
@@ -329,9 +328,9 @@ describe('space-configuring actions are pinned to the space on screen', () => {
   });
 
   it('leaves an ordinary call untouched', () => {
-    spaceStore.setSpaceDefaultTemplate('gardening');
-    spaceStore.updateSpaceImage('avatar', 'a-file');
-    expect(calls).toEqual([['gardening'], ['avatar', 'a-file']]);
+    spaceStore.setViewVisible('cards', false);
+    spaceStore.updateSpaceMeta({ name: 'Renamed' });
+    expect(calls).toEqual([['cards', false], [{ name: 'Renamed' }]]);
   });
 
   /*

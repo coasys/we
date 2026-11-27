@@ -9,7 +9,7 @@
  * `composeStores`.
  */
 import type { AgentProfileSummary } from '@we/backend-shared';
-import type { InvolvementSemantic, MutedAgent, Space } from '@we/entities';
+import type { FileData, InvolvementSemantic, MutedAgent, Space } from '@we/entities';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 import type { ResolvedView } from '@we/schema-shared';
 
@@ -362,11 +362,13 @@ export interface SpaceStore {
    * action named for somebody else's noun or duplicate it.
    */
   deleteCollection: (collectionId: string) => Promise<void>;
+  /**
+   * What the space's record stores for a picture the person chose, sized for the field; for
+   * `ops.core.setSpaceImage` to write. Stores nothing itself.
+   */
+  prepareSpaceImage: (field: 'avatar' | 'coverImage', image: File) => Promise<FileData>;
   /** Every space-scoped write takes an optional target uuid; omitted means the space on screen. */
-  updateSpaceImage: (field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string) => Promise<void>;
   updateSpaceMeta: (updates: SpaceMetaUpdate, spaceUuid?: string) => Promise<void>;
-  setSpaceDefaultTemplate: (templateId: string, spaceUuid?: string) => Promise<void>;
-  setSpaceDefaultTheme: (themeId: string, spaceUuid?: string) => Promise<void>;
   setModuleEnabled: (moduleId: string, enabled: boolean, spaceUuid?: string) => Promise<void>;
   /**
    * What each capability that declares settings is currently set to **for this community**, as rows
@@ -644,7 +646,7 @@ export interface SpaceStoreDeps {
     SpaceNavigationDeps['templateStore'] &
     SpaceModulesDeps['templateStore'] &
     Pick<TemplateStore, 'provideSpaceAppearance' | 'saveTemplateAs'>;
-  themeStore: SpaceDetailsDeps['themeStore'] & Pick<ThemeStore, 'provideSpaceAppearance'>;
+  themeStore: Pick<ThemeStore, 'provideSpaceAppearance'>;
   host: SpaceHostState;
 }
 
@@ -752,7 +754,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   taskStates.provideSpaceBoard(content.members.addStateToSpaceBoard);
 
   // Each space's own record — its picture, name and place, defaults, thread mode — and its members.
-  const details = createSpaceDetails({ ...ctx, profileStore, themeStore, spaces, onScreen, writes });
+  const details = createSpaceDetails({ ...ctx, profileStore, spaces, onScreen, writes });
 
   /*
     The spaces list: one row per joined dataset the agent can act on, its columns answered by each

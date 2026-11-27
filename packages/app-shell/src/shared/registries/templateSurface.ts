@@ -40,7 +40,7 @@
  * ## What another host provides
  *
  * This file is WE's bag. Which of its members a template may expect of any host is a separate
- * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): five versioned
+ * question, answered by the capability profiles (`profiles/` in `@we/schema-shared`): seven versioned
  * member lists, each member keeping the group it has here. `capabilityProfiles.test.ts` holds the
  * two together. A member outside every profile is WE-host-only, and the validator says so.
  */
@@ -186,8 +186,7 @@ interface MemberSpec {
    *
    * There is one thing this is for. Every space-configuring action takes the space as a trailing
    * optional argument — `updateSpaceMeta(updates, spaceUuid?)`,
-   * `setSpaceDefaultTemplate(templateId, spaceUuid?)`, `setModuleEnabled(id, enabled, spaceUuid?)` —
-   * omitted meaning "the space on screen". That default is exactly right for a template and the
+   * `setModuleEnabled(id, enabled, spaceUuid?)` — omitted meaning "the space on screen". That default is exactly right for a template and the
    * argument is exactly wrong: it is the difference between "this community's template configures
    * this community" and "any space you visit can rename every other space you are in".
    *
@@ -746,10 +745,13 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     shareSpace: action('space-admin'),
     initializeAsWeSpace: action('space-settings'),
     removeSpace: destructive('space-admin'),
-    updateSpaceImage: hereOnly('space-settings', 2),
+    /*
+      The host's half of setting the space's picture: what the record stores for the one chosen.
+      Writes nothing — `ops.core.setSpaceImage` does, pinned to the space on screen as every
+      operation a space template holds is.
+    */
+    prepareSpaceImage: action('space-settings'),
     updateSpaceMeta: hereOnly('space-settings', 1),
-    setSpaceDefaultTemplate: hereOnly('space-settings', 1),
-    setSpaceDefaultTheme: hereOnly('space-settings', 1),
     setModuleEnabled: hereOnly('space-settings', 2),
     setAutoInterpret: hereOnly('space-settings', 1),
     setThreadMode: hereOnly('space-settings', 1),
@@ -982,7 +984,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setDefaultTheme: action('library'),
     provideTemplates: WIRING,
     provideSpaceAppearance: WIRING,
-    explainSpaceThemeHidden: WIRING,
     // ── the theme a space is seen in: this agent's override per space ──
     themeOverrideOptions: state('space-admin'),
     /*
@@ -1858,11 +1859,13 @@ function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
 /**
  * What the host lends for declared operations: one runner, which every `ops.<ns>.<name>` in a bag
  * calls with its own name. `options.dataset` is the same store path `record.create` takes;
- * `options.admitChosen` is the bag's judgement of an entity an operation chooses at call time,
- * which the host hands the runner (`RunOperationOptions.admitChosen`).
+ * `options.space` names another space by its dataset id, and reaches the runner only from a bag
+ * holding `space-admin`; `options.admitChosen` is the bag's judgement of an entity an operation
+ * chooses at call time, which the host hands the runner (`RunOperationOptions.admitChosen`).
  */
 export interface OperationRunOptions {
   dataset?: string;
+  space?: string;
   admitChosen?: (entity: string) => boolean;
 }
 
@@ -1890,14 +1893,23 @@ function operationNamespaces(
   for (const [name, spec] of Object.entries(operationSurfaceEntries())) {
     if (!granted.has(spec.group)) continue;
     const path = `ops.${name}`;
-    // One argument, the params, and the dataset option after it; nothing else of the caller's reaches
-    // the runner. The judgement of a chosen entity is the bag's own, never the template's.
+    /*
+      One argument, the params, and the options after it; nothing else of the caller's reaches the
+      runner. The judgement of a chosen entity is the bag's own, never the template's. Another space
+      is named only with `space-admin`, the grant a store action's trailing space id needs too
+      (`arity`): below it an operation runs in the space on screen whatever the template says, so a
+      space's template configures that space and no other.
+    */
     const admitChosen = (entity: string) => admitsChosen(granted, entity);
-    let method: AnyFn = (params?: unknown, given?: unknown) =>
-      host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
-        ...(given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : {}),
+    const otherSpaces = granted.has('space-admin');
+    let method: AnyFn = (params?: unknown, given?: unknown) => {
+      const { dataset, space } = (given && typeof given === 'object' ? given : {}) as OperationRunOptions;
+      return host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
+        ...(typeof dataset === 'string' ? { dataset } : {}),
+        ...(otherSpaces && typeof space === 'string' ? { space } : {}),
         admitChosen,
       });
+    };
     if (spec.destructive && options.onDestructive) {
       const guard = options.onDestructive;
       const bound = method;

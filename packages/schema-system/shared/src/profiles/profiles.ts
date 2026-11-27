@@ -611,7 +611,7 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     version: '1.0.0',
     title: 'Space settings',
     description:
-      'The space a template is drawn in, and what a template may change about it: its look, its defaults, and what this person sees of it. Pinned to the space on screen — a template cannot reach another space through these.',
+      'The space a template is drawn in, what this person sees of it, and their own settings for it. Pinned to the space on screen — a template cannot reach another space through these. Changing the space’s own record — its name, pictures and defaults — is the space’s operations’, not this profile’s.',
     members: [
       {
         path: 'spaceStore.currentSpace',
@@ -658,31 +658,16 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['settings'],
       },
       {
-        path: 'spaceStore.setSpaceDefaultTemplate',
-        kind: 'action',
-        group: 'space-settings',
-        args: [{ name: 'templateId', type: 'string' }],
-        description: 'Sets the template members see when they enter the space on screen.',
-        events: ['space'],
-      },
-      {
-        path: 'spaceStore.setSpaceDefaultTheme',
-        kind: 'action',
-        group: 'space-settings',
-        args: [{ name: 'themeId', type: 'string' }],
-        description: 'Sets the theme members see when they enter the space on screen.',
-        events: ['space'],
-      },
-      {
-        path: 'spaceStore.updateSpaceImage',
+        path: 'spaceStore.prepareSpaceImage',
         kind: 'action',
         group: 'space-settings',
         args: [
           { name: 'field', type: "'avatar' | 'coverImage'" },
           { name: 'image', type: 'File' },
         ],
-        description: 'Stores an image the person chose and sets it as the space’s avatar or cover image.',
-        events: ['space'],
+        description:
+          'Makes a picture the person chose into what the space’s record stores for that field — sized for it — and answers with it, for `ops.core.setSpaceImage` to write. Stores nothing itself.',
+        events: [],
       },
       {
         path: 'spaceStore.setViewVisible',

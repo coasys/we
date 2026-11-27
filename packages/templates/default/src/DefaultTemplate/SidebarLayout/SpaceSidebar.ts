@@ -1,4 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
+import { spaceImageChange } from '@we/template-kit';
 
 export const spaceSidebar: SchemaNode = {
   type: 'Column',
@@ -17,7 +18,7 @@ export const spaceSidebar: SchemaNode = {
         placeholderIcon: 'panorama',
         uploadLabel: 'Upload cover image',
         editLabel: 'Change cover image',
-        onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
+        onImageChange: spaceImageChange('coverImage'),
       },
     },
     {
@@ -39,7 +40,7 @@ export const spaceSidebar: SchemaNode = {
             uploadLabel: 'Add image',
             editLabel: 'Change image',
             fontSize: '200',
-            onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
+            onImageChange: spaceImageChange('avatar'),
           },
         },
       ],

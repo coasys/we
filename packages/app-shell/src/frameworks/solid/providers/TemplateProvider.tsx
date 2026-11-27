@@ -164,7 +164,11 @@ export default function TemplateProvider() {
     run: async (name, params, options) => {
       const invoker = sessionStore.me()?.did;
       if (!invoker) throw new Error('Sign in to do this.');
-      const dataset = resolveDataset(options?.dataset) ?? datasetStore.currentDataset()?.handle;
+      // A space named by its dataset id answers only for a space this agent holds; anything else is
+      // refused rather than run in the space on screen, which is not the one asked for.
+      const named = options?.space ? datasetStore.datasets().find((d) => d.id === options.space) : undefined;
+      if (options?.space && !named) throw new Error('That space is not one you are in.');
+      const dataset = named?.handle ?? resolveDataset(options?.dataset) ?? datasetStore.currentDataset()?.handle;
       if (!dataset) throw new Error('Open a space to do this.');
       return invokeOperation(name, params, {
         dataset,

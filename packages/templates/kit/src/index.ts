@@ -50,6 +50,7 @@ export { ANCHOR_ID, ANCHOR_PARAM, anchorBanner, anchorParent, anchorScope } from
 export type { AnchorBannerOptions } from './we/anchor.ts';
 export { landmark, LANDMARKS, LANDMARKS_LOADED, landmarksQuery } from './we/landmarks.ts';
 export { MEMBERS } from './we/members.ts';
+export { spaceImageChange } from './we/spaceImage.ts';
 export {
   answerButton,
   CHANGED,

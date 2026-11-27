@@ -26,6 +26,11 @@ export interface SpaceListEntry {
    * list is not drawn again on every write.
    */
   id: string;
+  /**
+   * The id of the space's own Space record — what an operation on the space names it by — or `''`
+   * for a dataset with no record (yet).
+   */
+  recordId: string;
   name: string;
   description: string;
   avatar: string;

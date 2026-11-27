@@ -7,12 +7,11 @@
  * is written to both.
  */
 import type { AgentProfileSummary } from '@we/backend-shared';
-import { compressImageToFileData, LocationBlock, Space } from '@we/entities';
+import { compressImageToFileData, type FileData, LocationBlock, Space } from '@we/entities';
 
 import { removeSpaceFromParent, spaceSelfWhere, syncSpaceToParent } from '../../spaceSync';
 import type { ProfileStore } from '../ProfileStore';
 import type { SpaceStore } from '../SpaceStore';
-import type { ThemeStore } from '../ThemeStore';
 import type { SpaceContext } from './context';
 import type { SpaceOnScreen } from './onScreen';
 import { SPACE_AVATAR_PX, type SpaceList } from './spaces';
@@ -21,18 +20,9 @@ import type { SpaceWrites } from './writes';
 
 export interface SpaceDetailsDeps extends SpaceContext {
   profileStore: Pick<ProfileStore, 'profiles' | 'fetchProfile'>;
-  themeStore: Pick<ThemeStore, 'explainSpaceThemeHidden'>;
   spaces: Pick<SpaceList, 'heldSpace'> & { members: Pick<SpaceList['members'], 'updateSpaceInCache'> };
   onScreen: Pick<SpaceOnScreen, 'currentSpace'>;
-  writes: Pick<
-    SpaceWrites,
-    | 'publishSpaceFields'
-    | 'writeSpaceFields'
-    | 'defaultSaveFor'
-    | 'queueDefaultWrite'
-    | 'endDefaultSave'
-    | 'spaceRowForSave'
-  >;
+  writes: Pick<SpaceWrites, 'writeSpaceFields'>;
 }
 
 export function createSpaceDetails(deps: SpaceDetailsDeps) {
@@ -42,47 +32,33 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     sessionStore: session,
     datasetStore,
     profileStore,
-    themeStore,
     spaces,
     onScreen,
     writes,
     runCore,
     targetDataset,
-    isCurrent,
   } = deps;
   const { memo, effect } = reactivity;
   const { heldSpace } = spaces;
   const { updateSpaceInCache } = spaces.members;
   const { currentSpace } = onScreen;
-  const { publishSpaceFields, writeSpaceFields, defaultSaveFor, queueDefaultWrite, endDefaultSave, spaceRowForSave } =
-    writes;
+  const { writeSpaceFields } = writes;
 
   const [memberDids, setMemberDids] = reactivity.signal<string[]>([]);
 
-  async function updateSpaceImage(field: 'avatar' | 'coverImage', imageFile: File, spaceUuid?: string): Promise<void> {
-    const ds = targetDataset(spaceUuid);
-    if (!ds) return;
-    const fileData = await compressImageToFileData(
+  /**
+   * What the space's record stores for a picture the person chose: compressed, and an avatar sized
+   * for one. The host's half of setting a picture — the record write is `ops.core.setSpaceImage`, so
+   * the picture is drawn the moment the operation is invoked and its failure is said as the
+   * operation's.
+   */
+  async function prepareSpaceImage(field: 'avatar' | 'coverImage', imageFile: File): Promise<FileData> {
+    return compressImageToFileData(
       deps.platform.images,
       imageFile,
       field === 'avatar' ? 'space-image' : 'space-cover',
       field === 'avatar' ? SPACE_AVATAR_PX : undefined,
     );
-    const [spaceRecord] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
-    if (!spaceRecord) return;
-    await Space.update(ds.handle, spaceRecord.id, { [field]: fileData });
-    // Only the current space has a live subscription refreshing it; every other row in the spaces
-    // list is served from this cache, so without it the change would not appear until a reload.
-    updateSpaceInCache(ds, { [field]: fileData });
-    if (spaceRecord.discovery === 'listed') {
-      const globalDs = datasetStore.globalDataset();
-      if (globalDs) {
-        const imageOpt = field === 'avatar' ? { avatarData: fileData } : { coverImageData: fileData };
-        await syncSpaceToParent(spaceRecord, globalDs.handle, session.backendPorts()!.schemas, imageOpt).catch((err) =>
-          console.error('SpaceStore: sync image to global failed', err),
-        );
-      }
-    }
   }
 
   async function updateSpaceMeta(updates: SpaceMetaUpdate, spaceUuid?: string): Promise<void> {
@@ -117,7 +93,7 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     );
     // The record read above goes to the discovery space below, so it carries what was just written.
     Object.assign(spaceRecord, scalars);
-    // See updateSpaceImage — only the current space is refreshed by a live subscription.
+    // Only the space on screen is refreshed by a live subscription; the rest of the list is this cache.
     updateSpaceInCache(ds, scalars);
     /*
       The cached row carries the location too: only the space *on screen* is refreshed by the live
@@ -162,62 +138,9 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     await writeSpaceFields(ds, space, { threadMode: mode === 'flat' ? 'flat' : 'fractal' });
   }
 
-  // Read off the space on screen. An optimistic write publishes the field onto that space.
+  // Read off the space on screen, which draws an operation's write to them from the moment it is invoked.
   const spaceDefaultTemplateId = memo(() => currentSpace()?.defaultTemplateId ?? '');
   const spaceDefaultThemeId = memo(() => currentSpace()?.defaultThemeId ?? '');
-
-  async function setSpaceDefaultTemplate(templateId: string, spaceUuid?: string): Promise<void> {
-    const ds = targetDataset(spaceUuid);
-    if (!ds) return;
-    const save = defaultSaveFor(ds, 'defaultTemplateId');
-    const isNewest = save.ops.begin();
-    save.value = templateId;
-    save.pending += 1;
-    try {
-      /*
-        Published before it is stored — and the publish is the whole of the paint. The template
-        store follows the record's `defaultTemplateId` for the space on screen, so a save touches
-        no template directly: the follow resolves what to show, through this agent's own override
-        for the space where one is set. The republish below is the whole rollback for the same
-        reason — the follow paints what the record last took, not what a snapshot happened to
-        capture, so a template the record itself brought in mid-save is never rolled back over.
-      */
-      publishSpaceFields(ds, { defaultTemplateId: templateId });
-      await queueDefaultWrite(save, async () =>
-        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultTemplateId: templateId }, isNewest),
-      );
-      save.confirmed = templateId;
-    } catch (error) {
-      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultTemplateId: save.confirmed as string | undefined });
-      throw error;
-    } finally {
-      endDefaultSave(save);
-    }
-  }
-
-  async function setSpaceDefaultTheme(themeId: string, spaceUuid?: string): Promise<void> {
-    const ds = targetDataset(spaceUuid);
-    if (!ds) return;
-    const save = defaultSaveFor(ds, 'defaultThemeId');
-    const isNewest = save.ops.begin();
-    save.value = themeId;
-    save.pending += 1;
-    try {
-      publishSpaceFields(ds, { defaultThemeId: themeId });
-      if (isCurrent(ds)) themeStore.explainSpaceThemeHidden();
-      await queueDefaultWrite(save, async () =>
-        writeSpaceFields(ds, await spaceRowForSave(ds), { defaultThemeId: themeId }, isNewest),
-      );
-      save.confirmed = themeId;
-    } catch (error) {
-      // Only the newest save takes the paint back — an earlier one failing leaves the later one's.
-      if (isNewest()) publishSpaceFields(ds, { defaultThemeId: save.confirmed as string | undefined });
-      throw error;
-    } finally {
-      endDefaultSave(save);
-    }
-  }
 
   /*
     Read the space's members whenever the space on screen changes — once the first screen is up,
@@ -260,20 +183,16 @@ export function createSpaceDetails(deps: SpaceDetailsDeps) {
     | 'members'
     | 'spaceDefaultTemplateId'
     | 'spaceDefaultThemeId'
-    | 'setSpaceDefaultTemplate'
-    | 'setSpaceDefaultTheme'
     | 'setThreadMode'
-    | 'updateSpaceImage'
+    | 'prepareSpaceImage'
     | 'updateSpaceMeta'
   > = {
     memberDids,
     members,
     spaceDefaultTemplateId,
     spaceDefaultThemeId,
-    setSpaceDefaultTemplate,
-    setSpaceDefaultTheme,
     setThreadMode,
-    updateSpaceImage,
+    prepareSpaceImage,
     updateSpaceMeta,
   };
 

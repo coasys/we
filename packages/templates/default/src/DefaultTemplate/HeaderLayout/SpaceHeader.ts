@@ -1,5 +1,5 @@
 import type { SchemaNode } from '@we/schema-shared';
-import { MEMBERS, peopleRow, peopleTooltip } from '@we/template-kit';
+import { MEMBERS, peopleRow, peopleTooltip, spaceImageChange } from '@we/template-kit';
 
 export const spaceHeader: SchemaNode = {
   type: 'Column',
@@ -25,7 +25,7 @@ export const spaceHeader: SchemaNode = {
                 rb: '600',
                 aspect: 4 / 1,
                 placeholderIcon: 'panorama',
-                onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['coverImage', { $: 'arg' }] },
+                onImageChange: spaceImageChange('coverImage'),
               },
             },
             {
@@ -44,7 +44,7 @@ export const spaceHeader: SchemaNode = {
                     r: 'avatar',
                     ring: '0 0 0 2px var(--we-ring-color)',
                     placeholderIcon: 'users-three',
-                    onImageChange: { $invoke: 'spaceStore.updateSpaceImage', args: ['avatar', { $: 'arg' }] },
+                    onImageChange: spaceImageChange('avatar'),
                   },
                 },
                 // Space Details

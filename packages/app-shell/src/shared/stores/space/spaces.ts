@@ -4,7 +4,8 @@
  *
  * It holds `mySpaces`, the record of each space the agent has read, which every other part reads:
  * the space on screen is followed live by the navigation part and handed back here (`holdSpace`), and
- * a setting written to a space is published onto the held record (`updateSpaceInCache`).
+ * a setting written to a space is published onto the held record (`updateSpaceInCache`), and so is
+ * one an operation writes, from the moment it is invoked (see `mySpaces` below).
  */
 import type { DatasetHandle, DatasetRef, EntityStatic, RecordInstance } from '@we/backend-shared';
 import { isRecordExists, parseServerUrl, trace } from '@we/backend-shared';
@@ -19,6 +20,9 @@ import {
   type IdentityDomain,
   identityIdOf,
   LocationBlock,
+  onPredictionsChange,
+  type PredictedWrite,
+  predictionsFor,
   registerIdentityDomain,
   Space,
 } from '@we/entities';
@@ -118,7 +122,69 @@ export function createSpaceList(deps: SpaceListDeps) {
   */
   const sectionSwitch = hostSlot<(viewId: string, spaceId: string) => Promise<void>>();
 
-  const [mySpaces, setMySpaces, updateMySpaces] = updatingSignal<Space[]>(reactivity, []);
+  const [heldSpaces, setMySpaces, updateMySpaces] = updatingSignal<Space[]>(reactivity, []);
+
+  /*
+    The held records with this agent's operations on them drawn over: what every list of spaces,
+    every settings row and every space-resolved choice (its default template and theme) reads.
+
+    The held records are read once, not followed — only the space on screen is followed live — so a
+    write an operation makes to any other space's record would not show on them until a reload. A
+    pending operation's edits to a space's own record are drawn here from the moment it is invoked,
+    as every live read draws them, and adopted into the held record when its real run returns, which
+    is when the record has taken them. A run that fails is withdrawn and draws nothing, so the row
+    reads what the record holds. A listed space whose picture or words an operation changed is listed
+    again with them, as the store's own writes list it.
+  */
+  const [predictionTurn, setPredictionTurn] = reactivity.signal(0);
+  const adopted = new Set<string>();
+  const spaceEdits = (writes: readonly PredictedWrite[], id: string) =>
+    writes.filter(
+      (w): w is Extract<PredictedWrite, { kind: 'edit' }> => w.kind === 'edit' && w.entity === 'Space' && w.id === id,
+    );
+  const datasetOfSpace = (space: Space) => datasetStore.datasets().find((ds) => isSpaceSelf(space, ds));
+  /** The fields edits write, the later over the earlier. */
+  const fieldsOf = (edits: readonly Extract<PredictedWrite, { kind: 'edit' }>[]): Partial<Space> =>
+    Object.assign({}, ...edits.map((edit) => edit.fields)) as Partial<Space>;
+  onCleanup(
+    onPredictionsChange(() => {
+      setPredictionTurn(untrack(predictionTurn) + 1);
+      for (const space of untrack(heldSpaces)) {
+        const ds = untrack(() => datasetOfSpace(space));
+        if (!ds) continue;
+        for (const prediction of predictionsFor(ds.handle)) {
+          if (!prediction.landed || adopted.has(prediction.invocationId)) continue;
+          const edits = spaceEdits(prediction.writes, space.id);
+          if (!edits.length) continue;
+          adopted.add(prediction.invocationId);
+          const fields = fieldsOf(edits);
+          updateMySpaces((prev) => prev.map((s) => (s.id === space.id ? withFields(s, fields) : s)));
+          if (space.discovery === 'listed') void listAgain(withFields(space, fields));
+        }
+      }
+    }),
+  );
+  const mySpaces = memo<Space[]>(() => {
+    predictionTurn();
+    return heldSpaces().map((space) => {
+      const ds = datasetOfSpace(space);
+      if (!ds) return space;
+      const pending = predictionsFor(ds.handle)
+        .filter((prediction) => !prediction.landed)
+        .flatMap((prediction) => spaceEdits(prediction.writes, space.id));
+      return pending.length ? withFields(space, fieldsOf(pending)) : space;
+    });
+  });
+
+  /** Put a listed space in global discovery again as it now reads. */
+  async function listAgain(space: Space): Promise<void> {
+    const globalDs = datasetStore.globalDataset();
+    const schemas = session.backendPorts()?.schemas;
+    if (!globalDs || !schemas) return;
+    await syncSpaceToParent(space, globalDs.handle, schemas).catch((err) =>
+      console.error('SpaceStore: listing the space again failed', err),
+    );
+  }
   /**
    * Every space the agent holds has been asked for its record this session — `loadSpaces` has
    * answered. Until then a dataset without a record in `mySpaces` is not yet known to be from another
@@ -246,6 +312,7 @@ export function createSpaceList(deps: SpaceListDeps) {
     const space = mySpaces().find((s) => isSpaceSelf(s, ds));
     return {
       id: ds.id,
+      recordId: space?.id ?? '',
       // A foreign dataset has no Space record to name it, so the dataset's own name stands in.
       name: space?.name || ds.name,
       description: space?.description ?? '',
@@ -1085,14 +1152,6 @@ export function createSpaceList(deps: SpaceListDeps) {
   const heldSpace = (ds: AppDataset): Space | undefined => mySpaces().find((s) => isSpaceSelf(s, ds));
 
   /**
-   * The `Space` row to write a default through: the cached one, else the stored one. The two default
-   * setters show their value before they store it, so a space not held yet (its record not read or
-   * not synced) must still be written, or the next member opens it with the old default.
-   */
-  const spaceRow = async (ds: AppDataset): Promise<Space | undefined> =>
-    heldSpace(ds) ?? (await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) }))[0];
-
-  /**
    * Put a space's share link on the clipboard.
    *
    * Here rather than in a schema because clipboard access is a browser API, and because the failure
@@ -1203,7 +1262,6 @@ export function createSpaceList(deps: SpaceListDeps) {
   return {
     members,
     heldSpace,
-    spaceRow,
     spaceForUuid,
     holdSpace,
     listRow,

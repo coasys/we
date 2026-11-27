@@ -526,10 +526,8 @@ export const storeEntries: StoreEntry[] = [
       'removeBoardColumn',
       'moveCardToColumn',
       'addTaskToColumn',
-      'updateSpaceImage',
+      'prepareSpaceImage',
       'updateSpaceMeta',
-      'setSpaceDefaultTemplate',
-      'setSpaceDefaultTheme',
       'setSignalTypeRetired',
       'createTaskState',
       'updateTaskState',
@@ -1573,8 +1571,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns, and drawn in its new column before it lands. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. columnOrder is the target column\u2019s whole order (arrangedBoard\u2019s contents[col].order), for a drop into a column showing only part of itself. A store action rather than ops.core.moveCard because where the space\u2019s states ask for agreement the drop asks instead of writing, and a staged suggestion for the card\u2019s state is settled first',
       addTaskToColumn:
         '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
-      updateSpaceImage:
-        '(field: "avatar" | "coverImage", imageFile: File, spaceUuid?): uploads and sets the space avatar or cover image',
+      prepareSpaceImage:
+        '(field: "avatar" | "coverImage", image: File): makes a picture the person chose into what the space record stores for that field, sized for it, and answers with it. Stores nothing: write it with ops.core.setSpaceImage in onSuccess, reading { $: "result" } — spaceImageChange(field) from @we/template-kit is the whole handler for an EditableImage',
       setSignalTypeRetired:
         '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given, and re-creating one with the same slug gets the old id back but not its mode or range, so the old reactions are read by a type that may not mean what they were given as. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
       createTaskState:
@@ -1627,9 +1625,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
       updateSpaceMeta:
         '(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it',
-      setSpaceDefaultTemplate:
-        '(templateId: string, spaceUuid?): sets the template members see when they enter that space. Only repaints the app when the target is the space currently on screen',
-      setSpaceDefaultTheme: '(themeId: string, spaceUuid?): sets the theme members see when they enter that space',
       copyShareLink:
         "(uuid: string): copies that space's share link to the clipboard, with a toast either way. No-op for a personal space, which has no global id and so no shareable link — read `spaceList[].shareLink` to decide whether to offer the control at all",
       copyGuestLink:
@@ -2394,7 +2389,7 @@ export function generateStoresText(entries: StoreEntry[]): string {
 function profilesIntro(): string[] {
   return [
     '',
-    'Capability profiles. A member listed with [navigation], [view-state], [presence], [identity] or [space-settings] belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.',
+    `Capability profiles. A member listed with ${CAPABILITY_PROFILES.map((profile) => `[${profile.id}]`).join(', ')} belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.`,
     ...CAPABILITY_PROFILES.map(
       (profile) => `- ${profile.id} ${profile.version}: ${profile.members.map((member) => member.path).join(', ')}`,
     ),
