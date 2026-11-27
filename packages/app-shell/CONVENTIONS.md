@@ -20,7 +20,7 @@ contract, and product meet. These are the rules that keep it navigable.
 - One store per concern, in `src/shared/stores/`, built by a `createXStore(deps)`
   factory on the reactivity port and the platform port (`deps.platform`, the
   `PlatformAdapter` the app supplies, which extends `PlatformPort`) and composed
-  in `providers/BootController.tsx`:
+  in `src/shared/composeStores.ts`, which `providers/BootController.tsx` calls:
   the stores it reads are its arguments, never a context lookup. **The
   composition order is load-bearing**: a store may read stores built before
   it, never after. Components read stores through `useStore('<name>Store')`

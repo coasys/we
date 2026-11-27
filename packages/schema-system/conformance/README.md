@@ -183,8 +183,10 @@ The capability profiles' vectors, in their own format: `{ version, profiles, wor
 cases }`, each case a world, an address and one profile action (or none, for a read), with what the
 host's state reads before and after it and the events it caused. The format and how a host runs it
 are `docs/spec/profiles/README.md#conformance`. Recorded on WE's real stores, composed and booted on
-the in-memory backend by `app-shell/tests/support/profileHost.tsx`; `tests/profiles.test.tsx` runs
-every vector from the file again, and `tests/profilesCoverage.test.ts` holds every action and state
+the in-memory backend by `app-shell/tests/support/profileHost.ts`; `tests/profiles.test.tsx` runs
+every vector from the file again on the app's own host (Solid, the browser platform, jsdom),
+`tests/profilesNeutral.test.ts` runs them again on the test reactivity port and the test platform
+with no framework and no DOM, and `tests/profilesCoverage.test.ts` holds every action and state
 member of every profile to some case. A full run boots the host once per case, about two seconds each.
 
 ## For Rust implementers

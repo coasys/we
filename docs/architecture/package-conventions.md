@@ -304,9 +304,12 @@ the first, and the shape the rest copy:
   environment (typed as the `Pick<PlatformPort, …>` it uses), and the stores it reads, by the
   registry's names — `createXStore({ reactivity, platform, sessionStore, datasetStore })`. Nothing is
   looked up.
-- `BootController` is the composition point. It builds every store once, in dependency order,
-  passing `solidReactivity`, the app's platform and the stores already built; a store needing a later one is lent it
-  through a method afterwards (`provideSpaceLookup`), never by reordering.
+- `composeStores` (`app-shell/src/shared/composeStores.ts`) is the composition point, and neutral: it
+  builds every store once, in dependency order, passing the reactivity port, the platform and the
+  stores already built, and registers the boot sequence; a store needing a later one is lent it
+  through a method afterwards (`provideSpaceLookup`), never by reordering. `BootController` calls it
+  with `solidReactivity` and the app's host state; the profile vectors call it with the test port and
+  the test platform, no framework at all (`tests/support/profileHost.ts`).
 - The composed set is typed twice, both in `shared/stores/`: `StoreRegistry` (`storeRegistry.ts`),
   what components ask of by name, and `Stores` (`storeBag.ts`), the bag a template renders against.
   Components reach the registry through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`).

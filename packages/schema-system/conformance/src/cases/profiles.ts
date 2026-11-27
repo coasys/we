@@ -1,13 +1,13 @@
 /**
  * Capability-profile vector inputs: a world, an address, and one action of a profile — or none, for
- * what a host reads out of its world. Recorded against WE's own stores (`profileHost.tsx` in
+ * what a host reads out of its world. Recorded against WE's own stores (`profileHost.ts` in
  * app-shell), they are what a second host runs to show it provides the same profiles; the format is
  * `docs/spec/profiles/README.md`'s.
  *
  * A case names only profile members and plain values. A host's own words for a thing (a section's
  * label, a moment's label), the ids it mints and the bytes it stores an image as are not in them.
  */
-import type { ProfileCaseInput, ProfileWorld, WorldRecord } from '../../../../app-shell/tests/support/profileHost.tsx';
+import type { ProfileCaseInput, ProfileWorld, WorldRecord } from '../../../../app-shell/tests/support/profileHost.ts';
 
 export interface ProfileCase extends Omit<ProfileCaseInput, 'world'> {
   /** The world the case's host starts with, by its name in {@link PROFILE_WORLDS}. */

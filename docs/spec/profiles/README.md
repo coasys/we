@@ -252,14 +252,19 @@ least one, but for `themeStore.currentThemeId` (below).
 
 ---
 
-Implemented by: [`profileHost.tsx`](../../../packages/app-shell/tests/support/profileHost.tsx) (WE's
-host for a case: its stores on the in-memory backend, with the world written in),
+Implemented by: [`profileHost.ts`](../../../packages/app-shell/tests/support/profileHost.ts) (WE's
+host for a case: its stores composed by `composeStores` on the in-memory backend, with the world
+written in, on the test reactivity port and test platform or, through
+[`profileHostSolid.ts`](../../../packages/app-shell/tests/support/profileHostSolid.ts), on Solid and the
+browser platform),
 [`cases/profiles.ts`](../../../packages/schema-system/conformance/src/cases/profiles.ts) (the cases and
 worlds), [`record-profiles.test.tsx`](../../../packages/schema-system/conformance/tests/record-profiles.test.tsx)
 (recording, `pnpm --filter @we/template-conformance record`). The vectors:
 [`vectors/profiles.json`](../../../packages/schema-system/conformance/vectors/profiles.json). Pinned by:
 [`profiles.test.tsx`](../../../packages/schema-system/conformance/tests/profiles.test.tsx) (every vector
-run again from the file on WE's stores) and
+run again from the file on WE's stores, under Solid),
+[`profilesNeutral.test.ts`](../../../packages/schema-system/conformance/tests/profilesNeutral.test.ts)
+(the same with no framework and no DOM) and
 [`profilesCoverage.test.ts`](../../../packages/schema-system/conformance/tests/profilesCoverage.test.ts)
 (every action called, every state member read).
 

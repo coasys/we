@@ -5,8 +5,8 @@
  *
  * Several jobs over one surface. Each is a part of its own under `space/`, a factory over the
  * reactivity port; this file is the surface they are composed into — which the generated context and
- * the template surface read every `*Store` interface from — and the composition, built once at
- * `BootController`.
+ * the template surface read every `*Store` interface from — and the composition, built once by
+ * `composeStores`.
  */
 import type { AgentProfileSummary } from '@we/backend-shared';
 import type { InvolvementSemantic, MutedAgent, Space } from '@we/entities';

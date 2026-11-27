@@ -1,51 +1,17 @@
 /**
- * BootController — where the host's stores are composed, and the post-unlock boot sequence.
+ * BootController — the Solid app's composition root.
  *
- * **Composition.** Every app-lifetime store is built here, once, with the ports it runs on (the
- * reactivity port, and the platform the app supplied) and the stores it reads passed in as
- * arguments, in an order that is the dependency graph: nothing is built before what it reads. The
- * finished set is the registry components reach through `useStore(key)`, so a store never looks
- * another up through a context, and a host on another framework composes the same factories the
- * same way and writes its own hook over the result. An upward dependency — a store that needs one
- * built after it — is lent later through a method (`templateStore.provideSpaceLookup`,
- * `appStore.provideInstalledModules`), never by reordering.
- *
- * **Boot.** Loading user data spans several stores (system datasets, the dataset list, spaces, the
- * own profile), so no single store can own it without becoming a hub again. {@link startBoot}
- * composes the sequence and registers it with SessionStore — which runs it on boot when the agent
- * is already unlocked, and again after login().
+ * The stores are composed by `composeStores` (`shared/composeStores.ts`), which every host shares;
+ * this passes it Solid's reactivity port, the platform and backend the app supplied, and the app's
+ * one copy of each piece of host state, then provides the registry components reach through
+ * `useStore(key)`. A host on another framework calls the same composition and writes its own hook
+ * over the result.
  */
-import { consumeGuestBootTarget } from '@shared/guestLink';
-import { createAccountStore } from '@shared/stores/AccountStore';
-import { createAppStore } from '@shared/stores/AppStore';
-import { createBundleStore } from '@shared/stores/BundleStore';
-import { createChatStore } from '@shared/stores/ChatStore';
-import { createClockStore } from '@shared/stores/ClockStore';
-import { createDatasetStore } from '@shared/stores/DatasetStore';
-import { createDeviceStore } from '@shared/stores/DeviceStore';
-import { createEditorStore } from '@shared/stores/EditorStore';
-import { createEditTarget } from '@shared/stores/editTarget';
-import { createIdentityStore } from '@shared/stores/IdentityStore';
-import { createInterpretationStore } from '@shared/stores/InterpretationStore';
-import { createPresenceStore } from '@shared/stores/PresenceStore';
-import { createProfileStore } from '@shared/stores/ProfileStore';
-import { createRecordStore } from '@shared/stores/RecordStore';
-import { createRouteStore } from '@shared/stores/RouteStore';
-import { createRuntimeStore } from '@shared/stores/RuntimeStore';
-import { createSessionStore } from '@shared/stores/SessionStore';
-import { createShapeStore } from '@shared/stores/ShapeStore';
-import { createShellStore } from '@shared/stores/ShellStore';
-import { createSpaceStore } from '@shared/stores/SpaceStore';
-import { createTemplateStore } from '@shared/stores/TemplateStore';
-import { createThemeStore } from '@shared/stores/ThemeStore';
-import { createWorkflowStore } from '@shared/stores/WorkflowStore';
-import { trace } from '@we/backend-shared';
+import { composeStores } from '@shared/composeStores';
 import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
-import type { PlatformPort } from '../../../shared/platform/port';
-import type { StoreRegistry } from '../../../shared/stores/storeRegistry';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
 import { startAppBridge } from '../services/appBridge';
@@ -57,36 +23,28 @@ import { useBackend, usePlatform } from './PlatformProvider';
 
 export function BootController(props: ParentProps) {
   const platform = usePlatform();
-  const backend = useBackend();
-
-  // Depends on nothing: the app's address, read by templates, the space store and presence.
-  const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
-  // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
-  const clockStore = createClockStore({ reactivity: solidReactivity });
-  const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
-  // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
-  const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
-  // Before the session: accounts are directories on disk, readable with no executor running. The
-  // boot screen needs them while the session is still locked.
-  const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
-  // Session → Dataset → Profile is the dependency spine: everything after reads them.
-  const sessionStore = createSessionStore({
+  const stores = composeStores({
     reactivity: solidReactivity,
     platform,
-    backend,
-    credential,
+    backend: useBackend(),
+    toasts: toastService,
     firstScreen,
-    shellStore,
-    chatStore,
-    accountStore,
+    credential,
+    liveTemplates: solidLiveTemplates,
+    shellHost,
+    spaceHost,
   });
+
   /*
     The bridge that hands embedded apps (e.g. Flux) their credentials, started synchronously and
     before any async boot work, so a REQUEST_AD4M_CONFIG is never dropped — including during the
     connector's auth flow on first load, where auth can take many seconds and the embedded app's
-    30-second timeout would otherwise expire. The session is usable once the post-unlock load
-    finishes, which is 'finishing' on a first run and 'ready' on every other boot.
+    30-second timeout would otherwise expire. Composing the stores runs nothing asynchronous before
+    it returns, and nothing embedded has mounted yet, so starting it here is still before any request.
+    The session is usable once the post-unlock load finishes, which is 'finishing' on a first run and
+    'ready' on every other boot.
   */
+  const { sessionStore } = stores;
   startAppBridge({
     isDesktop: platform.isDesktop,
     port: sessionStore.port,
@@ -94,173 +52,6 @@ export function BootController(props: ParentProps) {
     serverUrl: sessionStore.serverUrl,
     agentUnlocked: () => sessionStore.bootState() === 'ready' || sessionStore.bootState() === 'finishing',
   });
-  // Straight after the session: it reads only the port bundle, and its consent subscription must be
-  // live before anything can mount an embedded app that asks for credentials.
-  const runtimeStore = createRuntimeStore({
-    reactivity: solidReactivity,
-    toasts: toastService,
-    platform,
-    sessionStore,
-    shellStore,
-  });
-  // Beside Runtime and for the same reason: they read only the port bundle and the host's custody.
-  // Identity before devices, whose changes it opens.
-  const identityStore = createIdentityStore({ reactivity: solidReactivity, platform, sessionStore });
-  const deviceStore = createDeviceStore({ reactivity: solidReactivity, sessionStore, identityStore });
-  const datasetStore = createDatasetStore({
-    reactivity: solidReactivity,
-    firstScreen,
-    toasts: toastService,
-    sessionStore,
-  });
-  // The shape adoption rail follows the current dataset, and everything that renders a space may
-  // query the entities it registers.
-  const shapeStore = createShapeStore({
-    reactivity: solidReactivity,
-    toasts: toastService,
-    sessionStore,
-    datasetStore,
-  });
-  // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({
-    reactivity: solidReactivity,
-    toasts: toastService,
-    sessionStore,
-    datasetStore,
-    shapeStore,
-  });
-  const profileStore = createProfileStore({
-    reactivity: solidReactivity,
-    firstScreen,
-    credential,
-    toasts: toastService,
-    sessionStore,
-    runtimeStore,
-    accountStore,
-  });
-  const themeStore = createThemeStore({
-    reactivity: solidReactivity,
-    platform,
-    toasts: toastService,
-    sessionStore,
-    datasetStore,
-  });
-  const templateStore = createTemplateStore({
-    reactivity: solidReactivity,
-    platform,
-    toasts: toastService,
-    liveTemplates: solidLiveTemplates,
-    sessionStore,
-    datasetStore,
-    themeStore,
-    routeStore,
-  });
-  /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
-  const editTarget = createEditTarget({ reactivity: solidReactivity, templateStore });
-  const editorStore = createEditorStore({
-    reactivity: solidReactivity,
-    platform,
-    toasts: toastService,
-    firstScreen,
-    sessionStore,
-    datasetStore,
-    templateStore,
-    themeStore,
-    shapeStore,
-    editTarget,
-  });
-  const appStore = createAppStore({ reactivity: solidReactivity });
-  const spaceStore = createSpaceStore({
-    reactivity: solidReactivity,
-    platform,
-    toasts: toastService,
-    firstScreen,
-    host: spaceHost,
-    sessionStore,
-    datasetStore,
-    shapeStore,
-    recordStore,
-    profileStore,
-    routeStore,
-    templateStore,
-    appStore,
-    themeStore,
-    shellStore,
-  });
-
-  // Registered before the stores below are built, as it always has been: they follow the dataset
-  // the sequence opens, so they are composed after it is set up.
-  startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
-
-  // Presence follows the current dataset and the route. App-lifetime, not view-lifetime: it must
-  // outlive navigation rather than being torn down with a view.
-  const presenceStore = createPresenceStore({
-    reactivity: solidReactivity,
-    firstScreen,
-    sessionStore,
-    datasetStore,
-    profileStore,
-    routeStore,
-  });
-  // Beside presence, and for the same reasons: it follows the current dataset, reads the same
-  // ephemeral port, and has to outlive the panel that started a pass — a call bar is still showing
-  // an extraction after the transcript panel closes.
-  const interpretationStore = createInterpretationStore({
-    reactivity: solidReactivity,
-    firstScreen,
-    sessionStore,
-    datasetStore,
-    profileStore,
-    spaceStore,
-  });
-  // After the space store, whose task states, involvement kinds, archive list and administrator it reads.
-  const workflowStore = createWorkflowStore({
-    reactivity: solidReactivity,
-    firstScreen,
-    toasts: toastService,
-    sessionStore,
-    datasetStore,
-    spaceStore,
-    shapeStore,
-  });
-  // After every store an install writes through — templates, themes, record types, modules,
-  // settings — none of which has to know what a bundle is.
-  const bundleStore = createBundleStore({
-    reactivity: solidReactivity,
-    toasts: toastService,
-    sessionStore,
-    datasetStore,
-    templateStore,
-    themeStore,
-    shapeStore,
-    spaceStore,
-  });
-
-  const stores: StoreRegistry = {
-    accountStore,
-    appStore,
-    bundleStore,
-    chatStore,
-    clockStore,
-    datasetStore,
-    deviceStore,
-    editorStore,
-    editTarget,
-    identityStore,
-    interpretationStore,
-    presenceStore,
-    profileStore,
-    recordStore,
-    routeStore,
-    runtimeStore,
-    sessionStore,
-    shapeStore,
-    shellStore,
-    spaceStore,
-    templateStore,
-    themeStore,
-    workflowStore,
-  };
 
   return (
     <StoreRegistryContext.Provider value={stores}>
@@ -270,127 +61,4 @@ export function BootController(props: ParentProps) {
       <EditorHostAdapter>{props.children}</EditorHostAdapter>
     </StoreRegistryContext.Provider>
   );
-}
-
-/** The post-unlock load, registered with the session store. Called once, where the stores are composed. */
-export function startBoot({
-  platform,
-  sessionStore: session,
-  datasetStore,
-  profileStore,
-  spaceStore,
-  routeStore,
-}: Pick<StoreRegistry, 'sessionStore' | 'datasetStore' | 'profileStore' | 'spaceStore' | 'routeStore'> & {
-  platform: Pick<PlatformPort, 'location'>;
-}): void {
-  /*
-    The URL the user landed on, captured before any boot-time navigation and spent once.
-
-    Held as a `let` and cleared on use, because this handler runs on *every* unlock rather than only
-    the first. Signing out and back in within one session re-ran it against the path the app was
-    opened at half an hour earlier — so coming back landed you wherever you started, quite possibly
-    a space you have since left, rather than where you were. Once it has been spent, the second
-    unlock reads the location as it is now, which is the honest answer.
-
-    The search string travels with it: a deep link is routinely `?type=posts&sort=new`, and
-    restoring only the pathname put somebody back on the page they linked to with every filter reset.
-  */
-  const here = () => platform.location().pathname + platform.location().search;
-  let pendingDeepLink: string | null = here();
-
-  // Read the guest target before any async work — the entry point sets it synchronously, and
-  // reading it removes it, so a remount cannot join a second time.
-  const guestBoot = consumeGuestBootTarget();
-
-  session.onSessionUnlocked(async () => {
-    if (!session.lifecycle()) return;
-
-    /*
-      One list read, then everything that only needs the list, side by side.
-
-      initSystemDatasets must complete before loadDatasets so that the published snapshot always
-      includes we-root and we-test — even on first boot, when they have to be created — and it hands
-      back the list with what it made, so the snapshot costs no second read. The space the address
-      names starts loading its templates, its schema reads and its own record now, so the switch the
-      route asks for once the list is published finds them done. The other spaces are read after.
-    */
-    /*
-      Each step of loading somebody's data after unlock, under the `boot` scope: how long it took and
-      when it ended, so a slow boot says which read it was waiting on. `timed` wraps a step without
-      changing what it answers.
-    */
-    const sincePageStartMs = () => Math.round(performance.now());
-    const timed = async <T,>(step: string, run: Promise<T>): Promise<T> => {
-      const began = performance.now();
-      const result = await run;
-      trace('boot', step, { ms: Math.round(performance.now() - began), sincePageStartMs: sincePageStartMs() });
-      return result;
-    };
-    trace('boot', 'unlocked', { sincePageStartMs: sincePageStartMs() });
-    const me = timed('me', session.refreshMe());
-    const listed = await timed('datasets:list', datasetStore.readDatasets());
-    const opening = listed
-      ? spaceStore.prepareSpaceAt(guestBoot ? `/space/${guestBoot.spaceId}` : (pendingDeepLink ?? ''), listed)
-      : undefined;
-    const [, known] = await Promise.all([
-      me,
-      timed('datasets:system', datasetStore.initSystemDatasets(listed)),
-      opening ? timed('space', opening) : undefined,
-    ]);
-    await timed('datasets:load', datasetStore.loadDatasets(known));
-    datasetStore.subscribeToChanges();
-    session.markReady();
-    trace('boot', 'ready', { sincePageStartMs: sincePageStartMs() });
-
-    /*
-      The app appears with only what the space on screen needs: the agent, the dataset list, the root
-      (settings, templates, this agent's choices per space) and the open space's own record. Every
-      other space's record is for the sidebar and the spaces list — a read per space, each going to
-      the same backend as the Feed's first page — so they wait for the first screen, as the sidebar's
-      other reads do, and fill in when they land. Until then a row shows the dataset's name and says
-      it is loading (`SpaceListEntry.loading`). A failure is logged by `loadSpaces` and blocks nothing.
-
-      The list is read as it is then, not as it was above: a space can arrive in between. The open
-      space is held by then, so it is not read again.
-    */
-    void firstScreen
-      .whenOpen()
-      .then(() => timed('spaces', spaceStore.loadSpaces()))
-      .catch((error: unknown) => console.error('BootController: loading spaces failed', error));
-
-    // Seed own profile into the cache from the public dataset
-    const ownDid = session.me()?.did;
-    if (ownDid) void profileStore.fetchProfile(ownDid);
-
-    /*
-      Somebody arrived on a guest invite link.
-
-      Only a session this link created joins on its own — see `GuestBootTarget.autoJoin`. Anybody
-      who already had an identity is taken to the space's own join gate, which is what the ordinary
-      share link does and what the invite copy promises.
-
-      The navigation happens either way, including after a failure: `/space/<id>` IS the join gate,
-      and it states the reason (`joinError`, matched against this route segment) beside a Join
-      button. Landing there is how a guest whose join did not complete finds out and retries;
-      nothing else on the page could have told them. `/space/<id>` accepts a local uuid and a
-      neighbourhood CID alike, so the shared id the link carries resolves.
-
-      `replace`, not push: `/join/<id>` must not stay in the history. Backing onto it puts the app
-      on a path no route claims, and reloading there re-runs the whole guest flow.
-    */
-    if (guestBoot) {
-      if (guestBoot.autoJoin) {
-        await spaceStore.joinSpace(guestBoot.spaceId).catch((err) => {
-          console.error('BootController: guest join failed', err);
-        });
-      }
-      routeStore.navigate(`/space/${guestBoot.spaceId}`, { replace: true });
-      return;
-    }
-
-    // Restore the original URL (e.g. a deep link opened via refresh), falling back to '/'
-    const target = pendingDeepLink ?? here();
-    pendingDeepLink = null;
-    routeStore.navigate(target || '/');
-  });
 }

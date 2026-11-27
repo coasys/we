@@ -70,7 +70,8 @@ state to schemas. The renderer, the design system and the module contract never 
 `@coasys/*`.
 
 The stores are in `app-shell/src/shared/stores/`, every one written against the reactivity port, and
-`BootController` composes them once, each given the stores it reads. The three largest are an
+`composeStores` (`shared/composeStores.ts`, called by `BootController`) composes them once, each given
+the stores it reads. The three largest are an
 interface and a composition over parts, one per job (`stores/space/`, `stores/shell/`,
 `stores/records/`), so a template still reads `spaceStore.x`. Components reach them with
 `useStore` (`frameworks/solid/stores/`, the only Solid piece). The pure algorithms a second host has

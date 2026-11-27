@@ -276,11 +276,11 @@ import { withInterpretationDefaults } from '@we/entities';
 
 import { credential } from '../src/frameworks/solid/credential';
 import { firstScreen } from '../src/frameworks/solid/firstScreen';
-import { startBoot } from '../src/frameworks/solid/providers/BootController';
 import { useBackend, usePlatform } from '../src/frameworks/solid/providers/PlatformProvider';
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
+import { startBoot } from '../src/shared/composeStores';
 import { invokeOperation } from '../src/shared/invokeOperation';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
@@ -318,7 +318,7 @@ interface Stores {
 function mountShell(): Stores {
   const out = {} as Stores;
   /*
-    The stores this suite is about, composed in BootController's order with the stores they read
+    The stores this suite is about, composed in `composeStores`'s order with the stores they read
     passed in — the route, template and theme stores as the fakes above. Built inside the render so
     their effects and cleanups belong to the tree `cleanup()` takes down.
   */
@@ -329,7 +329,7 @@ function mountShell(): Stores {
     const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
     const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     // Session hands the signed-in DID down to Chat as well as Shell, so the chat store is built where
-    // BootController builds it.
+    // the composition builds it.
     const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
     // The mocked platform supplies no `accounts`, so this is built in its web-degraded form — which
     // is what the profile write-through has to tolerate.
@@ -360,7 +360,7 @@ function mountShell(): Stores {
     });
     // SpaceStore reads the interpretation candidates off ShapeStore and hands the wizard back an
     // enroller, and hands the record layer the vocabularies this community owns — a task's own
-    // states — so these are built in the order BootController uses.
+    // states — so these are built in the order the composition uses.
     const shapeStore = createShapeStore({
       reactivity: solidReactivity,
       toasts: toastService,
@@ -419,7 +419,7 @@ function mountShell(): Stores {
       themeStore,
       shellStore,
     });
-    startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
+    startBoot({ platform, firstScreen, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     Object.assign(out, {
       profiles: profileStore,
       runtime: runtimeStore,

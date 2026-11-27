@@ -171,7 +171,7 @@ that declares \`backends: ['ad4m']\` — nothing else. See \`docs/architecture/p
 - DS-props → CSS logic (shared) → \`packages/design-system/utils/src/index.ts\`; Solid binding → \`.../src/solid/index.ts\`.
 - Stores → \`packages/app-shell/src/shared/stores/\`, all on the reactivity and platform ports; SpaceStore, ShellStore and
   RecordStore are compositions over one part per job in \`stores/space/\`, \`stores/shell/\`, \`stores/records/\`.
-  Composed once in \`BootController\`; components reach them with \`useStore\` (the Solid binding,
+  Composed once by \`composeStores\` (\`shared/composeStores.ts\`, which \`BootController\` calls); components reach them with \`useStore\` (the Solid binding,
   \`frameworks/solid/stores/\`).
 - Pure algorithms another host must agree with (board arrangement, tree ranks, connection keys, dock layout)
   → \`packages/app-shell/src/shared/kernels/\`, each with recorded vectors; block flattening is

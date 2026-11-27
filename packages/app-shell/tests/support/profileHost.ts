@@ -1,56 +1,48 @@
 /**
- * Runs one capability-profile vector against WE's real stores: the host's stores composed as
- * BootController composes them, on the in-memory backend, booted for real, with the world the
- * vector describes written into that backend first.
+ * Runs one capability-profile vector against WE's real stores: every store composed by
+ * `composeStores`, as the app composes them, on the in-memory backend, booted for real, with the
+ * world the vector describes written into that backend first.
+ *
+ * The stores run on whatever a {@link ProfileHostKit} supplies: an engine, a platform and the host
+ * state. {@link neutralProfileHost} is the test port and the test platform, with no framework and no
+ * DOM; `profileHostSolid.ts` is the app's own (Solid, the browser platform, jsdom). The same file
+ * passing on both says the profiles are the stores' behaviour, not Solid's or the browser's.
  *
  * Lives in app-shell, not in the conformance package, for the reason `recordNavigation.ts` does: it
- * needs jsdom, the browser build of solid-js and the stores themselves. `@we/template-conformance`
- * calls {@link runProfileCase} from its `solid` vitest project, to record the vectors and to check
- * that they still say what WE does.
+ * needs the stores themselves. `@we/template-conformance` calls {@link runProfileCase}, to record the
+ * vectors and to check that they still say what WE does.
  *
  * What a vector says is only profile members and plain values. Everything that turns those into WE
  * — dataset ids, the Space record's link to its dataset, the router, the presence channel, a module
  * that declares settings — is done here, so none of it is in the file. The rules a second host needs
  * to run the same file are in `docs/spec/profiles/README.md`.
  *
- * The router is a stand-in, as in `recordNavigation.ts`: `navigate` writes `window.history` and
- * reports the location back through `setCurrentPath`, and Back and Forward report it from
- * `popstate`, which is what the app's router does with both.
+ * The router is a stand-in, as in `recordNavigation.ts`: `navigate` writes the platform's history and
+ * reports the location back through `setCurrentPath`, and Back reports it from `popstate`, which is
+ * what the app's router does with both.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { toastService } from '@we/components/solid';
 import { getEntity } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { solidReactivity } from '@we/reactivity-solid';
+import type { ReactivityPort } from '@we/reactivity';
+import { createTestReactivity } from '@we/reactivity/testing';
 import { CAPABILITY_PROFILES } from '@we/schema-shared';
-import { createEffect, createRoot, untrack } from 'solid-js';
 
-import { credential } from '../../src/frameworks/solid/credential';
-import { firstScreen } from '../../src/frameworks/solid/firstScreen';
-import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { shellHost, spaceHost } from '../../src/frameworks/solid/stores/hostState';
-import { solidLiveTemplates } from '../../src/frameworks/solid/stores/liveTemplate';
 import { clockRegistry } from '../../src/shared/clocks';
-import { createBrowserPlatform } from '../../src/shared/platform/browser';
+import { composeStores, type StoreCompositionDeps } from '../../src/shared/composeStores';
+import { createCredential } from '../../src/shared/credential';
+import { createFirstScreen, type FirstScreen } from '../../src/shared/firstScreen';
+import { plainLiveTemplates } from '../../src/shared/liveTemplate';
+import { createTestPlatform } from '../../src/shared/platform/testPlatform';
+import type { PlatformAdapter } from '../../src/shared/platform/types';
+import { createAppFrame } from '../../src/shared/registries/appFrame';
+import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
+import { createPanelInstances } from '../../src/shared/registries/panelInstances';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
 import { provideSeed } from '../../src/shared/seedRegistry';
-import { createAccountStore } from '../../src/shared/stores/AccountStore';
-import { createAppStore } from '../../src/shared/stores/AppStore';
-import { createChatStore } from '../../src/shared/stores/ChatStore';
-import { createClockStore } from '../../src/shared/stores/ClockStore';
-import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
-import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
-import { createProfileStore } from '../../src/shared/stores/ProfileStore';
-import { createRecordStore } from '../../src/shared/stores/RecordStore';
-import { createRouteStore } from '../../src/shared/stores/RouteStore';
-import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
-import { createSessionStore } from '../../src/shared/stores/SessionStore';
-import { createShapeStore } from '../../src/shared/stores/ShapeStore';
-import { createShellStore } from '../../src/shared/stores/ShellStore';
-import { createSpaceStore } from '../../src/shared/stores/SpaceStore';
-import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
-import { createThemeStore } from '../../src/shared/stores/ThemeStore';
+import { signalOrder } from '../../src/shared/signalOrder';
+import { createTaskWorkflowLive } from '../../src/shared/taskWorkflowLive';
 
 provideSeed({ name: 'profile-vectors', modules: [] } as never);
 
@@ -295,12 +287,12 @@ function projected(path: string, value: unknown): unknown {
  * becomes a File, and a value read from the host's own state (`{ $read: [member, ...path] }`), for an
  * argument only the host can know — the id it gave a panel instance it opened.
  */
-function decodeArg(stores: Stores, value: unknown): unknown {
+function decodeArg(host: Host, value: unknown): unknown {
   if (value && typeof value === 'object' && '$read' in value) {
     const [member, ...path] = (value as { $read: [string, ...(string | number)[]] }).$read;
     return path.reduce<unknown>(
       (at, key) => (at as Record<string | number, unknown> | undefined)?.[key],
-      untrack(() => read(stores, member)),
+      host.untrack(() => read(host.stores, member)),
     );
   }
   if (value && typeof value === 'object' && '$file' in value) {
@@ -314,6 +306,12 @@ function decodeArg(stores: Stores, value: unknown): unknown {
 
 type Stores = Record<string, Record<string, unknown>>;
 
+/** The composed stores, and the engine they run on. */
+interface Host {
+  stores: Stores;
+  untrack: ReactivityPort['untrack'];
+}
+
 function read(stores: Stores, path: string): unknown {
   const [store, member] = path.split('.');
   const value = stores[store]?.[member];
@@ -321,12 +319,12 @@ function read(stores: Stores, path: string): unknown {
   return typeof value === 'function' ? (value as () => unknown)() : value;
 }
 
-const snapshot = (stores: Stores, path: string): string =>
+const snapshot = (host: Host, path: string): string =>
   JSON.stringify(
     plain(
       projected(
         path,
-        untrack(() => read(stores, path)),
+        host.untrack(() => read(host.stores, path)),
       ),
     ),
   );
@@ -338,14 +336,14 @@ const tick = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * A store's write lands on its own time — a backend round trip, a live query pushing — so there is
  * no promise to wait on that means "done", only the state staying where it is.
  */
-async function settle(stores: Stores, quietMs = 400, ceilingMs = 8000): Promise<void> {
-  let last = STATE_MEMBERS.map((path) => snapshot(stores, path)).join('\n');
+async function settle(host: Host, quietMs = 400, ceilingMs = 8000): Promise<void> {
+  let last = STATE_MEMBERS.map((path) => snapshot(host, path)).join('\n');
   let quietSince = Date.now();
   const started = Date.now();
   while (Date.now() - quietSince < quietMs) {
     if (Date.now() - started > ceilingMs) return;
     await tick(25);
-    const now = STATE_MEMBERS.map((path) => snapshot(stores, path)).join('\n');
+    const now = STATE_MEMBERS.map((path) => snapshot(host, path)).join('\n');
     if (now !== last) {
       last = now;
       quietSince = Date.now();
@@ -354,43 +352,63 @@ async function settle(stores: Stores, quietMs = 400, ceilingMs = 8000): Promise<
 }
 
 /**
- * A small PNG, for the canvas jsdom does not have: what an image compressed for storage comes out
- * as. Which bytes it is does not reach the file (see {@link IMAGE}).
+ * What a host runs the stores on for one case: everything `composeStores` takes but the backend,
+ * on a platform already holding the case's history, and how to put the environment back after.
  */
-const TINY_PNG =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+export interface ProfileHostEnvironment extends Omit<StoreCompositionDeps, 'backend'> {
+  firstScreen: FirstScreen;
+  close(): void;
+}
+
+/** A way of hosting the stores: Solid in a browser, or no framework and no DOM. */
+export interface ProfileHostKit {
+  /** The environment for a case whose history is `entries`, the last being where it opens. */
+  open(entries: readonly string[]): ProfileHostEnvironment;
+}
+
+/** The deployment's platform answers the stores read beyond the port. */
+export const asAdapter = <T extends object>(platform: T): PlatformAdapter =>
+  ({ ...platform, isDesktop: false, isDevelopment: true }) as unknown as PlatformAdapter;
 
 /**
- * What jsdom leaves out of the browser and the stores use: an image that loads, a canvas that
- * encodes, and frames that never come — time does not pass in a case, so a playing clock is read
- * before it has moved.
+ * The stores on the test port and the test platform: no framework, no DOM, no window. Toasts are
+ * dropped — no profile member reads them.
+ *
+ * Time does not pass in a case, so a playing clock is read before it has moved. The app's clocks
+ * take their frames from the runtime rather than from the platform port, falling back to a timer
+ * where there are no animation frames, so this host gives them frames that never come, as the
+ * Solid host does over jsdom.
  */
-function provideBrowserGaps(): () => void {
-  const image = window.HTMLImageElement.prototype;
-  const srcDescriptor = Object.getOwnPropertyDescriptor(image, 'src');
-  Object.defineProperty(image, 'src', {
-    configurable: true,
-    set(this: HTMLImageElement, value: string) {
-      this.setAttribute('src', value);
-      queueMicrotask(() => this.onload?.(new Event('load')));
-    },
-    get(this: HTMLImageElement) {
-      return this.getAttribute('src') ?? '';
-    },
-  });
-  const toDataURL = window.HTMLCanvasElement.prototype.toDataURL;
-  const getContext = window.HTMLCanvasElement.prototype.getContext;
-  window.HTMLCanvasElement.prototype.toDataURL = () => TINY_PNG;
-  window.HTMLCanvasElement.prototype.getContext = (() => null) as never;
-  const raf = window.requestAnimationFrame;
-  window.requestAnimationFrame = () => 0;
-  return () => {
-    if (srcDescriptor) Object.defineProperty(image, 'src', srcDescriptor);
-    window.HTMLCanvasElement.prototype.toDataURL = toDataURL;
-    window.HTMLCanvasElement.prototype.getContext = getContext;
-    window.requestAnimationFrame = raf;
-  };
-}
+export const neutralProfileHost: ProfileHostKit = {
+  open(entries) {
+    const runtime = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+    const frames = { request: runtime.requestAnimationFrame, cancel: runtime.cancelAnimationFrame };
+    runtime.requestAnimationFrame = () => 0;
+    runtime.cancelAnimationFrame = () => {};
+    const reactivity = createTestReactivity();
+    const [first, ...rest] = entries;
+    const platform = createTestPlatform({ url: first });
+    for (const entry of rest) platform.history.push(entry);
+    const { appFrame, appEdgeFrames } = createAppFrame(reactivity);
+    const { laneFrames } = createLaneFrames(reactivity);
+    const { publishPanelInstances } = createPanelInstances(reactivity);
+    const ignore = () => {};
+    return {
+      reactivity,
+      platform: asAdapter(platform),
+      toasts: { info: ignore, success: ignore, warning: ignore, error: ignore },
+      firstScreen: createFirstScreen({ signal: reactivity.signal }),
+      credential: createCredential(reactivity),
+      liveTemplates: plainLiveTemplates(reactivity),
+      shellHost: { appFrame, appEdgeFrames, laneFrames, publishPanelInstances },
+      spaceHost: { signalOrder, taskWorkflowLive: createTaskWorkflowLive(reactivity.signal) },
+      close: () => {
+        runtime.requestAnimationFrame = frames.request;
+        runtime.cancelAnimationFrame = frames.cancel;
+      },
+    };
+  },
+};
 
 /** Write the world into a fresh in-memory backend. */
 async function backendFor(world: ProfileWorld) {
@@ -451,138 +469,44 @@ async function backendFor(world: ProfileWorld) {
   return ports;
 }
 
-function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores: Stores; dispose: () => void } {
+function compose(
+  env: ProfileHostEnvironment,
+  ports: ReturnType<typeof createInMemoryBackendPorts>,
+): { host: Host; dispose: () => void } {
+  const { reactivity, platform } = env;
   let stores!: Stores;
-  const dispose = createRoot((dispose) => {
-    const platform = { ...createBrowserPlatform(), isDesktop: false, isDevelopment: true } as never;
+  let stopListening = () => {};
+  const disposeRoot = reactivity.root(() => {
     const backend = { initialize: () => Promise.resolve({ client: {}, ports }) } as never;
-    const routeStore = createRouteStore({ reactivity: solidReactivity, platform });
-    const report = () => routeStore.setCurrentPath(window.location.pathname, window.location.search);
+    const registry = composeStores({ ...env, backend });
+    const { routeStore } = registry;
+    const report = () => routeStore.setCurrentPath(platform.location().pathname, platform.location().search);
     routeStore.setNavigateFunction((to, options) => {
-      if (typeof to === 'number') return window.history.go(to);
-      if (options?.replace) window.history.replaceState(null, '', to);
-      else window.history.pushState(null, '', to);
+      if (to === -1) return platform.history.back();
+      if (typeof to === 'number') throw new Error(`The vector host goes back one entry at a time, not ${to}`);
+      if (options?.replace) platform.history.replace(to);
+      else platform.history.push(to);
       report();
     });
-    window.addEventListener('popstate', report);
+    stopListening = platform.listen('popstate', report);
     report();
-    const clockStore = createClockStore({ reactivity: solidReactivity });
-    const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
-    const chatStore = createChatStore({ reactivity: solidReactivity, platform, shellStore });
-    const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
-    const sessionStore = createSessionStore({
-      reactivity: solidReactivity,
-      platform,
-      backend,
-      credential,
-      firstScreen,
-      shellStore,
-      chatStore,
-      accountStore,
-    });
-    const runtimeStore = createRuntimeStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      platform,
-      sessionStore,
-      shellStore,
-    });
-    const datasetStore = createDatasetStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      toasts: toastService,
-      sessionStore,
-    });
-    const shapeStore = createShapeStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-    });
-    const recordStore = createRecordStore({
-      reactivity: solidReactivity,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-      shapeStore,
-    });
-    const profileStore = createProfileStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      credential,
-      toasts: toastService,
-      sessionStore,
-      runtimeStore,
-      accountStore,
-    });
-    const themeStore = createThemeStore({
-      reactivity: solidReactivity,
-      platform,
-      toasts: toastService,
-      sessionStore,
-      datasetStore,
-    });
-    const templateStore = createTemplateStore({
-      reactivity: solidReactivity,
-      platform,
-      toasts: toastService,
-      liveTemplates: solidLiveTemplates,
-      sessionStore,
-      datasetStore,
-      themeStore,
-      routeStore,
-    });
-    const appStore = createAppStore({ reactivity: solidReactivity });
-    const spaceStore = createSpaceStore({
-      reactivity: solidReactivity,
-      platform,
-      toasts: toastService,
-      firstScreen,
-      host: spaceHost,
-      sessionStore,
-      datasetStore,
-      shapeStore,
-      recordStore,
-      profileStore,
-      routeStore,
-      templateStore,
-      appStore,
-      themeStore,
-      shellStore,
-    });
-    const presenceStore = createPresenceStore({
-      reactivity: solidReactivity,
-      firstScreen,
-      datasetStore,
-      profileStore,
-      routeStore,
-      sessionStore,
-    });
-    startBoot({ platform, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
-    stores = {
-      routeStore,
-      clockStore,
-      shellStore,
-      sessionStore,
-      profileStore,
-      themeStore,
-      spaceStore,
-      presenceStore,
-    } as never;
-    return () => {
-      window.removeEventListener('popstate', report);
-      dispose();
-    };
+    stores = registry as unknown as Stores;
   });
-  return { stores, dispose };
+  return {
+    host: { stores, untrack: reactivity.untrack },
+    dispose: () => {
+      stopListening();
+      disposeRoot();
+    },
+  };
 }
 
-async function call(stores: Stores, { action, args }: ProfileCall): Promise<void> {
+async function call(host: Host, { action, args }: ProfileCall): Promise<void> {
   if (!ACTION_SET.has(action)) throw new Error(`${action} is not an action of any profile`);
   const [store, member] = action.split('.');
-  const fn = stores[store]?.[member];
+  const fn = host.stores[store]?.[member];
   if (typeof fn !== 'function') throw new Error(`${action} is not an action this host provides`);
-  await (fn as (...a: unknown[]) => unknown)(...args.map((arg) => decodeArg(stores, arg)));
+  await (fn as (...a: unknown[]) => unknown)(...args.map((arg) => decodeArg(host, arg)));
 }
 
 /**
@@ -590,12 +514,14 @@ async function call(stores: Stores, { action, args }: ProfileCall): Promise<void
  * presence arrives on its own heartbeat, after the host starts listening, so without this a case
  * would read the roster at whatever moment the first beat happened to land.
  */
-async function peersArrived(stores: Stores, input: ProfileCaseInput): Promise<void> {
-  const here = (read(stores, 'spaceStore.spacePath') as string).split('/')[2];
+async function peersArrived(host: Host, input: ProfileCaseInput): Promise<void> {
+  const here = (read(host.stores, 'spaceStore.spacePath') as string).split('/')[2];
   const expected = (input.world.peers ?? []).filter((peer) => peer.focus.space === here).map((peer) => peer.did);
   const started = Date.now();
   while (Date.now() - started < 4000) {
-    const seen = (untrack(() => read(stores, 'presenceStore.peers')) as { did: string }[]).map((peer) => peer.did);
+    const seen = (host.untrack(() => read(host.stores, 'presenceStore.peers')) as { did: string }[]).map(
+      (peer) => peer.did,
+    );
     if (expected.every((did) => seen.includes(did))) return;
     await tick(50);
   }
@@ -603,13 +529,10 @@ async function peersArrived(stores: Stores, input: ProfileCaseInput): Promise<vo
 }
 
 /** Run one case: build its world, open the host where it says, act, and report what changed. */
-export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOutcome> {
+export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKit): Promise<ProfileOutcome> {
   for (const path of input.observe) {
     if (!STATE_SET.has(path)) throw new Error(`${input.id}: ${path} is not a state member of any profile`);
   }
-  const restoreGaps = provideBrowserGaps();
-  localStorage.clear();
-  sessionStorage.clear();
   clockRegistry.dispose();
   setTemplatePanels(input.world.panels as never, input.world.panels ? `vectors:${input.id}` : '');
   const registered = (input.world.modules ?? []).map((module) => {
@@ -623,31 +546,28 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
     return module.id;
   });
 
-  const [first, ...rest] = [...(input.history ?? []), input.address];
-  window.history.replaceState(null, '', first);
-  for (const entry of rest) window.history.pushState(null, '', entry);
-
+  const env = kit.open([...(input.history ?? []), input.address]);
   const ports = await backendFor(input.world);
-  const { stores, dispose } = compose(ports);
+  const { host, dispose } = compose(env, ports);
   try {
-    const session = stores.sessionStore as { bootState: () => string };
+    const session = host.stores.sessionStore as { bootState: () => string };
     const started = Date.now();
     while (session.bootState() !== 'ready') {
       if (Date.now() - started > 8000) throw new Error(`${input.id}: the host never finished booting`);
       await tick(20);
     }
-    firstScreen.answered();
-    firstScreen.drawn();
-    await settle(stores);
-    await peersArrived(stores, input);
-    await settle(stores);
+    env.firstScreen.answered();
+    env.firstScreen.drawn();
+    await settle(host);
+    await peersArrived(host, input);
+    await settle(host);
     for (const step of input.setup ?? []) {
-      await call(stores, step);
-      await settle(stores);
+      await call(host, step);
+      await settle(host);
     }
 
     const observed = () =>
-      Object.fromEntries(input.observe.map((path) => [path, JSON.parse(snapshot(stores, path)) as unknown]));
+      Object.fromEntries(input.observe.map((path) => [path, JSON.parse(snapshot(host, path)) as unknown]));
     const before = observed();
     if (!input.action) return { state: before };
 
@@ -657,20 +577,19 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
       no template redraws for, so it is not an event, however different it reads afterwards.
     */
     const changed = new Set<string>();
-    const stopWatching = createRoot((stop) => {
+    const stopWatching = env.reactivity.root(() => {
       for (const path of STATE_MEMBERS) {
-        let last = snapshot(stores, path);
-        createEffect(() => {
-          const now = JSON.stringify(plain(projected(path, read(stores, path))));
+        let last = snapshot(host, path);
+        env.reactivity.effect(() => {
+          const now = JSON.stringify(plain(projected(path, read(host.stores, path))));
           if (now !== last) changed.add(path);
           last = now;
         });
       }
-      return stop;
     });
     try {
-      await call(stores, { action: input.action, args: input.args ?? [] });
-      await settle(stores);
+      await call(host, { action: input.action, args: input.args ?? [] });
+      await settle(host);
     } finally {
       stopWatching();
     }
@@ -687,7 +606,7 @@ export async function runProfileCase(input: ProfileCaseInput): Promise<ProfileOu
     for (const id of registered) moduleRegistry.unregister(id);
     setTemplatePanels(undefined);
     clockRegistry.dispose();
-    restoreGaps();
+    env.close();
     await tick(50);
   }
 }
