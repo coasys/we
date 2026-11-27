@@ -245,6 +245,20 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     ],
     returns: { $: 'note.id' },
   },
+  touchTags: {
+    description: 'Marks every tag as seen, one at a time, and answers with the tags it found.',
+    steps: [
+      { find: { as: 'tags', entity: 'CollectionBlock', where: { kind: 'tag' }, order: { slug: 'asc' } } },
+      {
+        forEach: {
+          in: { $: 'tags' },
+          as: 'tag',
+          steps: [{ update: { entity: 'CollectionBlock', id: { $: 'tag.id' }, fields: { title: 'seen' } } }],
+        },
+      },
+    ],
+    returns: { $: 'tags.map(t, t.id)' },
+  },
   adopt: {
     description: 'Puts a record under another, strictly: refused when it is there already.',
     params: { parent: { type: 'string', required: true }, child: { type: 'string', required: true } },
@@ -447,6 +461,17 @@ const CASES: OperationCase[] = [
     operation: 'ensureTag',
     args: { slug: 'weeds' },
     invocationId: '00000000-0000-4000-8000-000000000003',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'found-carries-id',
+    note: 'a found record carries its id: a step reads it by name, and a forEach over found records keys by it',
+    operations: OPERATIONS,
+    dataset: [TAG, { entity: 'CollectionBlock', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    operation: 'touchTags',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000024',
     invokedAt: AT,
     observe: [COLLECTIONS],
   },
@@ -1246,6 +1271,13 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
       expect(shared).toEqual(vectorContext());
     });
 
+    it('lists as known only operation cases it has', () => {
+      // A misspelt name would otherwise leave its case running plain, and its reason unread.
+      const listed = [...Object.keys(harness.knownGaps ?? {}), ...Object.keys(harness.knownIntermittent ?? {})];
+      const known = new Set<string>(OPERATION_CONFORMANCE_CASES);
+      expect(listed.filter((id) => id.startsWith('operations.') && !known.has(id))).toEqual([]);
+    });
+
     for (const c of OPERATION_CASES) {
       const id: OperationConformanceCase = `operations.${c.id}`;
       const body = async () => {
@@ -1255,9 +1287,11 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
         expect(vectorOf(c, { outcome: vector!.outcome, records: vector!.records })).toEqual(vector);
         expect(await runVector(subject, file, vector!)).toEqual({ outcome: vector!.outcome, records: vector!.records });
       };
-      // Typed by the suite's case list, which names no operation case yet; read by name.
-      const gap = (harness.knownGaps as Partial<Record<string, string>> | undefined)?.[id];
+      const gap = harness.knownGaps?.[id];
+      const intermittent = harness.knownIntermittent?.[id];
       if (gap) it.fails(`${c.note} [known gap: ${gap}]`, body, timeout);
+      // As in the main suite: retried, and each retry runs the hooks again on a fresh subject.
+      else if (intermittent) it(`${c.note} [intermittent: ${intermittent}]`, { timeout, retry: 4 }, body);
       else it(c.note, body, timeout);
     }
   });

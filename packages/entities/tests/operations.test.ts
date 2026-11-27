@@ -1,11 +1,13 @@
 /**
  * Declared operations without a backend: the static checks, the effect summary, the id derivation,
  * and the core operations as data. Running them is tested against the in-memory backend, in its
- * package.
+ * package — all but how the runner reads a record a backend hands it, which no in-memory row can
+ * show, since its fields are all its own.
  */
 import type { EntityManifest, OperationDefinition } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
+import { type EntityClass, registerEntity, unregisterEntity } from '../src/entityRegistry';
 import { CORE_MANIFEST, CORE_OPERATIONS } from '../src/manifest';
 import { postBlockId, THREAD_SUBJECTS } from '../src/manifest/operations/content';
 import {
@@ -17,6 +19,7 @@ import {
   listOperations,
   operationCatalog,
   registerOperations,
+  runOperation,
   unregisterOperations,
   validateOperations,
 } from '../src/operations';
@@ -431,6 +434,57 @@ describe('the core operations', () => {
         .map((name) => `core.${name}`)
         .sort(),
     );
+  });
+});
+
+describe('a found record', () => {
+  /** A record whose contract fields are getters on its prototype, as a class-based backend holds them. */
+  class Held {
+    readonly #fields: { id: string; author: string; createdAt: number; updatedAt: number };
+    constructor(
+      id: string,
+      public kind: string,
+    ) {
+      this.#fields = { id, author: 'did:example:maker', createdAt: 1, updatedAt: 2 };
+    }
+    get id() {
+      return this.#fields.id;
+    }
+    get author() {
+      return this.#fields.author;
+    }
+    get createdAt() {
+      return this.#fields.createdAt;
+    }
+    get updatedAt() {
+      return this.#fields.updatedAt;
+    }
+    save() {
+      return Promise.resolve();
+    }
+    delete() {
+      return Promise.resolve();
+    }
+  }
+  const Rows = {
+    findAll: () => Promise.resolve([new Held('urn:example:held', 'tag')]),
+  } as unknown as EntityClass;
+
+  it('carries the fields the record contract guarantees, even where a backend holds them as getters', async () => {
+    registerEntity('Held', Rows);
+    registerOperations('demo', {
+      read: op([{ find: { as: 'found', entity: 'Held', where: { kind: 'tag' } } }], {
+        returns: { $: 'found' },
+      }),
+    } as unknown as Record<string, OperationDefinition>);
+    try {
+      expect(await runOperation('demo.read', {}, { dataset: {}, invoker: 'did:example:invoker' })).toEqual([
+        { id: 'urn:example:held', kind: 'tag', author: 'did:example:maker', createdAt: 1, updatedAt: 2 },
+      ]);
+    } finally {
+      unregisterOperations('demo');
+      unregisterEntity('Held');
+    }
   });
 });
 
