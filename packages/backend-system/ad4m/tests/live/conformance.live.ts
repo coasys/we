@@ -59,8 +59,14 @@ describeBackendConformance('AD4M', {
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
-    // children read back swapped. The issue names the two likely causes.
+    // children read back swapped. coasys/ad4m#1936 records a position for every member added; delete
+    // this, and the entry below, once a pin includes it.
     'relations.ordered-read':
-      'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304)',
+      'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
+    // Two links onto an ordered relation in one transaction: `link` writes no order entry, so the
+    // columns read back in whichever order the executor holds the links, which is right about half
+    // the time. The same fix.
+    'operations.forEach-keys':
+      'a link onto an ordered relation writes no order entry, so the columns sometimes read back in the wrong order (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
   },
 });

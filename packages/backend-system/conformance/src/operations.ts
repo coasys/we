@@ -662,6 +662,13 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
       expect([...recorded.keys()].sort()).toEqual(OPERATION_CASES.map((c) => c.id).sort());
     });
 
+    it('lists as known only operation cases it has', () => {
+      // A misspelt name would otherwise leave its case running plain, and its reason unread.
+      const listed = [...Object.keys(harness.knownGaps ?? {}), ...Object.keys(harness.knownIntermittent ?? {})];
+      const known = new Set<string>(OPERATION_CONFORMANCE_CASES);
+      expect(listed.filter((id) => id.startsWith('operations.') && !known.has(id))).toEqual([]);
+    });
+
     for (const c of OPERATION_CASES) {
       const id: OperationConformanceCase = `operations.${c.id}`;
       const body = async () => {
@@ -671,9 +678,11 @@ export function describeOperations(name: string, harness: ConformanceHarness, ti
         expect(vectorOf(c, { outcome: vector!.outcome, records: vector!.records })).toEqual(vector);
         expect(await runOperationCase(subject, c)).toEqual({ outcome: vector!.outcome, records: vector!.records });
       };
-      // Typed by the suite's case list, which names no operation case yet; read by name.
-      const gap = (harness.knownGaps as Partial<Record<string, string>> | undefined)?.[id];
+      const gap = harness.knownGaps?.[id];
+      const intermittent = harness.knownIntermittent?.[id];
       if (gap) it.fails(`${c.note} [known gap: ${gap}]`, body, timeout);
+      // As in the main suite: retried, and each retry runs the hooks again on a fresh subject.
+      else if (intermittent) it(`${c.note} [intermittent: ${intermittent}]`, { timeout, retry: 4 }, body);
       else it(c.note, body, timeout);
     }
   });

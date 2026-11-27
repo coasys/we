@@ -208,7 +208,9 @@ export const CONFORMANCE_CASES = [
 /**
  * Every case a harness can name in `knownGaps` — the per-case ones above, empty values, json
  * values, grouped and named writes, relation writes in the batch that created the record, write
- * checks that see the transaction's own writes, and the template queries.
+ * checks that see the transaction's own writes, the template queries and the declared operations.
+ * An operation case is named by its vector's id, which the type cannot list; the operations suite
+ * refuses a name that is not one of its cases.
  */
 export type ConformanceCase =
   | (typeof CONFORMANCE_CASES)[number]
@@ -217,7 +219,8 @@ export type ConformanceCase =
   | WriteCase
   | SameBatchCase
   | StagedCheckCase
-  | TemplateQueryCase;
+  | TemplateQueryCase
+  | OperationConformanceCase;
 
 interface Row {
   id: string;
