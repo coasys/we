@@ -317,6 +317,14 @@ the first, and the shape the rest copy:
   (`liveTemplate.ts`, the nested store a template edit patches), and the app's one copy of each
   piece of host state made over Solid's port (`hostState.ts`). A second framework writes those
   three over the same composed instances.
+- What that binding costs is pinned by a test: `app-shell/tests/react/useStore.ts` is React's, about
+  30 lines of code. A context holding the registry and the engine, `useStore(key)` for a store by
+  name, and `useValue(accessor)` — `useSyncExternalStore` whose subscribe is an effect in a root of
+  its own that reads the accessor and tells React, and whose snapshot is an untracked read. Nothing
+  in a store changes for it; `tests/react/useStore.test.ts` mounts RouteStore and ClockStore under all
+  three engines, calls an action from a press and redraws only when what was read changed. The host
+  state and the live template document are the rest of a second host's bill (`plainLiveTemplates`
+  serves any engine).
 - A store with several jobs is one factory per job, composed back into one store. `SpaceStore`,
   `ShellStore` and `RecordStore` are each an interface and a composition in `shared/stores/`, with
   their parts in `stores/space/`, `stores/shell/` and `stores/records/`. A part is a factory

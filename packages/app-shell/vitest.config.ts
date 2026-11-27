@@ -72,6 +72,13 @@ const STORE_TESTS = [
   'tests/workflowStore.test.ts',
 ];
 
+/*
+  The stores in a React tree, through a test-only binding (`tests/react/useStore.ts`): what a second
+  host's binding costs. jsdom for react-dom, the browser build of solid-js for the Solid engine, and
+  no Solid transform — the files are plain TypeScript.
+*/
+const REACT_TESTS = ['tests/react/**/*.test.ts'];
+
 // Tests that mount real Solid components/providers — they need jsdom, browser resolve
 // conditions, and the solid transform. Everything else stays in the plain node project.
 const SOLID_TESTS = [
@@ -223,7 +230,7 @@ export default defineConfig({
           globals: true,
           include: ['tests/**/*.test.{ts,tsx}'],
           setupFiles: ['./tests/reactivitySeed.ts'],
-          exclude: ['**/node_modules/**', ...SOLID_TESTS, ...STORE_TESTS],
+          exclude: ['**/node_modules/**', ...SOLID_TESTS, ...STORE_TESTS, ...REACT_TESTS],
         },
       },
       {
@@ -235,6 +242,18 @@ export default defineConfig({
           globals: true,
           environment: 'node',
           include: STORE_TESTS,
+          setupFiles: ['./tests/reactivitySeed.ts'],
+          server: { deps: { inline: [/solid-js/] } },
+        },
+      },
+      {
+        resolve: { conditions: ['development', 'browser'] },
+        test: {
+          name: 'react',
+          alias,
+          globals: true,
+          environment: 'jsdom',
+          include: REACT_TESTS,
           setupFiles: ['./tests/reactivitySeed.ts'],
           server: { deps: { inline: [/solid-js/] } },
         },
