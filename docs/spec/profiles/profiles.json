@@ -3,7 +3,7 @@
     {
       "id": "navigation",
       "namespace": "navigation",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Navigation",
       "description": "The address, and moving around it: where the person is, the query on the page, the spaces they hold and the sections of the one on screen, and going somewhere else.",
       "members": [
@@ -206,7 +206,7 @@
     {
       "id": "view-state",
       "namespace": "viewState",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "View state",
       "description": "What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.",
       "members": [
@@ -483,7 +483,7 @@
     {
       "id": "layout",
       "namespace": "layout",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Layout",
       "description": "How the panels a template declared are arranged on a screen that docks them in lanes: which lanes are folded away, whether the person has moved anything from where the template put it, and putting it all back. A host that draws panels one at a time, or not at all, leaves this profile out and still provides view-state.",
       "members": [
@@ -569,7 +569,7 @@
     {
       "id": "presence",
       "namespace": "presence",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Presence",
       "description": "Who else is in the space on screen right now, and what this person says about themselves to them. Nothing here is stored: it is said while the person is present and gone when they are not.",
       "members": [
@@ -680,7 +680,7 @@
     {
       "id": "identity",
       "namespace": "identity",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Identity",
       "description": "Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.",
       "members": [
@@ -781,7 +781,7 @@
     {
       "id": "space-settings",
       "namespace": "spaceSettings",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Space settings",
       "description": "The space a template is drawn in, what this person sees of it, and their own settings for it. Pinned to the space on screen — a template cannot reach another space through these. Changing the space’s own record — its name, pictures and defaults — is the space’s operations’, not this profile’s.",
       "members": [
@@ -936,7 +936,7 @@
     {
       "id": "appearance",
       "namespace": "appearance",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "title": "Appearance",
       "description": "Which template and theme this person is looking at, and what they may choose between: the templates and themes on offer here, the ones on screen, switching between them, and this person’s own choice for the space on screen. Choosing is always this person’s own — it changes what they see and nothing anybody else does. A space’s defaults are its record’s, and change through operations.",
       "members": [

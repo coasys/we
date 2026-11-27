@@ -6,17 +6,17 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 | Profile | Namespace | Version | Members |
 | --- | --- | --- | --- |
-| [Navigation](#navigation) | `navigation` | 1.0.0 | 12 |
-| [View state](#view-state) | `viewState` | 1.0.0 | 15 |
-| [Layout](#layout) | `layout` | 1.0.0 | 5 |
-| [Presence](#presence) | `presence` | 1.0.0 | 7 |
-| [Identity](#identity) | `identity` | 1.0.0 | 6 |
-| [Space settings](#space-settings) | `spaceSettings` | 1.0.0 | 9 |
-| [Appearance](#appearance) | `appearance` | 1.0.0 | 14 |
+| [Navigation](#navigation) | `navigation` | 0.1.0 | 12 |
+| [View state](#view-state) | `viewState` | 0.1.0 | 15 |
+| [Layout](#layout) | `layout` | 0.1.0 | 5 |
+| [Presence](#presence) | `presence` | 0.1.0 | 7 |
+| [Identity](#identity) | `identity` | 0.1.0 | 6 |
+| [Space settings](#space-settings) | `spaceSettings` | 0.1.0 | 9 |
+| [Appearance](#appearance) | `appearance` | 0.1.0 | 14 |
 
 ## navigation
 
-**Navigation, version 1.0.0, written under `navigation`.** The address, and moving around it: where the person is, the query on the page, the spaces they hold and the sections of the one on screen, and going somewhere else.
+**Navigation, version 0.1.0, written under `navigation`.** The address, and moving around it: where the person is, the query on the page, the spaces they hold and the sections of the one on screen, and going somewhere else.
 
 ### State
 
@@ -50,7 +50,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## view-state
 
-**View state, version 1.0.0, written under `viewState`.** What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.
+**View state, version 0.1.0, written under `viewState`.** What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.
 
 ### State
 
@@ -86,7 +86,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## layout
 
-**Layout, version 1.0.0, written under `layout`.** How the panels a template declared are arranged on a screen that docks them in lanes: which lanes are folded away, whether the person has moved anything from where the template put it, and putting it all back. A host that draws panels one at a time, or not at all, leaves this profile out and still provides view-state.
+**Layout, version 0.1.0, written under `layout`.** How the panels a template declared are arranged on a screen that docks them in lanes: which lanes are folded away, whether the person has moved anything from where the template put it, and putting it all back. A host that draws panels one at a time, or not at all, leaves this profile out and still provides view-state.
 
 ### State
 
@@ -111,7 +111,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## presence
 
-**Presence, version 1.0.0, written under `presence`.** Who else is in the space on screen right now, and what this person says about themselves to them. Nothing here is stored: it is said while the person is present and gone when they are not.
+**Presence, version 0.1.0, written under `presence`.** Who else is in the space on screen right now, and what this person says about themselves to them. Nothing here is stored: it is said while the person is present and gone when they are not.
 
 ### State
 
@@ -138,7 +138,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## identity
 
-**Identity, version 1.0.0, written under `identity`.** Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.
+**Identity, version 0.1.0, written under `identity`.** Who people are, as their profiles say: the person viewing, the people of the space on screen, and anybody a template has a DID for — and whom the person viewing has muted and what they have read. Profiles only — never keys, devices or accounts.
 
 ### State
 
@@ -162,7 +162,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## space-settings
 
-**Space settings, version 1.0.0, written under `spaceSettings`.** The space a template is drawn in, what this person sees of it, and their own settings for it. Pinned to the space on screen — a template cannot reach another space through these. Changing the space’s own record — its name, pictures and defaults — is the space’s operations’, not this profile’s.
+**Space settings, version 0.1.0, written under `spaceSettings`.** The space a template is drawn in, what this person sees of it, and their own settings for it. Pinned to the space on screen — a template cannot reach another space through these. Changing the space’s own record — its name, pictures and defaults — is the space’s operations’, not this profile’s.
 
 ### State
 
@@ -192,7 +192,7 @@ the same data, for tooling, is [`profiles.json`](profiles.json).
 
 ## appearance
 
-**Appearance, version 1.0.0, written under `appearance`.** Which template and theme this person is looking at, and what they may choose between: the templates and themes on offer here, the ones on screen, switching between them, and this person’s own choice for the space on screen. Choosing is always this person’s own — it changes what they see and nothing anybody else does. A space’s defaults are its record’s, and change through operations.
+**Appearance, version 0.1.0, written under `appearance`.** Which template and theme this person is looking at, and what they may choose between: the templates and themes on offer here, the ones on screen, switching between them, and this person’s own choice for the space on screen. Choosing is always this person’s own — it changes what they see and nothing anybody else does. A space’s defaults are its record’s, and change through operations.
 
 ### State
 

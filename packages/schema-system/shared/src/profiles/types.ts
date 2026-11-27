@@ -60,8 +60,10 @@ export interface CapabilityProfile {
    */
   namespace: string;
   /**
-   * Semantic version. Minor adds members, events or optional arguments; major removes or renames
-   * one, or changes what a value or an argument means.
+   * Semantic version. `0.x` while WE is the only host providing the profile: a draft, changed in
+   * place with the minor raised. It freezes at `1.0.0` once a second host passes its vectors, and
+   * from then minor only adds optional members, events or arguments, and removing, renaming or
+   * retyping one is a new major. See `docs/spec/profiles/README.md`, "Versioning".
    */
   version: string;
   title: string;
