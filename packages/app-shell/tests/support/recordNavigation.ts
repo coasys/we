@@ -28,6 +28,7 @@ import { solidReactivity } from '@we/reactivity-solid';
 import {
   type LocalStateField,
   localWriteMirror,
+  resolveHref,
   resolveLocalInitial,
   type RouteParamsBinding,
 } from '../../../schema-system/shared/src/index.ts';
@@ -50,7 +51,10 @@ export interface NavigationExpect {
   depth: number;
   /** Position in that stack, 0-based — where Back would leave from. */
   index: number;
-  /** For `local_read`: the initial value the field's precedence rules resolve. */
+  /**
+   * For `local_read`: the initial value the field's precedence rules resolve. For `link`: the
+   * address a link to `to` is drawn with.
+   */
   resolved?: unknown;
 }
 
@@ -199,6 +203,19 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
           resolved = resolveLocalInitial(field, args.initial, {
             routeParams,
             storage: window.localStorage,
+          });
+          break;
+        }
+        case 'link': {
+          // A link drawn at this address: the renderer's rule (`resolveHref`), fed only the
+          // navigation profile's members — never the store's own resolution — so the vector pins
+          // that a drawn link and a press on it lead to the same place.
+          const depth = (args.base as { depth?: unknown } | undefined)?.depth;
+          resolved = resolveHref(args.to as string, {
+            currentPath: store.currentPath(),
+            segments: store.segments(),
+            templateSegments: store.templateSegments(),
+            ...(typeof depth === 'number' && { depth }),
           });
           break;
         }

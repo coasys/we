@@ -8,6 +8,7 @@
  * the address and its history are the test platform's.
  */
 import type { ReactivityPort } from '@we/reactivity';
+import { resolveHref } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
@@ -267,16 +268,25 @@ describe.each(reactivityPorts)('routeStore, under %s', (_name, makePort) => {
       expect(nav).toHaveBeenLastCalledWith('/settings', undefined);
     });
 
-    it('resolve gives the address navigate would go to, without going there', () => {
+    it('a link drawn from its profile members leads where navigate goes', () => {
       platform.setUrl('/space/abc/board');
       const store = mountStore();
       const nav = vi.fn();
       store.setNavigateFunction(nav as never);
       store.setCurrentPath('/space/abc/board');
+      const link = (to: string, depth?: number) =>
+        resolveHref(to, {
+          currentPath: store.currentPath(),
+          segments: store.segments(),
+          templateSegments: store.templateSegments(),
+          ...(depth !== undefined && { depth }),
+        });
 
-      expect(store.resolve('..', { base: { depth: 3 } })).toBe('/space/abc');
-      expect(store.resolve('~/wall')).toBe('/space/abc/wall');
+      expect(link('..', 3)).toBe('/space/abc');
+      expect(link('~/wall')).toBe('/space/abc/wall');
       expect(nav).not.toHaveBeenCalled();
+      store.navigate('..', { base: { depth: 3 } });
+      expect(nav).toHaveBeenCalledWith('/space/abc', undefined);
     });
 
     it('clearing the param clears the memory — returning lands bare', () => {

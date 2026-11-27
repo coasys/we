@@ -117,11 +117,6 @@ export function createShellRouteStore({ reactivity }: { reactivity: ReactivityPo
     );
   }
 
-  /** As `RouteStore.resolve`, against the overlay's own address. */
-  function resolve(to: string, options?: Pick<NavigateOptions, 'base'>): string {
-    return resolveNavigation(to, currentPath(), 0, options?.base);
-  }
-
   /**
    * Writes one query parameter by navigating the memory router.
    *
@@ -154,7 +149,6 @@ export function createShellRouteStore({ reactivity }: { reactivity: ReactivityPo
     setCurrentPath,
     setSearch,
     navigate,
-    resolve,
     setParam,
     /*
       The overlay's own history, not the browser's.

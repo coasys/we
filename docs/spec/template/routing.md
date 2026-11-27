@@ -121,6 +121,15 @@ alike:
 - **Template chrome**, drawn outside every route, counts as the root. **`..` never climbs above the
   root**: it stops there.
 
+**A link is the renderer's to resolve.** A relative `href` on any element (`we-link`, `we-button`, an
+`a`) is drawn as the address the rule above gives, so a link and a press on it lead to the same
+place. The renderer computes it itself, from the path, the depth of the route the node is drawn in,
+and three members of the [navigation profile](../profiles/members.md#navigation): `currentPath`,
+`segments` and `templateSegments`. The template's root is the segments on screen less the template's
+own; a node outside every route resolves from that root. Nothing of the host's router is asked, so a
+host that provides the navigation profile draws a template's links as WE does. A renderer with no
+navigation profile draws the `href` as written.
+
 A validator SHOULD warn about `.` inside a route (a control that goes to the page it is on), and
 about more `..` than the route is deep.
 
@@ -135,7 +144,8 @@ without a `?` restores them, and an explicit `?` wins.
 ---
 
 Implemented by: [`navigationPaths.ts`](../../../packages/schema-system/shared/src/navigationPaths.ts)
-(`resolvePath`, `isRelativePath`).
-Pinned by: `paths.json`; `navigation.json` (`nav.relative-*`, `nav.template-root`, `nav.query-only`,
+(`resolvePath`, `isRelativePath`, `resolveHref`),
+[`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx) (`href`).
+Pinned by: `paths.json`; `navigation.json` (`nav.link-*`, `nav.relative-*`, `nav.template-root`, `nav.query-only`,
 `nav.absolute`, `nav.query-encoding`, `nav.remembered-query`, `nav.explicit-query-wins`);
 [`navigationPaths.test.ts`](../../../packages/schema-system/shared/src/navigationPaths.test.ts).

@@ -84,3 +84,31 @@ export function resolvePath(to: string, current: string, base: PathBase): string
   const rest = path.split('/').filter((s) => s && s !== '.');
   return `/${[...segments.slice(0, at), ...rest].join('/')}${suffix}`;
 }
+
+/**
+ * Where a link is drawn from: the address on screen as the navigation profile says it, and the route
+ * the node is in. Nothing here is one host's — every field is a `navigation` member or the renderer's
+ * own knowledge of its routes — so any renderer resolves a template's links the same way.
+ */
+export interface LinkRoute {
+  /** `navigation.currentPath`: the path on screen, without its query. */
+  currentPath: string;
+  /** `navigation.segments`. */
+  segments: readonly string[];
+  /** `navigation.templateSegments`: the segments below the prefix the template is mounted under. */
+  templateSegments: readonly string[];
+  /** How many segments the route the node is drawn in spans; absent outside every route. */
+  depth?: number;
+}
+
+/**
+ * The address a link's `href` leads to — the renderer's own rule, the one `resolvePath` states,
+ * fed from the navigation profile rather than from a host's router.
+ *
+ * The template's root is what the host mounts it under: the segments on screen less the template's
+ * own. A node outside every route resolves from that root, as template chrome does.
+ */
+export function resolveHref(to: string, route: LinkRoute): string {
+  const root = Math.max(0, route.segments.length - route.templateSegments.length);
+  return resolvePath(to, route.currentPath || '/', { depth: route.depth ?? root, root });
+}

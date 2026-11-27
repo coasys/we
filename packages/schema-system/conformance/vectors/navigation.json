@@ -1087,6 +1087,243 @@
       ]
     },
     {
+      "id": "nav.link-relative",
+      "note": "a link to './cards' in a route three segments deep is drawn as the page below that route, and a press goes there",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "./cards",
+            "base": {
+              "depth": 3
+            }
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./cards",
+            "options": {
+              "base": {
+                "depth": 3
+              }
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc/board/cards"
+        },
+        {
+          "href": "/space/abc/board/cards",
+          "pageIdentity": "/space/abc/board/cards",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.link-chrome",
+      "note": "a link outside every route resolves from the template root: the segments on screen less the template’s own",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board/cards",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "."
+          }
+        },
+        {
+          "op": "link",
+          "args": {
+            "to": "../../x"
+          }
+        },
+        {
+          "op": "link",
+          "args": {
+            "to": "~/wall"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board/cards",
+          "pageIdentity": "/space/abc/board/cards",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc"
+        },
+        {
+          "href": "/space/abc/board/cards",
+          "pageIdentity": "/space/abc/board/cards",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc/x"
+        },
+        {
+          "href": "/space/abc/board/cards",
+          "pageIdentity": "/space/abc/board/cards",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc/wall"
+        }
+      ]
+    },
+    {
+      "id": "nav.link-query-only",
+      "note": "a link to '?sort=new' is the page on screen with that query",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board?sort=top",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "?sort=new",
+            "base": {
+              "depth": 3
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sort=top",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc/board?sort=new"
+        }
+      ]
+    },
+    {
+      "id": "nav.link-up-past-root",
+      "note": "'..' in a link stops at the template root",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "../../..",
+            "base": {
+              "depth": 3
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/space/abc"
+        }
+      ]
+    },
+    {
+      "id": "nav.link-absolute",
+      "note": "an absolute href or a URL is drawn as written",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "/settings/ai",
+            "base": {
+              "depth": 3
+            }
+          }
+        },
+        {
+          "op": "link",
+          "args": {
+            "to": "https://example.org/x",
+            "base": {
+              "depth": 3
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/settings/ai"
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "https://example.org/x"
+        }
+      ]
+    },
+    {
+      "id": "nav.link-outside-space",
+      "note": "outside a space the template root is the address’s own root, so ~/ is /",
+      "schema": {
+        "params": {}
+      },
+      "start": "/settings/ai",
+      "steps": [
+        {
+          "op": "link",
+          "args": {
+            "to": "..",
+            "base": {
+              "depth": 2
+            }
+          }
+        },
+        {
+          "op": "link",
+          "args": {
+            "to": "~/profile"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/settings/ai",
+          "pageIdentity": "/settings/ai",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/settings"
+        },
+        {
+          "href": "/settings/ai",
+          "pageIdentity": "/settings/ai",
+          "depth": 1,
+          "index": 0,
+          "resolved": "/profile"
+        }
+      ]
+    },
+    {
       "id": "nav.open-deep-link",
       "note": "open lands on a deep link; .. then climbs from it within the root",
       "schema": {

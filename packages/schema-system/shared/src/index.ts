@@ -216,7 +216,7 @@ export {
   TEMPLATE_SCHEMA_VERSIONS,
   templateVersionProblem,
 } from './templateFormat';
-export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export { isRelativePath, type LinkRoute, type PathBase, resolveHref, resolvePath } from './navigationPaths';
 export {
   decodeLocalParam,
   encodeLocalParam,

@@ -7185,9 +7185,7 @@
           "type": "string"
         }
       },
-      "actions": ["resolve"],
-      "ambient": ["resolve"],
-      "needsArgs": ["resolve"]
+      "actions": []
     },
     {
       "name": "runtimeStore",

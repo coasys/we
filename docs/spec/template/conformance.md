@@ -94,11 +94,15 @@ the address, in a template whose root spans the first `root`
 
 **navigation.** `{ id, note, schema, start, steps, expect }`. Open the address `start`, then run
 each step against the host's navigation: `open { href }`, `navigate { to, options? }`,
+`link { to, base? }` (the address a link to `to` is drawn with, from a route `base.depth` segments
+deep or from the template's root, by the [renderer's rule](routing.md#relative-paths) over the
+navigation profile's members; the address does not move),
 `set_param { name, value, push? }`, `sync_param { name, value, initial, type, push?, persist? }`
 (a `$localState` write with `syncParam`), `local_read { name, persist?, initial, type }` (a field's
 value on mount), `back`, `forward`. After each, compare `{ href, pageIdentity, depth, index,
 resolved? }`: the address as path, query and hash; the page's identity (its path and its `id` query
-value); the script's own history depth and position; and, for `local_read`, the value it read. The
+value); the script's own history depth and position; and, for `local_read` and `link`, the value
+it read. The
 path and local-state rules these pin are the format's; the operations are the
 [navigation profile](../profiles/members.md#navigation)'s, which a host maps onto its own router.
 

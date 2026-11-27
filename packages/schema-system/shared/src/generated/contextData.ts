@@ -2863,13 +2863,7 @@ export const contextData: ContextData = {
         'createCardOnCanvas',
       ],
     },
-    {
-      name: 'routeStore',
-      state: { page: { type: 'string' } },
-      actions: ['resolve'],
-      ambient: ['resolve'],
-      needsArgs: ['resolve'],
-    },
+    { name: 'routeStore', state: { page: { type: 'string' } }, actions: [] },
     {
       name: 'runtimeStore',
       state: {
