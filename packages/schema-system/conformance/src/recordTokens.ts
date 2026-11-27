@@ -24,6 +24,15 @@
  *   `50%` is a ratio, not `0.5`, in every family that uses it.
  * - anything else keeps its computed text: shadows, gradients, font stacks, `150ms`, `ease-out`.
  *
+ * ## Precision
+ *
+ * A probed value — colour, length or number — has every number in it rounded to four decimal
+ * places, trailing zeros trimmed and `-0` written `0` (`normaliseTokenNumbers`, tokenPrecision.ts,
+ * which says why four). Chrome serialises six significant digits and the last one moves between
+ * versions (`oklab(0.97725 0.0000485216 …)` in one, `…0.0000485202…` in the next), so without it
+ * the tables recorded the browser as much as the themes. Text kept as computed is not rounded: it
+ * is the theme's own token stream, which no engine has done arithmetic on.
+ *
  * NOT part of `pnpm test`: there is no browser in the vitest run. vectors.test.ts only checks the
  * files exist, parse, and agree with style.json's computed values.
  */
@@ -35,6 +44,8 @@ import { fileURLToPath } from 'node:url';
 import { THEME_PRESETS } from '@we/themes/presets';
 import { build } from 'esbuild';
 import { chromium } from 'playwright-core';
+
+import { normaliseTokenNumbers } from './tokenPrecision';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..', '..');
@@ -86,18 +97,19 @@ window.__tokens = {
       probe.style.removeProperty(prop);
       return v;
     };
+    // Each value says whether a probe computed it: only those are rounded (see Precision).
     const out = {};
     for (const name of names) {
       const raw = cs.getPropertyValue(name).trim();
       if (CSS.supports('color', raw)) {
         const c = probeValue('color', name);
-        out[name] = c !== 'rgb(1, 2, 3)' ? c : raw;
+        out[name] = c !== 'rgb(1, 2, 3)' ? { probed: true, value: c } : { probed: false, value: raw };
       } else if (CSS.supports('scroll-margin-left', raw)) {
-        out[name] = probeValue('scroll-margin-left', name);
+        out[name] = { probed: true, value: probeValue('scroll-margin-left', name) };
       } else if (!raw.includes('%') && CSS.supports('scale', raw)) {
-        out[name] = probeValue('scale', name);
+        out[name] = { probed: true, value: probeValue('scale', name) };
       } else {
-        out[name] = raw;
+        out[name] = { probed: false, value: raw };
       }
     }
     wrap.remove();
@@ -115,7 +127,7 @@ interface ThemeJob {
 /** The harness `ENTRY` installs on `window`. */
 interface TokenHarness {
   apply(overrides: Record<string, unknown>, baseName: string): void;
-  computed(): Record<string, string>;
+  computed(): Record<string, { probed: boolean; value: string }>;
 }
 declare const window: { __tokens?: TokenHarness } & Window;
 
@@ -190,7 +202,11 @@ async function main() {
       ] as const);
       // Two frames: applyThemeVars reads roles back inside a transition guard — let it settle.
       await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-      const vars = await page.evaluate(() => window.__tokens!.computed());
+      const computed = await page.evaluate(() => window.__tokens!.computed());
+      const vars: Record<string, string> = {};
+      for (const [name, { probed, value }] of Object.entries(computed)) {
+        vars[name] = probed ? normaliseTokenNumbers(value) : value;
+      }
       writeFileSync(join(VECTORS, `${job.id}.json`), JSON.stringify({ theme: job.id, vars }, null, 2) + '\n');
       console.info(`wrote vectors/tokens/${job.id}.json (${Object.keys(vars).length} vars)`);
     }
