@@ -52,6 +52,7 @@ const STORE_TESTS = [
   'tests/shellStoreComposition.test.ts',
   'tests/shellTemplatePanels.test.ts',
   'tests/shellViews.test.ts',
+  'tests/spaceCallExports.test.ts',
   'tests/spaceContent.test.ts',
   'tests/spaceDetails.test.ts',
   'tests/spaceExtraction.test.ts',
