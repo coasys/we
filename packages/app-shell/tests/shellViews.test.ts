@@ -56,14 +56,13 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(members.spaceSettingsFocus()).toBe('state-1');
     expect(members.spaceSettingsEdge()).toBe('right');
 
-    const scrolled = vi.fn();
-    const row = { scrollIntoView: scrolled } as unknown as HTMLElement;
-    let drawn = false;
-    platform.document.byId = (id) => (drawn && id === 'vocab-state-1' ? row : null);
     vi.advanceTimersByTime(250);
-    drawn = true;
+    expect(platform.asked.revealed).toEqual([]);
+    platform.setDrawnId('vocab-state-1', true);
     vi.advanceTimersByTime(100);
-    expect(scrolled).toHaveBeenCalledTimes(1);
+    expect(platform.asked.revealed).toEqual([{ id: 'vocab-state-1', block: 'center' }]);
+    vi.advanceTimersByTime(1000);
+    expect(platform.asked.revealed).toHaveLength(1);
   });
 
   it('forgets the record when the panel is toggled or closed', () => {

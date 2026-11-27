@@ -267,7 +267,7 @@ export const EDGES = ['left', 'right', 'top', 'bottom'] as const satisfies reado
  * arithmetic — the same arrangement `SIDEBAR_PX` has with `SHELL_SIDEBAR_WIDTH`, and pinned to it by
  * `chromeLayering.test.ts`.
  *
- * `layerOrder` hands each panel its own step
+ * The web binding draws each panel's rank (`layerOrder`) as its own step
  * above this base, and the app's chrome (`zIndex.chrome`) stays above all of them: fifty steps of
  * headroom, which is more panels than a screen can hold.
  */
@@ -286,7 +286,8 @@ export const PANEL_LAYER_BASE = 200;
  * so they need no ordering among themselves and take part here only so a raised float sits above
  * the sidebar it is beside.
  *
- * Returns each id's layer, as a z-index on the `sticky` band.
+ * Returns each id's rank: 0 at the back, one more for each panel in front of it. A renderer paints
+ * them in that order; the web one as z-indexes from {@link PANEL_LAYER_BASE}.
  */
 /**
  * How specific a drop target is: a boundary beats a region.
@@ -619,7 +620,7 @@ export function layerOrder(
   const ranked = ids
     .map((id, index) => ({ id, index, at: activation[id] ?? Number.NEGATIVE_INFINITY }))
     .sort((a, b) => ascending(a.at, b.at) || a.index - b.index);
-  return Object.fromEntries(ranked.map((entry, layer) => [entry.id, PANEL_LAYER_BASE + layer]));
+  return Object.fromEntries(ranked.map((entry, rank) => [entry.id, rank]));
 }
 
 /** The edge a snap sits on, or `null` for a corner. */
@@ -1008,8 +1009,8 @@ export interface DockGeometry {
    * the contents fill the frame. What stops them re-laying out at every width between 34px and the
    * lane's, arriving crushed or leaving crushed.
    */
-  layoutWidth?: string;
-  layoutHeight?: string;
+  layoutWidth?: number;
+  layoutHeight?: number;
   /**
    * The contents are faded out: for the first frame back from a strip, so the fade in has a zero to
    * start from, and for the whole of a close, so they fade as the frame shrinks.
@@ -1037,9 +1038,9 @@ export interface DockGeometry {
    */
   settling?: boolean;
   /**
-   * The z-index this panel paints at — its step above `PANEL_LAYER_BASE`, by how recently it was
-   * touched. See {@link layerOrder}. The frame binds its `zIndex` to this rather than to a layer
-   * name, which is what lets a click bring a panel forward.
+   * Where this panel paints among the others: its rank by how recently it was touched, 0 at the
+   * back. See {@link layerOrder}. The web binding draws it as a z-index above `PANEL_LAYER_BASE`,
+   * which is what lets a click bring a panel forward.
    */
   layer?: number;
   /**
@@ -1054,12 +1055,12 @@ export interface DockGeometry {
    */
   handleX?: 'left' | 'right';
   handleY?: 'top' | 'bottom';
-  top?: string;
-  right?: string;
-  bottom?: string;
-  left?: string;
-  width?: string;
-  height?: string;
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+  width?: number;
+  height?: number;
   /**
    * How far the panel's *content* keeps clear of chrome painted over it, per horizontal edge.
    *
@@ -1073,8 +1074,8 @@ export interface DockGeometry {
    * `shellStore.panelMaximised`. What is left over the panel is whatever the modules have declared
    * at the top and bottom, which is exactly the band `chrome` carries.
    */
-  padTop?: string;
-  padBottom?: string;
+  padTop?: number;
+  padBottom?: number;
   /** Whether this panel is overlaying rather than displacing. Read by the frame and by tests. */
   floating: boolean;
   /**
@@ -1625,7 +1626,7 @@ export function fitPlacement(
 /**
  * The rectangle a resolved box actually occupies, whatever pair of offsets it was expressed with.
  *
- * A `DockGeometry` says only enough to place the panel in CSS, and which fields that is varies by
+ * A `DockGeometry` says only enough to place the panel, in pixels, and which fields that is varies by
  * kind: a floating panel carries `left`/`top`/`width`/`height`, a right-hand displacing one carries
  * `right` and a `width` but no `left`, and a maximised one carries all four offsets and no size at
  * all. Every one of those is a valid way to describe the same box and none of them can be read as a
@@ -1638,9 +1639,7 @@ export function fitPlacement(
  * were this one function.
  */
 export function rectOf(box: DockGeometry | undefined, viewport: Viewport, fallback: FloatPlacement): Rect {
-  const num = (value?: string) => (value === undefined ? undefined : parseFloat(value));
-  const [left, right, width] = [num(box?.left), num(box?.right), num(box?.width)];
-  const [top, bottom, height] = [num(box?.top), num(box?.bottom), num(box?.height)];
+  const { left, right, width, top, bottom, height } = box ?? {};
 
   const w = width ?? (left !== undefined && right !== undefined ? viewport.width - left - right : fallback.w);
   const h = height ?? (top !== undefined && bottom !== undefined ? viewport.height - top - bottom : fallback.h);
@@ -2394,7 +2393,7 @@ export function resolveDock(
   if (!edge) return { edge: null, floating: true };
 
   const region = contentRegion(viewport, occupied);
-  const px = (n: number) => `${Math.round(n)}px`;
+  const px = (n: number) => Math.round(n);
 
   const placement = request.placement ?? seedPlacement(request, viewport, occupied);
 
@@ -3300,7 +3299,7 @@ export interface LaneMove {
   /** The contents are faded: until painted once at zero on the way in, and the whole way out. */
   faded: boolean;
   /** The size each was drawn at when it began to close, held while it shrinks onto the strip. */
-  sizes: Record<string, { width?: string; height?: string }>;
+  sizes: Record<string, { width?: number; height?: number }>;
 }
 
 /** Where every panel is in going away together or coming back — see `ShellStore.panelsHidden`. */
@@ -3358,7 +3357,7 @@ export function resolveDocks(input: DockResolution): Record<string, DockGeometry
   const { seats, below, above, axis, lanes, hidden, follows, tabs, laneRoom, canStow, stowed } = seating;
   const move = input.laneMove;
   const pendingLane = input.stowPending ? (lanes[input.stowPending] ?? [input.stowPending]) : [];
-  const px = (n: number) => `${Math.round(n)}px`;
+  const px = (n: number) => Math.round(n);
   const placed = (request: DockRequest) => request.placement ?? seedPlacement(request, viewport);
   const maximisedOf = (request: DockRequest) => request.size === 'full' || Boolean(placed(request).maximised);
   const layers = layerOrder(
@@ -3751,14 +3750,25 @@ export function takenSnapsOf(
 /** One place a drop could land, as `ShellStore.insertSlots` lists it. */
 export interface DropSlot {
   index: number;
+  /** The edge — or, for a `home` slot, the name of the home lane. Empty for a stack slot, which is on neither. */
   edge: string;
+  /**
+   * `tab` is the seat itself: land here to stack behind whatever is showing in it; `home` is a
+   * `$panels` outlet.
+   *
+   * A `tab` slot with no `edge` is a **floating** panel offered as somewhere to stack — two
+   * panels in open space are in no lane, so that drop is named by position among the floats
+   * rather than by a place on an edge.
+   */
   mode: 'band' | 'lane' | 'tab' | 'home';
+  /** Which lane a `lane` or `tab` slot is in — its position inward from the edge, or the floating one. */
   lane: number | 'float' | '';
   key: string;
-  top: string;
-  left: string;
-  width: string;
-  height: string;
+  /** Where the slot's line is drawn, in viewport pixels. */
+  top: number;
+  left: number;
+  width: number;
+  height: number;
   hit: Rect;
 }
 
@@ -3775,10 +3785,10 @@ const drawnSlot = (
   edge,
   mode,
   // The line, not the target: the frame draws what these describe, and the hit box stays here.
-  top: `${slot.line.y}px`,
-  left: `${slot.line.x}px`,
-  width: `${slot.line.w}px`,
-  height: `${slot.line.h}px`,
+  top: slot.line.y,
+  left: slot.line.x,
+  width: slot.line.w,
+  height: slot.line.h,
   hit: slot.hit,
 });
 

@@ -10,11 +10,10 @@
  * see there), which the host draws before they land. What is drawn is a promise about the space on screen, so it is
  * dropped when that changes.
  */
-import { clearPredictions, CollectionBlock, type InvolvementSemantic, InvolvementType, SignalType } from '@we/entities';
+import { CollectionBlock, type InvolvementSemantic, InvolvementType, SignalType } from '@we/entities';
 
 import { distinctSignal } from '../../distinctSignal';
 import { isoOf } from '../../interpretation/callExport';
-import { invokeOperation } from '../../invokeOperation';
 import {
   INVOLVEMENT_SEMANTICS,
   type InvolvementTypeView,
@@ -90,7 +89,7 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
     void session.backendPorts();
     untrack(() => {
       // A write drawn before it landed is a promise about the screen being left.
-      clearPredictions();
+      deps.operations.predictions.clear();
       // The order a record's reactions settled into is a promise about the same screen. See
       // `signalOrder`.
       signalOrder.reset();
@@ -183,11 +182,13 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
     const p = datasetStore.currentDataset()?.handle;
     const me = session.me()?.did;
     if (!p || !me || !nodeId || !agent || !kind) return;
-    await invokeOperation(
-      'core.setInvolvement',
-      { node: nodeId, agent, kind, on },
-      { dataset: p, invoker: me, notify: (message) => toasts.error(message), failure: 'Could not save that' },
-    ).catch(() => undefined);
+    await deps.operations
+      .invoke(
+        'core.setInvolvement',
+        { node: nodeId, agent, kind, on },
+        { dataset: p, invoker: me, notify: (message) => toasts.error(message), failure: 'Could not save that' },
+      )
+      .catch(() => undefined);
   }
 
   /**

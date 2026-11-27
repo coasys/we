@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 const ME = 'did:key:z6MkRecordComposition';
 const CANVAS = 'canvas-1';
@@ -48,6 +49,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     disposers.push(
       reactivity.root(() => {
         store = createRecordStore({
+          operations: testOperations,
           reactivity,
           toasts: { info: () => 0, success: () => 0, warning: () => 0, error: () => 0 },
           sessionStore: { me: () => ({ did: ME }) } as never,

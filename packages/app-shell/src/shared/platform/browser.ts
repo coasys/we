@@ -5,6 +5,7 @@
  * The one place outside `frameworks/` the stores' environment touches the window's globals.
  */
 import { canvasImageCodec } from '@we/entities';
+import { applyThemeVars } from '@we/schema-shared';
 
 import type { PlatformDocument, PlatformEvents, PlatformPort, PlatformStorage } from './port';
 
@@ -50,6 +51,19 @@ function browserStorage(pick: () => Storage): PlatformStorage {
   };
 }
 
+type PostToFrame = (message: unknown, targetOrigin: string) => void;
+
+/** The origin a frame's address is at, or null for one that is not a URL with an origin of its own. */
+function originOf(src: string | null): string | null {
+  if (!src) return null;
+  try {
+    const { origin } = new URL(src, window.location.href);
+    return origin && origin !== 'null' ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function browserDocument(): PlatformDocument {
   const root = () => document.documentElement;
   const iconLink = () => document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
@@ -62,7 +76,7 @@ function browserDocument(): PlatformDocument {
       if (value === null) root().removeAttribute(name);
       else root().setAttribute(name, value);
     },
-    root,
+    applyTheme: (theme, options) => applyThemeVars(root(), theme, options),
     setStyleSheet: (id, css) => {
       let element = document.getElementById(id) as HTMLStyleElement | null;
       if (!element) {
@@ -84,8 +98,22 @@ function browserDocument(): PlatformDocument {
         probe.remove();
       }
     },
-    byId: (id) => document.getElementById(id),
-    queryAll: (selector) => [...document.querySelectorAll(selector)],
+    reveal: (id, options) => {
+      const element = document.getElementById(id);
+      element?.scrollIntoView({ behavior: 'smooth', block: options?.block ?? 'start' });
+      return Boolean(element);
+    },
+    postToFrames: (message, origins) => {
+      // `we-iframe` draws its frame in its shadow root and posts through its own `postMessage`.
+      let sent = 0;
+      for (const frame of document.querySelectorAll<HTMLElement & { postMessage?: PostToFrame }>('we-iframe')) {
+        const origin = originOf(frame.getAttribute('src'));
+        if (!origin || !origins.includes(origin) || typeof frame.postMessage !== 'function') continue;
+        frame.postMessage(message, origin);
+        sent++;
+      }
+      return sent;
+    },
     measure: (selector) => {
       const box = document.querySelector(selector)?.getBoundingClientRect();
       return box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null;

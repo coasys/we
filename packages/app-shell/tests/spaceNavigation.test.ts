@@ -10,6 +10,7 @@ import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createModuleStoreDeps, resetModuleHostServices } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { createSpaceNavigation, type SpaceNavigation } from '../src/shared/stores/space/navigation';
 import { createSpaceOnScreen, type SpaceOnScreen } from '../src/shared/stores/space/onScreen';
@@ -45,6 +46,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     }
     const navigated: string[] = [];
     const pending: Record<string, unknown> = {};
+    const installed = ['flux'];
     let setPath!: Setter<string>;
     let setQuery!: Setter<Record<string, string>>;
     let spaces!: SpaceList;
@@ -83,7 +85,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
           spaces,
           writes: { pendingSaves: () => pending as never },
           onScreen,
-          modules: { usesSectionsFor: () => true, members: { routableViews: () => [], spaceViews: () => [] } },
+          modules: {
+            usesSectionsFor: () => true,
+            installedModules: () => installed,
+            members: { routableViews: () => [], spaceViews: () => [] },
+          },
         });
       }),
     );
@@ -170,6 +176,30 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     // The space already on screen: its root, which is how the sidebar takes you home.
     await navigation.members.navigateToSpace('ds-a');
     expect(navigated.at(-1)).toBe('/space/ds-a');
+  });
+
+  it('tells only the installed apps, each at its own origin, which space was gone to', async () => {
+    const host = { backend: 'ad4m', framework: 'solid' };
+    const embed = (id: string, url: string) => ({
+      manifest: { id, name: id, icon: 'app-window' },
+      contributes: { embed: { url, allow: '' } },
+    });
+    moduleRegistry.register(embed('flux', 'https://flux.example/app/'), host);
+    // Registered but not installed here: it hears nothing.
+    moduleRegistry.register(embed('pad', 'https://pad.example/'), host);
+    try {
+      const { h, navigation } = await build();
+      // Three frames: the installed app, the other app, and an embed out of a post.
+      h.platform.setFrames(['https://flux.example', 'https://pad.example', 'https://elsewhere.example']);
+      await navigation.members.navigateToSpace('ds-b');
+      await flush();
+      expect(h.platform.asked.posted).toEqual([
+        { message: { type: 'NAVIGATE_PERSPECTIVE', communityId: 'ds-b' }, origin: 'https://flux.example' },
+      ]);
+    } finally {
+      moduleRegistry.unregister('flux');
+      moduleRegistry.unregister('pad');
+    }
   });
 
   it('tells a module which dataset went, by the uri it holds for it', async () => {

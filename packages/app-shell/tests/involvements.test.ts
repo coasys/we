@@ -10,7 +10,6 @@ import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { invokeOperation } from '../src/shared/invokeOperation';
 import {
   type InvolvementTypeView,
   parseAppliesTo,
@@ -20,6 +19,7 @@ import {
 import { involvement } from '../src/shared/sources/involvement';
 import { involvementMenu } from '../src/shared/sources/involvementMenu';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
+import { testOperations } from './support/operations';
 
 const ME = 'did:key:me';
 const ANA = 'did:key:ana';
@@ -136,9 +136,9 @@ describe('the writes', () => {
   const options = () => ({ dataset, invoker: ME, notify: (message: string) => notices.push(message) });
   const actions = () => ({
     setInvolvement: (node: string, agent: string, kind: string, on: boolean) =>
-      invokeOperation('core.setInvolvement', { node, agent, kind, on }, options()).catch(() => undefined),
+      testOperations.invoke('core.setInvolvement', { node, agent, kind, on }, options()).catch(() => undefined),
     respond: (node: string, kind: string) =>
-      invokeOperation('core.respond', { node, kind }, options()).catch(() => undefined),
+      testOperations.invoke('core.respond', { node, kind }, options()).catch(() => undefined),
   });
   const table = async () =>
     (await Involvement().findAll(dataset, { order: { createdAt: 'asc' } })).map((r) => ({

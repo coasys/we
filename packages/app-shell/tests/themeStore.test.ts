@@ -6,7 +6,7 @@
  * does to the page — its variables, its stylesheet — can be read back.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { AGENT_DEFAULT, clearPredictions, FOLLOW_SPACE, predict, predictionLanded, Theme } from '@we/entities';
+import { AGENT_DEFAULT, FOLLOW_SPACE, Theme } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -14,6 +14,7 @@ import { createTestPlatform, type TestPlatform } from '../src/shared/platform/te
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createThemeStore, type ThemeStore } from '../src/shared/stores/ThemeStore';
 import { reactivityPorts } from './support/engines';
+import { testPredictions } from './support/operations';
 import { appearanceOf } from './support/spaceAppearance';
 
 provideSeed({ name: 'test', modules: [] } as never);
@@ -64,6 +65,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     disposers.push(
       reactivity.root(() => {
         store = createThemeStore({
+          predictions: testPredictions,
           reactivity,
           platform,
           toasts: {
@@ -366,9 +368,9 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
     });
 
     describe('setting the space’s default theme while something hides it', () => {
-      afterEach(() => clearPredictions());
+      afterEach(() => testPredictions.clear());
       const setDefault = (id: string, fields: Record<string, unknown>) =>
-        predict(handles.space, id, [{ kind: 'edit', entity: 'Space', id: 'space-record', fields }]);
+        testPredictions.predict(handles.space, id, [{ kind: 'edit', entity: 'Space', id: 'space-record', fields }]);
 
       it('says so once, by the theme the agent is pinned to, and offers the way back', async () => {
         const { store, setSpaceRecord } = await mount({ space: true, spaceTheme: 'retro' });
@@ -381,7 +383,7 @@ describe.each(reactivityPorts)('the theme store under %s', (_name, makePort) => 
         expect(told).toHaveLength(1);
         expect(told[0]).toMatch(/^Saved\. You won't see it while you're using .* in this space\.$/);
         // Its landing is the same write.
-        predictionLanded('set-default');
+        testPredictions.landed('set-default');
         await flush();
         expect(told).toHaveLength(1);
       });

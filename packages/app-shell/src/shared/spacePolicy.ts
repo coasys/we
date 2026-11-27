@@ -198,6 +198,20 @@ export interface PolicyCheckDeps {
 }
 
 /**
+ * Thrown by a {@link PolicyCheckDeps.space} that read a dataset it knows is a space and found no
+ * `Space` record in it: the space is still syncing, and a write is refused until it has arrived
+ * rather than judged as though the dataset were not a space.
+ */
+export class SpaceArriving extends Error {
+  constructor() {
+    super('This space is still arriving');
+    this.name = 'SpaceArriving';
+  }
+}
+
+const isSpaceArriving = (error: unknown): boolean => (error as { name?: unknown } | null)?.name === 'SpaceArriving';
+
+/**
  * The write check the host registers: a write a space's rules do not allow rejects with a
  * {@link PolicyRefusal}, and a write to anything that is not a space is not judged.
  *
@@ -208,8 +222,11 @@ export function createPolicyCheck(deps: PolicyCheckDeps): EntityWriteCheck {
   return async (write: EntityWrite) => {
     const action = actionOf(write.entity, write.kind, write.relation);
     // Rules that could not be read judge nothing, so the write waits until they can be.
-    const space = await deps.space(write.dataset).catch(() => {
-      throw new PolicyRefusal({ reason: 'unreadable', action });
+    const space = await deps.space(write.dataset).catch((error: unknown) => {
+      const arriving = isSpaceArriving(error);
+      // The record a space is still waiting for is the one write that cannot wait for it.
+      if (arriving && write.kind === 'create' && write.entity === 'Space') return null;
+      throw new PolicyRefusal({ reason: 'unreadable', action, ...(arriving ? { arriving: true } : {}) });
     });
     if (!space) return;
     const person = await deps.me();

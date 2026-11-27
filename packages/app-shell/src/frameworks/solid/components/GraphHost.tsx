@@ -254,6 +254,7 @@ function RecordCard(props: { node: GraphNode }) {
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useStore('datasetStore');
   const shellStore = useStore('shellStore');
+  const operations = useStore('operations');
   const sessionStore = useStore('sessionStore');
   const profileStore = useStore('profileStore');
 
@@ -276,6 +277,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         fetchProfile: profileStore.fetchProfile,
         ephemeral: sessionStore.ephemeralPort,
       }),
+      operations.predictions,
     ),
   );
 

@@ -60,6 +60,7 @@ import { distinctSignal } from '../../distinctSignal';
 import type { PlatformDocument, PlatformPort } from '../../platform/port';
 import { type ShellHostState, type ShellStore } from '../ShellStore';
 import { type ShellArrangement } from './arrangement';
+import { dockStyles } from './dockStyle';
 import { type ShellViews } from './views';
 
 /**
@@ -307,7 +308,7 @@ export function createShellDocks(deps: {
    * lane's thickness open, since a lane there is as thick as its tallest open member.
    */
   const setSeatFolded = (id: string, folded: boolean) => {
-    const seat = dockGeometry()[id]?.tabs ?? [];
+    const seat = dockBoxes()[id]?.tabs ?? [];
     const members = seat.length > 1 ? seat.map((tab) => tab.id) : [id];
     for (const memberId of members) {
       const member = dockRequests().find((entry) => entry.id === memberId);
@@ -335,7 +336,7 @@ export function createShellDocks(deps: {
     ids: readonly string[];
     closing: boolean;
     faded: boolean;
-    sizes: Record<string, { width?: string; height?: string }>;
+    sizes: Record<string, { width?: number; height?: number }>;
   } | null>(null);
   let laneMoveTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => {
@@ -348,7 +349,7 @@ export function createShellDocks(deps: {
         const request = dockRequests().find((entry) => entry.id === id);
         if (!request) return [id, {}];
         const box = boxOnScreen(id, placementOf(request));
-        return [id, { width: `${Math.round(box.w)}px`, height: `${Math.round(box.h)}px` }];
+        return [id, { width: Math.round(box.w), height: Math.round(box.h) }];
       }),
     );
     const move = { ids, closing, faded: true, sizes };
@@ -399,7 +400,7 @@ export function createShellDocks(deps: {
    * engine's box stands in, which matches the lane's by construction (`laneBase`).
    */
   const boxOnScreen = (id: string, placement: FloatPlacement): Rect => {
-    const box = dockGeometry()[id];
+    const box = dockBoxes()[id];
     if (box?.inLane || box?.home) {
       const drawn = page.measure(`[${DOCK_FRAME_ATTR}="${page.escape(id)}"]`);
       if (drawn && drawn.width > 0 && drawn.height > 0)
@@ -808,7 +809,8 @@ export function createShellDocks(deps: {
     }),
   );
 
-  const dockGeometry = memo(() => {
+  /** Every dock's box as the kernel answers it: geometry, in pixels and ranks. */
+  const dockBoxes = memo(() => {
     const resolved = resolveDocks({
       requests: dockRequests(),
       seating: laneSeating(),
@@ -1006,7 +1008,8 @@ export function createShellDocks(deps: {
     | 'toggleDockDisplace'
   > = {
     provideModuleGate: setModuleGate,
-    dockGeometry,
+    // As the page draws it — see `dockStyle.ts`.
+    dockGeometry: memo(() => dockStyles(dockBoxes())),
     contentInset: inset,
     coveredInset: covered,
     panelMaximised,
@@ -1028,7 +1031,7 @@ export function createShellDocks(deps: {
               ...placement,
               canDisplace: edgeOfSnap(placement.snap) !== null,
               // Answered by the geometry, which knows whether the panel has lane-mates.
-              canCollapse: dockGeometry()[request.id]?.canCollapse ?? false,
+              canCollapse: dockBoxes()[request.id]?.canCollapse ?? false,
             },
           ];
         }),
@@ -1044,7 +1047,7 @@ export function createShellDocks(deps: {
       // Measured from the resolved rect, because that is the panel you are looking at — a docked one
       // stores a thickness and a card, and only the box on screen says which is currently the shape.
       const measured = resolvedPlacement(id, placementOf(request));
-      const spanning = !dockGeometry()[id]?.floating;
+      const spanning = !dockBoxes()[id]?.floating;
       const edge = edgeOfSnap(measured.snap);
       const fitted = fitPlacement(measured, aspect, {
         spanning,
@@ -1145,7 +1148,7 @@ export function createShellDocks(deps: {
         And it takes the seat's size — see `seatSize`. Read back from the geometry rather than from
         the drop that was asked for, so this is the seat the panel actually landed in.
       */
-      const joined = (dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).find((other) => other !== id);
+      const joined = (dockBoxes()[id]?.tabs ?? []).map((tab) => tab.id).find((other) => other !== id);
       const held = joined ? dockRequests().find((entry) => entry.id === joined) : undefined;
       const joiner = held ? dockRequests().find((entry) => entry.id === id) : undefined;
       if (held && joiner) writePlacement(id, seatSize(placementOf(joiner), placementOf(held)));
@@ -1162,7 +1165,7 @@ export function createShellDocks(deps: {
     },
     panelFrames: memo(() =>
       panelFramesOf({
-        geometry: dockGeometry(),
+        geometry: dockBoxes(),
         edges: appEdgeFrames(),
         requests: dockRequests().map((request) => ({ ...request, placement: placementOf(request) })),
         laneFrames: laneFrames(),
@@ -1277,12 +1280,12 @@ export function createShellDocks(deps: {
 
     toggleCollapseDock: (id) => {
       const request = dockRequests().find((entry) => entry.id === id);
-      if (!request?.edge || !dockGeometry()[id]?.canCollapse) return;
+      if (!request?.edge || !dockBoxes()[id]?.canCollapse) return;
       setSeatFolded(id, !placementOf(request).collapsed);
     },
 
     toggleStowLane: (id) => {
-      const geometry = dockGeometry()[id];
+      const geometry = dockBoxes()[id];
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge || !geometry) return;
       // Stowed panels resolve with an empty `laneAxis`; the lane itself is still in `lanes`.
@@ -1306,7 +1309,7 @@ export function createShellDocks(deps: {
       */
       if (panelsHiddenByUser()) setPanelsHiddenByUser(false);
       if (activeShellView()) setActiveShellView(null);
-      const before = dockGeometry()[id];
+      const before = dockBoxes()[id];
       // Out of sight before this, including closed a moment ago — a panel already in front, pressed
       // again, has nothing to point at.
       const wasOutOfSight = !before?.edge || Boolean(before.hidden || before.collapsed || before.stowed);
@@ -1320,7 +1323,7 @@ export function createShellDocks(deps: {
       raise(id);
       // A tab brought to the front of a stack flashes, so the change is findable in a frame that did
       // not move. A panel alone has nothing beside it to be confused with.
-      if (wasOutOfSight && (dockGeometry()[id]?.tabs?.length ?? 0) > 1) flashTab(id);
+      if (wasOutOfSight && (dockBoxes()[id]?.tabs?.length ?? 0) > 1) flashTab(id);
     },
 
     toggleDockDisplace: (id) => {
@@ -1338,7 +1341,7 @@ export function createShellDocks(deps: {
   return {
     members,
     boxOnScreen,
-    dockGeometry,
+    dockBoxes,
     dockRegistryVersion,
     dockRequests,
     dragCarry,

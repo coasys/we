@@ -44,7 +44,7 @@ import { type Spine } from '../sources/treeSpines';
 import type { Toasts } from '../toasts';
 import { createRecordCanvas } from './records/canvas';
 import { createRecordConnections } from './records/connections';
-import { operationRunner, type RecordDatasets, RELATIONSHIP } from './records/context';
+import { operationRunner, type RecordContext, type RecordDatasets, RELATIONSHIP } from './records/context';
 import { createRecordDrops } from './records/drops';
 import { createRecordForms } from './records/forms';
 import { createRecordKinds } from './records/kinds';
@@ -529,14 +529,17 @@ export interface RecordStoreDeps {
   shapeStore: Pick<ShapeStore, 'spaceShapes'>;
   /** How a picture filled into a form is scaled down and encoded before it is stored. */
   platform: Pick<PlatformPort, 'images'>;
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: RecordContext['operations'];
 }
 
 export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const { reactivity, toasts } = deps;
   const datasetStore = deps.datasetStore;
   const session = deps.sessionStore;
-  const runOp = operationRunner(session);
-  const context = { reactivity, toasts, sessionStore: session, datasetStore, runOp };
+  const { operations } = deps;
+  const runOp = operationRunner(session, operations);
+  const context = { reactivity, toasts, sessionStore: session, datasetStore, operations, runOp };
 
   const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
   const { creatableEntities, displays, titleField } = kinds;

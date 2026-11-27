@@ -31,7 +31,6 @@ import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { invokeOperation } from '../../../shared/invokeOperation';
 import { readWeighed, roundScore } from '../../../shared/reactionScore';
 import { actingAs, answerAs } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
@@ -68,6 +67,7 @@ export function ReactionBadge(props: {
   const datasetStore = useStore('datasetStore');
   const sessionStore = useStore('sessionStore');
   const spaceStore = useStore('spaceStore');
+  const operations = useStore('operations');
 
   const typeId = () => {
     const value = props.node.data?.weightType;
@@ -106,16 +106,17 @@ export function ReactionBadge(props: {
     const invoker = sessionStore.me()?.did;
     if (!dataset || !invoker) return;
     const target = { node: record(), signalType: typeId() };
-    void invokeOperation(
-      value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
-      value === null ? target : { ...target, value },
-      {
-        dataset,
-        invoker,
-        notify: (message) => toastService.error(message),
-        failure: 'Could not record that reaction.',
-      },
-    )
+    void operations
+      .invoke(
+        value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
+        value === null ? target : { ...target, value },
+        {
+          dataset,
+          invoker,
+          notify: (message) => toastService.error(message),
+          failure: 'Could not record that reaction.',
+        },
+      )
       // The open control reads everybody's answers again, now with this one among them.
       .then(readRows, () => undefined);
   };

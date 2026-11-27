@@ -11,6 +11,7 @@ import {
   type DragMoment,
   dragSnapTargets,
   dragTarget,
+  type DropSlot,
   edgeOfSnap,
   type FloatPlacement,
   floorOf,
@@ -40,6 +41,7 @@ import type { PlatformPort } from '../../platform/port';
 import { type ShellStore } from '../ShellStore';
 import { type ShellArrangement } from './arrangement';
 import { type ShellDocks } from './docks';
+import { dropSlotStyleOf } from './dockStyle';
 
 export function createShellDockDrag(deps: {
   reactivity: ReactivityPort;
@@ -49,7 +51,7 @@ export function createShellDockDrag(deps: {
   docks: Pick<
     ShellDocks,
     | 'boxOnScreen'
-    | 'dockGeometry'
+    | 'dockBoxes'
     | 'dockRequests'
     | 'dragCarry'
     | 'floatChrome'
@@ -76,7 +78,7 @@ export function createShellDockDrag(deps: {
   const { declarationFor, placementKey, placements, raise, writePlacement } = deps.arrangement;
   const {
     boxOnScreen,
-    dockGeometry,
+    dockBoxes,
     dockRequests,
     dragCarry,
     floatChrome,
@@ -167,11 +169,65 @@ export function createShellDockDrag(deps: {
   });
 
   /**
+   * The gaps in every strip a dragged panel could join, as boxes to draw.
+   *
+   * Built from the panels' *resolved* boxes, so a strip narrowed by the editor's rails or by
+   * anything else already spoken for reports the gaps it really has. The panel being dragged is left
+   * out of its own strip, or it would offer to be inserted either side of where it currently is.
+   */
+  function dropSlots(): DropSlot[] {
+    const moving = movingDock();
+    if (!moving) return [];
+    const requests = dockRequests();
+    /*
+      What is being carried — the box the targets are offered against. A titlebar drag writes the
+      panel's own placement every frame, so its box on screen is the answer; a **tab** drag carries an
+      outline and leaves the panel in its seat, so the outline is. Asking the panel then would answer
+      about the seat it is still sitting in, and every edge's targets would follow where the stack was
+      docked rather than where the tab was being dragged.
+    */
+    const dragged = requests.find((entry) => entry.id === moving);
+    const carried = dragCarry()?.box ?? (dragged ? boxOnScreen(moving, placementOf(dragged)) : null);
+    const boxes = Object.fromEntries(
+      requests.map((request) => [request.id, boxOnScreen(request.id, request.placement ?? placementOf(request))]),
+    );
+
+    /*
+      The home lanes: every `$panels` outlet on screen that would take this panel, measured, because an
+      outlet is an element the template laid out and only it knows where it is. Only for a panel an
+      interface declared at home in a lane — a lane keeps nothing else (see `placementOf`); which of
+      them it has been carried near enough to is the kernel's.
+    */
+    const panelId = moving.replace(/^template:/, '');
+    const homes = !declarationFor()[moving]?.home
+      ? []
+      : homeLanes()
+          // An instance is taken where the panel it is of is.
+          .filter((outlet) => outlet.accepts.length === 0 || outlet.accepts.includes(declaredPanelOf(moving)))
+          .map((outlet) => {
+            const drawn = outlet.el.getBoundingClientRect();
+            return {
+              lane: outlet.lane,
+              direction: outlet.direction,
+              box: { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height },
+              sections: [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
+                .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
+                .map((section) => {
+                  const at = section.getBoundingClientRect();
+                  return { x: at.x, y: at.y, w: at.width, h: at.height };
+                }),
+            };
+          });
+
+    return dragDropSlots({ ...dragMoment(moving), boxes, inset: inset(), carried, homes });
+  }
+
+  /**
    * What a drag is pointing at right now, across both families of target — `dragTarget`. One place
    * rather than two so a titlebar drag and a tab drag cannot drift apart.
    */
   const settleTargets = (id: string, pointer: { x: number; y: number }, would: Rect) => {
-    const { insert, snap } = dragTarget({ ...dragMoment(id), slots: members.insertSlots(), pointer, rect: would });
+    const { insert, snap } = dragTarget({ ...dragMoment(id), slots: dropSlots(), pointer, rect: would });
     setActiveInsert(insert);
     setActiveSnap(snap);
   };
@@ -281,12 +337,12 @@ export function createShellDockDrag(deps: {
       const request = dockRequests().find((entry) => entry.id === id);
       if (!request?.edge) return;
       raise(id);
-      const belowId = dockGeometry()[id]?.below;
+      const belowId = dockBoxes()[id]?.below;
       const lower = belowId ? dockRequests().find((entry) => entry.id === belowId) : undefined;
       // The base on the axis the lane divides — `h` down a side lane, `w` across a top or bottom one.
       // Reading `h` either way wrote a height nobody in a horizontal lane reads, so the boundary
       // between two panels along the top edge could be dragged and nothing moved.
-      const along = dockGeometry()[id]?.laneAxis === 'horizontal' ? 'w' : 'h';
+      const along = dockBoxes()[id]?.laneAxis === 'horizontal' ? 'w' : 'h';
       if (lower) {
         /*
           A divider drag begins by making the lane's stored sizes what is on screen.
@@ -334,8 +390,7 @@ export function createShellDockDrag(deps: {
       dragOrigin = resolvedPlacement(id, placementOf(request));
       // What the lane reopens at if this drag ends by putting it away — see `resizeDock`.
       const snapEdge = edgeOfSnap(placementOf(request).snap);
-      stowFrom =
-        dockGeometry()[id]?.floating === false && snapEdge ? thicknessOf(placementOf(request), snapEdge) : null;
+      stowFrom = dockBoxes()[id]?.floating === false && snapEdge ? thicknessOf(placementOf(request), snapEdge) : null;
       setStowPending(null);
       setDockResizing(true);
     },
@@ -369,10 +424,10 @@ export function createShellDockDrag(deps: {
         anything to start such a drag; this is the same answer at the end that owns the data, since a
         handle is not the only way to call a store action.
       */
-      if (dockGeometry()[id]?.maximised) return;
+      if (dockBoxes()[id]?.maximised) return;
 
       const start = dragOrigin;
-      const spanning = !dockGeometry()[id]?.floating;
+      const spanning = !dockBoxes()[id]?.floating;
       // The panel's own floor per axis, over the host's default — see `DockRequest.min`.
       const minW = floorOf(request.min, 'w', spanning);
       const minH = floorOf(request.min, 'h', spanning);
@@ -463,7 +518,7 @@ export function createShellDockDrag(deps: {
      * panel eat the other and slide on — the same rule the edge grips keep, asked of a pair.
      */
     resizeColumn: (id, delta) => {
-      const belowId = dockGeometry()[id]?.below;
+      const belowId = dockBoxes()[id]?.below;
       if (!belowId || !columnDrag) return;
       const upper = dockRequests().find((entry) => entry.id === id);
       const lower = dockRequests().find((entry) => entry.id === belowId);
@@ -472,7 +527,7 @@ export function createShellDockDrag(deps: {
       const { along } = columnDrag;
       // Each panel's own floor: its declared minimum, the host's default, or its titlebar if it is
       // folded. Both apply at once — the boundary stops at whichever it reaches first.
-      const spanning = dockGeometry()[id]?.floating === false;
+      const spanning = dockBoxes()[id]?.floating === false;
       const floorTop = floorOf(upper.min, along, spanning, placementOf(upper).collapsed);
       const floorBottom = floorOf(lower.min, along, spanning, placementOf(lower).collapsed);
       const { top, bottom } = movedBoundary(columnDrag, delta, { top: floorTop, bottom: floorBottom });
@@ -493,7 +548,7 @@ export function createShellDockDrag(deps: {
       const box = id ? placements()[placementKey(id)] : undefined;
       if (id && box) {
         const loose = edgeOfSnap(box.snap) === null;
-        for (const tab of dockGeometry()[id]?.tabs ?? []) {
+        for (const tab of dockBoxes()[id]?.tabs ?? []) {
           if (tab.id === id) continue;
           const mate = dockRequests().find((entry) => entry.id === tab.id);
           if (!mate) continue;
@@ -549,7 +604,7 @@ export function createShellDockDrag(deps: {
         does — see `endDockMove`. A drag that starts on a *tab* records none, which is the whole
         difference between the two gestures.
       */
-      setMovingSeat((dockGeometry()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id));
+      setMovingSeat((dockBoxes()[id]?.tabs ?? []).map((tab) => tab.id).filter((tab) => tab !== id));
       dragOrigin = resolvedPlacement(id, placementOf(request));
       dragPointer = { x: pointerX, y: pointerY };
       dragTravelled = false;
@@ -829,9 +884,9 @@ export function createShellDockDrag(deps: {
         Remembered, because the same press is usually the first half of a double-click, and by the
         second half the bar is open — see `toggleMaximiseDock`.
       */
-      const clickedFolded = Boolean(dragOrigin && !dragTravelled && !insert && !snap && dockGeometry()[id]?.collapsed);
+      const clickedFolded = Boolean(dragOrigin && !dragTravelled && !insert && !snap && dockBoxes()[id]?.collapsed);
       // A press on a section's break-out grip that went nowhere: out, to its declared snap.
-      const pressedOut = Boolean(dragOrigin && !dragTravelled && pressBreaksOut && dockGeometry()[id]?.home);
+      const pressedOut = Boolean(dragOrigin && !dragTravelled && pressBreaksOut && dockBoxes()[id]?.home);
       pressBreaksOut = false;
       dragTravelled = false;
 
@@ -864,60 +919,8 @@ export function createShellDockDrag(deps: {
      * the panel would be invisible for a small one and would cover the screen for a large one, and
      * what it has to communicate is *where*, not *how big*.
      */
-    /**
-     * The gaps in every strip a dragged panel could join, as boxes to draw.
-     *
-     * Built from the panels' *resolved* boxes, so a strip narrowed by the editor's rails or by
-     * anything else already spoken for reports the gaps it really has. The panel being dragged is left
-     * out of its own strip, or it would offer to be inserted either side of where it currently is.
-     */
-    insertSlots: () => {
-      const moving = movingDock();
-      if (!moving) return [];
-      const requests = dockRequests();
-      /*
-        What is being carried — the box the targets are offered against. A titlebar drag writes the
-        panel's own placement every frame, so its box on screen is the answer; a **tab** drag carries an
-        outline and leaves the panel in its seat, so the outline is. Asking the panel then would answer
-        about the seat it is still sitting in, and every edge's targets would follow where the stack was
-        docked rather than where the tab was being dragged.
-      */
-      const dragged = requests.find((entry) => entry.id === moving);
-      const carried = dragCarry()?.box ?? (dragged ? boxOnScreen(moving, placementOf(dragged)) : null);
-      const boxes = Object.fromEntries(
-        requests.map((request) => [request.id, boxOnScreen(request.id, request.placement ?? placementOf(request))]),
-      );
-
-      /*
-        The home lanes: every `$panels` outlet on screen that would take this panel, measured, because an
-        outlet is an element the template laid out and only it knows where it is. Only for a panel an
-        interface declared at home in a lane — a lane keeps nothing else (see `placementOf`); which of
-        them it has been carried near enough to is the kernel's.
-      */
-      const panelId = moving.replace(/^template:/, '');
-      const homes = !declarationFor()[moving]?.home
-        ? []
-        : homeLanes()
-            // An instance is taken where the panel it is of is.
-            .filter((outlet) => outlet.accepts.length === 0 || outlet.accepts.includes(declaredPanelOf(moving)))
-            .map((outlet) => {
-              const drawn = outlet.el.getBoundingClientRect();
-              return {
-                lane: outlet.lane,
-                direction: outlet.direction,
-                box: { x: drawn.x, y: drawn.y, w: drawn.width, h: drawn.height },
-                sections: [...outlet.el.querySelectorAll<HTMLElement>(`[${HOME_SECTION_ATTR}]`)]
-                  .filter((section) => section.getAttribute(HOME_SECTION_ATTR) !== panelId)
-                  .map((section) => {
-                    const at = section.getBoundingClientRect();
-                    return { x: at.x, y: at.y, w: at.width, h: at.height };
-                  }),
-              };
-            });
-
-      return dragDropSlots({ ...dragMoment(moving), boxes, inset: inset(), carried, homes });
-    },
-
+    // As the page draws them — see `dockStyle.ts`. A drag is judged against `dropSlots`, the geometry.
+    insertSlots: () => dropSlots().map(dropSlotStyleOf),
     activeInsert,
     dragGhost,
 

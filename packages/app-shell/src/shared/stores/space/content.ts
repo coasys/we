@@ -127,6 +127,7 @@ export function createSpaceContent(deps: SpaceContentDeps) {
     they ask for agreement, and how a failure reaches the person who caused it.
   */
   const boards = createBoardActions({
+    operations: deps.operations,
     dataset: datasetFor,
     invoker: () => session.me()?.did,
     offeredStates: () => taskStates.offeredTaskStates(),

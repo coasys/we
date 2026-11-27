@@ -31,17 +31,24 @@
  */
 import { type EntityClass, getEntity } from './entityRegistry';
 import { withPredictions } from './predictions/live';
+import { boundPredictions, type Predictions } from './predictions/registry';
 
 /**
- * Each implementation's reads with this agent's pending writes in them, made once per class. A
- * proxy's reads go through it, so a store reading `Signal.query(…)` sees a reaction pressed a moment
- * ago, as a template's `$query` does — see `predictions/`.
+ * Each implementation's reads with this agent's pending writes in them, made once per class and per
+ * set of predictions. A proxy's reads go through it, so a store reading `Signal.query(…)` sees a
+ * reaction pressed a moment ago, as a template's `$query` does — the predictions of the composition
+ * bound to the stand-ins (`bindPredictions`); with none bound, the class's reads as they are. See
+ * `predictions/`.
  */
-const predicted = new WeakMap<object, object>();
+const predicted = new WeakMap<Predictions, WeakMap<object, object>>();
 const PREDICTED_READS = new Set<PropertyKey>(['query', 'findAll', 'findOne']);
 function predictedOf(cls: EntityClass, name: string): object {
-  let found = predicted.get(cls);
-  if (!found) predicted.set(cls, (found = withPredictions(cls, [name])));
+  const predictions = boundPredictions();
+  if (!predictions) return cls;
+  let byClass = predicted.get(predictions);
+  if (!byClass) predicted.set(predictions, (byClass = new WeakMap()));
+  let found = byClass.get(cls);
+  if (!found) byClass.set(cls, (found = withPredictions(predictions, cls, [name])));
   return found;
 }
 

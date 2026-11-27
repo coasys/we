@@ -10,7 +10,7 @@ import type { DatasetProxy } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
 import type { FirstScreen } from '../../firstScreen';
-import { invokeOperation } from '../../invokeOperation';
+import type { Operations } from '../../invokeOperation';
 import { operationFailureMessage } from '../../operationFailure';
 import type { PlatformPort } from '../../platform/port';
 import type { Toasts } from '../../toasts';
@@ -57,9 +57,11 @@ export interface SpaceContext {
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
   sessionStore: SpaceSession;
   datasetStore: SpaceDatasets;
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: Operations;
   /**
    * Run one of WE's own declared operations as this agent — in the dataset given, else the space on
-   * screen — the way the host runs every one (`invokeOperation`): drawn before it lands and queued by
+   * screen — the way the host runs every one (`operations.invoke`): drawn before it lands and queued by
    * its `serial` key. What the write means lives in the operation; the action around it keeps what
    * only the host does (what is said, what is read again).
    */
@@ -92,6 +94,7 @@ export function createSpaceContext(deps: {
   firstScreen: SpaceContext['firstScreen'];
   sessionStore: SpaceSession;
   datasetStore: SpaceDatasets;
+  operations: Operations;
 }): SpaceContext {
   const { toasts, sessionStore: session, datasetStore } = deps;
   return {
@@ -100,7 +103,7 @@ export function createSpaceContext(deps: {
       const p = dataset ?? datasetStore.currentDataset()?.handle;
       const invoker = session.me()?.did;
       if (!p || !invoker) return Promise.reject(new Error('No space is open'));
-      return invokeOperation(`core.${name}`, args, { dataset: p, invoker }) as Promise<T>;
+      return deps.operations.invoke(`core.${name}`, args, { dataset: p, invoker }) as Promise<T>;
     },
     reportOperation: (what, fallback, error) => {
       const message = operationFailureMessage(error, fallback);

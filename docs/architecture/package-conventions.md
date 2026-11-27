@@ -373,7 +373,8 @@ the first, and the shape the rest copy:
   does not promise — and a port over `@vue/reactivity` (`tests/support/vueReactivity.ts`), an engine
   nobody here wrote. Each store is built inside `port.root` and disposed after, given
   `createTestPlatform()`. A failure under the test port prints its seed; `WE_REACTIVITY_SEED=<n>`
-  runs that order again. They run in app-shell's `stores` test project: no DOM, the browser build of
+  runs that order again. The seed is fixed locally and new on every CI run (the workflow sets it from
+  the run number), so each run tries another ordering. They run in app-shell's `stores` test project: no DOM, the browser build of
   solid-js, so a store reaching past the platform port fails there rather than passing on jsdom's
   globals. A store test goes in jsdom's project only for a reason it names. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
@@ -396,6 +397,14 @@ out, no store, no backend, no framework. Each one has recorded vectors beside it
 the same code compiled to WASM. Sharing one implementation is fine for these because they are pure;
 what must stay separately implementable is the spec and anything stateful. (Not the same thing as a
 module's capability kernels in `@we/module-shared`, which are ports a module is handed.)
+
+Not every kernel binds. Board arrangement and tree ranks answer with data other members see — which
+cards a column shows, where a card sits — so every host that draws a board or a tree must give the
+same answers, and their vectors are a contract. The dock kernel is WE's reference arrangement: what a
+template may ask of a host about panels is the `layout` capability profile
+(`docs/spec/profiles/`), and a host conforms to that without adopting WE's docks. Its twenty-five
+entry points and their vectors are for a host that wants WE's arrangement, not a rule for one that
+does not.
 
 | Kernel            | Where                                                  | What it answers                                                                                                         | Vectors                                  |
 | ----------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |

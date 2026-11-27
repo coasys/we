@@ -17,6 +17,7 @@ import { followLive } from '../../followLive';
 import { pageOfPart } from '../../partPage';
 import { resolveRecordRef } from '../../recordNavigation';
 import { provideModuleHostServices } from '../../registries/moduleHostServices';
+import { moduleRegistry } from '../../registries/moduleRegistry';
 import { landmarksByName, readSpaceLandmarks, readSpaceRoot, seedSpaceRoot } from '../../spaceLandmarks';
 import { isSpaceSelf, spaceSelfWhere, withFields } from '../../spaceSync';
 import { canonicalSpaceId } from '../DatasetStore';
@@ -42,9 +43,19 @@ export interface SpaceNavigationDeps extends SpaceContext {
   /** The space on screen, which this part fills from the live read. */
   onScreen: Pick<SpaceOnScreen, 'currentSpace' | 'showPushed'>;
   /** The sections a space has, from the modules-and-views part — read when somebody goes somewhere. */
-  modules: Pick<SpaceModules, 'usesSectionsFor'> & {
+  modules: Pick<SpaceModules, 'usesSectionsFor' | 'installedModules'> & {
     members: Pick<SpaceModules['members'], 'routableViews' | 'spaceViews'>;
   };
+}
+
+/** The origin an embed's declared address is at, or null for one that has none. */
+function originOf(url: string): string | null {
+  try {
+    const { origin } = new URL(url);
+    return origin && origin !== 'null' ? origin : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createSpaceNavigation(deps: SpaceNavigationDeps) {
@@ -382,13 +393,20 @@ export function createSpaceNavigation(deps: SpaceNavigationDeps) {
     return navigateToSpace(destination.datasetId, destination.view);
   }
 
+  /**
+   * Tell the embedded apps which space the agent went to, so one showing a space follows (Flux opens
+   * its community for it). Only the apps installed here, each at the origin its registration
+   * declares: an embed in a post is a page from anywhere, and the space somebody is in is not its
+   * business. `NAVIGATE_PERSPECTIVE` is the message's name on the wire, which the apps listen for.
+   */
   function broadcastSpaceNavigation(communityId: string): void {
-    for (const el of platform.document.queryAll('we-iframe')) {
-      const frame = el as Element & { postMessage?: (data: unknown, origin: string) => void };
-      if (typeof frame.postMessage === 'function') {
-        frame.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
-      }
-    }
+    const installed = new Set(modules.installedModules());
+    const origins = moduleRegistry
+      .embeds()
+      .filter((embed) => installed.has(embed.id))
+      .map((embed) => originOf(embed.url))
+      .filter((origin): origin is string => origin !== null);
+    if (origins.length) platform.document.postToFrames({ type: 'NAVIGATE_PERSPECTIVE', communityId }, origins);
   }
 
   /**

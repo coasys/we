@@ -281,7 +281,6 @@ import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate'
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { startBoot } from '../src/shared/composeStores';
-import { invokeOperation } from '../src/shared/invokeOperation';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
@@ -301,6 +300,7 @@ import { createShellStore } from '../src/shared/stores/ShellStore';
 import { createSpaceStore, type SpaceStore } from '../src/shared/stores/SpaceStore';
 import { createTemplateStore } from '../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../src/shared/stores/ThemeStore';
+import { testOperations, testPredictions } from './support/operations';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -368,6 +368,7 @@ function mountShell(): Stores {
       datasetStore,
     });
     const recordStore = createRecordStore({
+      operations: testOperations,
       reactivity: solidReactivity,
       toasts: toastService,
       sessionStore,
@@ -386,6 +387,7 @@ function mountShell(): Stores {
       platform,
     });
     const themeStore = createThemeStore({
+      predictions: testPredictions,
       reactivity: solidReactivity,
       platform,
       toasts: toastService,
@@ -402,9 +404,9 @@ function mountShell(): Stores {
       themeStore,
       routeStore,
     });
-    // SpaceStore hands the installed-module set down to AppStore, so AppStore is built first.
     const appStore = createAppStore({ reactivity: solidReactivity });
-    const spaceStore = createSpaceStore({
+    const { store: spaceStore, lends } = createSpaceStore({
+      operations: testOperations,
       reactivity: solidReactivity,
       platform,
       toasts: toastService,
@@ -417,9 +419,15 @@ function mountShell(): Stores {
       profileStore,
       routeStore,
       templateStore,
-      appStore,
-      themeStore,
       shellStore,
+    });
+    // Handed over as `composeStores` does.
+    templateStore.provideSpaceAppearance(lends.appearance);
+    themeStore.provideSpaceAppearance(lends.appearance);
+    appStore.provideInstalledModules(lends.installedModules);
+    shellStore.provideTemplateSaver({
+      current: () => templateStore.currentTemplate,
+      save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
     });
     startBoot({ platform, firstScreen, sessionStore, datasetStore, profileStore, spaceStore, routeStore });
     Object.assign(out, {
@@ -1547,7 +1555,7 @@ describe('dataset lifecycle through the real stores', () => {
     const record =
       stores.spaces.mySpaces().find((s) => isSpaceSelf(s, ds)) ??
       (await Space.findAll(ds.handle as never, { where: spaceSelfWhere(ds) }))[0];
-    return invokeOperation(
+    return testOperations.invoke(
       `core.setSpaceDefault${which}`,
       { space: record.id, [which.toLowerCase()]: value },
       {
@@ -1994,7 +2002,7 @@ describe('dataset lifecycle through the real stores', () => {
     const refused = vi.spyOn(toastService, 'error');
     try {
       await expect(
-        invokeOperation(
+        testOperations.invoke(
           'core.setSpaceDefaultTheme',
           { space: 'urn:nothing', theme: 'neon' },
           {
@@ -3749,7 +3757,7 @@ describe('changing a reaction', () => {
 
     // As a template invokes them: through the host's one way to run an operation.
     const give = (value: number | null) =>
-      invokeOperation(
+      testOperations.invoke(
         value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
         { node: subject.id, signalType: stars.id, ...(value === null ? {} : { value }) },
         { dataset: handle, invoker: 'did:test:james' },
@@ -5593,6 +5601,8 @@ describe('a schema install the backend refuses', () => {
     await ready(stores);
     await stores.datasets.switchDataset('garden-1');
     const handle = stores.datasets.currentDataset()!.handle;
+    // A space with its record, so a write to it is judged rather than refused as still arriving.
+    await Space.create(handle as never, { name: 'Garden', uuid: 'garden-1' } as never);
     const type = (name: string) => ({
       name,
       manifest: { version: '1', entities: { [name]: { properties: { label: { type: 'string' } }, relations: {} } } },

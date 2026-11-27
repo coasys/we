@@ -32,6 +32,12 @@
 // Timers and `performance` are left alone: every JavaScript runtime has them. The rest of `shared/`
 // is not held to this: its browser modules (safe mode, the boot snapshot) are the platform's side.
 //
+// And the platform port itself (`shared/platform/port.ts`) hands a store no DOM object: no member
+// returns one, takes one, or hands one to a callback — what a store means is asked as an intent
+// (`reveal(id)`, `applyTheme(theme)`), so a host with no DOM can answer it. A name the port's
+// signatures write is looked up by TypeScript, and one declared in the DOM's library is refused,
+// except inside `PlatformEvents`: an input event's payload is the one DOM type the port may carry.
+//
 // Run: pnpm check:neutral-stores
 
 import { execSync } from 'node:child_process';
@@ -230,7 +236,49 @@ function browserGlobals(file) {
   return found;
 }
 
+/** The port whose signatures may carry no DOM object, and the one interface that may: event payloads. */
+const PORT = `${SHARED}/platform/port.ts`;
+const PORT_EVENTS = 'PlatformEvents';
+
+/** Where the port's signatures name a type the DOM's library declares, as `line: Interface.member: Type`. */
+function domTypesInPort(file) {
+  const program = ts.createProgram([join(ROOT, file)], {
+    lib: ['lib.es2022.d.ts', 'lib.dom.d.ts'],
+    noResolve: true,
+    noEmit: true,
+    skipLibCheck: true,
+  });
+  const checker = program.getTypeChecker();
+  const source = program.getSourceFile(join(ROOT, file));
+  const found = [];
+  const isDom = (node) => {
+    const symbol = checker.getSymbolAtLocation(node.typeName);
+    return (symbol?.declarations ?? []).some((d) => /lib\.dom(\.[\w.]+)?\.d\.ts$/.test(d.getSourceFile().fileName));
+  };
+  const visit = (node, owner) => {
+    if (ts.isTypeReferenceNode(node) && isDom(node)) {
+      const at = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1;
+      found.push(`${at}: ${owner}: ${node.typeName.getText(source)}`);
+    }
+    ts.forEachChild(node, (child) => visit(child, owner));
+  };
+  for (const statement of source.statements) {
+    if (!(ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement))) continue;
+    if (statement.name.text === PORT_EVENTS) continue;
+    visit(statement, statement.name.text);
+  }
+  return found;
+}
+
 const problems = [];
+
+const portDom = domTypesInPort(PORT);
+if (portDom.length > 0) {
+  problems.push(
+    `${PORT} hands a store DOM objects (${portDom.join('; ')}). Ask for what the store means as an intent ` +
+      `instead, so a host with no DOM can answer it; only ${PORT_EVENTS}' payloads may be DOM types.`,
+  );
+}
 
 for (const file of listFiles(SHARED)) {
   const found = solidImports(file);
@@ -274,5 +322,5 @@ if (problems.length > 0) {
   process.exit(1);
 }
 console.log(
-  `check:neutral-stores — ${SHARED}/ and ${neutral.length} neutral packages are free of Solid, and ${platformFiles} files under ${PLATFORM_NEUTRAL.join(', ')} read no browser global.`,
+  `check:neutral-stores — ${SHARED}/ and ${neutral.length} neutral packages are free of Solid, ${platformFiles} files under ${PLATFORM_NEUTRAL.join(', ')} read no browser global, and the platform port hands out no DOM object.`,
 );

@@ -117,6 +117,15 @@ how panels are arranged.
 
 A host shows it provides a profile by passing that profile's vectors ([Conformance](#conformance)).
 
+`layout` is the contract, not how WE arranges its docks. What a template may ask of a host is the
+profile's members and what its vectors say they do; WE's dock kernel
+(`packages/app-shell/src/shared/kernels/dockLayout.ts`, with its recorded scenarios) is how WE
+computes its own chrome, and a host uses it only if it wants WE's arrangement. A host that docks
+panels some other way, or not at all, conforms to `layout` without it. Two of WE's kernels are
+different: board arrangement and tree ranks answer with data other members of a space see — which
+card a column shows and where a card sits — so a host that draws boards or trees MUST give their
+answers.
+
 > **Planned.** A template names the profiles it needs, with the version it was written against, in
 > `meta.requires` ([Declaring what a template requires](../template/catalogs.md#declaring-what-a-template-requires)),
 > so a host can say what it lacks before drawing.

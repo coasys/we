@@ -261,7 +261,10 @@ export function writeThemeSettings(theme: ThemeOverrides, into: Record<string, s
  * Fill in the settings a theme leaves unset from what an element is actually showing, so the
  * editor's controls start where the theme put them rather than at hard-coded defaults.
  */
-export function readThemeSettings(theme: ThemeOverrides, styles: CSSStyleDeclaration): ThemeOverrides {
+export function readThemeSettings(
+  theme: ThemeOverrides,
+  styles: Pick<CSSStyleDeclaration, 'getPropertyValue'>,
+): ThemeOverrides {
   const result: Record<string, unknown> = { ...theme };
   for (const [key, setting] of Object.entries(THEME_SETTINGS) as [DirectSetting, ThemeSetting][]) {
     if (result[key] !== undefined || !setting.read) continue;

@@ -11,12 +11,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { writes } = vi.hoisted(() => ({ writes: [] as [string, Record<string, unknown>][] }));
 
-vi.mock('../src/shared/invokeOperation', () => ({
-  invokeOperation: async (name: string, args: Record<string, unknown>) => {
-    writes.push([name, args]);
-  },
-}));
-
 vi.mock('@we/entities', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@we/entities');
   return {
@@ -39,6 +33,12 @@ const stores = {
   datasetStore: { currentDataset: () => ({ id: 'ds', handle: {} }) },
   sessionStore: { me: () => ({ did: 'did:me' }) },
   spaceStore: { mutedDids: () => [] },
+  // The composition's operation runner: what the badge invokes, recorded here.
+  operations: {
+    invoke: async (name: string, args: Record<string, unknown>) => {
+      writes.push([name, args]);
+    },
+  },
 } as unknown as Partial<StoreRegistry>;
 
 /** Render inside the store registry, as the host's composition hands it to every component. */

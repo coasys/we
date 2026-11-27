@@ -5,7 +5,11 @@
  * reactivity port, and the platform the app supplied) and the stores it reads passed in as
  * arguments, in an order that is the dependency graph: nothing is built before what it reads. An
  * upward dependency — a store that needs one built after it — is lent later through a method
- * (`templateStore.provideSpaceLookup`, `appStore.provideInstalledModules`), never by reordering.
+ * (`templateStore.provideSpaceAppearance`, `appStore.provideInstalledModules`), never by reordering.
+ * Where the store lending is composed later, it returns what it lends and the hand-over is made here
+ * (`createSpaceStore`'s `lends`), rather than inside its own builder, so the binding is visible in the
+ * composition. A composed store's own parts still lend each other inside it; those are not between
+ * stores.
  *
  * Neutral, so that every host composes the same graph the same way: the Solid app calls it from
  * `BootController` with Solid's port and its module-level host state, and a host on another engine,
@@ -18,6 +22,7 @@
  * already unlocked, and again after login().
  */
 import { trace } from '@we/backend-shared';
+import { bindPredictions, createPredictions } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
 import type { BackendConnector } from './backend/types';
@@ -25,6 +30,7 @@ import { createAppClocks, provideAppClocks } from './clocks';
 import type { Credential } from './credential';
 import type { FirstScreen } from './firstScreen';
 import { consumeGuestBootTarget } from './guestLink';
+import { createOperations } from './invokeOperation';
 import type { LiveTemplates } from './liveTemplate';
 import type { PlatformPort } from './platform/port';
 import type { PlatformAdapter } from './platform/types';
@@ -79,6 +85,16 @@ export interface StoreCompositionDeps {
 export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
   const { reactivity, platform, backend, toasts, firstScreen, credential, liveTemplates } = deps;
 
+  /*
+    Depends on nothing: this composition's declared-operation runner — its queues, its speculations
+    and the predictions they draw — so nothing pending in one composition is drawn, or waited on, in
+    another. The entity stand-ins draw these predictions for as long as the composition lasts.
+  */
+  const predictions = createPredictions();
+  const operations = createOperations(predictions);
+  reactivity.onCleanup(bindPredictions(predictions));
+  reactivity.onCleanup(() => predictions.clear());
+
   // Depends on nothing: the app's address, read by templates, the space store and presence.
   const routeStore = createRouteStore({ reactivity, platform });
   /*
@@ -118,7 +134,15 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
   // query the entities it registers.
   const shapeStore = createShapeStore({ reactivity, toasts, sessionStore, datasetStore });
   // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({ reactivity, toasts, sessionStore, datasetStore, shapeStore, platform });
+  const recordStore = createRecordStore({
+    reactivity,
+    toasts,
+    sessionStore,
+    datasetStore,
+    shapeStore,
+    platform,
+    operations,
+  });
   const profileStore = createProfileStore({
     reactivity,
     firstScreen,
@@ -129,7 +153,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     accountStore,
     platform,
   });
-  const themeStore = createThemeStore({ reactivity, platform, toasts, sessionStore, datasetStore });
+  const themeStore = createThemeStore({ reactivity, platform, toasts, sessionStore, datasetStore, predictions });
   const templateStore = createTemplateStore({
     reactivity,
     platform,
@@ -139,6 +163,12 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     datasetStore,
     themeStore,
     routeStore,
+  });
+  // The shell cannot see the template on screen or a library to save into, for "save this
+  // arrangement as a template": the template store's to lend.
+  shellStore.provideTemplateSaver({
+    current: () => templateStore.currentTemplate,
+    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
   });
   /** What the editing session edits — the editor's plumbing, reached by its host adapter. */
   const editTarget = createEditTarget({ reactivity, templateStore });
@@ -155,7 +185,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     editTarget,
   });
   const appStore = createAppStore({ reactivity });
-  const spaceStore = createSpaceStore({
+  const { store: spaceStore, lends: spaceLends } = createSpaceStore({
     reactivity,
     platform,
     toasts,
@@ -163,15 +193,19 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     host: deps.spaceHost,
     sessionStore,
     datasetStore,
+    operations,
     shapeStore,
     recordStore,
     profileStore,
     routeStore,
     templateStore,
-    appStore,
-    themeStore,
     shellStore,
   });
+  // Composed before the space store, and lent what it reads of it: the spaces and this agent's
+  // overrides (which template and theme apply), and the modules installed (which apps the switcher offers).
+  templateStore.provideSpaceAppearance(spaceLends.appearance);
+  themeStore.provideSpaceAppearance(spaceLends.appearance);
+  appStore.provideInstalledModules(spaceLends.installedModules);
 
   // Registered before the stores below are built, as it always has been: they follow the dataset
   // the sequence opens, so they are composed after it is set up.
@@ -233,6 +267,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     editTarget,
     identityStore,
     interpretationStore,
+    operations,
     presenceStore,
     profileStore,
     recordStore,

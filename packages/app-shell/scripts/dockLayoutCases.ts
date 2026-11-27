@@ -569,7 +569,7 @@ export function dockLayoutScenarios(): DockScenario[] {
       ids,
       closing,
       faded: true,
-      sizes: { [ids[0]]: { width: '360px', height: '400px' } },
+      sizes: { [ids[0]]: { width: 360, height: 400 } },
     });
     const stowed = scenario('a lane put away on the left, a band along the bottom, a panel maximised');
     seated(stowed.requests, desktop, stowed.touched, `${stowed.name}, as the lane is put away`);

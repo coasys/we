@@ -10,7 +10,7 @@ import type { EntityStatic, RecordInstance } from '@we/backend-shared';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
-import { invokeOperation } from '../../invokeOperation';
+import type { Operations } from '../../invokeOperation';
 import type { Toasts } from '../../toasts';
 import type { DatasetStore } from '../DatasetStore';
 import type { SessionStore } from '../SessionStore';
@@ -24,20 +24,25 @@ export interface RecordContext {
   /** Who writes — every write runs as the signed-in agent. */
   sessionStore: Pick<SessionStore, 'me'>;
   datasetStore: RecordDatasets;
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: Operations;
   /**
    * Run one of the declared operations (`core.placeCard` …) as the signed-in agent. The writes are
    * declared so every host and an agent make the same ones, and run as the host runs every one
-   * (`invokeOperation`), drawn before they land; the undo stays here.
+   * (`operations.invoke`), drawn before they land; the undo stays here.
    */
   runOp: <T = unknown>(name: string, args: Record<string, unknown>, handle: unknown) => Promise<T>;
 }
 
 /** `runOp` for a session: refuses with nobody signed in, rather than writing as nobody. */
-export function operationRunner(sessionStore: Pick<SessionStore, 'me'>): RecordContext['runOp'] {
+export function operationRunner(
+  sessionStore: Pick<SessionStore, 'me'>,
+  operations: Operations,
+): RecordContext['runOp'] {
   return async <T>(name: string, args: Record<string, unknown>, handle: unknown): Promise<T> => {
     const invoker = sessionStore.me()?.did;
     if (!invoker) throw new Error(`${name}: nobody is signed in`);
-    return (await invokeOperation(name, args, { dataset: handle, invoker })) as T;
+    return (await operations.invoke(name, args, { dataset: handle, invoker })) as T;
   };
 }
 

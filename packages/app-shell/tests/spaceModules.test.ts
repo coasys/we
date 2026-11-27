@@ -95,7 +95,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             defaultTemplateId: () => '',
             currentTemplate: { type: 'Column' },
           } as never,
-          appStore: { provideInstalledModules: () => {} },
           shellStore: {
             provideModuleGate: () => {},
             dockGeometry: () => ({}),

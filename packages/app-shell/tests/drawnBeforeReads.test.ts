@@ -10,10 +10,8 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import type { LivePage, LiveQuery } from '@we/backend-shared';
 import {
-  clearPredictions,
   getEntity,
   getEntityForDataset,
-  predictionsFor,
   registerOperations,
   unregisterOperations,
   withPredictions,
@@ -23,11 +21,11 @@ import { createTestReactivity } from '@we/reactivity/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createBoardActions } from '../src/shared/boards';
-import { invokeOperation } from '../src/shared/invokeOperation';
 import { createRecordCanvas } from '../src/shared/stores/records/canvas';
 import { createRecordConnections } from '../src/shared/stores/records/connections';
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
+import { testOperations, testPredictions } from './support/operations';
 
 const ME = 'did:test:me';
 
@@ -42,7 +40,7 @@ type Statics = {
 let handle: unknown;
 const backend = (name: string) => (getEntityForDataset(name, handle) ?? getEntity(name)) as unknown as Statics;
 /** The entity as a template's `$query` reaches it — the renderer's bindings draw what is pending. */
-const onScreen = (name: string) => withPredictions(backend(name), [name]) as unknown as Statics;
+const onScreen = (name: string) => withPredictions(testPredictions, backend(name), [name]) as unknown as Statics;
 
 /** A live read followed as a surface follows it, and what it shows now. */
 const opened: (() => void)[] = [];
@@ -103,7 +101,7 @@ beforeEach(async () => {
 afterEach(() => {
   for (const close of opened.splice(0)) close();
   unregisterOperations('polls');
-  clearPredictions();
+  testPredictions.clear();
 });
 
 const signalsOf = (rows: Row[], id: string) => (rows.find((row) => row.id === id)?.signals ?? []) as Row[];
@@ -114,7 +112,7 @@ describe('drawn before any read answers', () => {
     const shown = await follow('CollectionBlock', { where: { kind: 'post' }, include: { signals: true } });
     const reads = holdReads(['Signal', 'CollectionBlock']);
 
-    const pressed = invokeOperation(
+    const pressed = testOperations.invoke(
       'core.upsertSignal',
       { node: post.id, signalType: 'like', value: 1 },
       { dataset: handle, invoker: ME },
@@ -124,7 +122,7 @@ describe('drawn before any read answers', () => {
     expect(reads.answered()).toBe(0);
 
     // Taken back before the press has landed: predicted from the press's own prediction.
-    const takenBack = invokeOperation(
+    const takenBack = testOperations.invoke(
       'core.withdrawSignal',
       { node: post.id, signalType: 'like' },
       { dataset: handle, invoker: ME },
@@ -168,6 +166,7 @@ describe('drawn before any read answers', () => {
     const reads = holdReads(['CollectionBlock', 'TaskBlock']);
 
     const actions = createBoardActions({
+      operations: testOperations,
       dataset: () => handle as never,
       invoker: () => ME,
       offeredStates: () => [],
@@ -182,7 +181,7 @@ describe('drawn before any read answers', () => {
     expect(pool().find((row) => row.id === task.id)?.status).toBe('done');
     expect(reads.answered()).toBe(0);
 
-    const reordered = invokeOperation(
+    const reordered = testOperations.invoke(
       'core.reorderBoardColumns',
       { board: board.id, ids: [done.id, todo.id] },
       { dataset: handle, invoker: ME },
@@ -207,7 +206,7 @@ describe('drawn before any read answers', () => {
     const columns = await follow('CollectionBlock', { where: { kind: 'column' } });
     const reads = holdReads(['CollectionBlock']);
 
-    const arranging = invokeOperation(
+    const arranging = testOperations.invoke(
       'core.arrangeColumn',
       { column: column.id, ids: [b.id, a.id] },
       { dataset: handle, invoker: ME },
@@ -222,7 +221,11 @@ describe('drawn before any read answers', () => {
   it('a vote cast on a poll', async () => {
     const votes = await follow('Vote', { where: { pollId: 'poll-1' } });
     const reads = holdReads(['Vote']);
-    const voting = invokeOperation('polls.vote', { poll: 'poll-1', option: 'tea' }, { dataset: handle, invoker: ME });
+    const voting = testOperations.invoke(
+      'polls.vote',
+      { poll: 'poll-1', option: 'tea' },
+      { dataset: handle, invoker: ME },
+    );
     expect(await until(() => votes().some((row) => row.option === 'tea' && row.author === ME))).toBe(true);
     expect(reads.answered()).toBe(0);
     reads.open();
@@ -246,7 +249,8 @@ describe('drawn before any read answers', () => {
         currentDatasetEntities: () => [],
         datasets: () => [],
       } as never,
-      runOp: operationRunner(sessionStore),
+      operations: testOperations,
+      runOp: operationRunner(sessionStore, testOperations),
     };
     const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
     const connections = createRecordConnections({ ...context, kinds });
@@ -274,7 +278,7 @@ describe('drawn before any read answers', () => {
     );
     expect(await until(() => lines().some((row) => row.target === two.id))).toBe(true);
     expect(reads.answered()).toBe(0);
-    expect(predictionsFor(handle).length).toBeGreaterThan(0);
+    expect(testPredictions.for(handle).length).toBeGreaterThan(0);
 
     reads.open();
     await Promise.all([styling, drawing]);

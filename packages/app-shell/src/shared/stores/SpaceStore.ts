@@ -26,7 +26,6 @@ import type { LocationData } from '../spaceSync';
 import type { TaskWorkflowLive } from '../taskWorkflowLive';
 import type { Toasts } from '../toasts';
 import type { AppDataset } from './DatasetStore';
-import type { ShellStore } from './ShellStore';
 import { createCallExports } from './space/callExports';
 import { createSpaceContent, type SpaceContentDeps } from './space/content';
 import { createSpaceContext, type SpaceContext, type SpaceDatasets, type SpaceSession } from './space/context';
@@ -49,8 +48,6 @@ import type {
 } from './space/types';
 import { createSpaceUnread } from './space/unread';
 import { createSpaceWrites } from './space/writes';
-import type { TemplateStore } from './TemplateStore';
-import type { ThemeStore } from './ThemeStore';
 
 export interface SpaceStore {
   // State
@@ -639,20 +636,34 @@ export interface SpaceStoreDeps {
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
   sessionStore: SpaceSession;
   datasetStore: SpaceDatasets;
-  appStore: SpaceModulesDeps['appStore'];
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: SpaceContext['operations'];
   profileStore: SpaceDetailsDeps['profileStore'];
   recordStore: SpaceTaskStatesDeps['recordStore'] & SpaceContentDeps['recordStore'];
   routeStore: SpaceListDeps['routeStore'] & SpaceNavigationDeps['routeStore'];
   shapeStore: SpaceListDeps['shapeStore'] & SpaceExtractionDeps['shapeStore'];
-  shellStore: SpaceNavigationDeps['shellStore'] &
-    SpaceModulesDeps['shellStore'] &
-    Pick<ShellStore, 'provideTemplateSaver'>;
+  shellStore: SpaceNavigationDeps['shellStore'] & SpaceModulesDeps['shellStore'];
   templateStore: SpaceListDeps['templateStore'] &
     SpaceNavigationDeps['templateStore'] &
-    SpaceModulesDeps['templateStore'] &
-    Pick<TemplateStore, 'provideSpaceAppearance' | 'saveTemplateAs'>;
-  themeStore: Pick<ThemeStore, 'provideSpaceAppearance'>;
+    SpaceModulesDeps['templateStore'];
   host: SpaceHostState;
+}
+
+/**
+ * What the space store lends stores composed before it, which cannot read it: handed over by
+ * `composeStores`, so every late binding between stores is written in that one file.
+ */
+export interface SpaceStoreLends {
+  /** The spaces' records and this agent's overrides, for the template and theme stores. */
+  appearance: SpaceAppearance;
+  /** The modules this agent has installed, for the app store's switcher. */
+  installedModules: Accessor<string[]>;
+}
+
+/** The space store, and what it lends. */
+export interface SpaceStoreWithLends {
+  store: SpaceStore;
+  lends: SpaceStoreLends;
 }
 
 /*
@@ -663,7 +674,7 @@ export interface SpaceStoreDeps {
   store is built — never while it is being built, so no part reads one that does not exist yet,
   whichever port runs the effects.
 */
-export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
+export function createSpaceStore(deps: SpaceStoreDeps): SpaceStoreWithLends {
   const {
     reactivity,
     platform,
@@ -671,17 +682,23 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     firstScreen,
     sessionStore: session,
     datasetStore,
-    appStore,
     profileStore,
     recordStore,
     routeStore,
     shapeStore,
     shellStore,
     templateStore,
-    themeStore,
     host,
   } = deps;
-  const ctx = createSpaceContext({ reactivity, platform, toasts, firstScreen, sessionStore: session, datasetStore });
+  const ctx = createSpaceContext({
+    reactivity,
+    platform,
+    toasts,
+    firstScreen,
+    sessionStore: session,
+    datasetStore,
+    operations: deps.operations,
+  });
 
   /*
     The parts are built in the order they read each other, each taking the narrowest slice of the
@@ -701,7 +718,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   const writes = createSpaceWrites({ ...ctx, spaces, onScreen });
 
   // What each space runs and shows, and this agent's own choices about each.
-  const modules = createSpaceModules({ ...ctx, templateStore, appStore, shellStore, spaces, onScreen, writes });
+  const modules = createSpaceModules({ ...ctx, templateStore, shellStore, spaces, onScreen, writes });
   spaces.provideSectionSwitch((viewId, spaceId) => modules.members.setViewEnabled(viewId, true, spaceId));
 
   // Who stands where in each space and what its rules allow, and the write check that holds them.
@@ -778,9 +795,10 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
   );
 
   /*
-    The template and theme stores are composed before this one and cannot read it — lend them the
+    The template and theme stores are composed before this one and cannot read it — they are lent the
     spaces' records and this agent's overrides, which they resolve which template and theme apply
     from (see `spaceAppearance.ts`). The overrides are this agent's own, written to the root dataset.
+    Returned, and handed over by `composeStores`.
   */
   const appearance: SpaceAppearance = {
     spaces: spaces.members.mySpaces,
@@ -791,9 +809,6 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
         ? modules.writeSpacePreference('setSpaceTemplateOverride', uuid, { template: id })
         : modules.writeSpacePreference('setSpaceThemeOverride', uuid, { theme: id }),
   };
-  templateStore.provideSpaceAppearance(appearance);
-  themeStore.provideSpaceAppearance(appearance);
-
   // A call's transcript and its interpretation log, read for the dataset each export names.
   const callExports = createCallExports({
     toasts,
@@ -804,16 +819,7 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     exportMeta: extraction.collectionInterpretationFor,
   });
 
-  /*
-    The other thing the shell cannot see for itself: the template on screen and a library to save
-    into, for "save this arrangement as a template".
-  */
-  shellStore.provideTemplateSaver({
-    current: () => templateStore.currentTemplate,
-    save: (schema) => templateStore.saveTemplateAs(schema, 'root'),
-  });
-
-  return {
+  const store: SpaceStore = {
     ...spaces.members,
     ...navigation.members,
     ...modules.members,
@@ -830,4 +836,5 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStore {
     saveFileBlock: callExports.saveFileBlock,
     exportInterpretationLog: callExports.exportInterpretationLog,
   };
+  return { store, lends: { appearance, installedModules: modules.installedModules } };
 }

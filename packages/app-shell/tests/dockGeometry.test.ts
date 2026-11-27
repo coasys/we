@@ -64,7 +64,6 @@ import {
   occupiedFor,
   overlapArea,
   PANEL_CHROME,
-  PANEL_LAYER_BASE,
   placementFromDeclaration,
   RAIL_TOP_PX,
   railBand,
@@ -116,15 +115,15 @@ const dock = (over: Partial<DockRequest> = {}): DockRequest => ({
   ...over,
 });
 
-const px = (value?: string) => (value === undefined ? undefined : parseFloat(value));
+const px = (value?: number) => value;
 
 describe('a panel that displaces', () => {
   it('spans its edge and takes exactly what the content gave up', () => {
     const geometry = resolveDock(dock({ placement: placement() }), desktop);
 
     expect(geometry.floating).toBe(false);
-    expect(geometry.right).toBe('0px');
-    expect(geometry.width).toBe('440px');
+    expect(geometry.right).toBe(0);
+    expect(geometry.width).toBe(440);
     // Spanning is what makes the inset honest: a partial-height panel would still cost a full
     // column, so the two halves of the rule have to agree.
     expect(geometry.top).toBeDefined();
@@ -135,7 +134,7 @@ describe('a panel that displaces', () => {
   it('meets the content edge to edge, with no gap to fall through', () => {
     // A floating panel is a card over the app and needs air; a displacing one has taken room *from*
     // the app, so a gap there is a strip of background where the content used to be.
-    expect(resolveDock(dock({ placement: placement() }), desktop).right).toBe('0px');
+    expect(resolveDock(dock({ placement: placement() }), desktop).right).toBe(0);
     expect(
       px(resolveDock(dock({ placement: placement({ snap: null, displace: false }) }), desktop).left),
     ).toBeGreaterThan(SIDEBAR_PX);
@@ -154,7 +153,7 @@ describe('a panel that displaces', () => {
 
   it('refuses to shrink into a sliver', () => {
     const thin = resolveDock(dock({ placement: placement({ w: 10 }) }), desktop);
-    expect(thin.width).toBe(`${MIN_DOCK_PX}px`);
+    expect(thin.width).toBe(MIN_DOCK_PX);
   });
 
   it('stacks behind a panel already holding that edge', () => {
@@ -164,7 +163,7 @@ describe('a panel that displaces', () => {
       ...NO_INSET,
       right: 440,
     });
-    expect(second.right).toBe('440px');
+    expect(second.right).toBe(440);
   });
 });
 
@@ -176,8 +175,8 @@ describe('two strips meeting at a corner', () => {
     // the layout. Every application that lays panels out this way gives it to the vertical edges.
     const side = resolveDock(dock({ placement: placement({ snap: 'right' }) }), desktop, bottomDocked);
 
-    expect(side.bottom).toBe('0px');
-    expect(side.top).toBe('0px');
+    expect(side.bottom).toBe(0);
+    expect(side.top).toBe(0);
   });
 
   it('keeps the horizontal one clear of the sides', () => {
@@ -188,7 +187,7 @@ describe('two strips meeting at a corner', () => {
       rightDocked,
     );
 
-    expect(bottom.right).toBe('440px');
+    expect(bottom.right).toBe(440);
   });
 });
 
@@ -203,8 +202,8 @@ describe('a panel that floats', () => {
     const geometry = resolveDock(dock({ placement: floating }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.width).toBe('360px');
-    expect(geometry.height).toBe('200px');
+    expect(geometry.width).toBe(360);
+    expect(geometry.height).toBe(200);
     expect(px(geometry.left)! + 360).toBeLessThan(desktop.width);
     expect(px(geometry.top)! + 200).toBeLessThan(desktop.height);
   });
@@ -248,8 +247,8 @@ describe('a panel that floats', () => {
 
   it('keeps a floor under both dimensions', () => {
     const tiny = resolveDock(dock({ placement: placement({ snap: null, displace: false, w: 1, h: 1 }) }), desktop);
-    expect(tiny.width).toBe(`${MIN_FLOAT_PX}px`);
-    expect(tiny.height).toBe(`${MIN_FLOAT_PX}px`);
+    expect(tiny.width).toBe(MIN_FLOAT_PX);
+    expect(tiny.height).toBe(MIN_FLOAT_PX);
   });
 });
 
@@ -284,7 +283,7 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe('0px');
+    expect(geometry.left).toBe(0);
     expect(contentInset([dock({ placement: placement({ maximised: true }) })], desktop).right).toBe(0);
   });
 
@@ -357,7 +356,7 @@ describe('maximised', () => {
     const restored = resolveDock(dock({ placement: parked }), desktop);
 
     expect(maximised.width).toBeUndefined();
-    expect(restored.width).toBe('360px');
+    expect(restored.width).toBe(360);
   });
 
   it('covers the content region and insets nothing', () => {
@@ -366,8 +365,8 @@ describe('maximised', () => {
     const geometry = resolveDock(dock({ size: 'full' }), desktop);
 
     expect(geometry.floating).toBe(true);
-    expect(geometry.left).toBe('0px');
-    expect(geometry.right).toBe('0px');
+    expect(geometry.left).toBe(0);
+    expect(geometry.right).toBe(0);
     expect(contentInset([dock({ size: 'full' })], desktop).right).toBe(0);
   });
 
@@ -432,7 +431,7 @@ describe('room another panel has already taken', () => {
     // Full screen is the whole window — see "covers a panel that has taken room" under maximised.
     const geometry = resolveDock(dock({ placement: placement({ maximised: true }) }), desktop, notesDocked);
 
-    expect(geometry.right).toBe('0px');
+    expect(geometry.right).toBe(0);
   });
 
   it('moves the landing spots themselves, not just where a panel ends up', () => {
@@ -460,7 +459,7 @@ describe('room another panel has already taken', () => {
     // frame. Nothing here passes a panel its own contribution — the store excludes it by index.
     const docked = resolveDock(dock({ placement: placement({ snap: 'right', thicknessX: 440 }) }), desktop);
 
-    expect(docked.right).toBe('0px');
+    expect(docked.right).toBe(0);
   });
 });
 
@@ -1870,16 +1869,14 @@ describe('stacking panels', () => {
     // A screen where nothing has been clicked stacks exactly as it always did.
     const layers = layerOrder(['a', 'b', 'c'], { c: 1 });
 
-    expect(layers.a).toBe(PANEL_LAYER_BASE);
-    expect(layers.b).toBe(PANEL_LAYER_BASE + 1);
-    expect(layers.c).toBe(PANEL_LAYER_BASE + 2);
+    expect(layers).toEqual({ a: 0, b: 1, c: 2 });
   });
 
-  it('counts up from the sticky band, one step per panel', () => {
+  it('answers ranks, one step per panel from 0 at the back', () => {
     const layers = layerOrder(['a', 'b'], {});
 
-    expect(Math.min(...Object.values(layers))).toBe(PANEL_LAYER_BASE);
-    expect(Math.max(...Object.values(layers))).toBe(PANEL_LAYER_BASE + 1);
+    expect(Math.min(...Object.values(layers))).toBe(0);
+    expect(Math.max(...Object.values(layers))).toBe(1);
   });
 });
 
@@ -2904,22 +2901,22 @@ describe('every member of a seat resolves to one box', () => {
     edge: 'left',
     floating: false,
     handleX: 'right',
-    top: '0px',
-    left: '0px',
-    width: '440px',
-    height: '900px',
+    top: 0,
+    left: 0,
+    width: 440,
+    height: 900,
     ...over,
   });
 
   it('gives a hidden tab the box the showing member resolved to', () => {
     const resolved: Record<string, DockGeometry> = {
       'transcribe:transcript': seated(),
-      'notes:panel': seated({ edge: null, floating: true, top: '420px', left: '900px', width: '300px' }),
+      'notes:panel': seated({ edge: null, floating: true, top: 420, left: 900, width: 300 }),
     };
 
     shareSeatBox(resolved, { 'notes:panel': 'transcribe:transcript' });
 
-    expect(resolved['notes:panel']).toMatchObject({ top: '0px', left: '0px', width: '440px', height: '900px' });
+    expect(resolved['notes:panel']).toMatchObject({ top: 0, left: 0, width: 440, height: 900 });
   });
 
   it('copies the whole answer, not only the rectangle', () => {
@@ -2931,7 +2928,7 @@ describe('every member of a seat resolves to one box', () => {
     */
     const resolved: Record<string, DockGeometry> = {
       front: seated(),
-      back: seated({ floating: true, handleX: 'left', handleY: 'top', padTop: '56px' }),
+      back: seated({ floating: true, handleX: 'left', handleY: 'top', padTop: 56 }),
     };
 
     shareSeatBox(resolved, { back: 'front' });
@@ -2947,23 +2944,23 @@ describe('every member of a seat resolves to one box', () => {
     const strip = [{ id: 'front', title: 'Transcript', active: true }];
     const resolved: Record<string, DockGeometry> = {
       front: seated({ tabs: strip }),
-      back: seated({ hidden: true, layer: 204, left: '900px' }),
+      back: seated({ hidden: true, layer: 4, left: 900 }),
     };
 
     shareSeatBox(resolved, { back: 'front' });
 
-    expect(resolved.back).toMatchObject({ hidden: true, layer: 204, left: '0px' });
+    expect(resolved.back).toMatchObject({ hidden: true, layer: 4, left: 0 });
     expect(resolved.back.tabs).toBeUndefined();
   });
 
   it('does nothing for a front that is not resolved', () => {
     // A panel can leave the docks between the seating pass and this one — a module turned off in
     // this space, a route change. Following a missing front must leave the box it has, not clear it.
-    const resolved: Record<string, DockGeometry> = { back: seated({ left: '900px' }) };
+    const resolved: Record<string, DockGeometry> = { back: seated({ left: 900 }) };
 
     shareSeatBox(resolved, { back: 'gone' });
 
-    expect(resolved.back.left).toBe('900px');
+    expect(resolved.back.left).toBe(900);
   });
 
   it('resolves a degenerate seat rect to a degenerate box, which is why the above is needed', () => {

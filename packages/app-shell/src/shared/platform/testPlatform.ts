@@ -1,11 +1,13 @@
 /**
  * The platform port with nothing behind it: storage in maps, an address and a history held in
  * memory, a window whose size a test sets, events a test sends, frames a test runs, and a document
- * that keeps what is written to its root and finds nothing in it.
+ * that keeps what is written to its root, and draws only the elements and frames a test says it does.
  *
  * What the store tests take in place of a browser, so a store runs with no DOM at all and a test
  * says what the window does rather than hoping jsdom does it.
  */
+import type { ThemeOverrides } from '@we/schema-shared';
+
 import type { PlatformAddress, PlatformEvents, PlatformPort, PlatformRect, PlatformStorage } from './port';
 
 /** A storage in a map, readable as one. */
@@ -68,6 +70,16 @@ export interface TestPlatform extends PlatformPort {
   };
   /** Say where an element matching a selector is drawn, for `document.measure`. */
   setMeasured(selector: string, rect: PlatformRect | null): void;
+  /** Say whether an element with this id is drawn, for `document.reveal`. */
+  setDrawnId(id: string, drawn: boolean): void;
+  /** Say which origins the embedded frames show, one entry per frame, for `document.postToFrames`. */
+  setFrames(origins: readonly string[]): void;
+  /** Every theme written to the root, every element brought into view, every message posted to a frame. */
+  readonly asked: {
+    themes: { theme: ThemeOverrides; crossFade?: boolean }[];
+    revealed: { id: string; block?: string }[];
+    posted: { message: unknown; origin: string }[];
+  };
 }
 
 export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatform {
@@ -82,6 +94,9 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
   let reloads = 0;
   const opened: string[] = [];
   const measured = new Map<string, PlatformRect | null>();
+  const drawnIds = new Set<string>();
+  let frameOrigins: readonly string[] = [];
+  const asked: TestPlatform['asked'] = { themes: [], revealed: [], posted: [] };
   const drawn: TestPlatform['drawn'] = {
     properties: new Map(),
     attributes: new Map(),
@@ -165,11 +180,23 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
         if (value === null) drawn.attributes.delete(name);
         else drawn.attributes.set(name, value);
       },
-      root: () => null,
+      applyTheme: (theme, opts) => void asked.themes.push({ theme, ...(opts ?? {}) }),
       setStyleSheet: (id, css) => void drawn.styleSheets.set(id, css),
       readComputedStyle: () => null,
-      byId: () => null,
-      queryAll: () => [],
+      reveal: (id, opts) => {
+        if (!drawnIds.has(id)) return false;
+        asked.revealed.push({ id, ...(opts?.block ? { block: opts.block } : {}) });
+        return true;
+      },
+      postToFrames: (message, origins) => {
+        let sent = 0;
+        for (const origin of frameOrigins) {
+          if (!origins.includes(origin)) continue;
+          asked.posted.push({ message, origin });
+          sent++;
+        }
+        return sent;
+      },
       measure: (selector) => measured.get(selector) ?? null,
       escape: (value) => value.replace(/["\\]/g, '\\$&'),
       title: () => drawn.title,
@@ -211,5 +238,10 @@ export function createTestPlatform(options: TestPlatformOptions = {}): TestPlatf
     opened,
     drawn,
     setMeasured: (selector, rect) => void measured.set(selector, rect),
+    setDrawnId: (id, isDrawn) => void (isDrawn ? drawnIds.add(id) : drawnIds.delete(id)),
+    setFrames: (origins) => {
+      frameOrigins = [...origins];
+    },
+    asked,
   };
 }

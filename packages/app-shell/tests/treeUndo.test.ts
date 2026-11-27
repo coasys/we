@@ -8,13 +8,7 @@
  * forward write, and a card a peer has moved since is left where they put it.
  */
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import {
-  clearPredictions,
-  getEntity,
-  predictionsFor,
-  registerEntityWriteCheck,
-  registerTransactionRunner,
-} from '@we/entities';
+import { getEntity, registerEntityWriteCheck, registerTransactionRunner } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -52,6 +46,7 @@ const shapeStub = {
 import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
+import { testOperations, testPredictions } from './support/operations';
 
 /*
   Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
@@ -81,6 +76,7 @@ function mount(): RecordStore {
   disposers.push(
     reactivity.root(() => {
       store = createRecordStore({
+        operations: testOperations,
         reactivity,
         toasts,
         datasetStore: datasetStub as never,
@@ -136,7 +132,7 @@ beforeEach(async () => {
 afterEach(() => {
   registerEntityWriteCheck(null);
   registerTransactionRunner(runInMemoryTransaction);
-  clearPredictions();
+  testPredictions.clear();
 });
 
 const drop = (store: RecordStore, payload: Record<string, unknown>) =>
@@ -285,7 +281,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
 
   describe('connections drawn before they land', () => {
     /** Every write the predictions draw now, across the invocations still pending. */
-    const predicted = () => predictionsFor(handle).flatMap((prediction) => prediction.writes);
+    const predicted = () => testPredictions.for(handle).flatMap((prediction) => prediction.writes);
     const waitForPrediction = async () => {
       for (let i = 0; i < 40 && !predicted().length; i++) await new Promise((r) => setTimeout(r, 0));
     };
