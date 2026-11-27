@@ -143,7 +143,7 @@ function harness(peers: Peer[] = [], extraDeps: HarnessDeps = {}) {
               kind: options.kind,
               text: blocks.map((b) => b.text ?? '').join('\n'),
               ...(options.fields ?? {}),
-              ...(options.generatedBy ? { generatedBy: [options.generatedBy] } : {}),
+              ...(options.generatedBy ? { generatedBy: options.generatedBy } : {}),
               storeDocument: options.storeDocument,
             },
             options: {
