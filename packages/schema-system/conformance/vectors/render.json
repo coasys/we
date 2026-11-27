@@ -1,0 +1,6901 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "render.node.component",
+      "note": "a registered component mounts with its resolved props",
+      "template": {
+        "type": "Column",
+        "props": {
+          "gap": "300",
+          "label": "Hello"
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "props": {
+                "gap": "300",
+                "label": "Hello"
+              }
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.custom-element",
+      "note": "a custom element is mounted by its tag, its props set as properties",
+      "template": {
+        "type": "we-text",
+        "props": {
+          "variant": "heading-sm",
+          "truncate": true
+        },
+        "children": ["Title"]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "props": {
+                "variant": "heading-sm",
+                "truncate": true
+              },
+              "children": ["Title"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.native",
+      "note": "a native element from the allowlist mounts with its props as attributes",
+      "template": {
+        "type": "div",
+        "props": {
+          "class": "box",
+          "title": "tip"
+        },
+        "children": [
+          {
+            "type": "span",
+            "children": ["inner"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "div",
+              "props": {
+                "class": "box",
+                "title": "tip"
+              },
+              "children": [
+                {
+                  "type": "span",
+                  "children": ["inner"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.text-children",
+      "note": "string children are text, kept in order around nodes",
+      "template": {
+        "type": "Row",
+        "children": [
+          "before ",
+          {
+            "type": "we-icon",
+            "props": {
+              "name": "star"
+            }
+          },
+          " after"
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                "before ",
+                {
+                  "type": "we-icon",
+                  "props": {
+                    "name": "star"
+                  }
+                },
+                " after"
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.expression-child",
+      "note": "an expression in children renders as text; an absent value renders nothing",
+      "template": {
+        "type": "Row",
+        "children": [
+          {
+            "$": "app.title"
+          },
+          " | ",
+          {
+            "$": "app.missing"
+          },
+          " | ",
+          {
+            "$": "app.count + 1"
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "title": "Board",
+          "count": 2
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": ["Board |  | 3"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.fragment",
+      "note": "a node with no type renders its children with no element of its own",
+      "template": {
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["one"]
+          },
+          {
+            "type": "we-text",
+            "children": ["two"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["one"]
+            },
+            {
+              "type": "we-text",
+              "children": ["two"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.nested",
+      "note": "children nest to any depth",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "Row",
+            "children": [
+              {
+                "type": "Card",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": ["deep"]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["deep"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.slots",
+      "note": "a named slot renders its node into the component, beside its children",
+      "template": {
+        "type": "Card",
+        "slots": {
+          "header": {
+            "type": "we-text",
+            "children": ["Header"]
+          },
+          "footer": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Footer"]
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["Body"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Card",
+              "children": [
+                {
+                  "slot": "header",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["Header"]
+                    }
+                  ]
+                },
+                {
+                  "slot": "footer",
+                  "children": [
+                    {
+                      "type": "Row",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["Footer"]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Body"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.slot-attribute",
+      "note": "`slot` puts a node into a web component's named slot",
+      "template": {
+        "type": "we-tabs",
+        "children": [
+          {
+            "type": "we-tab",
+            "slot": "nav",
+            "props": {
+              "key": "a"
+            },
+            "children": ["A"]
+          },
+          {
+            "type": "we-text",
+            "children": ["panel"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-tabs",
+              "children": [
+                {
+                  "type": "we-tab",
+                  "props": {
+                    "key": "a"
+                  },
+                  "children": ["A"],
+                  "slot": "nav"
+                },
+                {
+                  "type": "we-text",
+                  "children": ["panel"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.reactive-prop",
+      "note": "a prop bound to an expression follows the data it reads",
+      "template": {
+        "type": "we-text",
+        "props": {
+          "variant": {
+            "$": "app.big ? 'heading-lg' : 'body'"
+          }
+        },
+        "children": [
+          {
+            "$": "app.title"
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "big": false,
+          "title": "Small"
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "big",
+          "value": true
+        },
+        {
+          "op": "data",
+          "store": "app",
+          "member": "title",
+          "value": "Large"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "props": {
+                "variant": "body"
+              },
+              "children": ["Small"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "props": {
+                "variant": "heading-lg"
+              },
+              "children": ["Small"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "props": {
+                "variant": "heading-lg"
+              },
+              "children": ["Large"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref",
+      "note": "a $ref renders the definition it names, as if written in place",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Shared"]
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          },
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Card",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["Shared"]
+                    }
+                  ]
+                },
+                {
+                  "type": "Card",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["Shared"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-nested",
+      "note": "a definition may use another definition",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d2"
+                }
+              },
+              {
+                "type": "we-text",
+                "children": ["outer"]
+              }
+            ]
+          },
+          "d2": {
+            "type": "we-text",
+            "children": ["inner"]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["inner"]
+                    },
+                    {
+                      "type": "we-text",
+                      "children": ["outer"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-missing",
+      "note": "a $ref naming no definition renders the missing marker saying so, and its siblings render",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "we-text",
+            "children": ["defined"]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "nope"
+            }
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "missing": "$ref",
+                  "reason": "missing-definition"
+                },
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-cycle",
+      "note": "a definition reaching itself is drawn once, with the missing marker where the cycle closes",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "missing": "$ref",
+                      "reason": "cyclic-definition"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.prop-node-is-data",
+      "note": "a node held in an ordinary prop is handed to the component as data; only $if renders a prop",
+      "template": {
+        "type": "Card",
+        "props": {
+          "front": {
+            "type": "we-text",
+            "children": ["front face"]
+          }
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Card",
+              "props": {
+                "front": {
+                  "type": "we-text",
+                  "children": ["front face"]
+                }
+              }
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.items",
+      "note": "$each renders its children once per item, the item bound under `as`",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.rows"
+              },
+              "as": "row"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "row.name"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "b",
+              "name": "Bo"
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Bo"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.default-as",
+      "note": "without `as` the item is `item`",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "['x', 'y']"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "item"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["x"]
+            },
+            {
+              "type": "we-text",
+              "children": ["y"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.index-prev",
+      "note": "each row gets its position as `index` and the row before as `prev`, absent on the first",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.rows"
+          },
+          "as": "m"
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${index}:${m.author}:${prev ? prev.author : \"-\"}:${m.author == prev.author}`"
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "1",
+              "author": "ann"
+            },
+            {
+              "id": "2",
+              "author": "ann"
+            },
+            {
+              "id": "3",
+              "author": "bo"
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["0:ann:-:false"]
+            },
+            {
+              "type": "we-text",
+              "children": ["1:ann:ann:true"]
+            },
+            {
+              "type": "we-text",
+              "children": ["2:bo:ann:false"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.prev-plain",
+      "note": "rows with no id of their own get `index` and `prev` the same way",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "['a', 'a', 'b']"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${index}:${item}:${prev ?? \"-\"}`"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["0:a:-"]
+            },
+            {
+              "type": "we-text",
+              "children": ["1:a:a"]
+            },
+            {
+              "type": "we-text",
+              "children": ["2:b:a"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.empty",
+      "note": "an empty list renders nothing; a value that is not a list renders as an empty list",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.none"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["never"]
+              }
+            ]
+          },
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.notAList"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["never"]
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["end"]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "none": [],
+          "notAList": "abc"
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["end"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.only-first-child",
+      "note": "every child of $each is drawn for each item, in order",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "[1, 2]"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "item"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["ignored"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["1"]
+            },
+            {
+              "type": "we-text",
+              "children": ["ignored"]
+            },
+            {
+              "type": "we-text",
+              "children": ["2"]
+            },
+            {
+              "type": "we-text",
+              "children": ["ignored"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.nested",
+      "note": "a nested $each shadows `item`, `index` and `prev`; the outer row stays reachable by its name",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.groups"
+          },
+          "as": "g"
+        },
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "g.items"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`${g.name}/${index}/${item}`"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "groups": [
+            {
+              "id": "g1",
+              "name": "A",
+              "items": ["x", "y"]
+            },
+            {
+              "id": "g2",
+              "name": "B",
+              "items": ["z"]
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["A/0/x"]
+            },
+            {
+              "type": "we-text",
+              "children": ["A/1/y"]
+            },
+            {
+              "type": "we-text",
+              "children": ["B/0/z"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.live",
+      "note": "the rows follow the list: an added, removed or changed row is drawn as the list now is",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.rows"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "item.name"
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "rows",
+          "value": [
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "b",
+              "name": "Bo"
+            }
+          ]
+        },
+        {
+          "op": "data",
+          "store": "app",
+          "member": "rows",
+          "value": [
+            {
+              "id": "b",
+              "name": "Bob"
+            }
+          ]
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["Ann"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["Ann"]
+            },
+            {
+              "type": "we-text",
+              "children": ["Bo"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["Bob"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.comprehension",
+      "note": "items may be any expression producing a list",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.rows.filter(r, r.done).map(r, r.name)"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "item"
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "name": "a",
+              "done": true
+            },
+            {
+              "name": "b",
+              "done": false
+            },
+            {
+              "name": "c",
+              "done": true
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["a"]
+            },
+            {
+              "type": "we-text",
+              "children": ["c"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.then",
+      "note": "a truthy condition renders `then`",
+      "template": {
+        "type": "$if",
+        "props": {
+          "condition": {
+            "$": "app.on"
+          },
+          "then": {
+            "type": "we-text",
+            "children": ["yes"]
+          },
+          "else": {
+            "type": "we-text",
+            "children": ["no"]
+          }
+        }
+      },
+      "data": {
+        "app": {
+          "on": true
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["yes"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.else",
+      "note": "a falsy condition renders `else`",
+      "template": {
+        "type": "$if",
+        "props": {
+          "condition": {
+            "$": "app.on"
+          },
+          "then": {
+            "type": "we-text",
+            "children": ["yes"]
+          },
+          "else": {
+            "type": "we-text",
+            "children": ["no"]
+          }
+        }
+      },
+      "data": {
+        "app": {
+          "on": false
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["no"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.no-else",
+      "note": "a falsy condition with no `else` renders nothing",
+      "template": {
+        "type": "Row",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.on"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["yes"]
+              }
+            }
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "on": 0
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.toggles",
+      "note": "the branch follows the condition",
+      "template": {
+        "type": "$if",
+        "props": {
+          "condition": {
+            "$": "app.n > 1"
+          },
+          "then": {
+            "type": "we-text",
+            "children": ["many"]
+          },
+          "else": {
+            "type": "we-text",
+            "children": ["few"]
+          }
+        }
+      },
+      "data": {
+        "app": {
+          "n": 1
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "n",
+          "value": 5
+        },
+        {
+          "op": "data",
+          "store": "app",
+          "member": "n",
+          "value": 0
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["few"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["many"]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["few"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.absent",
+      "note": "an absent value is falsy, as are 0, the empty string and the empty list is not",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.missing"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["missing"]
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["no missing"]
+              }
+            }
+          },
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.zero"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["zero"]
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["no zero"]
+              }
+            }
+          },
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.blank"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["blank"]
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["no blank"]
+              }
+            }
+          },
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.list"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["empty list is truthy"]
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["no list"]
+              }
+            }
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "zero": 0,
+          "blank": "",
+          "list": []
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["no missing"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["no zero"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["no blank"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["empty list is truthy"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.literal",
+      "note": "a literal condition is used as it is",
+      "template": {
+        "type": "$if",
+        "props": {
+          "condition": true,
+          "then": {
+            "type": "we-text",
+            "children": ["literal true"]
+          }
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["literal true"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.children-ignored",
+      "note": "a $if renders its branches only; children written on it are not rendered",
+      "template": {
+        "type": "$if",
+        "props": {
+          "condition": true,
+          "then": {
+            "type": "we-text",
+            "children": ["branch"]
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["child"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["branch"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.single.no-backend",
+      "note": "$single renders nothing until its query has an answer — with no data source, nothing",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$single",
+            "props": {
+              "item": {
+                "$query": {
+                  "entity": "Post"
+                }
+              },
+              "as": "p"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["found"]
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.outlet",
+      "note": "the route matching the address renders at the $routes outlet, inside the root",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["chrome"]
+          },
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["home"]
+              }
+            ]
+          },
+          {
+            "path": "/about",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["about"]
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "navigate",
+          "to": "/about"
+        },
+        {
+          "op": "navigate",
+          "to": "/"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["chrome"]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["home"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["chrome"]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["about"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["chrome"]
+                },
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["home"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.start",
+      "note": "the address a template opens on picks its route",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["home"]
+              }
+            ]
+          },
+          {
+            "path": "/settings",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["settings"]
+              }
+            ]
+          }
+        ]
+      },
+      "start": "/settings",
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["settings"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.params",
+      "note": "a route's `:param` is read through routeStore.params",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["list"]
+              }
+            ]
+          },
+          {
+            "path": "/post/:postId",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "'post ' + routeStore.params.postId"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "start": "/post/42",
+      "steps": [
+        {
+          "op": "navigate",
+          "to": "/post/7"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["post 42"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["post 7"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.nested",
+      "note": "a route with routes is a layout: its own $routes outlet holds the child route",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/board",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["board chrome"]
+              },
+              {
+                "type": "$routes"
+              }
+            ],
+            "routes": [
+              {
+                "path": "/",
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": ["columns"]
+                  }
+                ]
+              },
+              {
+                "path": "/card/:cardId",
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": [
+                      {
+                        "$": "'card ' + routeStore.params.cardId"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "start": "/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "to": "/board/card/3"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["board chrome"]
+                    },
+                    {
+                      "type": "Row",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["columns"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["board chrome"]
+                    },
+                    {
+                      "type": "Row",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["card 3"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.outlet-in-if",
+      "note": "an outlet behind a $if renders its route once the gate opens",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "app.ready"
+              },
+              "then": {
+                "type": "$routes"
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["loading"]
+              }
+            }
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["routed"]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "ready": false
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "ready",
+          "value": true
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["loading"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Column",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["routed"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.routes.no-match",
+      "note": "an address matching no route renders nothing at the outlet",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["chrome"]
+          },
+          {
+            "type": "$routes"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["home"]
+              }
+            ]
+          }
+        ]
+      },
+      "start": "/nowhere",
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["chrome"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.invoke",
+      "note": "$invoke calls the store method with exactly its args, resolved when it fires",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "save",
+              "onClick": {
+                "$invoke": "act.save",
+                "args": [
+                  "draft",
+                  {
+                    "$": "app.id"
+                  },
+                  {
+                    "n": 1
+                  }
+                ]
+              }
+            },
+            "children": ["save"]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "id": "r1"
+        }
+      },
+      "actions": {
+        "act.save": {
+          "returns": true
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "save"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.save",
+              "args": [
+                "draft",
+                "r1",
+                {
+                  "n": 1
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.invoke-no-args",
+      "note": "$invoke without args calls the method with none — the event is not passed on",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": {
+                "$invoke": "act.go"
+              }
+            },
+            "children": ["go"]
+          }
+        ]
+      },
+      "actions": {
+        "act.go": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.go",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.invoke-event-detail",
+      "note": "an arg reading `event` is the value the handler received",
+      "template": {
+        "type": "we-select",
+        "props": {
+          "data-case": "pick",
+          "onChange": {
+            "$invoke": "act.pick",
+            "args": [
+              {
+                "$": "event.detail"
+              }
+            ]
+          }
+        }
+      },
+      "actions": {
+        "act.pick": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "emit",
+          "target": "pick",
+          "event": "change",
+          "detail": "b"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-select",
+              "props": {
+                "data-case": "pick"
+              }
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-select",
+              "props": {
+                "data-case": "pick"
+              }
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.pick",
+              "args": ["b"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.on-success",
+      "note": "onSuccess runs after the method's promise resolves, with `result` its value",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "saved": {
+            "type": "string",
+            "initial": ""
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "save",
+              "onClick": {
+                "$invoke": "act.save",
+                "onSuccess": [
+                  {
+                    "$setLocal": "saved",
+                    "value": {
+                      "$": "result"
+                    }
+                  },
+                  {
+                    "$invoke": "act.after",
+                    "args": [
+                      {
+                        "$": "result"
+                      }
+                    ]
+                  }
+                ],
+                "onError": [
+                  {
+                    "$invoke": "act.failed"
+                  }
+                ],
+                "onFinally": [
+                  {
+                    "$invoke": "act.done"
+                  }
+                ]
+              }
+            },
+            "children": ["save"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'saved:' + local.saved"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "act.save": {
+          "resolve": "new-id"
+        },
+        "act.after": {
+          "returns": null
+        },
+        "act.failed": {
+          "returns": null
+        },
+        "act.done": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "save"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["saved:"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["saved:new-id"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.save",
+              "args": []
+            },
+            {
+              "call": "act.after",
+              "args": ["new-id"]
+            },
+            {
+              "call": "act.done",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.on-error",
+      "note": "onError runs after a rejection, with `result` the error; onFinally runs either way",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "error": {
+            "type": "string",
+            "initial": ""
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "save",
+              "onClick": {
+                "$invoke": "act.save",
+                "onSuccess": [
+                  {
+                    "$invoke": "act.after"
+                  }
+                ],
+                "onError": [
+                  {
+                    "$setLocal": "error",
+                    "value": {
+                      "$": "result.message"
+                    }
+                  }
+                ],
+                "onFinally": [
+                  {
+                    "$invoke": "act.done"
+                  }
+                ]
+              }
+            },
+            "children": ["save"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'error:' + local.error"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "act.save": {
+          "reject": "refused"
+        },
+        "act.after": {
+          "returns": null
+        },
+        "act.done": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "save"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error:"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "save"
+                  },
+                  "children": ["save"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error:refused"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.save",
+              "args": []
+            },
+            {
+              "call": "act.done",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.sync-lifecycle",
+      "note": "a method that returns a plain value runs no lifecycle callback",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": {
+                "$invoke": "act.go",
+                "onSuccess": [
+                  {
+                    "$invoke": "act.after"
+                  }
+                ]
+              }
+            },
+            "children": ["go"]
+          }
+        ]
+      },
+      "actions": {
+        "act.go": {
+          "returns": 5
+        },
+        "act.after": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.go",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.array",
+      "note": "a handler list runs each entry in order",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "n": {
+            "type": "number",
+            "initial": 0
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": [
+                {
+                  "$invoke": "act.first"
+                },
+                {
+                  "$setLocal": "n",
+                  "value": {
+                    "$": "local.n + 10"
+                  }
+                },
+                {
+                  "$invoke": "act.second",
+                  "args": [
+                    {
+                      "$": "local.n"
+                    }
+                  ]
+                }
+              ]
+            },
+            "children": ["go"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.n"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "act.first": {
+          "returns": null
+        },
+        "act.second": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["0"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["10"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.first",
+              "args": []
+            },
+            {
+              "call": "act.second",
+              "args": [10]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.missing-method",
+      "note": "$invoke naming a method the stores do not have does nothing, and nothing breaks",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": [
+                {
+                  "$invoke": "act.nothing"
+                },
+                {
+                  "$invoke": "act.real"
+                }
+              ]
+            },
+            "children": ["go"]
+          },
+          {
+            "type": "we-text",
+            "children": ["still here"]
+          }
+        ]
+      },
+      "actions": {
+        "act.real": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["still here"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["still here"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.real",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.set-local",
+      "note": "$setLocal writes a literal or what an expression computes when it fires",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "label": {
+            "type": "string",
+            "initial": "start"
+          },
+          "page": {
+            "type": "number",
+            "initial": 1
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "literal",
+              "onClick": {
+                "$setLocal": "label",
+                "value": "clicked"
+              }
+            },
+            "children": ["literal"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "next",
+              "onClick": {
+                "$setLocal": "page",
+                "value": {
+                  "$": "local.page + 1"
+                }
+              }
+            },
+            "children": ["next"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.label} ${local.page}`"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "literal"
+        },
+        {
+          "op": "click",
+          "target": "next"
+        },
+        {
+          "op": "click",
+          "target": "next"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "literal"
+                  },
+                  "children": ["literal"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "next"
+                  },
+                  "children": ["next"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["start 1"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "literal"
+                  },
+                  "children": ["literal"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "next"
+                  },
+                  "children": ["next"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["clicked 1"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "literal"
+                  },
+                  "children": ["literal"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "next"
+                  },
+                  "children": ["next"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["clicked 2"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "literal"
+                  },
+                  "children": ["literal"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "next"
+                  },
+                  "children": ["next"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["clicked 3"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.set-local-event",
+      "note": "$setLocal reading `event` takes the value typed",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "q": {
+            "type": "string",
+            "initial": ""
+          }
+        },
+        "children": [
+          {
+            "type": "input",
+            "props": {
+              "data-case": "q",
+              "onInput": {
+                "$setLocal": "q",
+                "value": {
+                  "$": "event.target.value"
+                }
+              }
+            }
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'q=' + local.q"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "input",
+          "target": "q",
+          "value": "hello"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "q"
+                  }
+                },
+                {
+                  "type": "we-text",
+                  "children": ["q="]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "q"
+                  }
+                },
+                {
+                  "type": "we-text",
+                  "children": ["q=hello"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.set-local-merge",
+      "note": "$setLocal with `merge` shallow-merges into an object field",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "place": {
+            "type": "object",
+            "initial": {
+              "city": "Oslo",
+              "country": "NO"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "move",
+              "onClick": {
+                "$setLocal": "place",
+                "merge": {
+                  "city": "Bergen"
+                }
+              }
+            },
+            "children": ["move"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.place.city}, ${local.place.country}`"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "move"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "move"
+                  },
+                  "children": ["move"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Oslo, NO"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "move"
+                  },
+                  "children": ["move"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Bergen, NO"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.toggle-local",
+      "note": "$toggleLocal flips a boolean field",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "open": {
+            "type": "boolean",
+            "initial": false
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "toggle",
+              "onClick": {
+                "$toggleLocal": "open"
+              }
+            },
+            "children": ["toggle"]
+          },
+          {
+            "type": "$if",
+            "props": {
+              "condition": {
+                "$": "local.open"
+              },
+              "then": {
+                "type": "we-text",
+                "children": ["open"]
+              },
+              "else": {
+                "type": "we-text",
+                "children": ["closed"]
+              }
+            }
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "toggle"
+        },
+        {
+          "op": "click",
+          "target": "toggle"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "toggle"
+                  },
+                  "children": ["toggle"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["closed"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "toggle"
+                  },
+                  "children": ["toggle"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["open"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "toggle"
+                  },
+                  "children": ["toggle"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["closed"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.toggle-local-in",
+      "note": "$toggleLocalIn adds a value to a list field, or takes it out when it is there",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "picked": {
+            "type": "array",
+            "initial": ["a"]
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "b",
+              "onClick": {
+                "$toggleLocalIn": "picked",
+                "value": "b"
+              }
+            },
+            "children": ["b"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "a",
+              "onClick": {
+                "$toggleLocalIn": "picked",
+                "value": "a"
+              }
+            },
+            "children": ["a"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "join(local.picked, ',')"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "b"
+        },
+        {
+          "op": "click",
+          "target": "a"
+        },
+        {
+          "op": "click",
+          "target": "b"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "b"
+                  },
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "a"
+                  },
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "b"
+                  },
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "a"
+                  },
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a,b"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "b"
+                  },
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "a"
+                  },
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["b"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "b"
+                  },
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "a"
+                  },
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.toggle-local-in-rows",
+      "note": "per-row state: each row toggles its own id in one list and reads it back with `in`",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "open": {
+            "type": "array",
+            "initial": []
+          }
+        },
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.rows"
+              },
+              "as": "row"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-button",
+                    "props": {
+                      "data-case": {
+                        "$": "'row-' + row.id"
+                      },
+                      "onClick": {
+                        "$toggleLocalIn": "open",
+                        "value": {
+                          "$": "row.id"
+                        }
+                      }
+                    },
+                    "children": [
+                      {
+                        "$": "row.id"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": {
+                        "$": "row.id in local.open"
+                      },
+                      "then": {
+                        "type": "we-text",
+                        "children": ["open"]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "r1"
+            },
+            {
+              "id": "r2"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "row-r2"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "row-r1"
+                      },
+                      "children": ["r1"]
+                    }
+                  ]
+                },
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "row-r2"
+                      },
+                      "children": ["r2"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "row-r1"
+                      },
+                      "children": ["r1"]
+                    }
+                  ]
+                },
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-button",
+                      "props": {
+                        "data-case": "row-r2"
+                      },
+                      "children": ["r2"]
+                    },
+                    {
+                      "type": "we-text",
+                      "children": ["open"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.call-local",
+      "note": "$callLocal on a field holding no function does nothing; a store method read as a value is nothing, so it cannot arm one",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "onConfirm": {
+            "type": "function",
+            "initial": null
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "arm",
+              "onClick": {
+                "$setLocal": "onConfirm",
+                "value": {
+                  "$": "act.confirm"
+                }
+              }
+            },
+            "children": ["arm"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "confirm",
+              "onClick": {
+                "$callLocal": "onConfirm"
+              }
+            },
+            "children": ["confirm"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.onConfirm ? 'armed' : 'empty'"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "act.confirm": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "confirm"
+        },
+        {
+          "op": "click",
+          "target": "arm"
+        },
+        {
+          "op": "click",
+          "target": "confirm"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "confirm"
+                  },
+                  "children": ["confirm"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["empty"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "confirm"
+                  },
+                  "children": ["confirm"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["empty"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "confirm"
+                  },
+                  "children": ["confirm"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["empty"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "confirm"
+                  },
+                  "children": ["confirm"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["empty"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.reset-local",
+      "note": "$resetLocal on $scope puts every field of the scope back to its initial value",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "a": {
+            "type": "string",
+            "initial": "a0"
+          },
+          "b": {
+            "type": "number",
+            "initial": 0
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "change",
+              "onClick": [
+                {
+                  "$setLocal": "a",
+                  "value": "a1"
+                },
+                {
+                  "$setLocal": "b",
+                  "value": 9
+                }
+              ]
+            },
+            "children": ["change"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "reset",
+              "onClick": {
+                "$resetLocal": "$scope"
+              }
+            },
+            "children": ["reset"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.a} ${local.b}`"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "change"
+        },
+        {
+          "op": "click",
+          "target": "reset"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a0 0"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a0 0"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.if-then",
+      "note": "a handler-position $if runs `then` when its condition holds as the event fires",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "armed": {
+            "type": "boolean",
+            "initial": false
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "arm",
+              "onClick": {
+                "$toggleLocal": "armed"
+              }
+            },
+            "children": ["arm"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": {
+                "$if": {
+                  "condition": {
+                    "$": "local.armed"
+                  },
+                  "then": {
+                    "$invoke": "act.yes"
+                  },
+                  "else": {
+                    "$invoke": "act.no"
+                  }
+                }
+              }
+            },
+            "children": ["go"]
+          }
+        ]
+      },
+      "actions": {
+        "act.yes": {
+          "returns": null
+        },
+        "act.no": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        },
+        {
+          "op": "click",
+          "target": "arm"
+        },
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.no",
+              "args": []
+            }
+          ]
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "arm"
+                  },
+                  "children": ["arm"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.yes",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.handler.if-event",
+      "note": "a handler-position $if's condition may read the event",
+      "template": {
+        "type": "we-select",
+        "props": {
+          "data-case": "pick",
+          "onChange": {
+            "$if": {
+              "condition": {
+                "$": "event.detail == 'b'"
+              },
+              "then": {
+                "$invoke": "act.b"
+              }
+            }
+          }
+        }
+      },
+      "actions": {
+        "act.b": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "emit",
+          "target": "pick",
+          "event": "change",
+          "detail": "a"
+        },
+        {
+          "op": "emit",
+          "target": "pick",
+          "event": "change",
+          "detail": "b"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-select",
+              "props": {
+                "data-case": "pick"
+              }
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-select",
+              "props": {
+                "data-case": "pick"
+              }
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "we-select",
+              "props": {
+                "data-case": "pick"
+              }
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.b",
+              "args": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.local.initial",
+      "note": "each field starts at its declared initial value",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "s": {
+            "type": "string",
+            "initial": "text"
+          },
+          "n": {
+            "type": "number",
+            "initial": 3
+          },
+          "b": {
+            "type": "boolean",
+            "initial": true
+          },
+          "o": {
+            "type": "object",
+            "initial": {
+              "k": "v"
+            }
+          },
+          "l": {
+            "type": "array",
+            "initial": [1, 2]
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.s} ${local.n} ${local.b} ${local.o.k} ${count(local.l)}`"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["text 3 true v 2"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.local.initial-expression",
+      "note": "an initial value may be an expression, resolved against the stores at mount",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "name": {
+            "type": "string",
+            "initial": {
+              "$": "app.name"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.name"
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "name": "From the store"
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["From the store"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.local.shadowing",
+      "note": "an inner scope sees the outer fields; a field of the same name shadows",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "a": {
+            "type": "string",
+            "initial": "outer-a"
+          },
+          "b": {
+            "type": "string",
+            "initial": "outer-b"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.a} ${local.b}`"
+              }
+            ]
+          },
+          {
+            "type": "Row",
+            "$localState": {
+              "a": {
+                "type": "string",
+                "initial": "inner-a"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`${local.a} ${local.b}`"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["outer-a outer-b"]
+                },
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["inner-a outer-b"]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.local.per-row",
+      "note": "a $localState inside a $each row is that row’s own",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "['x', 'y']"
+          }
+        },
+        "children": [
+          {
+            "type": "Row",
+            "$localState": {
+              "on": {
+                "type": "boolean",
+                "initial": false
+              }
+            },
+            "children": [
+              {
+                "type": "we-button",
+                "props": {
+                  "data-case": {
+                    "$": "'btn-' + item"
+                  },
+                  "onClick": {
+                    "$toggleLocal": "on"
+                  }
+                },
+                "children": [
+                  {
+                    "$": "item"
+                  }
+                ]
+              },
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.on ? 'on' : 'off'"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "btn-y"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "btn-x"
+                  },
+                  "children": ["x"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["off"]
+                }
+              ]
+            },
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "btn-y"
+                  },
+                  "children": ["y"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["off"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "btn-x"
+                  },
+                  "children": ["x"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["off"]
+                }
+              ]
+            },
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "btn-y"
+                  },
+                  "children": ["y"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["on"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.local.sync-param-read",
+      "note": "a syncParam field starts from the URL parameter when there is one",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "sort": {
+            "type": "string",
+            "initial": "new",
+            "syncParam": "sort"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.sort"
+              }
+            ]
+          }
+        ]
+      },
+      "params": {
+        "sort": "top"
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["top"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "params": {
+            "sort": "top"
+          }
+        }
+      ]
+    },
+    {
+      "id": "render.local.sync-param-write",
+      "note": "writing a syncParam field writes the parameter; back at the initial value it is removed",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "sort": {
+            "type": "string",
+            "initial": "new",
+            "syncParam": {
+              "name": "sort",
+              "push": true
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "top",
+              "onClick": {
+                "$setLocal": "sort",
+                "value": "top"
+              }
+            },
+            "children": ["top"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "new",
+              "onClick": {
+                "$setLocal": "sort",
+                "value": "new"
+              }
+            },
+            "children": ["new"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.sort"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "top"
+        },
+        {
+          "op": "click",
+          "target": "new"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "top"
+                  },
+                  "children": ["top"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "new"
+                  },
+                  "children": ["new"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["new"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "top"
+                  },
+                  "children": ["top"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "new"
+                  },
+                  "children": ["new"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["top"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "params": {
+            "sort": "top"
+          }
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "top"
+                  },
+                  "children": ["top"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "new"
+                  },
+                  "children": ["new"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["new"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "params": {}
+        }
+      ]
+    },
+    {
+      "id": "render.local.persist",
+      "note": "a persist field starts from device storage and writes back to it; $resetLocal clears it",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "density": {
+            "type": "string",
+            "initial": "cosy",
+            "persist": "cards.density"
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "compact",
+              "onClick": {
+                "$setLocal": "density",
+                "value": "compact"
+              }
+            },
+            "children": ["compact"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "reset",
+              "onClick": {
+                "$resetLocal": "$scope"
+              }
+            },
+            "children": ["reset"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.density"
+              }
+            ]
+          }
+        ]
+      },
+      "storage": {
+        "we-local:cards.density": "\"roomy\""
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "compact"
+        },
+        {
+          "op": "click",
+          "target": "reset"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "compact"
+                  },
+                  "children": ["compact"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["roomy"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "storage": {
+            "we-local:cards.density": "\"roomy\""
+          }
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "compact"
+                  },
+                  "children": ["compact"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["compact"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "storage": {
+            "we-local:cards.density": "\"compact\""
+          }
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "compact"
+                  },
+                  "children": ["compact"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["cosy"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "storage": {}
+        }
+      ]
+    },
+    {
+      "id": "render.local.precedence",
+      "note": "URL parameter over stored value over initial",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "view": {
+            "type": "string",
+            "initial": "grid",
+            "syncParam": "view",
+            "persist": "cards.view"
+          }
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.view"
+              }
+            ]
+          }
+        ]
+      },
+      "params": {
+        "view": "list"
+      },
+      "storage": {
+        "we-local:cards.view": "\"table\""
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["list"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "params": {
+            "view": "list"
+          },
+          "storage": {
+            "we-local:cards.view": "\"table\""
+          }
+        }
+      ]
+    },
+    {
+      "id": "render.local.validation",
+      "note": "error() shows a rule’s message once the field is touched; formValid() is every rule passing",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "email": {
+            "type": "string",
+            "initial": "",
+            "validate": [
+              {
+                "rule": "required",
+                "message": "Required"
+              },
+              {
+                "rule": "pattern",
+                "value": "^[^@]+@[^@]+$",
+                "message": "Not an email"
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "input",
+            "props": {
+              "data-case": "email",
+              "onInput": {
+                "$setLocal": "email",
+                "value": {
+                  "$": "event.target.value"
+                }
+              }
+            }
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "submit",
+              "onClick": [
+                {
+                  "$touch": "$all"
+                },
+                {
+                  "$if": {
+                    "condition": {
+                      "$": "formValid()"
+                    },
+                    "then": {
+                      "$invoke": "act.submit",
+                      "args": [
+                        {
+                          "$": "local.email"
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "children": ["submit"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "'error:' + error('email') + ' valid:' + formValid()"
+              }
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "act.submit": {
+          "returns": null
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "submit"
+        },
+        {
+          "op": "input",
+          "target": "email",
+          "value": "nope"
+        },
+        {
+          "op": "input",
+          "target": "email",
+          "value": "a@b.c"
+        },
+        {
+          "op": "click",
+          "target": "submit"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "email"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "submit"
+                  },
+                  "children": ["submit"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error: valid:false"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "email"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "submit"
+                  },
+                  "children": ["submit"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error:Required valid:false"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "email"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "submit"
+                  },
+                  "children": ["submit"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error:Not an email valid:false"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "email"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "submit"
+                  },
+                  "children": ["submit"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error: valid:true"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "input",
+                  "props": {
+                    "data-case": "email"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "submit"
+                  },
+                  "children": ["submit"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["error: valid:true"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.submit",
+              "args": ["a@b.c"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.animate.condition",
+      "note": "$animate keeps its one child mounted whatever its condition; only the transition follows it",
+      "template": {
+        "type": "$animate",
+        "props": {
+          "condition": {
+            "$": "app.open"
+          }
+        },
+        "children": [
+          {
+            "type": "Row",
+            "$localState": {
+              "n": {
+                "type": "number",
+                "initial": 0
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["kept"]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "open": false
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "open",
+          "value": true
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["kept"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["kept"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.animate.mount",
+      "note": "$animate with no trigger renders its child",
+      "template": {
+        "type": "$animate",
+        "props": {},
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["animated"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "we-text",
+              "children": ["animated"]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.surface.scope",
+      "note": "$surface binds the box it draws under `as` for its children to read",
+      "template": {
+        "type": "$surface",
+        "props": {
+          "as": "pane"
+        },
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "pane ? 'has a surface' : 'none'"
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "$surface",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["has a surface"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.agent.profile",
+      "note": "$agent binds the profile of the person `did` names, once it has arrived, under `as`",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$agent",
+            "props": {
+              "did": {
+                "$": "app.author"
+              },
+              "as": "who"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "who.name"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "$agent",
+            "props": {
+              "did": "did:unknown"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["never"]
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "author": "did:ann"
+        }
+      },
+      "identities": {
+        "did:ann": {
+          "did": "did:ann",
+          "name": "Ann"
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.panels.outlet",
+      "note": "a $panels outlet is handed to the host as a lane, its props untouched",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$panels",
+            "props": {
+              "lane": "left",
+              "direction": "column"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "PanelLane",
+                  "props": {
+                    "lane": "left",
+                    "direction": "column"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.slot.in-template",
+      "note": "a $slot in a template (not module chrome) is not resolved and shows the marker",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$slot",
+            "props": {
+              "anchor": "call-controls"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "missing": "$slot",
+                  "reason": "unknown-component"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.unknown-component",
+      "note": "an unknown component renders the missing-component marker, and its siblings render",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["before"]
+          },
+          {
+            "type": "NoSuchWidget",
+            "props": {
+              "a": 1
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["lost"]
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["before"]
+                },
+                {
+                  "missing": "NoSuchWidget",
+                  "reason": "unknown-component"
+                },
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.unknown-element",
+      "note": "a we-* element nobody defined renders the missing marker, saying so, not an empty element",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-no-such-element",
+            "children": ["inside"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "missing": "we-no-such-element",
+                  "reason": "unknown-element"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.unknown-part",
+      "note": "a part no module publishes resolves to a frame naming it, with nothing inside",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$part",
+            "props": {
+              "id": "nomodule.panel"
+            }
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "PartFrame",
+                  "props": {
+                    "part": "nomodule.panel"
+                  }
+                },
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.part-no-id",
+      "note": "a $part with no id resolves to nothing",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$part",
+            "props": {}
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.failing-expression",
+      "note": "an expression reading something absent gives nothing rather than an error",
+      "template": {
+        "type": "Row",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "app.deep.path.here"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "nope.thing"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["ok"]
+          }
+        ]
+      },
+      "data": {
+        "app": {}
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Row",
+              "children": [
+                {
+                  "type": "we-text"
+                },
+                {
+                  "type": "we-text"
+                },
+                {
+                  "type": "we-text",
+                  "children": ["ok"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.javascript-href",
+      "note": "a javascript: URL is refused, literal or computed; an ordinary one stays",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "a",
+            "props": {
+              "href": "javascript:alert(1)"
+            },
+            "children": ["literal"]
+          },
+          {
+            "type": "a",
+            "props": {
+              "href": {
+                "$": "'JavaScript:' + 'void(0)'"
+              }
+            },
+            "children": ["computed"]
+          },
+          {
+            "type": "we-link",
+            "props": {
+              "href": " javascript:alert(1)"
+            },
+            "children": ["element"]
+          },
+          {
+            "type": "a",
+            "props": {
+              "href": "https://example.org/"
+            },
+            "children": ["fine"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "a",
+                  "children": ["literal"]
+                },
+                {
+                  "type": "a",
+                  "children": ["computed"]
+                },
+                {
+                  "type": "we-link",
+                  "children": ["element"]
+                },
+                {
+                  "type": "a",
+                  "props": {
+                    "href": "https://example.org/"
+                  },
+                  "children": ["fine"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.srcdoc",
+      "note": "srcdoc is refused on any element",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-iframe",
+            "props": {
+              "srcdoc": "<script>alert(1)</script>",
+              "title": "kept"
+            }
+          },
+          {
+            "type": "div",
+            "props": {
+              "srcdoc": "<b>x</b>",
+              "class": "kept"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-iframe",
+                  "props": {
+                    "title": "kept"
+                  }
+                },
+                {
+                  "type": "div",
+                  "props": {
+                    "class": "kept"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.native-tags",
+      "note": "script, iframe and svg are refused as native tags: nothing is mounted",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "script",
+            "children": ["alert(1)"]
+          },
+          {
+            "type": "iframe",
+            "props": {
+              "src": "https://example.org/"
+            }
+          },
+          {
+            "type": "svg",
+            "children": [
+              {
+                "type": "circle"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": ["after"]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["after"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.safety.gesture-refused",
+      "note": "a write wired to an event nobody causes does not run; the same write on a press does",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-image",
+            "props": {
+              "data-case": "img",
+              "onLoad": [
+                {
+                  "$invoke": "act.loaded"
+                },
+                {
+                  "$invoke": "record.create",
+                  "args": [
+                    "Post",
+                    {
+                      "title": "on load"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "press",
+              "onClick": {
+                "$invoke": "record.create",
+                "args": [
+                  "Post",
+                  {
+                    "title": "on press"
+                  }
+                ]
+              }
+            },
+            "children": ["press"]
+          }
+        ]
+      },
+      "actions": {
+        "act.loaded": {
+          "returns": null
+        },
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "gated": ["record.create"],
+      "steps": [
+        {
+          "op": "emit",
+          "target": "img",
+          "event": "load"
+        },
+        {
+          "op": "click",
+          "target": "press"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-image",
+                  "props": {
+                    "data-case": "img"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-image",
+                  "props": {
+                    "data-case": "img"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.loaded",
+              "args": []
+            }
+          ]
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-image",
+                  "props": {
+                    "data-case": "img"
+                  }
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "record.create",
+              "args": [
+                "Post",
+                {
+                  "title": "on press"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.safety.gesture-continuation",
+      "note": "onSuccess counts as part of the press that started it, so a write there runs",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "press",
+              "onClick": {
+                "$invoke": "act.lookup",
+                "onSuccess": [
+                  {
+                    "$invoke": "record.create",
+                    "args": [
+                      "Post",
+                      {
+                        "title": {
+                          "$": "result"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "children": ["press"]
+          }
+        ]
+      },
+      "actions": {
+        "act.lookup": {
+          "resolve": "found"
+        },
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "gated": ["record.create"],
+      "steps": [
+        {
+          "op": "click",
+          "target": "press"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "act.lookup",
+              "args": []
+            },
+            {
+              "call": "record.create",
+              "args": [
+                "Post",
+                {
+                  "title": "found"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.unknown-element-in-list",
+      "note": "an undefined we-* element in a row draws the marker in every row, and the rows around it render",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.rows"
+              },
+              "as": "row"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-nothing-here"
+                  },
+                  {
+                    "$": "row.name"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "name": "a"
+            },
+            {
+              "name": "b"
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "missing": "we-nothing-here",
+                      "reason": "unknown-element"
+                    },
+                    "a"
+                  ]
+                },
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "missing": "we-nothing-here",
+                      "reason": "unknown-element"
+                    },
+                    "b"
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.degrade.foreign-element",
+      "note": "a custom element outside the we- prefix is for the seed to name: mounted as written, no marker",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "x-rating",
+            "props": {
+              "value": 3
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "x-rating",
+                  "props": {
+                    "value": 3
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-no-defs",
+      "note": "a $ref in a template with no $defs at all renders the missing marker",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["before"]
+          },
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["before"]
+                },
+                {
+                  "missing": "$ref",
+                  "reason": "missing-definition"
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.node.ref-cycle-through",
+      "note": "a cycle through two definitions draws each once and the marker where it closes",
+      "template": {
+        "type": "Column",
+        "$defs": {
+          "d1": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d2"
+                }
+              }
+            ]
+          },
+          "d2": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["two"]
+              },
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        },
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "Row",
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "children": ["one"]
+                    },
+                    {
+                      "type": "Card",
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["two"]
+                        },
+                        {
+                          "missing": "$ref",
+                          "reason": "cyclic-definition"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.several-children-keyed",
+      "note": "a row of several children over records with ids: each drawn per item, and a change redraws them in place",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$each",
+            "props": {
+              "items": {
+                "$": "app.rows"
+              },
+              "as": "row"
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "row.name"
+                  }
+                ]
+              },
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "`#${index}`"
+                  }
+                ]
+              },
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "$": "row.id"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "b",
+              "name": "Bo"
+            }
+          ]
+        }
+      },
+      "steps": [
+        {
+          "op": "data",
+          "store": "app",
+          "member": "rows",
+          "value": [
+            {
+              "id": "b",
+              "name": "Bo"
+            },
+            {
+              "id": "a",
+              "name": "Ann"
+            },
+            {
+              "id": "c",
+              "name": "Cy"
+            }
+          ]
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#0"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Bo"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#1"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["b"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["Bo"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#0"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["b"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Ann"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#1"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["Cy"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["#2"]
+                },
+                {
+                  "type": "Row",
+                  "children": ["c"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.each.several-children-plain",
+      "note": "a row of several children over plain values: each drawn per item",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "[1, 2]"
+          },
+          "as": "n"
+        },
+        "children": [
+          "n=",
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "n"
+              }
+            ]
+          },
+          {
+            "$": "n * 10"
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            "n=",
+            {
+              "type": "we-text",
+              "children": ["1"]
+            },
+            "10n=",
+            {
+              "type": "we-text",
+              "children": ["2"]
+            },
+            "20"
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.animate.several-children",
+      "note": "$animate with no transitions draws every child it holds",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$animate",
+            "props": {},
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "we-text",
+                "children": ["two"]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["one"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["two"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.animate.several-children-reveal",
+      "note": "$animate with a condition and a reveal draws every child inside the one clip",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$animate",
+            "props": {
+              "condition": {
+                "$": "app.open"
+              },
+              "enterTransition": {
+                "type": "reveal",
+                "duration": 0
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["one"]
+              },
+              {
+                "type": "Row",
+                "children": [
+                  {
+                    "type": "we-text",
+                    "children": ["two"]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "open": true
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "div",
+                  "props": {
+                    "style": "opacity: 1; display: grid; grid-template-rows: 1fr;"
+                  },
+                  "children": [
+                    {
+                      "type": "div",
+                      "props": {
+                        "style": "min-height: 0px;"
+                      },
+                      "children": [
+                        {
+                          "type": "we-text",
+                          "children": ["one"]
+                        },
+                        {
+                          "type": "Row",
+                          "children": [
+                            {
+                              "type": "we-text",
+                              "children": ["two"]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.if.children-not-drawn",
+      "note": "$if draws then or else and never children, which the validator refuses",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": true,
+              "then": {
+                "type": "we-text",
+                "children": ["then"]
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["a child"]
+              }
+            ]
+          }
+        ]
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["then"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.local.initial-dollar-text",
+      "note": "an initial string is text whatever it starts with, even where it names a bound value",
+      "template": {
+        "type": "$each",
+        "props": {
+          "items": {
+            "$": "app.rows"
+          },
+          "as": "row"
+        },
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "s": {
+                "type": "string",
+                "initial": "$row.name"
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.s"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "data": {
+        "app": {
+          "rows": [
+            {
+              "id": "a",
+              "name": "Ann"
+            }
+          ]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["$row.name"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    },
+    {
+      "id": "render.handler.reset-local-not-scope",
+      "note": "$resetLocal naming anything but $scope resets nothing (and a validator refuses it)",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "a": {
+            "type": "string",
+            "initial": "a0"
+          },
+          "b": {
+            "type": "number",
+            "initial": 0
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "change",
+              "onClick": [
+                {
+                  "$setLocal": "a",
+                  "value": "a1"
+                },
+                {
+                  "$setLocal": "b",
+                  "value": 9
+                }
+              ]
+            },
+            "children": ["change"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "reset",
+              "onClick": {
+                "$resetLocal": "a"
+              }
+            },
+            "children": ["reset"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "`${local.a} ${local.b}`"
+              }
+            ]
+          }
+        ]
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "change"
+        },
+        {
+          "op": "click",
+          "target": "reset"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a0 0"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "change"
+                  },
+                  "children": ["change"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "reset"
+                  },
+                  "children": ["reset"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["a1 9"]
+                }
+              ]
+            }
+          ],
+          "actions": []
+        }
+      ]
+    }
+  ]
+}

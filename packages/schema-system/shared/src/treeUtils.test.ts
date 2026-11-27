@@ -2,7 +2,7 @@ import { REACTIVE_ACCESSOR } from '@we/expressions';
 import { describe, expect, it } from 'vitest';
 
 import { deepUnwrap } from './propResolvers';
-import { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
+import { childrenOf, isSchemaChild, nodePropsOf, replaceNodeInTree } from './treeUtils';
 import type { SchemaNode } from './types';
 
 function reactive<T>(value: T): () => T {
@@ -27,29 +27,24 @@ describe('isSchemaChild', () => {
   });
 });
 
-describe('isPropsSchemaNode', () => {
-  it('accepts component-shaped types only', () => {
-    expect(isPropsSchemaNode({ type: 'Column' })).toBe(true);
-    expect(isPropsSchemaNode({ type: 'we-button' })).toBe(true);
-    expect(isPropsSchemaNode({ type: '$if' })).toBe(true);
+describe('nodePropsOf', () => {
+  it("names $if's then and else, and nothing for any other type", () => {
+    expect(nodePropsOf('$if')).toEqual(['then', 'else']);
+    for (const type of ['Column', 'FlipCard', 'GraphView', 'we-button', '$each', 'constructor', undefined])
+      expect(nodePropsOf(type), String(type)).toEqual([]);
   });
 
-  it('accepts a native element a template may mount, as a $if’s then can hold', () => {
-    expect(isPropsSchemaNode({ type: 'div', children: [] })).toBe(true);
-    expect(isPropsSchemaNode({ type: 'span' })).toBe(true);
-  });
-
-  it('rejects transition configs, arrays, and typeless objects', () => {
-    expect(isPropsSchemaNode({ type: 'fade' })).toBe(false); // TransitionConfig
-    expect(isPropsSchemaNode([{ type: 'Column' }])).toBe(false);
-    expect(isPropsSchemaNode({ props: {} })).toBe(false);
-    for (const effect of ['fade', 'slide', 'scale', 'reveal', 'pulse'])
-      expect(isPropsSchemaNode({ type: effect })).toBe(false);
+  it('counts a node-shaped value in an undeclared prop as data, not a child', () => {
+    const node = {
+      type: 'GraphView',
+      props: { behaviours: [{ type: 'drag-node' }], front: { type: 'Column' }, then: { type: 'Row' } },
+    } as unknown as SchemaNode;
+    expect(childrenOf(node)).toEqual([]);
   });
 });
 
 describe('replaceNodeInTree', () => {
-  it('replaces by identity through children, routes, slots, and props', () => {
+  it("replaces by identity through children, routes, slots, and a $if's then", () => {
     const target: SchemaNode = { type: 'we-text', children: ['old'] };
     const replacement: SchemaNode = { type: 'we-text', children: ['new'] };
     const root: SchemaNode = {
@@ -57,17 +52,19 @@ describe('replaceNodeInTree', () => {
       children: [target, 'plain text'],
       routes: [{ path: '/', type: 'Row', children: [target] } as SchemaNode & { path: string }],
       slots: { side: target },
-      props: { then: target, list: [target, { notANode: true }] },
     };
+    const conditional: SchemaNode = { type: '$if', props: { condition: true, then: target, list: [target] } };
+    root.children = [...(root.children ?? []), conditional];
 
     const result = replaceNodeInTree(root, target, replacement);
     expect(result.children?.[0]).toBe(replacement);
     expect(result.children?.[1]).toBe('plain text');
     expect((result.routes?.[0] as SchemaNode).children?.[0]).toBe(replacement);
     expect(result.slots?.side).toBe(replacement);
-    expect(result.props?.then).toBe(replacement);
-    expect((result.props?.list as unknown[])[0]).toBe(replacement);
-    expect((result.props?.list as unknown[])[1]).toEqual({ notANode: true });
+    const replaced = result.children?.[2] as SchemaNode;
+    expect(replaced.props?.then).toBe(replacement);
+    // Only a declared node prop holds a child; a list of nodes anywhere else is data.
+    expect((replaced.props?.list as unknown[])[0]).toBe(target);
   });
 
   it('returns a new tree and leaves the original intact', () => {

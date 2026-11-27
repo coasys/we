@@ -18,14 +18,15 @@ type AnimateRendererProps = {
   node: SchemaNode;
   stores: Record<string, unknown>;
   context: Record<string, unknown>;
-  renderNode: (node?: SchemaNode, nodeContext?: Record<string, unknown>) => RendererOutput;
+  /** The node's children, every one of them, drawn in its context. */
+  renderBody: () => RendererOutput;
 };
 
 /**
  * Renderer for `$animate` schema nodes.
  *
- * The child is always mounted in the DOM — `$animate` never controls DOM presence,
- * only visual state (opacity + transform). Transitions are triggered by:
+ * The children are always mounted in the DOM — `$animate` never controls DOM presence,
+ * only visual state (opacity + transform). Every child is drawn, in one wrapper, so several move as one. Transitions are triggered by:
  *
  *  - `props.condition`    — re-fire enter/exit whenever this changes, the same as `$if`'s
  *                           `condition` — except the child is never unmounted. Reach for this
@@ -45,13 +46,13 @@ type AnimateRendererProps = {
  *
  * Use `$if` instead when the content genuinely should not exist while closed.
  */
-export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRendererProps): RendererOutput {
+export function AnimateRenderer({ node, stores, context, renderBody }: AnimateRendererProps): RendererOutput {
   const enterTransition = node.props?.enterTransition as TransitionConfig | undefined;
   const exitTransition = node.props?.exitTransition as TransitionConfig | undefined;
 
   // No animations configured — transparent pass-through
   if (!enterTransition && !exitTransition) {
-    return <>{renderNode(node.children?.[0] as SchemaNode | undefined)}</>;
+    return <>{renderBody()}</>;
   }
 
   // Scroll triggers live on the $animate node props, not inside the transition config
@@ -322,8 +323,8 @@ export function AnimateRenderer({ node, stores, context, renderNode }: AnimateRe
 
   return (
     <div ref={wrapperRef} style={wrapperStyle()}>
-      <Show when={hasReveal} fallback={renderNode(node.children?.[0] as SchemaNode | undefined)}>
-        <div style={innerStyle()}>{renderNode(node.children?.[0] as SchemaNode | undefined)}</div>
+      <Show when={hasReveal} fallback={renderBody()}>
+        <div style={innerStyle()}>{renderBody()}</div>
       </Show>
     </div>
   );

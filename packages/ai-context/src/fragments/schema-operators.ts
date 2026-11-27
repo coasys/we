@@ -65,7 +65,10 @@ A schema is a tree of nodes. Each node can have:
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
 
-The ROOT node carries one more, and it is required:
+The ROOT node carries two more, and both are required:
+
+- schemaVersion: 1 — the template format it is written in. A host refuses a format newer than it
+  reads, before anything else, rather than rendering part of it. Write 1.
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
   keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own
@@ -92,6 +95,10 @@ column arrangement that appears per person and per status. The root may carry th
 Those two render exactly what two copies of the card would. The definitions live INSIDE the
 template, so everything that will render is still in the document — nothing is fetched, and a
 template can be read as the thing it will be.
+
+A $ref whose def is not a key of the root's $defs, or one inside a definition that leads back to that
+same definition, is an error: the validator reports it, and the page draws a dashed "Missing shape"
+marker in its place (a shape that contains itself is drawn once, with the marker where it closes).
 
 **You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
 automatically, so a thing you write out twice becomes one definition without you doing anything.
@@ -223,14 +230,17 @@ A store's actions are unreachable — spaceStore.createPost reads as nothing; on
 
 Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
-  < > <= >=                      numeric comparison
+  < > <= >=                      numbers as numbers (text that is wholly a numeral counts, so '3' < '10'),
+                                 other text by Unicode code point (so ISO dates order), anything else false
   in                             list membership:  item.role in ['admin', 'moderator']
   ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand,
                                  so name || 'Untitled' is true, not a name — the validator warns
   ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
                                  an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
-  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  + - * / %                      arithmetic; + joins strings when either side is one; anything that is
+                                 not a number — missing, a boolean, a list, non-numeral text — is 0
+                                 (so -missing is 0); / and % by 0 are 0
   \`…\${expr}…\`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one
@@ -792,7 +802,7 @@ Block-level structures use "type" starting with "$" for dynamic rendering of sch
 
 Each loop:
 { "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
+Renders all of its children once for each item, in order — a row may be several nodes, and needs no box around them unless the layout wants one. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
 
 Each row also gets two names describing its position in the list:
 - index — the 0-based position.
@@ -824,7 +834,9 @@ are kept by id already.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
-Renders "then" node if condition is truthy, else renders "else" node.
+Renders "then" node if condition is truthy, else renders "else" node. It takes no children — they
+would never be drawn, so the validator refuses them; several nodes go in "then" as one node with no
+type holding them.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
 TransitionEffect = { type: 'fade'|'slide'|'scale'|'reveal'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string, axis?: 'block'|'inline' }
@@ -847,9 +859,9 @@ the first frame reads as a jump, however smooth the size change is.
 A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
 longest effect in the config, so the collapse finishes before the content is removed.
 
-Viewport / mount / condition animation (child always in DOM):
-{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
+Viewport / mount / condition animation (children always in DOM):
+{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>, …] }
+The children are always mounted, and move as one. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
 half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
@@ -876,7 +888,7 @@ scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $ani
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.
 Without condition or a scroll trigger, the enterTransition runs once on mount.
-Only one child node is supported.
+Every child is drawn, inside the one animated wrapper.
 Example (condition-driven disclosure — a collapsible group whose rows hold live store bindings and
 must not resubscribe every time it opens):
 {
@@ -959,7 +971,8 @@ Module slot outlet:
 Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
 inside a module's own chrome: the module declares the anchor name in its \`anchors\` list and marks
 where contributions land with this. Resolves to nothing when no module has contributed — no empty
-container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
-template's.
+container, no gap. A template may not write one: chrome is the host's and the modules', not a
+template's, so in a template it has nothing to resolve it — the validator refuses it, and the page
+would draw an "Unknown component" marker. Place the module's part with $part instead.
 `;
 }

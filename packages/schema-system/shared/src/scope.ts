@@ -16,7 +16,7 @@ import type { Expr } from '@we/expressions';
 import { isExpressionToken, parseExpression } from '@we/expressions';
 
 import type { EntityEntry, StateMemberMeta, StoreEntry } from './contextTypes';
-import { isPropsSchemaNode, isSchemaChild } from './treeUtils';
+import { childrenOf, RENDERED_POSITIONS } from './treeUtils';
 import type { SchemaNode } from './types';
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -84,8 +84,10 @@ const CONTEXT_REFS: ScopeRef[] = [
 
 /**
  * Find the chain of nodes from `root` down to the node with `nodeId`, inclusive.
- * Traverses the same edges the renderer does: children, routes, slots, and
- * SchemaNodes embedded in props.
+ *
+ * Through every position a node renders at, panels included (`RENDERED_POSITIONS`). Not `$defs`: a
+ * shared shape is drawn wherever a `$ref` names it, so it has no one chain of ancestors and no one
+ * scope — the answer for a node in one is the answer at each use, after expansion.
  */
 export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | null {
   if (!nodeId) return null;
@@ -93,39 +95,9 @@ export function findNodeChain(root: SchemaNode, nodeId: string): SchemaNode[] | 
   function search(node: SchemaNode, trail: SchemaNode[]): SchemaNode[] | null {
     const chain = [...trail, node];
     if (node.id === nodeId) return chain;
-
-    if (node.children) {
-      for (const child of node.children) {
-        if (!isSchemaChild(child)) continue;
-        const found = search(child, chain);
-        if (found) return found;
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) {
-        const found = search(route, chain);
-        if (found) return found;
-      }
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) {
-        const found = search(slotNode, chain);
-        if (found) return found;
-      }
-    }
-    if (node.props) {
-      for (const val of Object.values(node.props)) {
-        if (Array.isArray(val)) {
-          for (const item of val) {
-            if (!isPropsSchemaNode(item)) continue;
-            const found = search(item, chain);
-            if (found) return found;
-          }
-        } else if (isPropsSchemaNode(val)) {
-          const found = search(val, chain);
-          if (found) return found;
-        }
-      }
+    for (const child of childrenOf(node, RENDERED_POSITIONS)) {
+      const found = search(child, chain);
+      if (found) return found;
     }
     return null;
   }

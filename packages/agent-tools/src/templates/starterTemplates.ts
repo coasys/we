@@ -12,7 +12,7 @@
  * - **app**: WE's own chrome placed as host parts, which is what an app is for. An app of somebody's
  *   own then moves them, leaves one out, or puts its own nodes beside them.
  */
-import { type TemplateSchema, VIEWS_MARKER } from '@we/schema-shared';
+import { TEMPLATE_SCHEMA_VERSION, type TemplateSchema, VIEWS_MARKER } from '@we/schema-shared';
 
 export type TemplateRole = 'shell' | 'view' | 'app';
 
@@ -25,6 +25,7 @@ export function roleOfTemplate(template: { meta?: { role?: unknown } }): Templat
 }
 
 const shell = (): TemplateSchema => ({
+  schemaVersion: TEMPLATE_SCHEMA_VERSION,
   meta: { name: '', description: '', icon: '' },
   type: 'Column',
   props: { bg: 'page', minHeight: '100%' },
@@ -83,6 +84,7 @@ const shell = (): TemplateSchema => ({
 });
 
 const view = (): TemplateSchema => ({
+  schemaVersion: TEMPLATE_SCHEMA_VERSION,
   meta: { name: '', description: '', icon: '', role: 'view' },
   type: 'Column',
   props: { width: '100%', p: '500', gap: '400' },
@@ -90,6 +92,7 @@ const view = (): TemplateSchema => ({
 });
 
 const app = (): TemplateSchema => ({
+  schemaVersion: TEMPLATE_SCHEMA_VERSION,
   meta: { name: '', description: '', icon: '', role: 'app', frame: { left: 80, right: 56 } },
   type: 'Column',
   props: { styles: { display: 'contents' } },

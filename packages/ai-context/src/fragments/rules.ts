@@ -75,6 +75,11 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
 
+A we- name is the design system's: one it does not define draws a dashed "Unknown element" box in
+its place, as an unknown component does, and the validator reports it. Copy primitive names from the
+Component Registry rather than guessing one. A custom element under any other prefix is a library's,
+which a deployment adds to its seed's elements list.
+
 Only elements that display, group or take input may be mounted; the full list is
 TEMPLATE_HTML_ELEMENTS in @we/schema-shared. Anything else renders nothing and the validator reports
 it — script, style, link, meta, base, iframe, object, embed, template, svg among them, because each
@@ -93,6 +98,8 @@ For a specific file: \`we-validate-schemas packages/app-shell/src/shared/schemas
 
 After creating or modifying a \`.schema.ts\` file, always run validation to catch:
 - Unknown component types (typos, missing registry entries)
+- A \`$ref\` naming no definition in the root's \`$defs\`, or a definition that contains itself
+- Children on \`$if\` (it draws \`then\` or \`else\`), and a \`$slot\` in a template (it is module chrome only)
 - Invalid or misspelled props (with "did you mean?" suggestions)
 - Prop type mismatches (e.g., number where string expected)
 - Missing required \`meta\` field on root TemplateSchema nodes

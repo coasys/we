@@ -1527,6 +1527,7 @@ function page(children: SchemaNode[]): SchemaNode {
  * again. Splitting first means that content arrives into a frame rather than being moved twice.
  */
 export const settingsTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: { name: 'Settings', description: 'Account settings', icon: 'gear' },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'chrome', ax: 'center' },

@@ -110,6 +110,7 @@ function testRoute(path: string, template: TemplateSchema): RouteSchema {
 // ---------------------------------------------------------------------------
 
 export const schemaTestsTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Testing',
     description: 'Schema test suites — benchmark, tokens, mutations, routing',

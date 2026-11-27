@@ -17,6 +17,7 @@ export const seedBundles: Bundle[] = [
     icon: 'tree-structure',
     author: { name: 'WE' },
     app: {
+      schemaVersion: 1,
       id: 'app',
       type: 'Column',
       meta: {
@@ -1129,6 +1130,7 @@ export const seedBundles: Bundle[] = [
     },
     templates: [
       {
+        schemaVersion: 1,
         id: 'space',
         meta: {
           name: 'Coasys',
@@ -26233,7 +26235,7 @@ export const seedBundles: Bundle[] = [
                                                                 props: {
                                                                   gap: '100',
                                                                   p: '300',
-                                                                  r: 'card',
+                                                                  r: 'surface',
                                                                   bg: 'surface-raised',
                                                                   border: '1px solid border',
                                                                   width: '180px',
@@ -26996,7 +26998,7 @@ export const seedBundles: Bundle[] = [
                                                     props: {
                                                       width: '100%',
                                                       height: '480px',
-                                                      r: 'card',
+                                                      r: 'surface',
                                                       border: '1px solid border',
                                                       overflow: 'hidden',
                                                     },
@@ -27147,7 +27149,7 @@ export const seedBundles: Bundle[] = [
                                                                             props: {
                                                                               gap: '100',
                                                                               p: '300',
-                                                                              r: 'card',
+                                                                              r: 'surface',
                                                                               bg: 'surface-raised',
                                                                               border: '1px solid border',
                                                                               width: '180px',
@@ -27394,7 +27396,7 @@ export const seedBundles: Bundle[] = [
                                                             props: {
                                                               gap: '200',
                                                               p: '300',
-                                                              r: 'card',
+                                                              r: 'surface',
                                                               border: {
                                                                 $: "(rec.record == routeStore.params.card) ? '1px solid accent' : '1px solid border'",
                                                               },
@@ -30686,6 +30688,7 @@ export const seedBundles: Bundle[] = [
     ],
     pages: [
       {
+        schemaVersion: 1,
         id: 'about',
         meta: {
           name: 'About Coasys',

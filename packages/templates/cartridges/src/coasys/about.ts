@@ -988,6 +988,7 @@ const layersSection = section('layers', {}, [
 ]);
 
 export const coasysAbout: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'about',
   meta: {
     name: 'About Coasys',

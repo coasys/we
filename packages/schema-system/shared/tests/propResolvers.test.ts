@@ -747,7 +747,7 @@ describe('$resetLocal resolver', () => {
       $localMeta: { name: createMockMeta({ reset: reset1 }), email: createMockMeta({ reset: reset2 }) },
       $localScopeFields: ['name', 'email'],
     };
-    const handler = resolveResetLocalProp(context);
+    const handler = resolveResetLocalProp({ $resetLocal: '$scope' }, context);
     handler();
     expect(reset1).toHaveBeenCalled();
     expect(reset2).toHaveBeenCalled();
@@ -763,10 +763,17 @@ describe('$resetLocal resolver', () => {
       },
       $localScopeFields: ['childField'],
     };
-    const handler = resolveResetLocalProp(context);
+    const handler = resolveResetLocalProp({ $resetLocal: '$scope' }, context);
     handler();
     expect(childReset).toHaveBeenCalled();
     expect(parentReset).not.toHaveBeenCalled();
+  });
+
+  it('refuses any value but "$scope", resetting nothing', () => {
+    const reset = vi.fn();
+    const context = { $localMeta: { name: createMockMeta({ reset }) }, $localScopeFields: ['name'] };
+    resolveResetLocalProp({ $resetLocal: 'name' }, context)();
+    expect(reset).not.toHaveBeenCalled();
   });
 });
 

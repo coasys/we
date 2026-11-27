@@ -339,8 +339,8 @@ export const CORE_OPERATIONS: Record<string, OperationDefinition> = {
   `forEach`'s item. No stores, no `me`, no `local`, and core functions only — an operation means the
   same on every host.
 - **Ids.** A created record's id is derived from the invocation and the step (`deriveRecordId`), a
-  `forEach` contributing each item's key (`item.id`, else `item.key`, else the loop's `key`
-  expression), never its position. Give every list item a stable key.
+  `forEach` contributing each item's key (the loop's `key` expression when it has one, else
+  `item.id`, else `item.key`), never its position. Give every list item a stable key.
 - **What it may not do:** write `Policy`, `Role` or `RoleGrant`, call itself through any chain of
   calls, or reach a host function. What stays code is listed in the operations format: uploads,
   derived fields, diffs and merges, service calls, optimistic holds and undo.
@@ -348,6 +348,9 @@ export const CORE_OPERATIONS: Record<string, OperationDefinition> = {
   check — every name bound, every entity, field and relation known, every call resolved, no cycle —
   with a path to each problem. `effectSummary` says what an operation may write, which the host maps
   to the capability group a template needs to invoke it.
+- **The spec.** What another implementation must do to run the same operations, and the vectors it
+  runs to prove it: [`docs/spec/operations/`](../../docs/spec/operations/README.md). A change to the
+  format, the runner's semantics or a core function changes the spec in the same PR.
 
 ## Adding a New Entity
 

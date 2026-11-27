@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { readTemplate, templateVersionProblem } from './templateFormat';
 import { zSchemaNode, zTemplateSchema } from './zodSchemas';
 
 export type ValidationError = { path: string; message: string; severity: 'error' | 'warning' };
@@ -81,12 +82,22 @@ function zodErrorToValidationErrors(zodErrors: z.ZodError): ValidationError[] {
   return out;
 }
 
-// Auto-detect and validate: TemplateSchema (has meta) or SchemaNode fragment
+/**
+ * Auto-detect and validate: a TemplateSchema (has meta) or a SchemaNode fragment.
+ *
+ * A template's format version is checked before anything else, and alone: a newer format may have
+ * changed the very shape the rest of this would judge, so its errors would be noise. One stored
+ * without a version is read as format 1.
+ */
 export function validateStructure(schema: unknown): ValidationResult {
   const isTemplate = typeof schema === 'object' && schema !== null && 'meta' in schema;
-  const zod = isTemplate ? zTemplateSchema : zSchemaNode;
+  if (isTemplate) {
+    const problem = templateVersionProblem(schema);
+    if (problem) return { valid: false, errors: [{ path: 'schemaVersion', message: problem, severity: 'error' }] };
+  }
   try {
-    zod.parse(schema);
+    if (isTemplate) zTemplateSchema.parse(readTemplate(schema));
+    else zSchemaNode.parse(schema);
     return { valid: true, errors: [] };
   } catch (error) {
     if (error instanceof z.ZodError) {

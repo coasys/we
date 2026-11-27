@@ -6,6 +6,7 @@ import type { TemplateSchema } from '@we/schema-shared';
 import { VIEWS_MARKER } from '@we/schema-shared';
 
 export const fieldGuideShell: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'field-guide',
   meta: { name: 'Field Guide', description: 'A naturalist group’s species and sightings', icon: 'binoculars' },
   type: 'Column',

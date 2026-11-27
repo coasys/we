@@ -48,7 +48,9 @@ import {
   type OperationCase,
   type OperationConformanceCase,
   type OperationVector,
+  type OperationVectorFile,
   readOperationVectors,
+  runVector,
 } from './operations';
 import { describeSameBatch, SAME_BATCH_CASES, type SameBatchCase } from './sameBatch';
 import { describeStagedChecks, STAGED_CHECK_CASES, type StagedCheckCase } from './stagedChecks';
@@ -65,7 +67,9 @@ export {
   type OperationCase,
   type OperationConformanceCase,
   type OperationVector,
+  type OperationVectorFile,
   readOperationVectors,
+  runVector,
   SAME_BATCH_CASES,
   type SameBatchCase,
   STAGED_CHECK_CASES,

@@ -218,6 +218,7 @@ const picker = (field: string, options: readonly { value: string; label: string 
 });
 
 export const graphView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Graph',
     description: 'The same space read as a map — what it holds, and how it connects',

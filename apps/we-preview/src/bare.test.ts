@@ -50,4 +50,14 @@ describe('a template rendered alone', () => {
     expect(node).toEqual({ type: 'Column', children: ['Hi'] });
     expect(path).toBeUndefined();
   });
+
+  it('finds an outlet behind a gate, the shape a template that waits for its data has', () => {
+    const gated: ExternalTemplate = {
+      ...template,
+      children: [{ type: '$if', props: { condition: { $: 'ready' }, then: { type: '$routes' } } }],
+    };
+    const { node } = bareNode(gated, '/settings');
+    const gate = (node as ExternalTemplate).children![0] as ExternalTemplate;
+    expect(gate.props!.then).toEqual({ path: '/settings', type: 'we-text', children: ['Settings'] });
+  });
 });

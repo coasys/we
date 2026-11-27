@@ -4,6 +4,7 @@ import { channelList } from './ChannelList.ts';
 import { conversationList } from './ConversationList.ts';
 
 export const fluxView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Flux',
     description: "A Flux community's own channels and conversations, read natively",

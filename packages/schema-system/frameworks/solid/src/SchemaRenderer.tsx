@@ -1,6 +1,6 @@
 import type { EntityClass, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { combineEntityRows, entityNamesOf, routeQuery } from '@we/backend-shared';
-import type { LocalFieldMeta, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import type { LocalFieldMeta, QueryDescriptor, RouteParamsBinding, ValidationRule } from '@we/schema-shared';
 import {
   applyThemeVars,
   deepUnwrap,
@@ -8,17 +8,25 @@ import {
   hasToken,
   isRelativePath,
   isTemplateElement,
+  isUndefinedWeElement,
+  localPersistKey,
+  localSyncSpec,
+  localWriteMirror,
   markReactive,
   newGestureOwner,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
+  REF_TYPE,
+  type RefProps,
   refusedProp,
   registerGestureOwner,
+  resolveLocalInitial,
   resolveProp,
   resolveQueryProp,
   runAsOwner,
   scopeIsAnchored,
+  unresolvedRef,
   validateField,
 } from '@we/schema-shared';
 import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show, untrack } from 'solid-js';
@@ -610,6 +618,69 @@ function isStaticValue(value: unknown): boolean {
 }
 
 /**
+ * What the page shows where a node could not be drawn: a dashed box saying what and why.
+ *
+ * One look for every cause — an unknown component, an element nobody defined, a shape the template
+ * names but does not hold — so a reader learns it once, and so nothing that cannot be drawn is ever
+ * drawn as a blank. `reason` names the cause for anything reading the page rather than looking at
+ * it, and every marker carries one.
+ */
+type MissingReason = 'unknown-component' | 'unknown-element' | 'missing-definition' | 'cyclic-definition';
+
+function MissingMarker(props: { type: string; message: string; reason: MissingReason }): JSX.Element {
+  return (
+    <div
+      data-we-missing-component={props.type}
+      data-we-missing-reason={props.reason}
+      style={{
+        padding: 'var(--we-space-300, 12px)',
+        border: '1px dashed var(--we-color-danger-400, #d66)',
+        'border-radius': 'var(--we-radius-300, 6px)',
+        color: 'var(--we-color-danger-600, #a33)',
+        'font-size': 'var(--we-font-size-100, 12px)',
+      }}
+    >
+      {props.message}
+    </div>
+  );
+}
+
+/**
+ * A `we-*` element nobody has defined, drawn as the missing marker until somebody does.
+ *
+ * Mounted as it was written, such an element is an empty box that never upgrades — a blank where
+ * something was meant, which is the one failure the renderer does not allow itself. But the prefix
+ * is also open to anything that defines an element under it after the page has mounted, so the
+ * marker waits on the document's registry and the node is drawn for real the moment its element
+ * exists; a typo simply never gets there.
+ */
+function UndefinedElement(props: RenderProps & { node: SchemaNode & { type: string } }): RendererOutput {
+  // A mounted node keeps its type (see `renderChildren`).
+  const type = untrack(() => props.node.type);
+  const [defined, setDefined] = createSignal(false);
+  if (typeof customElements !== 'undefined') {
+    let live = true;
+    onCleanup(() => (live = false));
+    void customElements.whenDefined(type).then(() => live && setDefined(true));
+  }
+  console.error(`Unknown element <${type}>: the design system has no such element and nothing has defined one.`);
+  return (
+    <Show
+      when={defined()}
+      fallback={
+        <MissingMarker
+          type={type}
+          reason="unknown-element"
+          message={`Unknown element "${type}": no element of that name is defined`}
+        />
+      }
+    >
+      {untrack(() => RenderNode(props))}
+    </Show>
+  );
+}
+
+/**
  * A template that says a repeated shape once is put back together here, and nowhere else.
  *
  * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
@@ -629,6 +700,35 @@ export function RenderSchema(props: RenderProps): RendererOutput {
 
 function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
   if (!node) return null;
+  // Decided before anything on the node is set up, so a marker holds no state or subscription of its own.
+  // A registry entry under the name is a definition too: a host may draw a primitive its own way.
+  if (typeof node.type === 'string' && !registry[node.type] && isUndefinedWeElement(node.type)) {
+    return (
+      <UndefinedElement
+        node={node as SchemaNode & { type: string }}
+        stores={stores}
+        registry={registry}
+        context={context}
+        children={children}
+      />
+    );
+  }
+  /*
+    A shared shape that could not be put in its place. `RenderSchema` expands every reference a
+    template's definitions answer, so one that reaches here names a definition there is none of, or
+    one already open above it.
+  */
+  if (node.type === REF_TYPE) {
+    const def = (node.props as RefProps | undefined)?.def ?? '';
+    const cycle = unresolvedRef(node) === 'cycle';
+    const message = cycle
+      ? `Shape "${def}" contains itself: it is drawn once, and not again here`
+      : `Missing shape "${def}": the template defines no shape of that name`;
+    console.error(`[template] ${message}.`);
+    return (
+      <MissingMarker type={REF_TYPE} reason={cycle ? 'cyclic-definition' : 'missing-definition'} message={message} />
+    );
+  }
 
   const visualEditor = useVisualEditor();
 
@@ -640,29 +740,16 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     const metaEntries: Record<string, LocalFieldMeta> = {};
     const scopeFields: string[] = [];
 
-    // Evaluate an `initial` value: if it's an expression, resolve it once against the current
-    // stores + parent context. Otherwise use it as a literal. Called both at mount and inside
-    // reset() so that reset re-reads the current store value.
-    //
-    // Expression means either a token object (`{ $: … }`, `{ $query: … }`) or a `$`-prefixed
-    // **string** — the old context reference, `'$space.name'`. Only objects were resolved here, so a
-    // form seeded from a `$each` item silently rendered the string `$space.name` in its input: no
-    // error, and the field looked filled in.
-    //
-    // **This is the last place a `$`-string evaluates.** Every other position treats one as literal
-    // text and the validator rejects it, which is the contract as of #169 — an `initial` is the one
-    // exception, kept so a template written before that still seeds its fields rather than putting
-    // the ten characters into them. Do not read this as the spelling being alive.
-    //
-    // A `$`-string that matches no context key or store global comes back unchanged (the
-    // dispatcher's final pass-through), so a literal that merely starts with `$` is unaffected.
+    // Evaluate an `initial` value: if it's a token (`{ $: … }`), resolve it once against the current
+    // stores + parent context. Otherwise use it as a literal — a string included, whatever it starts
+    // with, as everywhere else. Called both at mount and inside reset() so that reset re-reads the
+    // current store value.
     const resolveInitial = (raw: unknown): unknown => {
       const isExpression =
-        (typeof raw === 'string' && raw.startsWith('$') && raw.length > 1) ||
-        (raw !== null &&
-          typeof raw === 'object' &&
-          !Array.isArray(raw) &&
-          Object.keys(raw).some((k) => k.startsWith('$')));
+        raw !== null &&
+        typeof raw === 'object' &&
+        !Array.isArray(raw) &&
+        Object.keys(raw).some((k) => k.startsWith('$'));
       if (!isExpression) return raw;
 
       const resolved = resolveProp(raw, stores, context);
@@ -680,53 +767,19 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       // wins over `initial` on mount; writes go through the setter; $resetLocal
       // clears the stored copy (see meta.reset below). Files and functions have
       // no JSON form and are ignored.
-      const persistKey =
-        typeof field.persist === 'string' &&
-        field.type !== 'file' &&
-        field.type !== 'function' &&
-        typeof localStorage !== 'undefined'
-          ? `we-local:${field.persist}`
-          : null;
+      const persistKey = localPersistKey(field);
 
       // URL mirroring: view state (content type, sort, filters) syncs with a query
       // parameter through the host's $routeParams binding, so a shared link
       // reproduces the view. Serialized as plain text for strings, JSON otherwise.
-      const syncSpec =
-        field.syncParam && field.type !== 'file' && field.type !== 'function'
-          ? typeof field.syncParam === 'string'
-            ? { name: field.syncParam, push: false }
-            : { name: field.syncParam.name, push: field.syncParam.push ?? false }
-          : null;
-      const routeParams = stores.$routeParams as
-        | {
-            get(name: string): string | undefined;
-            set(name: string, value: string | null, o?: { push?: boolean }): void;
-          }
-        | undefined;
-      const decodeParam = (raw: string): unknown => {
-        if (field.type === 'string') return raw;
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return raw;
-        }
-      };
-      const encodeParam = (v: unknown): string => (field.type === 'string' ? String(v) : JSON.stringify(v));
+      const syncSpec = localSyncSpec(field);
+      const routeParams = stores.$routeParams as RouteParamsBinding | undefined;
 
       // Precedence: URL param > persisted value > declared initial.
-      let initialValue = resolveInitial(rawInitial);
-      if (persistKey) {
-        try {
-          const storedRaw = localStorage.getItem(persistKey);
-          if (storedRaw !== null) initialValue = JSON.parse(storedRaw);
-        } catch {
-          // Corrupt entry — fall back to the declared initial.
-        }
-      }
-      if (syncSpec && routeParams) {
-        const fromUrl = routeParams.get(syncSpec.name);
-        if (fromUrl !== undefined) initialValue = decodeParam(fromUrl);
-      }
+      const initialValue = resolveLocalInitial(field, resolveInitial(rawInitial), {
+        routeParams,
+        storage: persistKey ? localStorage : undefined,
+      });
 
       const [get, set] = createSignal<unknown>(initialValue);
       accessors[name] = get;
@@ -738,17 +791,17 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         persistKey || (syncSpec && routeParams)
           ? (v) => {
               baseSetter(v);
-              if (persistKey) {
+              const mirror = localWriteMirror(field, v, declaredInitial);
+              if (mirror.store) {
                 try {
-                  localStorage.setItem(persistKey, JSON.stringify(v));
+                  localStorage.setItem(mirror.store.key, mirror.store.json);
                 } catch {
                   // Quota/serialization failure — the in-memory value still applies.
                 }
               }
-              if (syncSpec && routeParams) {
-                // Back at the declared initial → drop the param, keeping URLs clean.
-                const atDefault = JSON.stringify(v) === JSON.stringify(declaredInitial);
-                routeParams.set(syncSpec.name, atDefault ? null : encodeParam(v), { push: syncSpec.push });
+              // Back at the declared initial the param text is null → dropped, keeping URLs clean.
+              if (mirror.param && routeParams) {
+                routeParams.set(mirror.param.name, mirror.param.text, { push: mirror.param.push });
               }
             }
           : baseSetter;
@@ -888,7 +941,10 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
    * screen and every dock frame. The sidebar is a rail that closes on `mouseleave`, and an element
    * removed under the pointer is never sent one: it stayed open until it was hovered again.
    */
-  function renderChildren(nodes: () => SchemaNode['children']): RendererOutput {
+  function renderChildren(
+    nodes: () => SchemaNode['children'],
+    nodeContext: Record<string, unknown> = effectiveContext,
+  ): RendererOutput {
     return (
       <For each={nodes() ?? []} fallback={null}>
         {(child) => {
@@ -907,7 +963,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             // fine-grained dependencies. A `$query` cannot be read from here — children render
             // inside a memo, and a subscription is an effect — so a question for the backend is
             // hoisted into `$queries` and read back through `local`.
-            const resolved = resolveProp(child, stores, effectiveContext, createMemo);
+            const resolved = resolveProp(child, stores, nodeContext, createMemo);
             return (
               <>
                 {() => {
@@ -924,7 +980,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
             );
           }
           // Otherwise render the child node
-          return renderNode(child as SchemaNode);
+          return renderNode(child as SchemaNode, nodeContext);
         }}
       </For>
     );
@@ -988,14 +1044,19 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
 
   // Handle viewport-driven animations (child always mounted)
   if (node.type === '$animate') {
-    return <AnimateRenderer node={node} stores={stores} context={effectiveContext} renderNode={renderNode} />;
+    return (
+      <AnimateRenderer
+        node={node}
+        stores={stores}
+        context={effectiveContext}
+        renderBody={() => renderChildren(() => node.children)}
+      />
+    );
   }
 
   // Handle each loops
   if (node.type === '$each') {
-    // Get the schema used to render each item
-    const itemSchema = node.children?.[0] as SchemaNode | undefined;
-
+    // Every child is drawn for every item, in order: a row is as many nodes as the template wrote.
     // Resolve the items used for iteration — $query needs a reactive subscription,
     // everything else goes through the standard resolveProp path.
     let itemsArray: () => unknown[];
@@ -1047,7 +1108,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         {(item, index) => {
           // Captured when the row renders, like `$prev` — see above.
           const i = untrack(index);
-          return renderNode(itemSchema, {
+          return renderChildren(() => node.children, {
             ...effectiveContext,
             [asKey]: item,
             index: i,
@@ -1062,7 +1123,12 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       <Show when={keyed()} fallback={byReference()}>
         <For each={rows()}>
           {(row) =>
-            renderNode(itemSchema, { ...effectiveContext, [asKey]: row.item, index: row.index, prev: row.prev })
+            renderChildren(() => node.children, {
+              ...effectiveContext,
+              [asKey]: row.item,
+              index: row.index,
+              prev: row.prev,
+            })
           }
         </For>
       </Show>
@@ -1248,20 +1314,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   if (!untrack(component)) {
     const message = `Unknown component "${node.type}"`;
     console.error(`${message}. It may belong to a feature module that is not enabled, or the type may be misspelt.`);
-    return (
-      <div
-        data-we-missing-component={node.type}
-        style={{
-          padding: 'var(--we-space-300, 12px)',
-          border: '1px dashed var(--we-color-danger-400, #d66)',
-          'border-radius': 'var(--we-radius-300, 6px)',
-          color: 'var(--we-color-danger-600, #a33)',
-          'font-size': 'var(--we-font-size-100, 12px)',
-        }}
-      >
-        {message}
-      </div>
-    );
+    return <MissingMarker type={node.type ?? ''} reason="unknown-component" message={message} />;
   }
 
   // Prepare the slot elements in a reactive store

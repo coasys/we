@@ -1,4 +1,11 @@
-import { BASE_CLASS_LAYERS, CSS_PROP_TO_VAR_SUFFIX, getKeysForLayers, layerKeyMap, tierKeys } from '@we/design-utils';
+import {
+  BASE_CLASS_LAYERS,
+  CSS_PROP_TO_VAR_SUFFIX,
+  getKeysForLayers,
+  layerKeyMap,
+  radiusKeys,
+  tierKeys,
+} from '@we/design-utils';
 import type { Expr } from '@we/expressions';
 import {
   checkExpression,
@@ -7,15 +14,18 @@ import {
   isExpressionToken,
   parseExpression,
 } from '@we/expressions';
-import { role, semanticValues, space, TONES } from '@we/tokens';
+import { radius, role, semanticValues, space, TONES } from '@we/tokens';
 
 import type { ContextData, OperationEntry, StateMemberMeta } from './contextTypes';
-import { expandDefinitions } from './definitions';
+import { expandDefinitions, REF_TYPE, type RefProps, unresolvedRef } from './definitions';
 import { defineFormFunctions } from './formFunctions';
 import { HOST_PART_IDS, isHostPartId } from './hostPartIds';
 import { isRelativePath } from './navigationPaths';
 import { parseRecordViewKey } from './recordViews';
 import { isTemplateElement } from './templateElements';
+import { TEMPLATE_SCHEMA_VERSION, templateVersionProblem } from './templateFormat';
+import { type ChildPositionKind, childrenOf } from './treeUtils';
+import type { SchemaNode } from './types';
 import type { ValidationError, ValidationResult } from './validators';
 import { validateStructure } from './validators';
 
@@ -685,33 +695,6 @@ function walkNode(
   }
 
   /**
-   * A node type the renderer draws ONE child of, given several.
-   *
-   * `$each` renders `children[0]` as its row template and drops the rest; `$animate` does the same
-   * with the child it wraps. Both are documented as taking one child, and both discard the others in
-   * silence — no warning, no fallback, nothing in the DOM.
-   *
-   * That silence is the whole reason this check exists. `commentThread` built each row as *two*
-   * nodes — the reply, then the thread hanging off it — so every level of every thread below the
-   * first was expanded, validated, and never mounted. The symptom was a reply to a reply appearing
-   * nowhere at all, with nothing anywhere to say a node had been dropped, and the fragment's own
-   * tests could not see it: the expansion was correct, and what was wrong was what the renderer did
-   * with it.
-   *
-   * The fix at a call site is always the same — wrap the children in one box.
-   */
-  if ((type === '$each' || type === '$animate') && Array.isArray(n.children) && n.children.length > 1) {
-    errors.push({
-      path: `${path}.children`,
-      message:
-        `{ type: "${type}" } renders only its first child and silently drops the other ` +
-        `${n.children.length - 1}. Wrap them in one node — a Column or a Row — so the whole ` +
-        `${type === '$each' ? 'row' : 'subject'} is one child.`,
-      severity: 'error',
-    });
-  }
-
-  /**
    * A box shaped as a control that holds nothing to press.
    *
    * `r: 'control'` is the radius of the things you press — buttons, tags, chips — and a theme with
@@ -784,6 +767,22 @@ function walkNode(
    * made on.
    */
   if (type === '$slot') {
+    /*
+      Anchors exist only in a module's chrome, where the host resolves them before anything is drawn.
+      A template's own tree is drawn as it is, so a `$slot` there has nothing to resolve it and draws
+      the unknown-component marker. Checked only for a whole template: a fragment may be a module's
+      chrome, validated on its own.
+    */
+    if (!state.isFragment) {
+      errors.push({
+        path: `${path}.type`,
+        message:
+          '{ type: "$slot" } is an outlet in a module\'s own chrome, where other modules contribute; a template has ' +
+          'no anchors, so here it draws an "Unknown component" marker. Place the module\'s part with $part instead.',
+        severity: 'error',
+      });
+      return;
+    }
     const anchor = (n.props as { anchor?: unknown } | undefined)?.anchor;
     if (typeof anchor !== 'string' || !anchor) {
       errors.push({
@@ -831,6 +830,44 @@ function walkNode(
       });
     }
     return;
+  }
+
+  /*
+    A shared shape that could not be put in its place. The tree is walked expanded, so a `$ref` still
+    here is one `expandDefinitions` left standing: it names no definition, or one already open above
+    it. Either way the page draws a marker in its place.
+  */
+  if (type === REF_TYPE) {
+    const def = (n.props as RefProps | undefined)?.def;
+    errors.push(
+      unresolvedRef(n) === 'cycle'
+        ? {
+            path: `${path}.props.def`,
+            message: `The shape "${String(def)}" contains a { type: "$ref" } to itself, so it would never end: it is drawn once, and a marker stands where it reaches itself again.`,
+            severity: 'error',
+          }
+        : {
+            path: `${path}.props.def`,
+            message: `{ type: "$ref" } names "${String(def)}", which is not one of the root's $defs, so a marker is drawn in its place.`,
+            severity: 'error',
+          },
+    );
+    return;
+  }
+
+  /*
+    `$if` draws one of two nodes, `then` or `else`, and nothing else: children written on it are never
+    drawn. Refused rather than drawn, since "children when true" and "children always" are both
+    plausible readings and a template saying neither is better told than guessed at.
+  */
+  if (type === '$if' && Array.isArray(n.children) && n.children.length > 0) {
+    errors.push({
+      path: `${path}.children`,
+      message:
+        `{ type: "$if" } draws its "then" or its "else", never children, so these ${n.children.length} would not ` +
+        'appear. Move them into "then" — one node, or a node with no type holding several.',
+      severity: 'error',
+    });
   }
 
   // Skip operator nodes
@@ -1371,6 +1408,47 @@ function checkSpaceValue(propName: string, value: unknown, path: string, errors:
 }
 
 /**
+ * A radius that is neither a step of the scale, a theme family nor CSS.
+ *
+ * `r: 'card'` read like a name for a card's corners and is not one: cards are the `surface` family,
+ * which every theme sets as `surfaceRadius`. It resolved to `var(--we-radius-card)`, a variable no
+ * theme declares, so the corners were square under every theme and nothing said so. The names are
+ * the scale and the families, both from the tokens package, so a family added there is accepted
+ * here in the same commit.
+ */
+const RADIUS_PROPS: ReadonlySet<string> = new Set(radiusKeys);
+const RADIUS_NAMES = new Set([...Object.keys(radius), ...Object.keys(semanticValues('radius'))]);
+
+function checkRadiusValue(propName: string, value: unknown, path: string, errors: ValidationError[]): void {
+  if (!RADIUS_PROPS.has(propName)) return;
+  if (isExpressionToken(value)) {
+    for (const literal of value.$.matchAll(/'([^'\\]*)'|"([^"\\]*)"/g)) {
+      checkRadiusValue(propName, literal[1] ?? literal[2], path, errors);
+    }
+    return;
+  }
+  if (typeof value !== 'string') return;
+  if (
+    RADIUS_NAMES.has(value) ||
+    CSS_LENGTH_RE.test(value) ||
+    CSS_COMPUTED_LENGTH_RE.test(value) ||
+    CSS_KEYWORD_RE.test(value) ||
+    /\s/.test(value.trim())
+  ) {
+    return;
+  }
+  errors.push({
+    path,
+    message:
+      `"${value}" is not a radius token. Use a step of the scale (${Object.keys(radius).join(', ')}), ` +
+      `a theme family (${Object.keys(semanticValues('radius')).join(', ')}) or a CSS length — a card or any ` +
+      `other sheet is "surface". As written it resolves to var(--we-radius-${value}), which no theme declares, ` +
+      `so the corners are square.`,
+    severity: 'error',
+  });
+}
+
+/**
  * A string that was a reference in the old spelling — `'$post.title'`, `'$event.detail'`, `'$me.did'`.
  *
  * A plain string is text now, so this would render as the characters themselves — a title reading
@@ -1649,9 +1727,11 @@ function checkProps(
       checkColourValue(propName, propValue, propPath, errors);
     }
     checkSpaceValue(propName, propValue, propPath, errors);
+    checkRadiusValue(propName, propValue, propPath, errors);
     if (PROP_BAGS.has(propName) && propValue && typeof propValue === 'object' && !isTokenObject(propValue)) {
       for (const [bagProp, bagValue] of Object.entries(propValue)) {
         checkSpaceValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
+        checkRadiusValue(bagProp, bagValue, `${propPath}.${bagProp}`, errors);
         if (DROPPED_IN_BAGS.has(bagProp)) {
           errors.push({
             path: `${propPath}.${bagProp}`,
@@ -1949,12 +2029,14 @@ function checkTokenValue(
     }
   }
 
-  // $resetLocal token — skip $scope
-  if ('$resetLocal' in obj && typeof obj.$resetLocal === 'string') {
-    if (obj.$resetLocal !== '$scope') {
-      checkLocalRef(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
-      checkLocalWrite(obj.$resetLocal, `${path}.$resetLocal`, 'resetLocal', state, errors);
-    }
+  // $resetLocal resets the whole scope: "$scope" is the only value, and a field name is refused
+  // rather than read as one, since the handler would reset everything else beside it.
+  if ('$resetLocal' in obj && obj.$resetLocal !== '$scope') {
+    errors.push({
+      path: `${path}.$resetLocal`,
+      message: `$resetLocal resets the whole enclosing scope and takes only "$scope", not ${JSON.stringify(obj.$resetLocal)}. To reset one field, $setLocal it to its initial.`,
+      severity: 'error',
+    });
   }
 
   // Recurse into nested token objects ($if, $concat, $map, $eq, $ne, etc.)
@@ -2607,33 +2689,18 @@ function checkRoutes(
   }
 }
 
-function hasRoutesOutlet(node: unknown): boolean {
-  if (typeof node !== 'object' || node === null) return false;
-  const n = node as Record<string, unknown>;
-  if (n.type === '$routes') return true;
-  const children = n.children as unknown[] | undefined;
-  if (Array.isArray(children)) {
-    for (const child of children) {
-      if (hasRoutesOutlet(child)) return true;
-    }
-  }
-  const slots = n.slots as Record<string, unknown> | undefined;
-  if (slots && typeof slots === 'object') {
-    for (const slotNode of Object.values(slots)) {
-      if (hasRoutesOutlet(slotNode)) return true;
-    }
-  }
-  /**
-   * A `$if` keeps its branches in `props`, not `children` — and putting the outlet behind a gate is
-   * the normal shape, not an exotic one: the default template renders its space routes only once the
-   * dataset is confirmed to be a WE space. Without this the outlet is invisible here and the node is
-   * accused of having routes with nowhere to render them.
-   */
-  const props = n.props as Record<string, unknown> | undefined;
-  if (props && typeof props === 'object') {
-    if (hasRoutesOutlet(props.then) || hasRoutesOutlet(props.else)) return true;
-  }
-  return false;
+/**
+ * Whether a node draws its routes somewhere: a `$routes` outlet in its own subtree.
+ *
+ * Through children, slots and node-valued props — a `$if`'s branches especially, since the outlet
+ * behind a gate is the normal shape (the default template renders its space routes only once the
+ * dataset is confirmed to be a WE space). Not `routes`, whose outlets are for routes nested in them,
+ * and not panels, which never draw a route.
+ */
+const OUTLET_POSITIONS: readonly ChildPositionKind[] = ['children', 'slots', 'props'];
+
+function hasRoutesOutlet(node: SchemaNode): boolean {
+  return node.type === '$routes' || childrenOf(node, OUTLET_POSITIONS).some(hasRoutesOutlet);
 }
 
 function walkChildren(
@@ -2897,6 +2964,16 @@ export function validateSemantic(schema: unknown, context: ValidationContext): V
 
 export function validateSchema(schema: unknown, context: ValidationContext): ValidationResult {
   /*
+    The format version is judged before anything else, expansion included: a newer format is free to
+    change what `$defs` and `$ref` mean, so expanding them by this format's rules would already be
+    reading the template as something it may not be.
+  */
+  const versionProblem =
+    schema && typeof schema === 'object' && 'meta' in schema ? templateVersionProblem(schema) : null;
+  if (versionProblem)
+    return { valid: false, errors: [{ path: 'schemaVersion', message: versionProblem, severity: 'error' }] };
+
+  /*
     A template that says a repeated shape once is checked as the tree it will BE.
 
     Expanding first rather than teaching every rule about `$ref` — the same decision the renderer
@@ -2915,8 +2992,23 @@ export function validateSchema(schema: unknown, context: ValidationContext): Val
   if (!structural.valid) return structural;
 
   const semantic = validateSemantic(expanded, context);
+  /*
+    A template stored without a format version is read as format 1, so this is a warning rather than
+    a refusal; but anything written now says which format it is in, so the next format can tell its
+    templates from these without guessing.
+  */
+  const unversioned: ValidationError[] =
+    expanded && typeof expanded === 'object' && 'meta' in expanded && !('schemaVersion' in expanded)
+      ? [
+          {
+            path: 'schemaVersion',
+            message: `A template says which format it is written in: add "schemaVersion": ${TEMPLATE_SCHEMA_VERSION}. Without it, it is read as format 1.`,
+            severity: 'warning',
+          },
+        ]
+      : [];
   return {
     valid: semantic.errors.filter((e) => e.severity === 'error').length === 0,
-    errors: [...structural.errors, ...semantic.errors],
+    errors: [...structural.errors, ...unversioned, ...semantic.errors],
   };
 }

@@ -1540,6 +1540,7 @@ function navTab(group: (typeof groups)[number]): SchemaNode {
 // ---------------------------------------------------------------------------
 
 export const schemaTokensTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Schema Tokens',
     description: 'Visual test suite for all schema tokens',

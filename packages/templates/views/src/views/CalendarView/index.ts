@@ -539,6 +539,7 @@ const composer: SchemaNode = formModal({
 });
 
 export const calendarView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Calendar',
     description: "The space's events on a month grid",

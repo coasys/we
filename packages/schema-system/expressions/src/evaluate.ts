@@ -148,10 +148,67 @@ function readIndex(object: unknown, index: unknown): unknown {
   return readProperty(base, String(index));
 }
 
-const toNumber = (value: unknown): number => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
+/** A decimal numeral, the whole of the text: what a route parameter holding a number looks like. */
+const NUMERAL = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * The number a value reads as, or undefined when it is not one.
+ *
+ * A finite number is itself, and so is text that is wholly a decimal numeral — route parameters and
+ * form fields arrive as text, so '3' < '10' has to be the numbers. Nothing else is a number: not
+ * an absent value, not a boolean, not empty or padded text, and not a list or an object, which
+ * JavaScript would read through their text ([5] as 5) and no other language would.
+ */
+export function numberOf(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string' && NUMERAL.test(value)) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+/** A value as arithmetic reads it: what is not a number is 0, as a missing operand is. */
+export const toNumber = (value: unknown): number => numberOf(value) ?? 0;
+
+/**
+ * `<`, `<=`, `>`, `>=`: numbers compared as numbers when both sides read as one, text by Unicode
+ * code point when both are text, and false for anything else — an absent side, a list, a mixed
+ * pair — as a where-object's range is.
+ */
+function compare(left: unknown, right: unknown, holds: (order: number) => boolean): boolean {
+  const a = numberOf(left);
+  const b = numberOf(right);
+  if (a !== undefined && b !== undefined) return holds(a - b);
+  if (typeof left === 'string' && typeof right === 'string') return holds(compareCodePoints(left, right));
+  return false;
+}
+
+/**
+ * Text compared by Unicode code point, not by UTF-16 unit and not by locale. The two differ only
+ * past U+FFFF, but an order every implementation agrees on has to say which, and code points are
+ * what a language without JavaScript's string representation sees. `sortBy` orders by it too.
+ */
+export function compareCodePoints(a: string, b: string): number {
+  const left = Array.from(a);
+  const right = Array.from(b);
+  const length = Math.min(left.length, right.length);
+  for (let i = 0; i < length; i++) {
+    const diff = left[i].codePointAt(0)! - right[i].codePointAt(0)!;
+    if (diff !== 0) return diff;
+  }
+  return left.length - right.length;
+}
+
+/**
+ * A number the language hands back: never `-0`.
+ *
+ * JavaScript keeps a sign on zero (`0 * -1`, `-0`, `-1 % 1`). It prints as `0` and equals `0`,
+ * but divides into `-Infinity` and survives into a host that tells the two apart, and another
+ * implementation would have to reproduce IEEE's sign rules to agree on a value no template means.
+ * So every number arithmetic produces, here and in the function library, is plain zero instead.
+ */
+export const plainZero = (n: number): number => (n === 0 ? 0 : n);
 
 export function evaluateExpression(expr: Expr, env: EvaluationEnv): unknown {
   return settle(evaluate(expr, env, new Map()));
@@ -184,7 +241,8 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
 
     case 'unary': {
       const operand = settle(evaluate(expr.operand, env, scope));
-      return expr.op === '!' ? !operand : -toNumber(operand);
+      // An absent operand is 0, as it is to binary arithmetic (`missing * 2` is 0), so `-missing` is 0.
+      return expr.op === '!' ? !operand : plainZero(-toNumber(operand));
     }
 
     case 'logical': {
@@ -216,30 +274,31 @@ function evaluate(expr: Expr, env: EvaluationEnv, scope: Map<string, unknown>): 
         case '!=':
           return left !== right;
         case '<':
-          return toNumber(left) < toNumber(right);
+          return compare(left, right, (order) => order < 0);
         case '>':
-          return toNumber(left) > toNumber(right);
+          return compare(left, right, (order) => order > 0);
         case '<=':
-          return toNumber(left) <= toNumber(right);
+          return compare(left, right, (order) => order <= 0);
         case '>=':
-          return toNumber(left) >= toNumber(right);
+          return compare(left, right, (order) => order >= 0);
         case 'in':
           return Array.isArray(right) && right.includes(left);
         case '+':
-          if (typeof left === 'number' && typeof right === 'number') return left + right;
           if (typeof left === 'string' || typeof right === 'string') return asText(left) + asText(right);
-          return toNumber(left) + toNumber(right);
+          return plainZero(toNumber(left) + toNumber(right));
         case '-':
-          return toNumber(left) - toNumber(right);
+          return plainZero(toNumber(left) - toNumber(right));
         case '*':
-          return toNumber(left) * toNumber(right);
+          return plainZero(toNumber(left) * toNumber(right));
+        // Division and remainder by zero are 0, not Infinity or NaN: expressions are total, and a
+        // count divided by an empty list's length is a label that says 0, not one that says NaN.
         case '/': {
           const divisor = toNumber(right);
-          return divisor === 0 ? 0 : toNumber(left) / divisor;
+          return divisor === 0 ? 0 : plainZero(toNumber(left) / divisor);
         }
         case '%': {
           const divisor = toNumber(right);
-          return divisor === 0 ? 0 : toNumber(left) % divisor;
+          return divisor === 0 ? 0 : plainZero(toNumber(left) % divisor);
         }
         default:
           return undefined;

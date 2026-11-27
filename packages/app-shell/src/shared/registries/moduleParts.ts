@@ -187,6 +187,12 @@ function instantiate(placement: SchemaNode, part: Part): SchemaNode {
 /**
  * Expand every `$part` in a tree.
  *
+ * Its own walk rather than `forEachChild`, because it rewrites as it goes — a part becomes a frame,
+ * and a list entry may become several — and it looks wider in props than a child position does, into
+ * any object a prop holds. It deliberately leaves out two positions: `meta.panels`, since each panel
+ * is mounted, and its parts resolved, on its own (`TemplatePanelBody`); and `$defs`, which are
+ * expanded where the tree is rendered.
+ *
  * An unknown part renders nothing **and says so**. Silence is this codebase's recurring failure —
  * an unmatched read looks exactly like an empty one — and a part naming a module that is simply not
  * installed is the ordinary case, so the report is a console warning rather than a thrown error.

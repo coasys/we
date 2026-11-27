@@ -29,6 +29,8 @@
  * misconfigured policy, or a host that cannot set one, does not reopen the hole.
  */
 
+import { DESIGN_SYSTEM_ELEMENTS } from './generated/designSystemElements';
+
 /** Native elements a schema may mount. Everything here only displays, groups, or takes input. */
 export const TEMPLATE_HTML_ELEMENTS: ReadonlySet<string> = new Set([
   // Sections and grouping
@@ -133,6 +135,30 @@ export const TEMPLATE_HTML_ELEMENTS: ReadonlySet<string> = new Set([
   'summary',
   'dialog',
 ]);
+
+/**
+ * Whether a `we-*` type names an element nobody has defined — one the renderer draws the missing
+ * marker for rather than mounting.
+ *
+ * The `we-` prefix is the design system's own namespace, so a name in it that the design system
+ * does not define is a mistake the page should show, the way an unknown component is shown: as a
+ * custom element it would mount empty, never upgrade, and leave a blank where something was meant.
+ *
+ * Known means either of two things. The design system's catalogue, so a primitive is never marked
+ * because its definition has not run yet in this document (a test, a host that loads the library
+ * late). Or the document's own registry, so an element defined under the prefix by something else —
+ * a module, a test — counts the moment it exists. A renderer that marks one should replace the
+ * marker once it is defined.
+ *
+ * Any other custom element (a library's `x-rating`) is outside this rule: it is the seed's to name.
+ */
+export function isUndefinedWeElement(type: string): boolean {
+  if (!type.startsWith('we-')) return false;
+  if (DESIGN_SYSTEM_TAGS.has(type)) return false;
+  return typeof customElements === 'undefined' || !customElements.get(type);
+}
+
+const DESIGN_SYSTEM_TAGS: ReadonlySet<string> = new Set(DESIGN_SYSTEM_ELEMENTS);
 
 /** Whether a lowercase type is a native element a schema may mount. */
 export function isTemplateElement(type: string): boolean {

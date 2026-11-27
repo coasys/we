@@ -40,7 +40,7 @@
  * from one use to another.
  */
 import { newNodeId } from './nodeIdentity';
-import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
+import { childrenOf, forEachChild, mapChildren as mapChildNodes, positionName, RENDERED_POSITIONS } from './treeUtils';
 import type { SchemaNode } from './types';
 
 /** The node left behind at each occurrence. A node type, so every existing walk already sees it. */
@@ -49,6 +49,18 @@ export const REF_TYPE = '$ref';
 /** Where a `$ref` names its definition: `{ type: '$ref', props: { def } }`. */
 export interface RefProps {
   def: string;
+  /**
+   * Set by `expandDefinitions` on a reference it could not expand, which it leaves in place: there
+   * was no such definition, or the definition is already open above it. Never written by an author.
+   * A `$ref` left without it after expansion found nothing to expand from — a template with no
+   * `$defs` at all — and is missing too.
+   */
+  unresolved?: 'missing' | 'cycle';
+}
+
+/** Why a `$ref` that reached a renderer or a validator could not be drawn. See `RefProps.unresolved`. */
+export function unresolvedRef(node: SchemaNode): 'missing' | 'cycle' {
+  return (node.props as RefProps | undefined)?.unresolved === 'cycle' ? 'cycle' : 'missing';
 }
 
 export interface CompactOptions {
@@ -134,59 +146,14 @@ function canonical(value: unknown): string {
 }
 
 /**
- * Every child position a node holds — the same edges the renderer walks.
- *
- * `meta.panels` is included because a shell keeps whole interfaces there, and in the workshop
- * template they are 44% of the document; a walk that missed them would leave the biggest shapes
- * un-hoisted. Each entry is CONFIGURATION — `{ id, snap, node }` — so what is walked is its
- * `node`, not the entry. An entry carries an `id`, which is enough for `isSchemaChild` to call it
- * a node, and treating it as one walks straight past the interface hanging off it.
- *
- * `styles` is skipped: a CSS object, not a subtree.
+ * Every child of a node as it renders — `treeUtils`' positions without `$defs`, which this file
+ * handles itself: a definition is reached through the `$ref`s that name it, never as a child.
  */
-function childPositions(node: SchemaNode): SchemaNode[] {
-  const out: SchemaNode[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(push);
-    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push(v);
-  };
-  if (Array.isArray(node.children)) node.children.forEach(push);
-  if (Array.isArray(node.routes)) node.routes.forEach(push);
-  if (node.slots) Object.values(node.slots).forEach(push);
-  if (node.props) for (const [key, value] of Object.entries(node.props)) if (key !== 'styles') push(value);
-  for (const panel of panelsOf(node) ?? []) push(panel.node);
-  return out;
-}
+const childPositions = (node: SchemaNode): SchemaNode[] => childrenOf(node, RENDERED_POSITIONS);
 
 /** Rebuild a node with each child position mapped, leaving everything else as it was. */
-function mapChildren(node: SchemaNode, map: (child: SchemaNode) => SchemaNode): SchemaNode {
-  const walk = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(walk);
-    if (isSchemaChild(v) || isPropsSchemaNode(v)) return map(v);
-    return v;
-  };
-  const out: SchemaNode = { ...node };
-  if (Array.isArray(node.children)) out.children = node.children.map(walk) as SchemaNode['children'];
-  if (Array.isArray(node.routes)) out.routes = node.routes.map(walk) as SchemaNode['routes'];
-  if (node.slots) {
-    out.slots = Object.fromEntries(Object.entries(node.slots).map(([k, v]) => [k, walk(v)])) as SchemaNode['slots'];
-  }
-  if (node.props) {
-    out.props = Object.fromEntries(
-      Object.entries(node.props).map(([k, v]) => [k, k === 'styles' ? v : walk(v)]),
-    ) as SchemaNode['props'];
-  }
-  const panels = panelsOf(node);
-  if (panels) {
-    const meta = (node as { meta: Record<string, unknown> }).meta;
-    (out as { meta?: Record<string, unknown> }).meta = {
-      ...meta,
-      // The entry is kept as it is and only its `node` is mapped — see `childPositions`.
-      panels: panels.map((panel) => ('node' in panel ? { ...panel, node: walk(panel.node) } : panel)),
-    };
-  }
-  return out;
-}
+const mapChildren = (node: SchemaNode, map: (child: SchemaNode) => SchemaNode): SchemaNode =>
+  mapChildNodes(node, (child) => map(child), RENDERED_POSITIONS);
 
 /**
  * The child positions of a node, each with a name saying where it is.
@@ -198,15 +165,7 @@ function mapChildren(node: SchemaNode, map: (child: SchemaNode) => SchemaNode): 
  */
 function namedPositions(node: SchemaNode): [string, SchemaNode][] {
   const out: [string, SchemaNode][] = [];
-  const push = (name: string, v: unknown) => {
-    if (Array.isArray(v)) v.forEach((one, i) => push(`${name}.${i}`, one));
-    else if (isSchemaChild(v) || isPropsSchemaNode(v)) out.push([name, v]);
-  };
-  if (Array.isArray(node.children)) push('c', node.children);
-  if (Array.isArray(node.routes)) push('r', node.routes);
-  if (node.slots) for (const [k, v] of Object.entries(node.slots)) push(`s:${k}`, v);
-  if (node.props) for (const [k, v] of Object.entries(node.props)) if (k !== 'styles') push(`p:${k}`, v);
-  (panelsOf(node) ?? []).forEach((panel, i) => push(`panel:${i}`, panel.node));
+  forEachChild(node, (child, at) => out.push([positionName(at), child]), RENDERED_POSITIONS);
   return out;
 }
 
@@ -248,6 +207,7 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
   tally(schema);
 
   const defs: Record<string, SchemaNode> = {};
+  const existing = definitionsOf(schema);
   const nameOf = new Map<string, string>();
   let next = 1;
 
@@ -267,7 +227,9 @@ export function compactDefinitions(schema: SchemaNode, options: CompactOptions =
 
     let name = nameOf.get(key);
     if (!name) {
-      name = `d${next++}`;
+      // A name of its own: the template may carry definitions already, and they are kept.
+      do name = `d${next++}`;
+      while (name in existing);
       nameOf.set(key, name);
       // The definition is rewritten too, so a shape shared between definitions is stored once.
       defs[name] = mapChildren(node, (child) => rewrite(child, false));
@@ -518,8 +480,12 @@ export function expandDefinitions(schema: SchemaNode, options: { uses?: Definiti
     A definition may itself hold references, so expansion recurses — and a reference cycle would
     recurse for ever. Cycles cannot be produced by `compactDefinitions`, which only ever points a
     reference at a shape that already existed, but a template arrives from a stranger and a hostile
-    one could contain `d1 -> d2 -> d1`. The `open` set turns that into a missing node rather than a
-    hung tab.
+    one could contain `d1 -> d2 -> d1`. The `open` set stops the walk where the cycle closes rather
+    than hanging the tab.
+
+    A reference that cannot be expanded stays where it is, saying why, rather than becoming an empty
+    box: a renderer draws its missing marker there and the validator reports it, which is the
+    difference between a visible mistake and a blank nobody can account for.
   */
   /*
     With a table, each node of a definition takes the id its use recorded for it, and a node the
@@ -532,7 +498,10 @@ export function expandDefinitions(schema: SchemaNode, options: { uses?: Definiti
     if (isRef(node)) {
       const name = refName(node);
       const target = typeof name === 'string' ? defs[name] : undefined;
-      if (!target || !name || open.has(name)) return { type: 'Column' };
+      if (!target || !name || open.has(name)) {
+        const unresolved: RefProps['unresolved'] = target && name ? 'cycle' : 'missing';
+        return { ...node, props: { ...node.props, unresolved } };
+      }
       const into: At = !uses
         ? null
         : at
@@ -630,12 +599,9 @@ export function outlineOf(node: SchemaNode, limit = 80): { entries: OutlineEntry
       An outline names nodes so they can be patched by id, so something with no id does not
       belong in one — it is not addressable, and listing it invites an edit that cannot land.
 
-      After `ensureNodeIds` the only things left without one are not nodes at all: a transition
-      config like `{ type: 'fade', duration: 250 }` sitting in a prop, which `isSchemaChild` calls
-      a node because it has a `type`. `childPositions` is deliberately left loose — it is shared
-      with `mapChildren`, and the two disagreeing about what the tree contains is the bug this
-      file's own history is made of — so the judgement is made here instead, where "can a patch
-      reach it" is the question being answered.
+      After `ensureNodeIds` every node has one, so this only matters for an outline of a tree that
+      has not been numbered yet — a copy somebody is still building. Its nodes are skipped and
+      their children kept, at the depth they would have had.
     */
     const addressable = typeof n.id === 'string' && n.id !== '';
     if (!addressable) {

@@ -91,6 +91,9 @@ const registry = createRegistry<SlotEntry>();
  * Recursive, because the marker sits wherever the providing module put it: the call module's is deep
  * inside its control bar's `Row`, not at the top of its contribution.
  *
+ * Children, slots and anything a prop holds, and not routes, panels or `$defs`: what it walks is
+ * module chrome, which has none of those — only a template does.
+ *
  * An anchor with nothing in it resolves to nothing. That is the ordinary case — the transcribe module
  * is not installed, so the call bar simply has one fewer button — and it is why the marker must
  * disappear rather than render an empty container that would leave a gap in the row.

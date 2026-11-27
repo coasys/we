@@ -6,6 +6,7 @@ import { profileEditor, profilePage } from '@we/template-kit';
  * any view of somebody else's profile; here it is bound to the person using the app, and editable.
  */
 export const profileTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: { name: 'Profile', description: 'Agent profile page', icon: 'user' },
   type: '$agent',
   props: { did: { $: 'me.did' }, as: 'person' },

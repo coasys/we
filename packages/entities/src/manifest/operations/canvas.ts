@@ -383,7 +383,8 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
           fields: { $: 'merge(fields, { nodeType: nodeType })' },
           parent: { id: { $: 'space' }, relation: 'typeStyles', entity: 'Space' },
         },
-        when: { $: 'count(keys(fields)) > 0' },
+        // A field given as null or '' is a clear, which says nothing about how the kind looks.
+        when: { $: "values(fields).exists(v, v != null && v != '')" },
       },
     ],
   },

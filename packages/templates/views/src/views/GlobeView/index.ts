@@ -10,6 +10,7 @@ import { agentModal } from './AgentModal.ts';
 import { spaceModal } from './SpaceModal.ts';
 
 export const globeView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Globe',
     description: 'Members and spaces placed on the earth',

@@ -4,58 +4,8 @@
  */
 
 import { newNodeId } from './nodeIdentity';
-import { isPropsSchemaNode, isSchemaChild, panelsOf } from './treeUtils';
+import { type ChildPosition, forEachChild } from './treeUtils';
 import type { SchemaNode } from './types';
-
-/**
- * Call fn for each shape the root keeps in `$defs`.
- *
- * Those are ordinary nodes in every respect that matters here — they are what will render, and
- * they are what a patch targets to change every use of a shape at once — so anything that walks a
- * tree to assign, collect or strip ids has to reach them. A walk that did not would hand the
- * model a definition whose nodes have no ids, which is a shape it can see and cannot edit.
- *
- * `$defs` is root-only, so this is a property read on every other node.
- */
-function forEachDefinition(node: SchemaNode, fn: (def: SchemaNode) => void): void {
-  const defs = node.$defs;
-  if (!defs) return;
-  for (const def of Object.values(defs)) fn(def);
-}
-
-/**
- * Call fn for each SchemaNode-shaped value directly embedded in node.props.
- * Handles plain SchemaNode values (e.g. $if.props.then) and arrays of nodes.
- */
-function forEachPropsNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
-  if (!node.props) return;
-  for (const val of Object.values(node.props)) {
-    if (typeof val !== 'object' || val === null) continue;
-    if (Array.isArray(val)) {
-      for (const item of val) {
-        if (isPropsSchemaNode(item)) fn(item);
-      }
-    } else if (isPropsSchemaNode(val)) {
-      fn(val);
-    }
-  }
-}
-
-/**
- * The node each `meta.panels` entry carries, if any.
- *
- * Walked for the same reason compaction walks it: a shell keeps whole interfaces in `meta.panels`
- * and they are most of a big template. Missing them here meant every node inside a panel was
- * rendered and had no id — so the model could see it and could not patch it, which is not an
- * error anywhere, just an edit that never lands. 1,127 of `workshopTemplate`'s 1,807 nodes.
- *
- * `strip` walks it too, so a copy made with `copyWithNewIds` keeps none of its source's ids there.
- */
-function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): void {
-  for (const panel of panelsOf(node) ?? []) {
-    if (isSchemaChild(panel.node)) fn(panel.node);
-  }
-}
 
 // ── Node ID Patching Utilities ─────────────────────────────────────
 
@@ -63,9 +13,32 @@ function forEachPanelNode(node: SchemaNode, fn: (child: SchemaNode) => void): vo
 export type FindNodeResult = {
   node: SchemaNode;
   parent: SchemaNode | null;
-  key: string; // 'children' | 'routes' | 'slots.<name>'
+  key: string; // 'children' | 'routes' | 'slots.<name>' | 'props.<name>' | 'meta.panels.<i>' | '$defs.<name>'
   index: number;
 };
+
+/**
+ * How `findNodeById` reports a position. A node in `$defs` comes back as `$defs.<name>` so a caller
+ * can tell that a patch to it lands on every use of the shape, and one in a panel as
+ * `meta.panels.<i>` so it can tell that position from an ordinary child.
+ */
+function findKey(at: ChildPosition): string {
+  switch (at.in) {
+    case 'children':
+    case 'routes':
+      return at.in;
+    case 'slots':
+      return `slots.${at.name}`;
+    case 'props':
+      return `props.${at.name}`;
+    case 'panels':
+      return `meta.panels.${at.index}`;
+    case '$defs':
+      return `$defs.${at.name}`;
+  }
+}
+
+const findIndex = (at: ChildPosition): number => (at.in === 'children' || at.in === 'routes' ? at.index : 0);
 
 /**
  * Every component name a schema mounts, anywhere in its tree.
@@ -75,30 +48,15 @@ export type FindNodeResult = {
  * mounts `CesiumGlobe`. A declaration that is usually absent and occasionally stale is worse than
  * no declaration when the answer decides whether a module can be safely uninstalled.
  *
- * Covers children, routes, slots and nodes nested in props (`$if`'s `then`/`else`, and the like) —
- * the same reach as every other traversal here. `$`-prefixed control-flow types are skipped: they
- * are the schema's own operators, never a contributed component.
+ * Covers every child position (`forEachNode`) — panels and `$defs` included, since a component a
+ * template mounts only in a panel or a shared shape is still one it mounts. `$`-prefixed
+ * control-flow types are skipped: they are the schema's own operators, never a contributed component.
  */
 export function collectComponentTypes(schema: SchemaNode): Set<string> {
   const found = new Set<string>();
-
-  function visit(node: SchemaNode): void {
+  forEachNode(schema, (node) => {
     if (typeof node.type === 'string' && node.type && !node.type.startsWith('$')) found.add(node.type);
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) visit(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) visit(route);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) visit(slotNode);
-    }
-    forEachPropsNode(node, visit);
-  }
-  visit(schema);
-
+  });
   return found;
 }
 
@@ -113,21 +71,7 @@ export function collectComponentTypes(schema: SchemaNode): Set<string> {
 export function forEachNode(schema: SchemaNode, fn: (node: SchemaNode, parent: SchemaNode | undefined) => void): void {
   const visit = (node: SchemaNode, parent: SchemaNode | undefined): void => {
     fn(node, parent);
-    const into = (child: SchemaNode) => visit(child, node);
-    if (node.children) {
-      for (const child of node.children) {
-        if (isSchemaChild(child)) into(child);
-      }
-    }
-    if (node.routes) {
-      for (const route of node.routes) into(route);
-    }
-    if (node.slots) {
-      for (const slotNode of Object.values(node.slots)) into(slotNode);
-    }
-    forEachPropsNode(node, into);
-    forEachDefinition(node, into);
-    forEachPanelNode(node, into);
+    forEachChild(node, (child) => visit(child, node));
   };
   visit(schema, undefined);
 }
@@ -230,86 +174,20 @@ export function stripNodeIds(schema: SchemaNode): SchemaNode {
  * Find a node by its ID in the tree.
  * Returns the node, its parent, which array key it lives in, and its index.
  * Returns null if the ID is not found or is empty string.
+ *
+ * Searches every child position, depth first in `CHILD_POSITIONS` order — so `$defs` come last and an
+ * ordinary node always wins a collision with a node inside a shared shape.
  */
 export function findNodeById(schema: SchemaNode, targetId: string): FindNodeResult | null {
   if (!targetId) return null;
 
   function search(node: SchemaNode, parent: SchemaNode | null, key: string, index: number): FindNodeResult | null {
     if (node.id === targetId) return { node, parent, key, index };
-
-    if (node.children) {
-      for (let i = 0; i < node.children.length; i++) {
-        const child = node.children[i];
-        if (isSchemaChild(child)) {
-          const result = search(child, node, 'children', i);
-          if (result) return result;
-        }
-      }
-    }
-    if (node.routes) {
-      for (let i = 0; i < node.routes.length; i++) {
-        const result = search(node.routes[i], node, 'routes', i);
-        if (result) return result;
-      }
-    }
-    if (node.slots) {
-      for (const [slotName, slotNode] of Object.entries(node.slots)) {
-        const result = search(slotNode, node, `slots.${slotName}`, 0);
-        if (result) return result;
-      }
-    }
-    if (node.props) {
-      for (const [propName, val] of Object.entries(node.props)) {
-        if (typeof val !== 'object' || val === null) continue;
-        if (Array.isArray(val)) {
-          for (let i = 0; i < val.length; i++) {
-            if (isPropsSchemaNode(val[i])) {
-              const result = search(val[i] as SchemaNode, node, `props.${propName}`, i);
-              if (result) return result;
-            }
-          }
-        } else if (isPropsSchemaNode(val)) {
-          const result = search(val, node, `props.${propName}`, 0);
-          if (result) return result;
-        }
-      }
-    }
-    /*
-      Last, and it has to be here at all: a shape the template says once lives in `$defs`, and
-      every node in it is a node the editor hands the model with an id on it. Without this branch
-      a patch aimed at a shared shape comes back "no node with that id" — the model is shown
-      something it is then told does not exist, which is the worst of both.
-
-      Searched after everything else so an ordinary node always wins a collision, and reported
-      with a `$defs.<name>` key so the caller can tell that a patch lands on every use of the
-      shape rather than on one position.
-    */
-    if (node.$defs) {
-      for (const [name, def] of Object.entries(node.$defs)) {
-        const result = search(def, node, `$defs.${name}`, 0);
-        if (result) return result;
-      }
-    }
-    /*
-      And the interfaces a shell keeps in `meta.panels`, for the same reason as `$defs` above:
-      the model is handed these nodes with ids on them, so being unable to find one again means
-      answering "no node with that id" about something the model was just shown.
-      `forEachPanelNode` is what gives them ids; this is what lets a patch land on them.
-
-      Reported with a `meta.panels.<i>` key, as `$defs` reports its own, so a caller can tell the
-      position apart from an ordinary child. Nothing moves a panel's own root node, and anything
-      INSIDE one has a real node as its parent and is handled by the branches above.
-    */
-    const panels = panelsOf(node);
-    if (panels) {
-      for (let i = 0; i < panels.length; i++) {
-        const panelNode = panels[i].node;
-        if (!isSchemaChild(panelNode)) continue;
-        const result = search(panelNode, node, `meta.panels.${i}`, 0);
-        if (result) return result;
-      }
-    }
-    return null;
+    let result: FindNodeResult | null = null;
+    forEachChild(node, (child, at) => {
+      if (!result) result = search(child, node, findKey(at), findIndex(at));
+    });
+    return result;
   }
 
   return search(schema, null, 'root', 0);

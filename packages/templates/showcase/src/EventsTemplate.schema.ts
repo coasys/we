@@ -97,6 +97,7 @@ const eventCard: SchemaNode = {
 };
 
 export const eventsTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Events',
     description: 'Events with RSVPs, built from participants, event blocks and the calendar.',

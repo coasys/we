@@ -1,4 +1,4 @@
-import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
+import type { ExpressionToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 
 /**
  * The first run on a computer that keeps master keys: "Welcome to Coasys".
@@ -26,7 +26,7 @@ import type { OperatorToken, SchemaNode, SchemaProp } from '@we/schema-shared';
 function door(options: {
   icon: string;
   title: string;
-  detail?: OperatorToken | string;
+  detail?: ExpressionToken | string;
   onClick?: SchemaProp;
   soon?: boolean;
   busy?: boolean;
@@ -93,7 +93,7 @@ function door(options: {
  * What the person's master key will rest behind on this computer, as the custody service says; or,
  * on a build that cannot make an identity yet, why.
  */
-const keepsLine: OperatorToken = {
+const keepsLine: ExpressionToken = {
   $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
 };
 

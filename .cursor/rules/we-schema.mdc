@@ -376,7 +376,10 @@ A schema is a tree of nodes. Each node can have:
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
 - styles: Raw CSS escape hatch — Record<string, string | number> applied as inline styles on a **wrapper div** that surrounds the component. Use only for CSS that must live on a wrapper: filter, clip-path, backdrop-filter, mix-blend-mode. When present the wrapper participates in layout (no display:contents), so CSS effects apply correctly. **Important:** this is NOT the same as props.styles. If you want to apply custom CSS to a Column, Row, or Grid's own element (e.g. a background image), put it in props.styles instead — node-level styles go on a wrapper div around the component and will be hidden behind the component's own background.
 
-The ROOT node carries one more, and it is required:
+The ROOT node carries two more, and both are required:
+
+- schemaVersion: 1 — the template format it is written in. A host refuses a format newer than it
+  reads, before anything else, rather than rendering part of it. Write 1.
 
 - meta: { name, description, icon } — what the template is called and how it is listed. Optional
   keys: role: 'view' for a section rather than a shell (absent means shell; 'page' is an app's own
@@ -403,6 +406,10 @@ column arrangement that appears per person and per status. The root may carry th
 Those two render exactly what two copies of the card would. The definitions live INSIDE the
 template, so everything that will render is still in the document — nothing is fetched, and a
 template can be read as the thing it will be.
+
+A $ref whose def is not a key of the root's $defs, or one inside a definition that leads back to that
+same definition, is an error: the validator reports it, and the page draws a dashed "Missing shape"
+marker in its place (a shape that contains itself is drawn once, with the marker where it closes).
 
 **You will meet these; you rarely need to write them.** Write ordinary nodes. Shapes are hoisted
 automatically, so a thing you write out twice becomes one definition without you doing anything.
@@ -534,14 +541,17 @@ A store's actions are unreachable — spaceStore.createPost reads as nothing; on
 
 Operators, in JavaScript's spelling and precedence:
   == !=                          strict equality
-  < > <= >=                      numeric comparison
+  < > <= >=                      numbers as numbers (text that is wholly a numeral counts, so '3' < '10'),
+                                 other text by Unicode code point (so ISO dates order), anything else false
   in                             list membership:  item.role in ['admin', 'moderator']
   ! && ||                        boolean logic. && and || ANSWER WITH A BOOLEAN, never with an operand,
                                  so name || 'Untitled' is true, not a name — the validator warns
   ??                             the fallback-value idiom:  local.name ?? 'Untitled' — for absent only;
                                  an empty string stays empty, so write name ? name : 'Untitled' for both
   test ? a : b                   conditional value
-  + - * / %                      arithmetic; + joins strings when either side is one; / by 0 is 0
+  + - * / %                      arithmetic; + joins strings when either side is one; anything that is
+                                 not a number — missing, a boolean, a list, non-numeral text — is 0
+                                 (so -missing is 0); / and % by 0 are 0
   `…${expr}…`                    interpolation
   a.name   a[i]                  property and index reads; a missing path is undefined, never an error
   [a, b]   { key: value }        list and object literals — the where-object below is one
@@ -568,29 +578,29 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     last(items) — The last entry of a list, or undefined when it is empty.  e.g. last(item.messages).text
     reverse(items) — The entries of a list, back to front. A new list — the one given is untouched, so a store array or a query result can be reversed without disturbing anything else reading it.  e.g. reverse(local.utterances)
     slice(items, start, end?) — The entries from position `start` up to, not including, `end` (default: the end). A negative position counts back from the end, so slice(items, -3) is the last three. Anything that is not a list gives [].  e.g. slice(local.posts, 0, 5)
-    sortBy(items, key, direction?) — A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field go last either way, and equal entries keep their order. Anything that is not a list gives [].  e.g. sortBy(local.columns, 'position')
+    sortBy(items, key, direction?) — A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field (or holding '') go last either way, and equal entries keep their order. Anything that is not a list gives [].  e.g. sortBy(local.columns, 'position')
     split(text, separator?) — The text cut into a list at each `separator` (default ','), each piece trimmed, empty pieces left out — so an empty string is an empty list. The inverse of `join`, for a list held in one string, such as a URL parameter.  e.g. split(routeStore.params.hide).filter(k, k != kind)
     sum(items) — The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.  e.g. sum(local.replies.map(r, count(r.responses)))
     without(items, ...values) — The list with every entry equal to any of `values` taken out. Records compare by `id`, as in `distinct`, so a record and its id both name it. Anything that is not a list gives [].  e.g. without(board.children, column.id)
   Text:
-    contains(text, needle) — Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.  e.g. contains(item.name, local.search)
-    endsWith(text, suffix) — Whether the text ends with `suffix`, case-sensitively.  e.g. endsWith(item.url, '.png')
+    contains(text, needle) — Whether the text contains `needle`, ignoring case: contains('Anna', 'ann') is true. The same test the where-object `contains` makes, and what a search box wants; `startsWith` and `endsWith` compare exactly.  e.g. contains(item.name, local.search)
+    endsWith(text, suffix) — Whether the text ends with `suffix`, comparing exactly — case counts, so endsWith('photo.PNG', '.png') is false.  e.g. endsWith(item.url, '.png')
     lower(text) — The text in lower case.  e.g. lower(item.handle)
     plural(count, one, other) — `one` when count is exactly 1, otherwise `other`.  e.g. plural(count(spaceStore.members), 'Member', 'Members')
     slug(text) — The text as a slug: lower case, every character but a–z, 0–9, whitespace and '-' dropped, the ends trimmed, and each run of whitespace one '-'. A character outside a–z is dropped, not converted, so 'Café au lait' is 'caf-au-lait'. A number is read as its digits; anything else gives ''.  e.g. slug(name)
-    startsWith(text, prefix) — Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.  e.g. startsWith(item.startDate, '2026-08')
+    startsWith(text, prefix) — Whether the text starts with `prefix`, comparing exactly — case counts, so startsWith('Anna', 'an') is false. For structured strings such as an ISO date or a URI; `contains` is the one that ignores case.  e.g. startsWith(item.startDate, '2026-08')
     trim(text) — The text without leading and trailing whitespace.  e.g. trim(local.search) != ''
     upper(text) — The text in upper case.  e.g. upper(item.code)
   Numbers:
-    max(...values) — The largest of the numbers given. Non-numbers count as 0.  e.g. max(local.page - 1, 0)
-    min(...values) — The smallest of the numbers given. Non-numbers count as 0.  e.g. min(count(local.rows), 20)
+    max(...values) — The largest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.  e.g. max(local.page - 1, 0)
+    min(...values) — The smallest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.  e.g. min(count(local.rows), 20)
     round(value, digits?) — The number rounded to `digits` decimal places (default 0). Non-numbers round to 0.  e.g. round(item.progress * 100)
   Objects:
-    keys(object) — The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].  e.g. keys(space.moduleSettings)
-    merge(...objects) — One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key whose value is absent does not override; anything that is not an object contributes nothing.  e.g. merge(space.moduleSettings[moduleId], { open: true })
+    keys(object) — The names of an object's keys, sorted by Unicode code point so the order is the same on every host. A key holding null or '' is listed (it is a clear); a missing value is not. Anything that is not an object gives [].  e.g. keys(space.moduleSettings)
+    merge(...objects) — One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key holding null overrides — null is a clear, and survives into the result — while a missing value does not; anything that is not an object contributes nothing.  e.g. merge(space.moduleSettings[moduleId], { open: true })
     pick(object, keys) — A new object holding only the named keys of `object`. Anything that is not an object gives `{}`.  e.g. pick(profileStore.ownProfile, ['handle', 'avatar'])
-    put(object, key, value) — A new object: `object` with `key` set to `value`, or with `key` removed when `value` is absent. The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.  e.g. put(space.moduleSettings, moduleId, settings)
-    values(object) — The values of an object's keys, in the order `keys` lists them; absent values are left out. Anything that is not an object gives [].  e.g. values(space.moduleSettings).filter(s, s.open)
+    put(object, key, value) — A new object: `object` with `key` set to `value` — null included, which is how a field set says "clear this field" — or with `key` removed when `value` is missing (an unset param, a read that found nothing). The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.  e.g. put(space.moduleSettings, moduleId, settings)
+    values(object) — The values of an object's keys, in the order `keys` lists them, null included; missing values are left out. Anything that is not an object gives [].  e.g. values(space.moduleSettings).filter(s, s.open)
   Form state:
     error(field) — A field's first validation message, once it has been touched; empty otherwise. The field is named as a string.  e.g. error('email')
     formValid() — Whether every validated field in the enclosing $localState scope passes.  e.g. formValid()
@@ -1164,7 +1174,7 @@ Block-level structures use "type" starting with "$" for dynamic rendering of sch
 
 Each loop:
 { "type": "$each", "props": { "items": { "$": "storeName.arrayProperty" }, "as": "itemName" }, "children": [ ... ] }
-Renders children once for each item. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
+Renders all of its children once for each item, in order — a row may be several nodes, and needs no box around them unless the layout wants one. The "as" name becomes a name expressions read — { "$": "itemName.title" }. Defaults to "item" — omit "as" unless you need a different name.
 
 Each row also gets two names describing its position in the list:
 - index — the 0-based position.
@@ -1196,7 +1206,9 @@ are kept by id already.
 
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
-Renders "then" node if condition is truthy, else renders "else" node.
+Renders "then" node if condition is truthy, else renders "else" node. It takes no children — they
+would never be drawn, so the validator refuses them; several nodes go in "then" as one node with no
+type holding them.
 Supports enterTransition / exitTransition for CSS animations when the node mounts/unmounts.
 TransitionConfig = TransitionEffect | TransitionEffect[]
 TransitionEffect = { type: 'fade'|'slide'|'scale'|'reveal'|'pulse', duration?: ms, easing?: string, delay?: ms, direction?: 'left'|'right'|'up'|'down', distance?: string, axis?: 'block'|'inline' }
@@ -1219,9 +1231,9 @@ the first frame reads as a jump, however smooth the size change is.
 A reveal in an exitTransition also decides when the node unmounts — the node stays mounted for the
 longest effect in the config, so the collapse finishes before the content is removed.
 
-Viewport / mount / condition animation (child always in DOM):
-{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>] }
-The child is always mounted. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
+Viewport / mount / condition animation (children always in DOM):
+{ "type": "$animate", "props": { "condition"?: SchemaProp, "scrollReveal"?: true | number, "scrollLeave"?: true | number, "scrollPast"?: string, "enterTransition"?: TransitionConfig, "exitTransition"?: TransitionConfig }, "children": [<node>, …] }
+The children are always mounted, and move as one. fade/slide/scale are CSS transitions (opacity/transform); reveal animates the element's own size; pulse is a real CSS @keyframes loop — use this for scroll-reveal effects.
 Do NOT use $animate when the child should be absent from the DOM. Use $if for conditional DOM presence.
 For an open/close that must NOT destroy what is inside it — a section holding a scroll position, a
 half-typed field, or a live subscription a collapsed row shouldn't tear down — use $animate with
@@ -1248,7 +1260,7 @@ scrollPast: "element-id" watches a sentinel element (by DOM id) go past the $ani
   then wrap the mini-profile in $animate with scrollPast pointing to that sentinel's id.
   scrollPast is mutually exclusive with scrollReveal/scrollLeave.
 Without condition or a scroll trigger, the enterTransition runs once on mount.
-Only one child node is supported.
+Every child is drawn, inside the one animated wrapper.
 Example (condition-driven disclosure — a collapsible group whose rows hold live store bindings and
 must not resubscribe every time it opens):
 {
@@ -1331,8 +1343,9 @@ Module slot outlet:
 Renders whatever other feature modules have contributed to that anchor, in order. Only meaningful
 inside a module's own chrome: the module declares the anchor name in its `anchors` list and marks
 where contributions land with this. Resolves to nothing when no module has contributed — no empty
-container, no gap. Templates have no use for it; chrome is the host's and the modules', not a
-template's.
+container, no gap. A template may not write one: chrome is the host's and the modules', not a
+template's, so in a template it has nothing to resolve it — the validator refuses it, and the page
+would draw an "Unknown component" marker. Place the module's part with $part instead.
 
 ---
 
@@ -6113,6 +6126,11 @@ Native HTML elements (lowercase tags render directly without registry entries):
 - Media: img, video, audio, canvas, figure, figcaption
 - Other: a, table, tr, td, th, details, summary, dialog
 
+A we- name is the design system's: one it does not define draws a dashed "Unknown element" box in
+its place, as an unknown component does, and the validator reports it. Copy primitive names from the
+Component Registry rather than guessing one. A custom element under any other prefix is a library's,
+which a deployment adds to its seed's elements list.
+
 Only elements that display, group or take input may be mounted; the full list is
 TEMPLATE_HTML_ELEMENTS in @we/schema-shared. Anything else renders nothing and the validator reports
 it — script, style, link, meta, base, iframe, object, embed, template, svg among them, because each
@@ -6131,6 +6149,8 @@ For a specific file: `we-validate-schemas packages/app-shell/src/shared/schemas/
 
 After creating or modifying a `.schema.ts` file, always run validation to catch:
 - Unknown component types (typos, missing registry entries)
+- A `$ref` naming no definition in the root's `$defs`, or a definition that contains itself
+- Children on `$if` (it draws `then` or `else`), and a `$slot` in a template (it is module chrome only)
 - Invalid or misspelled props (with "did you mean?" suggestions)
 - Prop type mismatches (e.g., number where string expected)
 - Missing required `meta` field on root TemplateSchema nodes

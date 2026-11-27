@@ -9,6 +9,7 @@
   "author": { "name": "WE" },
   "templates": [
     {
+      "schemaVersion": 1,
       "id": "shell",
       "meta": {
         "name": "Tool Library",
@@ -108,6 +109,7 @@
       ]
     },
     {
+      "schemaVersion": 1,
       "id": "catalogue",
       "meta": {
         "name": "Catalogue",
@@ -1682,6 +1684,7 @@
       ]
     },
     {
+      "schemaVersion": 1,
       "id": "desk",
       "meta": {
         "name": "Lending desk",
@@ -1858,6 +1861,7 @@
       ]
     },
     {
+      "schemaVersion": 1,
       "id": "mine",
       "meta": {
         "name": "My loans",

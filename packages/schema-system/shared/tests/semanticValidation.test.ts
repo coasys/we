@@ -878,6 +878,29 @@ describe('composed validation', () => {
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
+  it('judges the format version before expanding shared shapes', () => {
+    // Each shape uses the next twice: expanded, this is 2^40 nodes. A template in a format this
+    // build does not read must be refused on its version without the expansion ever running.
+    const depth = 40;
+    const $defs: Record<string, unknown> = { [`d${depth}`]: { type: 'Text' } };
+    for (let i = depth - 1; i >= 1; i--) {
+      const use = { type: '$ref', props: { def: `d${i + 1}` } };
+      $defs[`d${i}`] = { type: 'Column', children: [use, use] };
+    }
+    const template = {
+      schemaVersion: 2,
+      meta: { name: 'Test', description: 'test', icon: 'test' },
+      type: 'Column',
+      $defs,
+      children: [{ type: '$ref', props: { def: 'd1' } }],
+    };
+    const result = validateSchema(template, ctx());
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual([
+      { path: 'schemaVersion', message: expect.stringContaining('template format 2'), severity: 'error' },
+    ]);
+  });
+
   it('returns combined errors when structural passes', () => {
     const result = validateSchema(
       {
@@ -888,6 +911,31 @@ describe('composed validation', () => {
     );
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.message.includes('Unknown component'))).toBe(true);
+  });
+});
+
+describe('$resetLocal', () => {
+  it('takes "$scope" and refuses a field name', () => {
+    const node = (value: string) => ({
+      type: 'Column',
+      $localState: { email: { type: 'string', initial: '' } },
+      children: [{ type: 'we-button', props: { onClick: { $resetLocal: value } } }],
+    });
+    expect(validateSemantic(node('$scope'), ctx()).errors.filter((e) => e.message.includes('$resetLocal'))).toEqual([]);
+    const refused = validateSemantic(node('email'), ctx()).errors.filter((e) => e.path.endsWith('.$resetLocal'));
+    expect(refused).toEqual([
+      {
+        path: expect.stringContaining('onClick'),
+        message: expect.stringContaining('takes only "$scope"'),
+        severity: 'error',
+      },
+    ]);
+    const structural = validateSchema(
+      { schemaVersion: 1, meta: { name: 'T', description: 'd', icon: 'i' }, ...node('email') },
+      ctx(),
+    );
+    expect(structural.valid).toBe(false);
+    expect(structural.errors.map((e) => e.message).join('\n')).toContain('takes only "$scope"');
   });
 });
 

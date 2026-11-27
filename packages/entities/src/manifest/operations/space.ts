@@ -118,9 +118,14 @@ function upsertOne(
 const toggled = (list: string, entry: string, on: string) =>
   `${on} ? (${entry} in ${list} ? ${list} : concat(${list}, [${entry}])) : without(${list}, ${entry})`;
 
-/** An object of settings with one value written or, absent, withdrawn — and a group left empty gone. */
-const settingWritten = (settings: string) =>
-  `put(${settings}, group, count(keys(put(${settings}[group], key, value))) > 0 ? put(${settings}[group], key, value) : null)`;
+/**
+ * An object of settings with one value written or, absent, withdrawn — and a group left empty gone.
+ * The group is taken out by picking every other one: `put` with null would keep it, holding null.
+ */
+const settingWritten = (settings: string) => {
+  const group = `put(${settings}[group], key, value)`;
+  return `count(keys(${group})) > 0 ? put(${settings}, group, ${group}) : pick(${settings}, without(keys(${settings}), group))`;
+};
 
 /**
  * A relation's ids as a list, whichever way it reads back: a to-one relation is the id itself, or

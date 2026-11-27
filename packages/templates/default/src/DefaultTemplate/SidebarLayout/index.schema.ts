@@ -7,6 +7,7 @@ import { spaceGate } from '../SpaceGate.ts';
 import { spaceSidebar } from './SpaceSidebar.ts';
 
 export const sidebarLayout: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Default',
     description: 'Welcome screen with perspectives and spaces overview',

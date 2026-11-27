@@ -35,7 +35,7 @@
  * The editor runs it where it belongs, against the template being written.
  */
 import type { TemplateSchema } from '@we/schema-shared';
-import { isTemplateElement, validateStructure } from '@we/schema-shared';
+import { isTemplateElement, readTemplate, validateStructure } from '@we/schema-shared';
 
 import type { CapabilityGroup, SurfaceReference } from './registries/templateSurface';
 import {
@@ -101,7 +101,8 @@ export function acceptTemplate(decoded: unknown, options: AcceptTemplateOptions)
     operation: options.operation,
   });
   return {
-    schema: decoded as TemplateSchema,
+    // Read as its format: one stored before the version was required is format 1.
+    schema: readTemplate(decoded as TemplateSchema),
     refusals: [],
     blocked,
     groups,

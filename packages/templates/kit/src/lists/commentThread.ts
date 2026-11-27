@@ -567,14 +567,9 @@ export function commentThread(opts: CommentThreadOptions): SchemaNode {
     ordinary comment at the width of the thread rather than one notch in from it.
   */
   /*
-    Whichever shape it takes, one row is ONE node.
-
-    `$each` renders `children[0]` and drops the rest, silently: it is a template for a row, not a
-    fragment of them. This was written as a list — the reply body, then the thread under it — so
-    every level below the first was built, validated, and never mounted. The bug that surfaced it is
-    the one it looks like from outside: a reply to a reply appeared nowhere, with no error, because
-    nothing ever asked for that reply's own replies. `threadDepth.test.tsx` is the regression, and
-    the validator now refuses a multi-child `$each` rather than dropping in silence.
+    Whichever shape it takes, one row is ONE node: the reply and the thread under it are laid out
+    together, so they sit in one box rather than side by side as two children of the `$each`.
+    `threadDepth.test.tsx` checks that every level below the first is mounted.
   */
   const note = truncationNote(opts, level, itemsExpr);
   const row: SchemaNode = opts.collapsible

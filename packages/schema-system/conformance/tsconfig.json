@@ -1,0 +1,33 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    // The recorder runs under tsx, which reads these paths: schema-shared's src imports the
+    // expression language by package name, and it must be the same src copy the recorder uses.
+    "paths": {
+      "@we/expressions": ["../expressions/src/index.ts"],
+      // The renderer recorder mounts app-shell's part expansion, router glue and gesture gate,
+      // which import through app-shell's own aliases.
+      "@shared/*": ["../../app-shell/src/shared/*"],
+      "@solid/*": ["../../app-shell/src/frameworks/solid/*"]
+    },
+    "experimentalDecorators": true
+  },
+  "include": [
+    "src",
+    "tests",
+    "*.config.ts",
+    "../app-shell/tests/support/recordNavigation.ts",
+    "../../app-shell/src/solid-elements.d.ts",
+    "../../app-shell/src/shared/global.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

@@ -85,10 +85,10 @@ export {
   setLocalWarningSink,
 } from './propResolvers';
 export type { LocalFieldMeta, LocalMetaMap } from './propResolvers';
-export { DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
+export { buildEnvironment, DEFERRED_ARG, isDeferredArg, setExpressionWarningSink } from './propResolvers/expression';
 export * from '@we/expressions';
 export { hasToken } from './predicates';
-export { isTemplateElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
+export { isTemplateElement, isUndefinedWeElement, refusedProp, TEMPLATE_HTML_ELEMENTS } from './templateElements';
 export {
   captureGesture,
   claimGesture,
@@ -102,7 +102,20 @@ export {
   runWithGesture,
 } from './gesture';
 export type { GestureOwner, GestureToken } from './gesture';
-export { isPropsSchemaNode, isSchemaChild, replaceNodeInTree } from './treeUtils';
+export {
+  CHILD_POSITIONS,
+  type ChildPosition,
+  type ChildPositionKind,
+  childrenOf,
+  forEachChild,
+  NODE_PROPS,
+  nodePropsOf,
+  isSchemaChild,
+  mapChildren,
+  positionName,
+  RENDERED_POSITIONS,
+  replaceNodeInTree,
+} from './treeUtils';
 export {
   type CompactOptions,
   compactDefinitions,
@@ -116,6 +129,7 @@ export {
   REF_TYPE,
   type RefProps,
   splitUse,
+  unresolvedRef,
   useCountOf,
 } from './definitions';
 export {
@@ -180,7 +194,24 @@ export {
   readBundle,
   svgProblem,
 } from './bundle';
+export {
+  readTemplate,
+  TEMPLATE_SCHEMA_VERSION,
+  TEMPLATE_SCHEMA_VERSIONS,
+  templateVersionProblem,
+} from './templateFormat';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export {
+  decodeLocalParam,
+  encodeLocalParam,
+  localParamText,
+  localPersistKey,
+  localSyncSpec,
+  type LocalSyncSpec,
+  localWriteMirror,
+  type LocalWriteMirror,
+  resolveLocalInitial,
+} from './localStateSync';
 export { isTemplatePage } from './routeMatching';
 export {
   applyStarterRecords,

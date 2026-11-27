@@ -33,6 +33,7 @@
  * `functions: 'core'` (see `check.ts`), which refuses every name outside `CORE_FUNCTIONS`.
  */
 import { DENIED_PROPERTIES } from './ast';
+import { compareCodePoints, plainZero, toNumber } from './evaluate';
 import { readField } from './reach';
 import { asText, matchesWhere } from './where';
 
@@ -107,10 +108,8 @@ export function arityOf(spec: FunctionSpec): [number, number] {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const asNumber = (value: unknown): number => {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-};
+/** A value as a number, by the evaluator's one reading: what is not a number is 0. */
+const asNumber = toNumber;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const isAbsent = (value: unknown): boolean => value === undefined || value === null;
@@ -134,7 +133,13 @@ const indexIn = (list: unknown[], value: unknown): number => list.findIndex((ent
  * listing an object's keys reads no more of it than naming them would. Sorted rather than in the
  * order the object holds them because JavaScript moves integer-like keys to the front and other
  * languages do not: a declared operation that walks an object has to see the same order on every
- * host. Absent values and functions are left out; neither is a field's value.
+ * host.
+ *
+ * A key holding `null` is a key: it is what JSON writes for "nothing here", and a declared
+ * operation's field set says "clear this field" with it, so dropping it would turn a clear into no
+ * change. A key holding `undefined` is left out, as JSON leaves it out — it is how an expression says
+ * a value is missing (an optional param nobody passed, a read that found nothing). Functions are left
+ * out; a function is not a field's value.
  */
 function fieldsOf(object: unknown): [string, unknown][] {
   if (!isRecord(object)) return [];
@@ -147,7 +152,7 @@ function fieldsOf(object: unknown): [string, unknown][] {
   const out: [string, unknown][] = [];
   for (const name of names.sort(compareCodePoints)) {
     const value = readField(object, name);
-    if (!isAbsent(value) && typeof value !== 'function') out.push([name, value]);
+    if (value !== undefined && typeof value !== 'function') out.push([name, value]);
   }
   return out;
 }
@@ -158,22 +163,6 @@ const asKey = (key: unknown): string | undefined => {
     typeof key === 'string' ? key : typeof key === 'number' && Number.isFinite(key) ? String(key) : undefined;
   return name === undefined || DENIED_PROPERTIES.has(name) ? undefined : name;
 };
-
-/**
- * Text compared by Unicode code point, not by UTF-16 unit and not by locale. The two differ only
- * past U+FFFF, but a sort every implementation agrees on has to say which, and code points are what
- * a language without JavaScript's string representation sees.
- */
-function compareCodePoints(a: string, b: string): number {
-  const left = Array.from(a);
-  const right = Array.from(b);
-  const length = Math.min(left.length, right.length);
-  for (let i = 0; i < length; i++) {
-    const diff = left[i].codePointAt(0)! - right[i].codePointAt(0)!;
-    if (diff !== 0) return diff;
-  }
-  return left.length - right.length;
-}
 
 /** A dot path read field by field, through `readField`. */
 function readPath(value: unknown, path: string): unknown {
@@ -231,7 +220,7 @@ defineFunction({
   params: ['items'],
   doc: 'The numbers in a list added together. Anything that is not a number counts as 0, and anything that is not a list sums to 0.',
   example: 'sum(local.replies.map(r, count(r.responses)))',
-  impl: ([items]) => asList(items).reduce((total: number, value) => total + asNumber(value), 0),
+  impl: ([items]) => plainZero(asList(items).reduce((total: number, value) => total + asNumber(value), 0)),
 });
 
 defineFunction({
@@ -433,7 +422,7 @@ defineFunction({
   name: 'sortBy',
   category: 'list',
   params: ['items', 'key', 'direction?'],
-  doc: "A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field go last either way, and equal entries keep their order. Anything that is not a list gives [].",
+  doc: "A new list ordered by the field `key` names, a dot path such as 'createdAt' or 'author.name'; `direction` is 'asc' (the default) or 'desc'. Numbers compare as numbers, text by Unicode code point (so 'B' before 'a', and not the reader's alphabet), numbers before text; entries without the field (or holding '') go last either way, and equal entries keep their order. Anything that is not a list gives [].",
   example: "sortBy(local.columns, 'position')",
   impl: ([items, key, direction]) => {
     const list = asList(items);
@@ -441,7 +430,10 @@ defineFunction({
     const sign = direction === 'desc' ? -1 : 1;
     const keyed = list.map((entry) => {
       const value = readPath(entry, key);
-      return { entry, value, absent: isAbsent(value) || (typeof value === 'number' && Number.isNaN(value)) };
+      // A field holding '' has no value, as `filter()` and every backend read it: the contract
+      // stores no empty string, so sorting one as text would order a list no backend could return.
+      const absent = isAbsent(value) || value === '' || (typeof value === 'number' && Number.isNaN(value));
+      return { entry, value, absent };
     });
     // Array.prototype.sort is stable, so entries the comparison calls equal keep their order.
     keyed.sort((a, b) => {
@@ -494,7 +486,7 @@ defineFunction({
   name: 'contains',
   category: 'text',
   params: ['text', 'needle'],
-  doc: 'Whether the text contains `needle`, ignoring case — the same test the where-object `contains` makes.',
+  doc: "Whether the text contains `needle`, ignoring case: contains('Anna', 'ann') is true. The same test the where-object `contains` makes, and what a search box wants; `startsWith` and `endsWith` compare exactly.",
   example: 'contains(item.name, local.search)',
   impl: ([text, needle]) => asText(text).toLowerCase().includes(asText(needle).toLowerCase()),
 });
@@ -503,7 +495,7 @@ defineFunction({
   name: 'startsWith',
   category: 'text',
   params: ['text', 'prefix'],
-  doc: 'Whether the text starts with `prefix`, case-sensitively — for structured strings such as an ISO date or a URI.',
+  doc: "Whether the text starts with `prefix`, comparing exactly — case counts, so startsWith('Anna', 'an') is false. For structured strings such as an ISO date or a URI; `contains` is the one that ignores case.",
   example: "startsWith(item.startDate, '2026-08')",
   impl: ([text, prefix]) => asText(text).startsWith(asText(prefix)),
 });
@@ -512,7 +504,7 @@ defineFunction({
   name: 'endsWith',
   category: 'text',
   params: ['text', 'suffix'],
-  doc: 'Whether the text ends with `suffix`, case-sensitively.',
+  doc: "Whether the text ends with `suffix`, comparing exactly — case counts, so endsWith('photo.PNG', '.png') is false.",
   example: "endsWith(item.url, '.png')",
   impl: ([text, suffix]) => asText(text).endsWith(asText(suffix)),
 });
@@ -551,26 +543,36 @@ defineFunction({
   example: 'round(item.progress * 100)',
   impl: ([value, digits]) => {
     const factor = 10 ** Math.max(0, Math.floor(asNumber(digits)));
-    return Math.round(asNumber(value) * factor) / factor;
+    return plainZero(Math.round(asNumber(value) * factor) / factor);
   },
 });
+
+/*
+  Variadic, and also over one list: `min(a, b)` for two numbers a template has, `min(xs)` for a
+  column of them. One argument that is a list is the list's entries; anything else is the numbers
+  given. An empty list, like no arguments, answers 0 — the empty value of a number.
+*/
+const extremeOf = (values: unknown[], pick: (...n: number[]) => number): number => {
+  const numbers = values.length === 1 && Array.isArray(values[0]) ? values[0] : values;
+  return numbers.length ? plainZero(pick(...numbers.map(asNumber))) : 0;
+};
 
 defineFunction({
   name: 'min',
   category: 'number',
   params: ['...values'],
-  doc: 'The smallest of the numbers given. Non-numbers count as 0.',
+  doc: 'The smallest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.',
   example: 'min(count(local.rows), 20)',
-  impl: (values) => (values.length ? Math.min(...values.map(asNumber)) : 0),
+  impl: (values) => extremeOf(values, Math.min),
 });
 
 defineFunction({
   name: 'max',
   category: 'number',
   params: ['...values'],
-  doc: 'The largest of the numbers given. Non-numbers count as 0.',
+  doc: 'The largest of the numbers given, or of the entries of a list when it is the only argument. Non-numbers count as 0; no numbers at all (or an empty list) gives 0.',
   example: 'max(local.page - 1, 0)',
-  impl: (values) => (values.length ? Math.max(...values.map(asNumber)) : 0),
+  impl: (values) => extremeOf(values, Math.max),
 });
 
 // ── Objects ─────────────────────────────────────────────────────────────────
@@ -604,13 +606,13 @@ defineFunction({
   name: 'put',
   category: 'object',
   params: ['object', 'key', 'value'],
-  doc: 'A new object: `object` with `key` set to `value`, or with `key` removed when `value` is absent. The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.',
+  doc: 'A new object: `object` with `key` set to `value` — null included, which is how a field set says "clear this field" — or with `key` removed when `value` is missing (an unset param, a read that found nothing). The object given is untouched. Anything that is not an object is read as {}; a key that is not text or a number leaves the object as it was.',
   example: 'put(space.moduleSettings, moduleId, settings)',
   impl: ([object, key, value]) => {
     const out: Record<string, unknown> = Object.fromEntries(fieldsOf(object));
     const name = asKey(key);
     if (name === undefined) return out;
-    if (isAbsent(value)) delete out[name];
+    if (value === undefined) delete out[name];
     else out[name] = value;
     return out;
   },
@@ -620,7 +622,7 @@ defineFunction({
   name: 'merge',
   category: 'object',
   params: ['...objects'],
-  doc: 'One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key whose value is absent does not override; anything that is not an object contributes nothing.',
+  doc: 'One new object holding the keys of every object given, a later one winning where two share a key. Shallow: a key holding an object is replaced, not merged into. A key holding null overrides — null is a clear, and survives into the result — while a missing value does not; anything that is not an object contributes nothing.',
   example: 'merge(space.moduleSettings[moduleId], { open: true })',
   impl: (objects) => {
     const out: Record<string, unknown> = {};
@@ -633,7 +635,7 @@ defineFunction({
   name: 'keys',
   category: 'object',
   params: ['object'],
-  doc: "The names of an object's keys that hold a value, sorted by Unicode code point so the order is the same on every host. Anything that is not an object gives [].",
+  doc: "The names of an object's keys, sorted by Unicode code point so the order is the same on every host. A key holding null or '' is listed (it is a clear); a missing value is not. Anything that is not an object gives [].",
   example: 'keys(space.moduleSettings)',
   impl: ([object]) => fieldsOf(object).map(([name]) => name),
 });
@@ -642,7 +644,7 @@ defineFunction({
   name: 'values',
   category: 'object',
   params: ['object'],
-  doc: "The values of an object's keys, in the order `keys` lists them; absent values are left out. Anything that is not an object gives [].",
+  doc: "The values of an object's keys, in the order `keys` lists them, null included; missing values are left out. Anything that is not an object gives [].",
   example: 'values(space.moduleSettings).filter(s, s.open)',
   impl: ([object]) => fieldsOf(object).map(([, value]) => value),
 });

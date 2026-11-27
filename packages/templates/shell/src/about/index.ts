@@ -1560,6 +1560,7 @@ const brandAboutPage: SchemaNode = {
 };
 
 export const landingPageTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: { name: 'About WE', description: 'What WE is and why it exists', icon: 'info' },
   type: 'Column',
   props: { width: '100%', minHeight: '100%', bg: 'chrome' },

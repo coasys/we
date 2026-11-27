@@ -78,7 +78,7 @@ function stepCard(editing: boolean): SchemaNode {
     props: {
       gap: '100',
       p: '300',
-      r: 'card',
+      r: 'surface',
       bg: 'surface-raised',
       border: '1px solid border',
       /*
@@ -587,7 +587,7 @@ const recordRow: SchemaNode = {
   props: {
     gap: '200',
     p: '300',
-    r: 'card',
+    r: 'surface',
     border: { $: `(${CHOSEN}) ? '1px solid accent' : '1px solid border'` },
     bg: { $: `(${CHOSEN}) ? 'accent-soft' : 'surface'` },
   },
@@ -853,7 +853,7 @@ const OPEN_DEFINITION = `workflowStore.workflows.find(f, f.name == ${OPEN}.name)
  */
 const workflowGraph: SchemaNode = {
   type: 'Column',
-  props: { width: '100%', height: '480px', r: 'card', border: '1px solid border', overflow: 'hidden' },
+  props: { width: '100%', height: '480px', r: 'surface', border: '1px solid border', overflow: 'hidden' },
   children: [
     {
       type: 'GraphView',

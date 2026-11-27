@@ -14,7 +14,13 @@
  */
 import { type EntitySchema, validateManifest } from '@we/backend-shared';
 import { effectSummary, getOperation, validateOperations } from '@we/entities';
-import { type Bundle, bundleThemes, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
+import {
+  type Bundle,
+  bundleThemes,
+  type SchemaNode,
+  TEMPLATE_SCHEMA_VERSION,
+  type TemplateSchema,
+} from '@we/schema-shared';
 
 import { operationSurface } from '../registries/operationGroups';
 import { type CapabilityGroup, CHROME_TIER, SPACE_TIER } from '../registries/templateSurface';
@@ -235,6 +241,7 @@ export function bundleTemplates(bundle: Bundle): Array<TemplateSchema & { id: st
 export function bootScreenTemplate(bundle: Pick<Bundle, 'bootScreen' | 'name'>): TemplateSchema {
   return {
     ...(bundle.bootScreen as SchemaNode),
+    schemaVersion: TEMPLATE_SCHEMA_VERSION,
     meta: { name: `${bundle.name} sign-in`, description: 'The sign-in screen', icon: 'sign-in', role: 'app' },
   };
 }
@@ -257,7 +264,13 @@ function placesPart(tree: unknown, id: string): boolean {
   return Object.entries(node).some(([key, value]) => key !== 'meta' && placesPart(value, id));
 }
 
-/** Whether a node of this type appears anywhere in a tree — through children, slots, routes and `$if` branches. */
+/**
+ * Whether a node of this type appears anywhere in a tree — through children, slots, routes, `$if`
+ * branches and `$defs`, by looking in every value.
+ *
+ * Except `meta`, on purpose: what this answers is whether the screen itself has the field, and a
+ * panel is the person's to close or never open, so a field placed only in one does not count.
+ */
 export function placesNode(tree: unknown, type: string): boolean {
   if (Array.isArray(tree)) return tree.some((entry) => placesNode(entry, type));
   if (!tree || typeof tree !== 'object') return false;

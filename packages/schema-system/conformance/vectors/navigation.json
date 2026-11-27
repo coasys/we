@@ -1,0 +1,1126 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "nav.relative-child",
+      "note": "rule 1: './cards' resolves a level against the node's route depth",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./cards"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/cards",
+          "pageIdentity": "/space/abc/cards",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.relative-bare",
+      "note": "rule 1: a bare relative segment resolves like './x'",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "cards"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/cards",
+          "pageIdentity": "/space/abc/cards",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.relative-up",
+      "note": "rule 1: '..' climbs one route level",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "../wall"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.relative-up-past-root",
+      "note": "rule 1: .. never climbs above the template root (/space/:id)",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "../../../settings"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/settings",
+          "pageIdentity": "/space/abc/settings",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.template-root",
+      "note": "rule 2: ~/x resolves from the template root; ~ alone is the root",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board/cards",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc",
+          "pageIdentity": "/space/abc",
+          "depth": 3,
+          "index": 2
+        }
+      ]
+    },
+    {
+      "id": "nav.query-only",
+      "note": "rule 1: ?x keeps the current pathname and only changes the query",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "?sort=new"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sort=new",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.absolute",
+      "note": "rule 3: an absolute path passes through untouched",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "/settings/ai"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/settings/ai",
+          "pageIdentity": "/settings/ai",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.with-query",
+      "note": "rule 4: navigate() appends the options.query object",
+      "schema": {
+        "params": {
+          "id": {
+            "type": "id",
+            "identity": true
+          },
+          "tab": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./record",
+            "options": {
+              "query": {
+                "id": "ad4m://obj/x",
+                "tab": "info"
+              }
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/record?id=ad4m://obj/x&tab=info",
+          "pageIdentity": "/space/abc/record?id=ad4m://obj/x",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.query-encoding",
+      "note": "rule 4: query values encode — strings, lists, objects JSON-encoded, empty/nil handling",
+      "schema": {
+        "params": {
+          "call": {
+            "type": "string"
+          },
+          "list": {
+            "type": "string"
+          },
+          "obj": {
+            "type": "string"
+          },
+          "empty": {
+            "type": "string"
+          },
+          "nil": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./x",
+            "options": {
+              "query": {
+                "call": "ad4m://obj/y",
+                "list": ["a", "b"],
+                "obj": {
+                  "k": 1
+                },
+                "empty": "",
+                "nil": null
+              }
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/x?call=ad4m://obj/y&list=a%2Cb&obj=%7B%22k%22:1%7D",
+          "pageIdentity": "/space/abc/x",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.base-option",
+      "note": "rule 4: options.base.depth overrides the route depth the relative path resolves against",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board/deep",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./sibling",
+            "options": {
+              "base": {
+                "depth": 3
+              }
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board/sibling",
+          "pageIdentity": "/space/abc/board/sibling",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.same-target",
+      "note": "rule 5: navigating to the current path is a no-op — no entry, no move; '.' is not the current path, it resolves to the template root",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "/space/abc/board"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "."
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc",
+          "pageIdentity": "/space/abc",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.remembered-query",
+      "note": "rule 6: a bare path back restores the query last seen there",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board?sort=top",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/board"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board?sort=top",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 2
+        }
+      ]
+    },
+    {
+      "id": "nav.explicit-query-wins",
+      "note": "rule 6: an explicit query beats the remembered one",
+      "schema": {
+        "params": {
+          "sort": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board?sort=top",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/board",
+            "options": {
+              "query": {
+                "sort": "new"
+              }
+            }
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board?sort=new",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 2
+        }
+      ]
+    },
+    {
+      "id": "nav.set-param-replace",
+      "note": "rule 7: setParam replaces by default — same entry overwritten",
+      "schema": {
+        "params": {
+          "sel": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": "r:1"
+          }
+        },
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": "r:2"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sel=r:1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?sel=r:2",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.set-param-push",
+      "note": "rule 7: push:true pushes a history entry; back undoes it",
+      "schema": {
+        "params": {
+          "sel": {
+            "type": "string",
+            "push": true
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": "r:1"
+          }
+        },
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": "r:2",
+            "push": true
+          }
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sel=r:1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?sel=r:2",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board?sel=r:1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.set-param-remove",
+      "note": "rule 7: null and empty-string values remove the param",
+      "schema": {
+        "params": {
+          "sel": {
+            "type": "string"
+          },
+          "keep": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board?sel=r:1&keep=1",
+      "steps": [
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": null
+          }
+        },
+        {
+          "op": "set_param",
+          "args": {
+            "name": "keep",
+            "value": ""
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?keep=1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.page-identity",
+      "note": "rule 8: page identity is pathname + ?id — a param write changes identity, a path change drops the id",
+      "schema": {
+        "params": {
+          "id": {
+            "type": "id",
+            "identity": true
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "set_param",
+          "args": {
+            "name": "id",
+            "value": "we://r/1"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "./other"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?id=we://r/1",
+          "pageIdentity": "/space/abc/board?id=we://r/1",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/other",
+          "pageIdentity": "/space/abc/other",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-json",
+      "note": "rule 9: syncParam serialises a non-string value as JSON",
+      "schema": {
+        "params": {
+          "filters": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "filters",
+            "value": {
+              "kind": "task"
+            },
+            "initial": {},
+            "type": "object"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?filters=%7B%22kind%22:%22task%22%7D",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-back-at-initial",
+      "note": "rule 9: a value back at the declared initial removes the param",
+      "schema": {
+        "params": {
+          "filters": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board?filters={\"kind\":\"task\"}",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "filters",
+            "value": {},
+            "initial": {},
+            "type": "object"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-string-raw",
+      "note": "rule 9: string-typed params write raw text, not JSON",
+      "schema": {
+        "params": {
+          "q": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "q",
+            "value": "a b",
+            "initial": "",
+            "type": "string"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?q=a+b",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-push",
+      "note": "rule 9: syncParam with push:true grows history; back undoes it",
+      "schema": {
+        "params": {
+          "q": {
+            "type": "string",
+            "push": true
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "q",
+            "value": "x",
+            "initial": "",
+            "type": "string",
+            "push": true
+          }
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?q=x",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-replace",
+      "note": "rule 9: syncParam without push rewrites the entry — depth stays and back cannot undo the write",
+      "schema": {
+        "params": {
+          "q": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "q",
+            "value": "x",
+            "initial": "",
+            "type": "string"
+          }
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?q=x",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?q=x",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.local-precedence",
+      "note": "rule 9: mount-time precedence is URL param > persisted > declared initial",
+      "schema": {
+        "params": {
+          "other-param": {
+            "type": "string"
+          },
+          "sort": {
+            "type": "string"
+          },
+          "other": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board?sort=url",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "other-param",
+            "value": "grid",
+            "initial": "list",
+            "type": "string",
+            "persist": "view-sort"
+          }
+        },
+        {
+          "op": "local_read",
+          "args": {
+            "name": "sort",
+            "persist": "view-sort",
+            "initial": "top",
+            "type": "string"
+          }
+        },
+        {
+          "op": "local_read",
+          "args": {
+            "name": "other",
+            "persist": "view-other",
+            "initial": "init",
+            "type": "string"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sort=url&other-param=grid",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?sort=url&other-param=grid",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "url"
+        },
+        {
+          "href": "/space/abc/board?sort=url&other-param=grid",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "init"
+        }
+      ]
+    },
+    {
+      "id": "nav.local-persisted",
+      "note": "rule 9: a persisted we-local:<key> fills in when the URL has no param",
+      "schema": {
+        "params": {
+          "view": {
+            "type": "string"
+          },
+          "nope": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "view",
+            "value": "grid",
+            "initial": "list",
+            "type": "string",
+            "persist": "v"
+          }
+        },
+        {
+          "op": "local_read",
+          "args": {
+            "name": "nope",
+            "persist": "v",
+            "initial": "list",
+            "type": "string"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?view=grid",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?view=grid",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0,
+          "resolved": "grid"
+        }
+      ]
+    },
+    {
+      "id": "nav.back-at-start",
+      "note": "rule 10: back at the first entry is a no-op",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "back"
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.back-forward",
+      "note": "rule 10: back/forward traverse pushed navigation entries",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/people"
+          }
+        },
+        {
+          "op": "back"
+        },
+        {
+          "op": "back"
+        },
+        {
+          "op": "forward"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/people",
+          "pageIdentity": "/space/abc/people",
+          "depth": 3,
+          "index": 2
+        },
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 3,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 3,
+          "index": 1
+        }
+      ]
+    },
+    {
+      "id": "nav.back-over-param",
+      "note": "rule 10: back traverses entries setParam pushed too",
+      "schema": {
+        "params": {
+          "sel": {
+            "type": "string",
+            "push": true
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "set_param",
+          "args": {
+            "name": "sel",
+            "value": "r:1",
+            "push": true
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall"
+          }
+        },
+        {
+          "op": "back"
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?sel=r:1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 2,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 3,
+          "index": 2
+        },
+        {
+          "href": "/space/abc/board?sel=r:1",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 1
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.replace-option",
+      "note": "rule 4/10: navigate replace:true swaps the current entry; back skips it",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "navigate",
+          "args": {
+            "to": "~/wall",
+            "options": {
+              "replace": true
+            }
+          }
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/wall",
+          "pageIdentity": "/space/abc/wall",
+          "depth": 1,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.open-deep-link",
+      "note": "open lands on a deep link; .. then climbs from it within the root",
+      "schema": {
+        "params": {}
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "open",
+          "args": {
+            "href": "/space/abc/people?tab=all"
+          }
+        },
+        {
+          "op": "navigate",
+          "args": {
+            "to": ".."
+          }
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/people?tab=all",
+          "pageIdentity": "/space/abc/people",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc",
+          "pageIdentity": "/space/abc",
+          "depth": 2,
+          "index": 1
+        }
+      ]
+    }
+  ]
+}

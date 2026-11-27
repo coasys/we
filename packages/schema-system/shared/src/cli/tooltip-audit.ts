@@ -38,6 +38,8 @@ import { pathToFileURL } from 'node:url';
 
 import { getComponentMeta } from '../componentMeta';
 import { contextData } from '../generated/contextData';
+import { childrenOf } from '../treeUtils';
+import type { SchemaNode } from '../types';
 
 register('./assetHooks.mjs', import.meta.url);
 
@@ -70,24 +72,8 @@ const isNode = (v: unknown): v is Node => !!v && typeof v === 'object' && !Array
 const declaresTitle = (type: string): boolean =>
   (getComponentMeta(type, contextData)?.props ?? []).some((p) => p.name === 'title');
 
-/** Every child position a node can hold — children, routes, slots, and nodes hiding inside props. */
-function descend(node: Node): Node[] {
-  const out: Node[] = [];
-  const push = (v: unknown) => {
-    if (Array.isArray(v)) v.forEach(push);
-    else if (isNode(v)) out.push(v);
-  };
-  push(node.children);
-  push(node.routes);
-  if (node.slots) Object.values(node.slots).forEach(push);
-  if (node.props) {
-    for (const [k, v] of Object.entries(node.props)) {
-      if (k === 'styles') continue;
-      push(v);
-    }
-  }
-  return out;
-}
+/** Every child of a node, through every position the schema has — see `CHILD_POSITIONS`. */
+const descend = (node: Node): Node[] => childrenOf(node as SchemaNode);
 
 /** What the `title` says, as far as a static read can tell — a literal, or the expression source. */
 function describe(value: unknown): string {

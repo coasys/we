@@ -10,6 +10,7 @@ import { attributeRow, pageShell, sectionCard } from '@we/template-kit';
  * writes; nothing on this page does.
  */
 export const aboutView: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'About',
     description: "A space's public face — its description, its people, and where it is",

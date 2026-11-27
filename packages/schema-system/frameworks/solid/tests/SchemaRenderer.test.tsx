@@ -66,7 +66,37 @@ describe('SchemaRenderer', () => {
     // runtime, so nothing is lost at dev time.
     const node: SchemaNode = { type: 'UnknownComponent' };
     const { container } = renderSchema(node);
-    expect(container.querySelector('[data-we-missing-component="UnknownComponent"]')).toBeTruthy();
+    const marker = container.querySelector('[data-we-missing-component="UnknownComponent"]');
+    expect(marker?.getAttribute('data-we-missing-reason')).toBe('unknown-component');
+  });
+
+  // --- An undefined we-* element ---
+  it('draws the marker for a we-* element nobody defined, saying so', () => {
+    const { container } = renderSchema({ type: 'Column', children: [{ type: 'we-no-such-thing' }] } as SchemaNode, {
+      registry: { Column: (props: any) => <div>{props.children}</div> },
+    });
+    const marker = container.querySelector('[data-we-missing-component="we-no-such-thing"]');
+    expect(marker?.getAttribute('data-we-missing-reason')).toBe('unknown-element');
+    expect(marker?.textContent).toContain('no element of that name is defined');
+    expect(container.querySelector('we-no-such-thing')).toBeNull();
+  });
+
+  it('replaces the marker with the element once something defines it', async () => {
+    const node: SchemaNode = { type: 'we-defined-later', props: { label: 'late' }, children: ['inside'] };
+    const { container } = renderSchema(node);
+    expect(container.querySelector('[data-we-missing-component="we-defined-later"]')).toBeTruthy();
+
+    customElements.define('we-defined-later', class extends HTMLElement {});
+    await vi.waitFor(() => expect(container.querySelector('we-defined-later')).toBeTruthy());
+    expect(container.querySelector('[data-we-missing-component]')).toBeNull();
+    expect((container.querySelector('we-defined-later') as unknown as { label: string }).label).toBe('late');
+    expect(container.querySelector('we-defined-later')?.textContent).toBe('inside');
+  });
+
+  it('mounts a design-system element whose definition has not run, rather than marking it', () => {
+    const { container } = renderSchema({ type: 'we-badge', children: ['3'] });
+    expect(container.querySelector('we-badge')?.textContent).toBe('3');
+    expect(container.querySelector('[data-we-missing-component]')).toBeNull();
   });
 
   // --- $store prop resolution ---
@@ -221,17 +251,24 @@ describe('SchemaRenderer', () => {
     expect(input.value).toBe('My Space');
   });
 
-  it('leaves a literal starting with $ alone when it matches no context key', () => {
+  it('reads an initial string starting with $ as text, even where it names a bound value', () => {
     const InputComp = (props: any) => <input data-testid="input" value={props.value} />;
     const registry: ComponentRegistry = { InputComp };
+    const stores = { spaceStore: { spaceList: markReactive(() => [{ uuid: 'abc', name: 'My Space' }]) } };
     const node: SchemaNode = {
-      type: 'div',
-      $localState: { price: { type: 'string', initial: '$5.00' as any } },
-      children: [{ type: 'InputComp', props: { value: { $: 'local.price' } } }],
+      type: '$each',
+      props: { items: { $: 'spaceStore.spaceList' }, as: 'space' },
+      children: [
+        {
+          type: 'div',
+          $localState: { editName: { type: 'string', initial: '$space.name' } },
+          children: [{ type: 'InputComp', props: { value: { $: 'local.editName' } } }],
+        },
+      ],
     };
-    const { container } = renderSchema(node, { registry, stores: {} });
+    const { container } = renderSchema(node, { registry, stores });
     const input = container.querySelector('[data-testid="input"]') as HTMLInputElement;
-    expect(input.value).toBe('$5.00');
+    expect(input.value).toBe('$space.name');
   });
 
   it('resets $localState signal when the $store expression source changes reactively', async () => {

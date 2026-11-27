@@ -243,6 +243,7 @@ const channelRoute: RouteSchema = {
 };
 
 export const discordTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Discord',
     description: 'Categories, channels and messages — a Discord-shaped community space.',

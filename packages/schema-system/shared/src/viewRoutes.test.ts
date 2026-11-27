@@ -16,6 +16,7 @@ function view(id: string, segment: string, meta: Partial<TemplateSchema['meta']>
     id,
     segment,
     schema: {
+      schemaVersion: 1,
       id,
       meta: { name: id, description: '', icon: '', role: 'view', segment, ...meta },
       type: 'Column',
@@ -109,7 +110,12 @@ describe('expandViewRoutes', () => {
     const custom: ResolvedView = {
       id: 'globe',
       segment: 'globe',
-      schema: { id: 'globe', meta: { name: 'Globe', description: '', icon: '', role: 'view' }, type: 'we-globe' },
+      schema: {
+        schemaVersion: 1,
+        id: 'globe',
+        meta: { name: 'Globe', description: '', icon: '', role: 'view' },
+        type: 'we-globe',
+      },
     };
 
     const out = expandViewRoutes([marker], [custom]);

@@ -377,6 +377,23 @@ describe('the functions a declared operation builds its writes with', () => {
     ]);
     // Numbers before text, so a mixed column has one order.
     expect(run("sortBy(rows, 'v').map(r, r.v)", { rows: [{ v: 'x' }, { v: 3 }, { v: 1 }] })).toEqual([1, 3, 'x']);
+    // '' is no value, so it sorts with the absent ones rather than first among the text.
+    expect(
+      run("sortBy(rows, 'v').map(r, r.id)", {
+        rows: [
+          { id: 1, v: '' },
+          { id: 2, v: 'a' },
+        ],
+      }),
+    ).toEqual([2, 1]);
+    expect(
+      run("sortBy(rows, 'v', 'desc').map(r, r.id)", {
+        rows: [
+          { id: 1, v: '' },
+          { id: 2, v: 1 },
+        ],
+      }),
+    ).toEqual([2, 1]);
     expect(run("sortBy(rows, '').map(r, r.id)", { rows })).toEqual([1, 2, 3, 4, 5]);
     expect(run("sortBy(missing, 'at')", {})).toEqual([]);
     expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5]);

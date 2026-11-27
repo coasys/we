@@ -6,10 +6,13 @@ import type { ComponentMeta, PropLayer, PropMeta, SchemaNode, ScopeGroup, Templa
 import {
   contextData,
   findNodeById,
+  forEachChild,
   getComponentMeta,
   getScopeAtNode,
-  isPropsSchemaNode,
+  isSchemaChild,
   mergeNode,
+  nodePropsOf,
+  RENDERED_POSITIONS,
   replaceNodeInTree,
 } from '@we/schema-shared';
 import { useVisualEditor } from '@we/schema-solid';
@@ -204,44 +207,32 @@ function nodeTypeIcon(type: string | undefined): string {
   return NODE_TYPE_ICON_MAP[type] ?? 'squares-four';
 }
 
-/** Collect child SchemaNodes from a node for tree display */
+/**
+ * A node's children for the layers tree, each labelled with where it sits when that is not plain
+ * `children`: a route's path, a slot's or prop's name, a panel's title.
+ *
+ * The positions it renders at (`RENDERED_POSITIONS`), panels included, so every node the inspector
+ * can be opened on can also be found here. Not `$defs`: the tree shows the template as it renders,
+ * where a shared shape appears at each of its uses.
+ */
 function treeChildren(node: SchemaNode): Array<{ child: SchemaNode; contextLabel?: string }> {
   const result: Array<{ child: SchemaNode; contextLabel?: string }> = [];
-
-  if (node.children) {
-    for (const child of node.children) {
-      if (typeof child === 'object' && child !== null && !Array.isArray(child) && 'type' in child) {
-        result.push({ child: child });
+  const panels = (node as { meta?: { panels?: { id?: unknown; title?: unknown }[] } }).meta?.panels ?? [];
+  forEachChild(
+    node,
+    (child, at) => {
+      let contextLabel: string | undefined;
+      if (at.in === 'routes') contextLabel = (child as { path?: string }).path ?? undefined;
+      else if (at.in === 'slots' || at.in === 'props') contextLabel = at.name;
+      else if (at.in === 'panels') {
+        const panel = panels[at.index];
+        const label = panel?.title ?? panel?.id;
+        contextLabel = typeof label === 'string' ? `panel ${label}` : 'panel';
       }
-    }
-  }
-
-  if (node.routes) {
-    for (const route of node.routes) {
-      const r = route as SchemaNode & { path?: string };
-      result.push({ child: r, contextLabel: r.path ?? undefined });
-    }
-  }
-
-  if (node.slots) {
-    for (const [slotName, slotNode] of Object.entries(node.slots)) {
-      result.push({ child: slotNode, contextLabel: slotName });
-    }
-  }
-
-  // Props-embedded SchemaNodes — e.g. $if.props.then / $if.props.else
-  if (node.props) {
-    for (const [propName, val] of Object.entries(node.props)) {
-      if (Array.isArray(val)) {
-        for (const item of val) {
-          if (isPropsSchemaNode(item)) result.push({ child: item, contextLabel: propName });
-        }
-      } else if (isPropsSchemaNode(val)) {
-        result.push({ child: val, contextLabel: propName });
-      }
-    }
-  }
-
+      result.push({ child, contextLabel });
+    },
+    RENDERED_POSITIONS,
+  );
   return result;
 }
 
@@ -744,7 +735,7 @@ function NodeProperties(props: {
 
   // Content — `children` holds either child nodes (owned by the Layers tree) or content
   // the ContentEditor owns: text, a bound value, or a value-level conditional.
-  const hasChildNodes = createMemo(() => !!props.node.children?.some((c) => isPropsSchemaNode(c)));
+  const hasChildNodes = createMemo(() => !!props.node.children?.some((c) => isSchemaChild(c)));
 
   const showContent = createMemo(() => {
     if (hasChildNodes()) return false;
@@ -773,16 +764,15 @@ function NodeProperties(props: {
   const logicProps = createMemo(() => (props.node.type === '$if' ? new Set(['condition']) : new Set<string>()));
 
   // Complex (non-primitive) props — raw JSON escape hatch.
-  // SchemaNode-valued props ($if's then/else, slot content) are excluded: they're whole
-  // subtrees, already navigable and editable through the Layers tree above, and showing
-  // them here as JSON blobs buries the props that are only editable here.
+  // Node props ($if's then/else) are excluded: they're whole subtrees, already navigable and
+  // editable through the Layers tree above, and showing them here as JSON blobs buries the props
+  // that are only editable here.
   const complexProps = createMemo(() =>
     Object.entries(currentProps()).filter(([k, v]) => {
       const t = typeof v;
       if (t === 'string' || t === 'boolean' || t === 'number') return false;
       if (logicProps().has(k)) return false;
-      if (isPropsSchemaNode(v)) return false;
-      if (Array.isArray(v) && v.length > 0 && v.every(isPropsSchemaNode)) return false;
+      if (nodePropsOf(props.node.type).includes(k) && isSchemaChild(v)) return false;
       return true;
     }),
   );

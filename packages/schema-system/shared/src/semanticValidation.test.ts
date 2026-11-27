@@ -221,49 +221,30 @@ describe('BlockComposer save handshake', () => {
   });
 });
 
-describe('a node type that renders one child, given several', () => {
+describe('a node type that repeats or wraps its children', () => {
   /**
-   * `$each` renders `children[0]` and drops the rest in silence. `commentThread` built each row as
-   * two nodes — the reply, then the thread under it — so every level of every thread below the first
-   * was expanded, validated and never mounted, and the only symptom was a reply to a reply appearing
-   * nowhere at all.
+   * `$each` draws every child once per item and `$animate` wraps every child it holds, so several
+   * children are a row or a subject of several nodes, and nothing about them is a mistake.
    */
-  it('rejects an $each with more than one child', () => {
+  it('accepts an $each whose row is several nodes', () => {
     const node: SchemaNode = {
       type: '$each',
       props: { items: { $: 'local.rows' }, as: 'row' },
       children: [
         { type: 'we-text', children: [{ $: 'row.title' }] },
-        { type: 'we-text', children: ['dropped, silently'] },
+        { type: 'we-text', children: [{ $: 'row.body' }] },
       ],
     } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('rejects an $animate wrapping several', () => {
+  it('accepts an $animate wrapping several', () => {
     const node: SchemaNode = {
       type: '$animate',
       props: { scrollReveal: true },
       children: [
         { type: 'we-text', children: ['a'] },
         { type: 'we-text', children: ['b'] },
-      ],
-    } as SchemaNode;
-    expect(messages(node, 'error').join(' ')).toMatch(/renders only its first child/);
-  });
-
-  it('accepts the row wrapped in one box', () => {
-    const node: SchemaNode = {
-      type: '$each',
-      props: { items: { $: 'local.rows' }, as: 'row' },
-      children: [
-        {
-          type: 'Column',
-          children: [
-            { type: 'we-text', children: [{ $: 'row.title' }] },
-            { type: 'we-text', children: ['and everything under it'] },
-          ],
-        },
       ],
     } as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
@@ -493,6 +474,43 @@ describe('space values', () => {
   it('rejects a family on an axis that has none', () => {
     // A family says how much room a box puts inside itself, which answers nothing about a margin.
     expect(messages({ type: 'Column', props: { m: 'surface' } }, 'error')).toHaveLength(1);
+  });
+});
+
+/**
+ * `r: 'card'` looked like the name for a card's corners and was not one — cards are the `surface`
+ * family. It resolved to `var(--we-radius-card)`, which no theme declares, so the corners were square.
+ */
+describe('radius values', () => {
+  it('rejects a name that is neither a step nor a family, wherever it is written', () => {
+    for (const props of [
+      { r: 'card' },
+      { rtl: 'round' },
+      { hoverProps: { r: 'card' } },
+      { r: { $: "local.open ? '400' : 'card'" } },
+    ]) {
+      const errors = messages(
+        { type: 'Column', props, $localState: { open: { type: 'boolean', initial: false } } },
+        'error',
+      );
+      expect(errors, JSON.stringify(props)).toHaveLength(1);
+      expect(errors[0]).toContain('is not a radius token');
+    }
+  });
+
+  it('accepts steps, families and CSS', () => {
+    const node: SchemaNode = {
+      type: 'Column',
+      props: {
+        r: 'surface',
+        rt: 'pill',
+        rb: '400',
+        rtl: '12px',
+        rbr: 'var(--we-radius-300)',
+        mdUpProps: { r: 'control' },
+      },
+    };
+    expect(messages(node, 'error')).toEqual([]);
   });
 });
 
@@ -933,5 +951,44 @@ describe('a box shaped as a control', () => {
 
   it('says nothing about a box in the surface family', () => {
     expect(warnings(box([{ type: 'we-text', children: ['Note'] }], 'surface'))).toEqual([]);
+  });
+});
+
+describe('children that are never drawn', () => {
+  const meta = { name: 'T', description: 'd', icon: 'house' };
+
+  it('refuses children on $if, which draws then or else', () => {
+    const node = {
+      type: '$if',
+      props: { condition: true, then: { type: 'we-text', children: ['shown'] } },
+      children: [{ type: 'we-text', children: ['never'] }],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/draws its "then" or its "else", never children/);
+  });
+
+  it('accepts an $if with then and else only', () => {
+    const node = {
+      type: '$if',
+      props: {
+        condition: true,
+        then: { type: 'we-text', children: ['a'] },
+        else: { type: 'we-text', children: ['b'] },
+      },
+    } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('refuses a $slot in a template, which has no anchors', () => {
+    const node = {
+      meta,
+      type: 'Column',
+      children: [{ type: '$slot', props: { anchor: 'call-controls' } }],
+    } as SchemaNode;
+    expect(messages(node, 'error').join(' ')).toMatch(/\$slot" \} is an outlet in a module's own chrome/);
+  });
+
+  it("accepts a $slot in a fragment, which may be a module's chrome", () => {
+    const node = { type: 'Row', children: [{ type: '$slot', props: { anchor: 'call-controls' } }] } as SchemaNode;
+    expect(messages(node, 'error')).toEqual([]);
   });
 });

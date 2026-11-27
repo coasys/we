@@ -230,6 +230,7 @@ const boardRoute: RouteSchema = {
 };
 
 export const trelloTemplate: TemplateSchema = {
+  schemaVersion: 1,
   meta: {
     name: 'Trello',
     description: 'Kanban boards where a card’s column is its status — coordination on the same substrate.',

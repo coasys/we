@@ -58,6 +58,7 @@ const setStatus = (label: string, status: string, variant = 'soft') => ({
 });
 
 export const catalogueSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'tool-library-catalogue',
   meta: {
     name: 'Catalogue',
@@ -232,6 +233,7 @@ export const catalogueSection: TemplateSchema & { id: string } = {
 };
 
 export const deskSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'tool-library-desk',
   meta: {
     name: 'Lending desk',
@@ -315,6 +317,7 @@ export const deskSection: TemplateSchema & { id: string } = {
 };
 
 export const mineSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'tool-library-mine',
   meta: {
     name: 'My loans',

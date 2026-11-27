@@ -331,7 +331,12 @@ export type TemplateSchema = SchemaNode & {
   id?: string;
   author?: string;
   templateVersion?: number;
-  schemaVersion?: number;
+  /**
+   * The template format this is written in — `TEMPLATE_SCHEMA_VERSION` for anything written now.
+   * Checked before anything else when a template is read, and supplied as 1 for one stored without
+   * it. See `templateFormat.ts`.
+   */
+  schemaVersion: number;
   meta: TemplateMeta;
   _fromSpace?: boolean;
   /**
@@ -419,7 +424,8 @@ export type SchemaNode = {
   slots?: Record<string, SchemaNode>; // Named slots for components that support them
   slot?: string; // The name of the slot this node should be rendered into
   routes?: RouteSchema[]; // Routes for routing components
-  children?: (SchemaNode | string | OperatorToken)[]; // Child nodes, text strings, or operator tokens ($concat, $store, etc.)
+  /** Child nodes, text, and expressions drawn as their value. No other token: a child has no event and no owner for a query. */
+  children?: (SchemaNode | string | ExpressionToken)[];
   theme?: ThemeOverrides; // Scoped theme overrides — applied as CSS custom properties on a display:contents wrapper
   styles?: Record<string, string | number>; // Raw CSS escape hatch — applied as inline styles on the node wrapper element
   $localState?: Record<string, LocalStateField>; // Scoped local state — creates signals on mount, discarded on unmount
@@ -657,7 +663,8 @@ export type ValidationRule = RequiredRule | MinLengthRule | MaxLengthRule | MinR
 export type SetLocalToken =
   { $setLocal: string; value: unknown } | { $setLocal: string; merge: Record<string, unknown> };
 export type TouchToken = { $touch: string };
-export type ResetLocalToken = { $resetLocal: string };
+/** Reset the nearest enclosing `$localState` scope. `'$scope'` is the only value this format defines. */
+export type ResetLocalToken = { $resetLocal: '$scope' };
 export type ToggleLocalToken = { $toggleLocal: string };
 /** Add/remove one value in an array-typed field — per-row state whose rows come from data. */
 export type ToggleLocalInToken = { $toggleLocalIn: string; value: unknown };

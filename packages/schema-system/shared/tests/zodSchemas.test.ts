@@ -45,6 +45,35 @@ describe('zodSchemas', () => {
     expect(() => zSchemaNode.parse(node)).not.toThrow();
   });
 
+  it('takes an expression among the children, and no other token', () => {
+    expect(() => zSchemaNode.parse({ type: 'Column', children: ['text', { $: 'post.title' }] })).not.toThrow();
+    const refused = (child: unknown) => {
+      const result = zSchemaNode.safeParse({ type: 'Column', children: ['text', { type: 'Row', children: [child] }] });
+      expect(result.success, JSON.stringify(child)).toBe(false);
+      return result.error!.issues[0]!;
+    };
+    for (const handler of [
+      { $invoke: 'spaceStore.createPost' },
+      { $setLocal: 'open', value: true },
+      { $toggleLocal: 'open' },
+      { $resetLocal: '$scope' },
+      { $if: { condition: true, then: { $toggleLocal: 'open' } } },
+    ]) {
+      const issue = refused(handler);
+      expect(issue.path).toEqual(['children', 1, 'children', 0]);
+      expect(issue.message).toContain('event prop');
+    }
+    expect(refused({ $query: { entity: 'Post' } }).message).toContain('$queries');
+    expect(refused({ $storee: 'x' }).message).toContain('is not a token');
+    // A node carrying $-keys of its own is still a node.
+    expect(() =>
+      zSchemaNode.parse({
+        type: 'Column',
+        children: [{ type: 'Row', $localState: { a: { type: 'string', initial: '' } } }],
+      }),
+    ).not.toThrow();
+  });
+
   it('rejects unknown properties (strict)', () => {
     const node = { type: 'div', unknown: 1 };
     expect(() => zSchemaNode.parse(node)).toThrow();
@@ -90,12 +119,14 @@ describe('zodSchemas', () => {
   });
 
   // --- TemplateSchema ---
-  it('parses a template schema with meta', () => {
+  it('requires a template to say its format version', () => {
+    // A reader supplies it for one stored without (readTemplate); the format itself requires it.
     const template = {
       meta: { name: 'T', description: 'd', icon: 'i' },
       type: 'root',
     };
-    expect(() => zTemplateSchema.parse(template)).not.toThrow();
+    expect(() => zTemplateSchema.parse(template)).toThrow();
+    expect(() => zTemplateSchema.parse({ ...template, schemaVersion: 1 })).not.toThrow();
   });
 
   it('parses a template schema with id and schemaVersion', () => {
@@ -114,6 +145,7 @@ describe('zodSchemas', () => {
 
   it('rejects template schema with extra fields (strict)', () => {
     const template = {
+      schemaVersion: 1,
       meta: { name: 'T', description: 'd', icon: 'i' },
       type: 'root',
       bogus: 123,
@@ -225,6 +257,11 @@ describe('zodSchemas', () => {
 
   it('accepts $resetLocal token', () => {
     expect(() => zSchemaProp.parse({ $resetLocal: '$scope' })).not.toThrow();
+  });
+
+  it('rejects $resetLocal naming anything but the scope', () => {
+    const result = zSchemaProp.safeParse({ $resetLocal: 'email' });
+    expect(result.success).toBe(false);
   });
 
   it('rejects $resetLocal with extra keys', () => {

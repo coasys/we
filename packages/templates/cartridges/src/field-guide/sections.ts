@@ -18,6 +18,7 @@ const recordForm = recordFormModal({ entityPicker: false });
 const filteredSpecies = "local.species.filter(s, local.group == '' || s.group == local.group)";
 
 export const speciesSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'field-guide-species',
   meta: { name: 'Species', description: 'What the group records', icon: 'leaf', role: 'view', segment: 'species' },
   type: 'Column',
@@ -162,6 +163,7 @@ export const speciesSection: TemplateSchema & { id: string } = {
 };
 
 export const sightingsSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'field-guide-sightings',
   meta: {
     name: 'Sightings',
@@ -280,6 +282,7 @@ export const sightingsSection: TemplateSchema & { id: string } = {
 };
 
 export const mapSection: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'field-guide-map',
   meta: {
     name: 'Map',

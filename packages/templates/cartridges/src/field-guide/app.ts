@@ -8,6 +8,7 @@ import type { TemplateSchema } from '@we/schema-shared';
  * what moves docked panels and the call bar over (see `meta.frame` in the app template docs).
  */
 export const fieldGuideApp: TemplateSchema & { id: string } = {
+  schemaVersion: 1,
   id: 'field-guide-app',
   type: 'Column',
   meta: {
