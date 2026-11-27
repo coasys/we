@@ -21,9 +21,29 @@ vectors](#the-core-subset-expression-vectors), the [static checks](#the-static-c
 [effect summary](#the-effect-summary-vectors), the [id derivation](#the-id-vectors) and the [RDF
 reading](#the-rdf-vectors). A conforming implementation passes all six.
 
+## Two profiles
+
+The vectors test two things, and keep them in separate files:
+
+- **The format.** [`operations.json`](../../../packages/backend-system/conformance/vectors/operations/operations.json)
+  and [`effects.json`](../../../packages/backend-system/conformance/vectors/operations/effects.json)
+  run the format's rules over a few neutral entities (`Item`, `Card`, `Label`, `Status` and the
+  access-control entities) and operations written for the suite. They name nothing of WE's domain.
+  **An operations-only host MUST pass these**, with the static-check, id and RDF vectors and the
+  core-subset expression cases.
+- **WE's core operations.** [`we-core/operations.json`](../../../packages/backend-system/conformance/vectors/operations/we-core/operations.json)
+  and [`we-core/effects.json`](../../../packages/backend-system/conformance/vectors/operations/we-core/effects.json)
+  run WE's own `core.*` operations over WE's entities (`CollectionBlock`, `Signal`, `TaskState`…),
+  and read their effects through WE's permission table. They are conformance to WE's domain, not to
+  the format: a host that adopts WE's manifest and core operations passes them too, and an
+  operations-only host MAY skip them.
+
+Two files rather than a tag on each case, because what a case shares differs between the halves: the
+entities, the policy and, for effects, the permission table are each file's own.
+
 ## The file
 
-The operations vectors are one JSON file:
+Each operations vectors file is one JSON object, the same shape in both profiles:
 
 ```json
 { "version": 2, "entities": { … }, "protectedEntities": [ … ], "policy": { … }, "cases": [ … ] }
@@ -39,25 +59,25 @@ The operations vectors are one JSON file:
 
 Each case:
 
-| Key            | Value                                                                                                                                                                                                               |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`           | The case's name, unique in the file.                                                                                                                                                                                |
-| `note`         | One sentence saying what the case shows.                                                                                                                                                                            |
-| `manifest`     | `{ "version", "operations" }`: the case's operation and any of the suite's that it calls. Register its `operations` under the namespace `conformance`, with the file's `entities` as its entities.                  |
-| `calls`        | An object of qualified name to operation definition: every operation of WE's that the case's operations call, at any depth. Register each under the namespace its name gives (`core.thread` as `thread` in `core`). |
-| `dataset`      | The records the dataset starts with: a list of `{ "entity", "id", "fields", "relations"? }`.                                                                                                                        |
-| `operation`    | The bare name of the operation to run; it runs as `conformance.<operation>`.                                                                                                                                        |
-| `args`         | The invocation's `args`.                                                                                                                                                                                            |
-| `invoker`      | The invocation's `invoker`: `did:example:invoker`, or another name for a case about a record somebody else made ([below](#running-a-vector)).                                                                       |
-| `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                    |
-| `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                       |
-| `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                     |
-| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)), or `{ "arriving": true }` for one whose domain has not arrived. Absent: the dataset has none.                                  |
-| `version`      | Optional. The invocation's `version`. Absent: none is passed.                                                                                                                                                       |
-| `deniedChosen` | Optional. Entities the host refuses this caller when a step chooses them at call time ([Chosen entities](execution.md#chosen-entities)). Absent: every entity the `oneOf` admits is written.                        |
-| `observe`      | What to read back afterwards: a list of `{ "entity", "fields", "relations" }`. `fields` may name `author`.                                                                                                          |
-| `outcome`      | `{ "result": … }` when the operation succeeds, or `{ "error": { "class", "code" } }` when it fails.                                                                                                                 |
-| `records`      | What the reads in `observe` produce: an object of entity name to a list of observed records.                                                                                                                        |
+| Key            | Value                                                                                                                                                                                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | The case's name, unique in the file.                                                                                                                                                                                                                                          |
+| `note`         | One sentence saying what the case shows.                                                                                                                                                                                                                                      |
+| `manifest`     | `{ "version", "operations" }`: the case's operation and any of the suite's that it calls. Register its `operations` under the namespace `conformance`, with the file's `entities` as its entities.                                                                            |
+| `calls`        | An object of qualified name to operation definition: every operation outside the suite that the case's operations call, at any depth (WE's, in `we-core`; none in the format's file). Register each under the namespace its name gives (`core.thread` as `thread` in `core`). |
+| `dataset`      | The records the dataset starts with: a list of `{ "entity", "id", "fields", "relations"? }`.                                                                                                                                                                                  |
+| `operation`    | The bare name of the operation to run; it runs as `conformance.<operation>`.                                                                                                                                                                                                  |
+| `args`         | The invocation's `args`.                                                                                                                                                                                                                                                      |
+| `invoker`      | The invocation's `invoker`: `did:example:invoker`, or another name for a case about a record somebody else made ([below](#running-a-vector)).                                                                                                                                 |
+| `invocationId` | The invocation's `invocationId`.                                                                                                                                                                                                                                              |
+| `invokedAt`    | The invocation's `invokedAt`.                                                                                                                                                                                                                                                 |
+| `concurrent`   | Optional. Records another writer commits while the operation runs, in the shape of `dataset`'s ([Running a vector](#running-a-vector), step 3).                                                                                                                               |
+| `domain`       | Optional. The dataset's identity domain ([Identity ids](execution.md#identity-ids)), or `{ "arriving": true }` for one whose domain has not arrived. Absent: the dataset has none.                                                                                            |
+| `version`      | Optional. The invocation's `version`. Absent: none is passed.                                                                                                                                                                                                                 |
+| `deniedChosen` | Optional. Entities the host refuses this caller when a step chooses them at call time ([Chosen entities](execution.md#chosen-entities)). Absent: every entity the `oneOf` admits is written.                                                                                  |
+| `observe`      | What to read back afterwards: a list of `{ "entity", "fields", "relations" }`. `fields` may name `author`.                                                                                                                                                                    |
+| `outcome`      | `{ "result": … }` when the operation succeeds, or `{ "error": { "class", "code" } }` when it fails.                                                                                                                                                                           |
+| `records`      | What the reads in `observe` produce: an object of entity name to a list of observed records.                                                                                                                                                                                  |
 
 ## Running a vector
 
@@ -135,13 +155,18 @@ reaches the writer.
   create is the writer, and for a record the operation made earlier is the invoker; `{ "role" }`
   reaches a holder of that role, and `policy.invoker.roles` says which the invoker holds (none).
 
-In this file: anyone may make any write, a `CollectionBlock` may be deleted only by its author, and a
-`TagBlock` made only by a curator. A write refused fails the operation with precondition `refused`,
-and nothing it wrote lands.
+In the format's file: anyone may make any write, an `Item` may be deleted only by its author, and a
+`Label` made only by a curator. WE's file has the same rules over its entities, `CollectionBlock` and
+`TagBlock`. A write refused fails the operation with precondition `refused`, and nothing it wrote
+lands.
 
 ## The cases
 
-**The runner's own rules**, over a few small operations written for the suite:
+### The format's
+
+[`operations.json`](../../../packages/backend-system/conformance/vectors/operations/operations.json),
+over the neutral entities. **The runner's own rules**, over a few small operations written for the
+suite:
 
 | Case                | What it shows                                                                                            |
 | ------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -153,23 +178,6 @@ and nothing it wrote lands.
 | `rollback-on-check` | A failed `check` fails with its named precondition error, and the record made before it does not land.   |
 | `second-write`      | An `update` of a record created earlier in the same operation lands on it.                               |
 | `strict-link`       | A strict `link` of a member fails as `alreadyLinked` and changes nothing.                                |
-
-**WE's own operations**, run under the suite's namespace, for the shapes a community's data is
-mostly made of:
-
-| Case                           | Operation           | What it shows                                                                                                |
-| ------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `core-upsert-signal`           | `upsertSignal`      | With no reaction yet, makes one under the record and answers with its id.                                    |
-| `core-respond-replaces`        | `respond`           | Removes the invoker's earlier answer on this record only, and makes the new one.                             |
-| `core-set-involvement-to-one`  | `setInvolvement`    | Finds the pair on this record by its to-one in a `where`, and writes the new record's `node` as one id.      |
-| `core-create-post-reply`       | `createPost`        | A reply: in its subject's responses and thread, a child of nothing, its block under it. Calls `core.thread`. |
-| `core-move-card`               | `moveCard`          | A card leaves one column, joins another where dropped, and takes the bound column's state.                   |
-| `core-remove-board-column`     | `removeBoardColumn` | A column's cards go to the board, and the column is deleted, never a card.                                   |
-| `core-place-card`              | `placeCard`         | Edits the placement a canvas draws, removes the duplicate it outranks, answers with what it held.            |
-| `core-create-task-state-taken` | `createTaskState`   | Refuses a name whose slug a retired state still holds (`slugTaken`), and writes nothing.                     |
-| `core-mark-read-heals`         | `markRead`          | Moves the oldest read marker to `invokedAt` and removes a doubled one.                                       |
-| `core-delete-records-any`      | `deleteRecords`     | Deletes records of two entities chosen at run time through `{ "category": "any" }`, and leaves the rest.     |
-| `core-move-under`              | `moveUnder`         | Moves a record between holders through a relation named at run time.                                         |
 
 **The rules the cases above leave open**, over more of the suite's own operations:
 
@@ -214,6 +222,26 @@ mostly made of:
 | `unknown-operation`  | A `call` to an operation nobody registered fails as `unknownOperation`.                  |
 | `version-mismatch`   | An invocation for another version of the namespace fails as `versionMismatch`.           |
 
+### WE's core operations
+
+[`we-core/operations.json`](../../../packages/backend-system/conformance/vectors/operations/we-core/operations.json)
+runs WE's own operations under the suite's namespace, for the shapes a community's data is mostly
+made of:
+
+| Case                           | Operation           | What it shows                                                                                                |
+| ------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `core-upsert-signal`           | `upsertSignal`      | With no reaction yet, makes one under the record and answers with its id.                                    |
+| `core-respond-replaces`        | `respond`           | Removes the invoker's earlier answer on this record only, and makes the new one.                             |
+| `core-set-involvement-to-one`  | `setInvolvement`    | Finds the pair on this record by its to-one in a `where`, and writes the new record's `node` as one id.      |
+| `core-create-post-reply`       | `createPost`        | A reply: in its subject's responses and thread, a child of nothing, its block under it. Calls `core.thread`. |
+| `core-move-card`               | `moveCard`          | A card leaves one column, joins another where dropped, and takes the bound column's state.                   |
+| `core-remove-board-column`     | `removeBoardColumn` | A column's cards go to the board, and the column is deleted, never a card.                                   |
+| `core-place-card`              | `placeCard`         | Edits the placement a canvas draws, removes the duplicate it outranks, answers with what it held.            |
+| `core-create-task-state-taken` | `createTaskState`   | Refuses a name whose slug a retired state still holds (`slugTaken`), and writes nothing.                     |
+| `core-mark-read-heals`         | `markRead`          | Moves the oldest read marker to `invokedAt` and removes a doubled one.                                       |
+| `core-delete-records-any`      | `deleteRecords`     | Deletes records of two entities chosen at run time through `{ "category": "any" }`, and leaves the rest.     |
+| `core-move-under`              | `moveUnder`         | Moves a record between holders through a relation named at run time.                                         |
+
 ## The core-subset expression vectors
 
 An operation's expressions are the core subset ([Expressions](expressions.md)), which the template
@@ -250,21 +278,24 @@ in its structure (check 1) is reported for its structure alone, before the other
 ## The effect-summary vectors
 
 [`effects.json`](../../../packages/backend-system/conformance/vectors/operations/effects.json) holds
-definitions and what they may write ([The effect summary](execution.md#the-effect-summary)):
+definitions and what they may write ([The effect summary](execution.md#the-effect-summary)), and
+[`we-core/effects.json`](../../../packages/backend-system/conformance/vectors/operations/we-core/effects.json)
+the same for each of WE's core operations:
 
 ```json
 { "version": 1, "groups": { "default", "width", "entities" }, "cases": [ … ] }
 ```
 
 Each case is `{ "id", "note", "operation", "calls"?, "summary", "permission" }`. Compute the summary
-of `operation`, resolving a `call` from `calls` and from WE's core operations, and compare with
-`summary`. `permission` is what invoking it needs under one host's table, `groups` (WE's): `group` is
+of `operation`, resolving a `call` from `calls` (and, in WE's file, from WE's core operations), and
+compare with `summary`. `permission` is what invoking it needs under one host's table, `groups`: an
+example host's over the neutral entities in the format's file, WE's in WE's. `group` is
 the widest group, in the order `width` lists them, that an entity under `summary.entities` reaches (an
 entity the table does not list is in `default`); `chosen` lists the categories under
 `summary.categories`, each an entity chosen at call time and judged then ([Permission and
 confirmation](execution.md#permission-and-confirmation)), never part of `group`; `destructive` is the
-summary's; `writes` is whether the operation writes at all. Every core operation has a case
-(`effects.core-*`).
+summary's; `writes` is whether the operation writes at all. Every core operation of WE's has a case
+in WE's file (`effects.core-*`).
 
 ## The id vectors
 
@@ -287,9 +318,11 @@ graph and compare.
 
 ## Coverage
 
-The suite covers the spec, and a test holds it to that: every verb runs in some operations vector,
-every error code in [Errors](execution.md#errors) is some vector's outcome, every static check has a
-refused static-check vector, and every core function and every comprehension has a core-subset case.
+The suite covers the spec, and a test holds it to that: every verb runs in some vector of the
+format's file, every error code in [Errors](execution.md#errors) is the outcome of some vector there,
+every static check has a refused static-check vector, and every core function and every comprehension
+has a core-subset case. WE's file is not counted, so the format's suite is complete without WE's
+domain.
 
 ## What a vector does not carry
 
@@ -305,7 +338,7 @@ leaves to the reader in this version:
 ---
 
 Implemented by: [`operations.ts`](../../../packages/backend-system/conformance/src/operations.ts)
-(the cases, `runVector`, `describeOperations`),
+(the cases of both files, `runVector`, `describeOperations`),
 [`recordOperationVectors.ts`](../../../packages/backend-system/conformance/scripts/recordOperationVectors.ts)
 (recording, on the in-memory backend).
 [`suites/`](../../../packages/backend-system/conformance/src/suites) (the static-check, effect, id
@@ -316,10 +349,11 @@ and the core-subset cases of the template suite's
 [`functions.json`](../../../packages/schema-system/conformance/vectors/functions.json).
 Pinned by: every backend's conformance suite, which runs the vectors —
 [`portsConformance.test.ts`](../../../packages/backend-system/inmemory/tests/portsConformance.test.ts)
-for the in-memory backend, and
+for the in-memory backend, where a backend holding WE's manifest is given the format's neutral
+entities as a module's are installed, and
 [`operationVectors.test.ts`](../../../packages/backend-system/inmemory/tests/operationVectors.test.ts),
-which runs every vector on a backend built from the file's `entities` alone, with only each
-vector's `calls` registered.
+which runs every vector of both files on a backend built from that file's `entities` alone, with only
+each vector's `calls` registered.
 [`operationSuites.test.ts`](../../../packages/backend-system/conformance/tests/operationSuites.test.ts)
 (every static-check, effect, id and RDF vector run from its file, and every core operation read back
 from its triples, e.g. `static.identity`, `effects.per-call-any`, `ids.identity-in-space`,

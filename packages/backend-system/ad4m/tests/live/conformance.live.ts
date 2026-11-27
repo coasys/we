@@ -5,7 +5,9 @@
  * gets a perspective of its own and loses it afterwards. It holds the space SDNA and the root SDNA
  * both, so every record type WE has is there: the operations suite seeds per-agent records
  * (`core.markRead`'s `ReadMarker`), which only the root holds, and the in-memory backend, having no
- * schemas to install, would never say a case needed them.
+ * schemas to install, would never say a case needed them. The format's operation vectors run over
+ * neutral entities WE does not have, which the suite installs into each perspective as a module's
+ * entities are installed.
  *
  * Writes come back over the executor's subscription socket rather than synchronously, so a case
  * waits seconds for them. The known gaps are the executor's, and each one says what is wrong.
@@ -66,17 +68,17 @@ describeBackendConformance('AD4M', {
     // the order written, over 20 local runs. Delete this once a pin includes coasys/ad4m#1936.
     'operations.relation-order':
       'a link onto an ordered relation writes no order entry, so four children linked in one transaction read back in store order, not the order written (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
+    // The same cause with two links, the done column then the to-do one. Over WE's own entities it
+    // read back right about half the time; over the format's neutral `Item` the tie falls to the
+    // to-do column's id every time (0 of 20 local runs right). Delete this with the entry above.
+    'operations.forEach-keys':
+      'a link onto an ordered relation writes no order entry, so two columns linked in one transaction read back in store order, not the order written (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
   },
   knownIntermittent: {
     // Seen in 3 of 10 runs, only ever on the first post in a fresh perspective: the first two
     // children read back swapped. coasys/ad4m#1936 records a position for every member added; delete
-    // this, and the entry below, once a pin includes it.
+    // this once a pin includes it.
     'relations.ordered-read':
       'the first ordered write after the space SDNA is installed sometimes reads back with its first two members swapped (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
-    // Two links onto an ordered relation in one transaction: `link` writes no order entry, so the
-    // columns read back in whichever order the executor holds the links, which is right about half
-    // the time. The same fix.
-    'operations.forEach-keys':
-      'a link onto an ordered relation writes no order entry, so the columns sometimes read back in the wrong order (coasys/ad4m#1304, fixed by coasys/ad4m#1936)',
   },
 });
