@@ -9,7 +9,8 @@ import { describeDestructive } from '../src/shared/destructiveWording';
 import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import type { ScreenSource } from '../src/shared/platform/types';
 import type { ShellStoreDeps } from '../src/shared/stores/ShellStore';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 

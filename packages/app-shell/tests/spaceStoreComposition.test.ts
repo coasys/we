@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { SpaceAppearance } from '../src/shared/spaceAppearance';
 import { createSpaceStore, type SpaceStore } from '../src/shared/stores/SpaceStore';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

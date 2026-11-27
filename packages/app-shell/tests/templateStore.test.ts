@@ -19,6 +19,7 @@ import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { appearanceOf } from './support/spaceAppearance';
+import { createVueReactivity } from './support/vueReactivity';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -28,6 +29,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnT
     'the test port',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],

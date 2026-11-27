@@ -31,8 +31,6 @@ import type {
   RuntimeAdminPort,
 } from '@we/backend-shared';
 import type { Accessor, ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
@@ -59,10 +57,6 @@ const sessionStub = {
   },
 };
 
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 
@@ -82,6 +76,7 @@ import {
   parsePeerInfos,
   type RuntimeStore,
 } from '../src/shared/stores/RuntimeStore';
+import { reactivityPorts } from './support/engines';
 
 const build = (): RuntimeStore =>
   createRuntimeStore({

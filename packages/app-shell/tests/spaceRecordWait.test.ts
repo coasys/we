@@ -13,16 +13,11 @@
  * the moment it is woken where Solid may hold it.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createSpaceRecordWait } from '../src/shared/stores/spaceRecordWait';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 let port: ReactivityPort = solidReactivity;
 
@@ -66,7 +61,7 @@ function harness() {
 
 const flush = () => new Promise<void>((resolve) => queueMicrotask(resolve));
 
-describe.each(ports)('waiting for a space’s own record, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('waiting for a space’s own record, under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
     vi.useFakeTimers();

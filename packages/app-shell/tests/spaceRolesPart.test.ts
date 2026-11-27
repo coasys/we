@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ADMIN_ROLE, ADMIN_ROLE_RECORD } from '../src/shared/spaceRoles';
 import { createSpaceRoles, type SpaceRoles } from '../src/shared/stores/space/roles';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const SOMEBODY = 'did:key:z6MkSomebodyElse';
 

@@ -13,7 +13,8 @@ import { createModuleStoreDeps, resetModuleHostServices } from '../src/shared/re
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { createSpaceNavigation, type SpaceNavigation } from '../src/shared/stores/space/navigation';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

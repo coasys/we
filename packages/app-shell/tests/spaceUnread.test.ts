@@ -9,7 +9,8 @@ import { CollectionBlock, MutedAgent } from '@we/entities';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createSpaceUnread, type SpaceUnread } from '../src/shared/stores/space/unread';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const SOMEBODY = 'did:key:z6MkSomebodyElse';
 

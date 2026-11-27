@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createSpaceDetails, type SpaceDetails } from '../src/shared/stores/space/details';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

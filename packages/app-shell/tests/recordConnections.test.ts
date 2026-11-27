@@ -13,13 +13,12 @@ import {
   registerTransactionRunner,
 } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordConnections, type RecordConnections } from '../src/shared/stores/records/connections';
 import { operationRunner } from '../src/shared/stores/records/context';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
+import { reactivityPorts } from './support/engines';
 
 /** Hold every write until `land`, as a round trip would; put back after each test. */
 function holdWrites(): () => void {
@@ -28,11 +27,6 @@ function holdWrites(): () => void {
   registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
   return land;
 }
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 type Row = Record<string, unknown> & { id: string };
 const model = (name: string) =>

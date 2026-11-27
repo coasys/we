@@ -8,17 +8,12 @@
  * A plain store test, run once under each reactivity port.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createEditTarget, type EditTargetPort } from '../src/shared/stores/editTarget';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 let port: ReactivityPort = solidReactivity;
 const disposers: (() => void)[] = [];
@@ -51,7 +46,7 @@ function setup(screen: TemplateSchema) {
   return { edit, saved, updated, drafted, open };
 }
 
-describe.each(ports)('under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
   });

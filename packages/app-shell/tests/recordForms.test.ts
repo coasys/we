@@ -8,8 +8,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createRecordCanvas } from '../src/shared/stores/records/canvas';
@@ -17,11 +15,7 @@ import { createRecordConnections } from '../src/shared/stores/records/connection
 import { canvasChildren, operationRunner } from '../src/shared/stores/records/context';
 import { createRecordForms, type RecordForms } from '../src/shared/stores/records/forms';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const CANVAS = 'canvas-1';
 type Row = Record<string, unknown> & { id: string };

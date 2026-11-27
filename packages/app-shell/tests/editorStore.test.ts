@@ -18,6 +18,7 @@ import { createEditorStore, type EditorStore } from '../src/shared/stores/Editor
 import { createEditTarget, type EditTargetPort } from '../src/shared/stores/editTarget';
 import type { EditingTheme } from '../src/shared/stores/ThemeStore';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';
+import { createVueReactivity } from './support/vueReactivity';
 
 const chatLoads: string[] = [];
 vi.mock('../src/shared/editorChats', () => ({
@@ -38,6 +39,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTem
     'the test port, with plain documents',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],

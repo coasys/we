@@ -9,19 +9,13 @@
 import type { AgentCredentials, AgentSessionPort, AgentSessionStatus } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES, SessionTimeoutError } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen } from '../src/shared/firstScreen';
 import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createSessionStore, type SessionStore } from '../src/shared/stores/SessionStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:key:z6MkSession';
 const flush = async () => {

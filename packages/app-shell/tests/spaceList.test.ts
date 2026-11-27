@@ -9,7 +9,8 @@ import { Space } from '@we/entities';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const NO_DETAILS = () => ({
   canAdminister: false,

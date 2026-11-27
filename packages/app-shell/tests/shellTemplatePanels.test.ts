@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry } from '../src/shared/registries/dockRegistry';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const SCOPE = 'template-panels-test';
 const panels = [{ id: 'inspector', title: 'Inspector', snap: 'left' as const, node: { type: 'div' } }];

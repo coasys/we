@@ -5,24 +5,18 @@
  * A plain store test, run once under each reactivity port.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { clockRegistry } from '../src/shared/clocks';
 import { type ClockStore, createClockStore } from '../src/shared/stores/ClockStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DAY = 86_400_000;
 let named = 0;
 /** A clock name no other test has used: the registry is app-wide and keeps every clock it makes. */
 const fresh = (label: string) => `${label}-${++named}`;
 
-describe.each(ports)('clockStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('clockStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
 

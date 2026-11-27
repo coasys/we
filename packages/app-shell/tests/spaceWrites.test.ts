@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites, type SpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

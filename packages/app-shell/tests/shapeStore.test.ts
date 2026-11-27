@@ -8,18 +8,12 @@
  */
 import type { EntityHintState, EntityManifest, StoredShape } from '@we/backend-shared';
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { draftMember, draftToManifest, emptyShapeDraft } from '../src/shared/shapes/shapeDraft';
 import type { AppDataset } from '../src/shared/stores/DatasetStore';
 import { createShapeStore, type ShapeStore } from '../src/shared/stores/ShapeStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const flush = async () => {
   for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));

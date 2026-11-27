@@ -13,7 +13,8 @@ import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spac
 import { createSpaceTaskStates, type SpaceTaskStates } from '../src/shared/stores/space/taskStates';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

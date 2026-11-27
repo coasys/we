@@ -322,12 +322,16 @@ the first, and the shape the rest copy:
   composition builds them in order and spreads their members, so a template still reads one
   namespace (`spaceStore.x`) and the template surface and profiles do not change when a job moves.
   A part reaches a later one only through a function it calls after the store is built, never
-  while it is being built, and each part has its own test under both ports. The parts sit in a
+  while it is being built, and each part has its own test under every engine. The parts sit in a
   subdirectory so the AI-context extractor, which reads `stores/*.ts` for store interfaces, never
   takes one for a store.
-- Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
-  `createTestReactivity()`, each store built inside `port.root` and disposed after, given
-  `createTestPlatform()`. They run in app-shell's `stores` test project: no DOM, the browser build of
+- Its tests are plain `.ts` store tests, `describe.each(reactivityPorts)` over three engines
+  (`app-shell/tests/support/engines.ts`): `solidReactivity`, `createTestReactivity()` — which runs
+  sibling effects in a seeded shuffle and wakes readers on an equal write, the two things the port
+  does not promise — and a port over `@vue/reactivity` (`tests/support/vueReactivity.ts`), an engine
+  nobody here wrote. Each store is built inside `port.root` and disposed after, given
+  `createTestPlatform()`. A failure under the test port prints its seed; `WE_REACTIVITY_SEED=<n>`
+  runs that order again. They run in app-shell's `stores` test project: no DOM, the browser build of
   solid-js, so a store reaching past the platform port fails there rather than passing on jsdom's
   globals. A store test goes in jsdom's project only for a reason it names. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the

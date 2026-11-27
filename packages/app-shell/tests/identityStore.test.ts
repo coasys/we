@@ -15,8 +15,6 @@ import type {
 } from '@we/backend-shared';
 import { NO_IDENTITY_CAPABILITIES } from '@we/backend-shared';
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
@@ -27,11 +25,7 @@ import {
   type IdentityStore,
   startNowKey,
 } from '../src/shared/stores/IdentityStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:scid:coasys:1:QmScid';
 const flush = () => new Promise((r) => setTimeout(r, 0));

@@ -15,16 +15,10 @@
  * does, and the first test below pins that so the two readings cannot be confused later.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const ME = 'did:key:z6MkSelf';
 const ALICE = 'did:key:z6MkAlice';

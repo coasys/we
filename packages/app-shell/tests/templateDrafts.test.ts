@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { createTemplateDrafts } from '../src/shared/templateDrafts';
+import { createVueReactivity } from './support/vueReactivity';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTemplates; fine: boolean }][] = [
   ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates, fine: true })],
@@ -25,6 +26,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: LiveTem
     'the test port',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity), fine: false };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity), fine: false };
     },
   ],

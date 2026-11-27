@@ -12,18 +12,13 @@
  * A plain store test, run once under each reactivity port.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NARROW_VIEWPORT_PX } from '../src/shared/dockGeometry';
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 
@@ -44,7 +39,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(ports)('the chat store, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('the chat store, under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
     platform = createTestPlatform();

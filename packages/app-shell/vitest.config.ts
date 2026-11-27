@@ -68,6 +68,7 @@ const STORE_TESTS = [
   'tests/templateStoreSpaceSwitch.test.ts',
   'tests/treeRelation.test.ts',
   'tests/treeUndo.test.ts',
+  'tests/vueReactivity.test.ts',
   'tests/workflowStore.test.ts',
 ];
 

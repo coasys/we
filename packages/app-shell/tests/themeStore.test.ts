@@ -8,21 +8,15 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { AGENT_DEFAULT, FOLLOW_SPACE, Theme } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { createThemeStore, type ThemeStore } from '../src/shared/stores/ThemeStore';
+import { reactivityPorts } from './support/engines';
 import { appearanceOf } from './support/spaceAppearance';
 
 provideSeed({ name: 'test', modules: [] } as never);
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 const ME = 'did:test:me';
 const flush = async () => {

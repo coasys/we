@@ -9,19 +9,13 @@
  * test platform's.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { createRouteStore, type RouteStore } from '../src/shared/stores/RouteStore';
+import { reactivityPorts } from './support/engines';
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('routeStore, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('routeStore, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   let platform: TestPlatform;
   const disposers: (() => void)[] = [];

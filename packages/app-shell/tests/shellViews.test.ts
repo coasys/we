@@ -6,7 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

@@ -16,8 +16,6 @@ import {
   registerTransactionRunner,
 } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -52,6 +50,7 @@ const shapeStub = {
 };
 
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
 
 /*
   Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
@@ -65,10 +64,6 @@ function holdWrites(): () => void {
   return land;
 }
 
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 

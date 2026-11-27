@@ -6,20 +6,14 @@
  * effect at once where Solid defers it. The stores it writes through are stand-ins that record.
  */
 import type { ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import type { TemplateSchema } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { provideSeed } from '../src/shared/seedRegistry';
 import { type BundleSpaceRow, type BundleStore, createBundleStore } from '../src/shared/stores/BundleStore';
+import { reactivityPorts } from './support/engines';
 
 provideSeed({ name: 'test', modules: [] } as never);
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 const DID = 'did:key:z6MkBundles';
 const flush = async () => {

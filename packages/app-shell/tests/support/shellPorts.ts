@@ -6,8 +6,6 @@
  * port is the one under test. The store is built inside a root, as a composition root builds it.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 
 import { createTestPlatform, type TestPlatform } from '../../src/shared/platform/testPlatform';
 import { createAppFrame } from '../../src/shared/registries/appFrame';
@@ -20,11 +18,6 @@ import { createShellPrompts } from '../../src/shared/stores/shell/prompts';
 import { createShellTemplatePanels } from '../../src/shared/stores/shell/templatePanels';
 import { createShellViews } from '../../src/shared/stores/shell/views';
 import { createShellStore, type ShellStore, type ShellStoreDeps } from '../../src/shared/stores/ShellStore';
-
-export const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 /**
  * A key press as the window delivers one, for a test platform to send: what a store's key handler

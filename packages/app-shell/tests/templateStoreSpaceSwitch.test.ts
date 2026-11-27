@@ -18,6 +18,7 @@ import { provideSeed } from '../src/shared/seedRegistry';
 import { createTemplateStore, type TemplateStore } from '../src/shared/stores/TemplateStore';
 import { liveRows } from './liveRows';
 import { appearanceOf } from './support/spaceAppearance';
+import { createVueReactivity } from './support/vueReactivity';
 
 const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnType<typeof plainLiveTemplates> }][] = [
   ['Solid', () => ({ reactivity: solidReactivity, liveTemplates: solidLiveTemplates })],
@@ -25,6 +26,13 @@ const hosts: [string, () => { reactivity: ReactivityPort; liveTemplates: ReturnT
     'the test port',
     () => {
       const reactivity = createTestReactivity();
+      return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
+    },
+  ],
+  [
+    'Vue',
+    () => {
+      const reactivity = createVueReactivity();
       return { reactivity, liveTemplates: plainLiveTemplates(reactivity) };
     },
   ],

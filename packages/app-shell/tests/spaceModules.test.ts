@@ -15,7 +15,8 @@ import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { createSpaceModules, type SpaceModules } from '../src/shared/stores/space/modules';
 import { createSpaceList, type SpaceList } from '../src/shared/stores/space/spaces';
 import { createSpaceWrites } from '../src/shared/stores/space/writes';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const host = { backend: 'inmemory', framework: 'solid' };
 const mod = (id: string, overrides: Partial<ModuleDefinition> = {}): ModuleDefinition => ({

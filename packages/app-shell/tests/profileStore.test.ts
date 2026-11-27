@@ -11,18 +11,12 @@
  * effect at once where Solid defers it.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createCredential, type Credential } from '../src/shared/credential';
 import { createFirstScreen, type FirstScreen } from '../src/shared/firstScreen';
 import { createProfileStore, type ProfileStore } from '../src/shared/stores/ProfileStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const DID = 'did:key:z6MkTest';
 

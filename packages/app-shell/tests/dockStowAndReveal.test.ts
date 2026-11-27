@@ -11,7 +11,8 @@ import { COLLAPSED_PX, STRIP_PX } from '../src/shared/dockGeometry';
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 import type { ShellStore } from '../src/shared/stores/ShellStore';
-import { buildShell, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildShell } from './support/shellPorts';
 
 /** A host store rather than a module, so nothing gates the panels on a space. */
 const STORE = 'docktest';

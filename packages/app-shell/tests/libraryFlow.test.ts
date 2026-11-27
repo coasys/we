@@ -7,8 +7,6 @@
  * that every step says what it is doing through the one loading signal.
  */
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -18,11 +16,7 @@ import {
   type LibraryFlow,
   type LibraryRecord,
 } from '../src/shared/stores/libraryFlow';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const ME = 'did:test:me';
 

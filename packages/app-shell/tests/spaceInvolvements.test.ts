@@ -9,7 +9,8 @@ import { clearPredictions, CollectionBlock, predict, predictionsFor } from '@we/
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createSpaceInvolvements, type SpaceInvolvements } from '../src/shared/stores/space/involvements';
-import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];

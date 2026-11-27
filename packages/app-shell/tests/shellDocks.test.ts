@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
-import { buildParts, keydown, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts, keydown } from './support/shellPorts';
 
 const STORE = 'docks-test';
 const A = `${STORE}:a`;

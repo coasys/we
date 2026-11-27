@@ -12,16 +12,10 @@
 import { createInMemoryWorkflowPort } from '@we/backend-inmemory';
 import type { WorkflowDefinition } from '@we/backend-shared';
 import type { Accessor, ReactivityPort, Setter } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createWorkflowStore, type WorkflowStore } from '../src/shared/stores/WorkflowStore';
-
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 const dataset = { id: 'space-1' };
 /** A space's own models, which exist for its dataset only once registered. */

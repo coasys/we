@@ -9,17 +9,12 @@
  */
 import type { Account, AccountHost } from '@shared/platform/types';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { type AccountStore, createAccountStore } from '../src/shared/stores/AccountStore';
-
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
+import { reactivityPorts } from './support/engines';
 
 let accountHost: AccountHost | undefined;
 let port: ReactivityPort = solidReactivity;
@@ -77,7 +72,7 @@ afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
 });
 
-describe.each(ports)('under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   beforeEach(() => {
     port = makePort();
     accountHost = undefined;

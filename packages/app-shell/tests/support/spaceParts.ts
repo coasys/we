@@ -7,8 +7,6 @@ import { createInMemoryBackendPorts, type InMemoryDatasetSeed } from '@we/backen
 import type { DatasetRef } from '@we/backend-shared';
 import type { AgentSettings } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 
 import { createTestPlatform, type TestPlatform } from '../../src/shared/platform/testPlatform';
 import { provideSeed } from '../../src/shared/seedRegistry';
@@ -19,11 +17,6 @@ import type { ToastButton } from '../../src/shared/toasts';
 
 // The deployment the parts read their defaults from: none beyond what the code has.
 provideSeed({ name: 'test', modules: [] } as never);
-
-export const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 
 export const ME = 'did:key:z6MkSpaceParts';
 

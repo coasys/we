@@ -11,8 +11,6 @@
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import { getEntity, registerEntity, unregisterEntity } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
@@ -312,15 +310,12 @@ const sessionStub = { me: () => ({ did: 'did:key:z6Mk' }) };
 const shapeStub = { spaceShapes: () => [], interpretationCandidates: () => [] };
 
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
+import { reactivityPorts } from './support/engines';
 
 /*
   Run once under each reactivity port: Solid's, and the test port, which runs a new effect at once
   where Solid defers it. Each store is built in a root of its own and disposed after its case.
 */
-const reactivityPorts: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
 let reactivity: ReactivityPort;
 const disposers: (() => void)[] = [];
 

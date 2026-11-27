@@ -9,7 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FloatPlacement } from '../src/shared/dockGeometry';
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const card = (x: number): FloatPlacement => ({ snap: null, x, y: 40, w: 300, h: 300, displace: false });
 const SCOPE = 'arrangement-test';

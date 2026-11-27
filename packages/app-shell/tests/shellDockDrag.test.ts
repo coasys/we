@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MIN_FLOAT_PX } from '../src/shared/dockGeometry';
 import { createTestPlatform, type TestPlatform } from '../src/shared/platform/testPlatform';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
-import { buildParts, reactivityPorts } from './support/shellPorts';
+import { reactivityPorts } from './support/engines';
+import { buildParts } from './support/shellPorts';
 
 const STORE = 'drag-test';
 const A = `${STORE}:a`;

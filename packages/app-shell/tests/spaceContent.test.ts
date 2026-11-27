@@ -12,7 +12,8 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { createSpaceContent, type SpaceContent } from '../src/shared/stores/space/content';
 import type { TaskStateView } from '../src/shared/stores/space/types';
-import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
+import { reactivityPorts } from './support/engines';
+import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 const paragraph = (text: string): ContentBlock => ({ _type: 'block', text });
 const ids = (value: unknown) =>

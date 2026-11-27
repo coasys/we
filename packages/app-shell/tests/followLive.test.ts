@@ -8,11 +8,10 @@
  */
 import type { LivePage, LiveQuery, Snapshot } from '@we/backend-shared';
 import type { ReactivityPort } from '@we/reactivity';
-import { createTestReactivity } from '@we/reactivity/testing';
-import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { followLive, followRows } from '../src/shared/followLive';
+import { reactivityPorts } from './support/engines';
 
 interface Handle<T> extends LiveQuery<LivePage<T>> {
   push(rows: T[]): void;
@@ -86,12 +85,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const ports: [string, () => ReactivityPort][] = [
-  ['Solid', () => solidReactivity],
-  ['the test port', createTestReactivity],
-];
-
-describe.each(ports)('following a live query, under %s', (_name, makePort) => {
+describe.each(reactivityPorts)('following a live query, under %s', (_name, makePort) => {
   let port: ReactivityPort;
   const disposers: (() => void)[] = [];
   const own = (fn: () => void) => disposers.push(port.root(fn));
