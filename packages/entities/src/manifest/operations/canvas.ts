@@ -52,7 +52,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
       {
         create: {
           entity: 'Placement',
-          fields: { nodeType: 'CollectionBlock', x: { $: 'at.x' }, y: { $: 'at.y' }, node: [{ $: 'card' }] },
+          fields: { nodeType: 'CollectionBlock', x: { $: 'at.x' }, y: { $: 'at.y' }, node: { $: 'card' } },
           parent: canvasChild('canvas'),
         },
         when: { $: 'at' },
@@ -101,8 +101,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
       {
         create: {
           entity: 'Placement',
-          // The card it places as a one-element list: how a to-one is written with the record.
-          fields: { $: 'merge(fields, { nodeType: nodeType, node: [node] })' },
+          fields: { $: 'merge(fields, { nodeType: nodeType, node: node })' },
           parent: canvasChild('canvas'),
         },
         when: { $: 'count(current) == 0' },
@@ -175,7 +174,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
       {
         create: {
           entity: 'EdgeRoute',
-          fields: { $: 'merge(fields ?? {}, { connection: [connection] })' },
+          fields: { $: 'merge(fields ?? {}, { connection: connection })' },
           parent: canvasChild('canvas'),
         },
         when: { $: "action == 'replace' || action == 'create'" },
@@ -205,7 +204,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
           as: 'housed',
           entity: 'Relationship',
           fields: {
-            $: 'merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: [source], target: [target] })',
+            $: 'merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: source, target: target })',
           },
           parent: { id: { $: 'home' }, relation: 'children', entity: 'CollectionBlock' },
         },
@@ -216,7 +215,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
           as: 'loose',
           entity: 'Relationship',
           fields: {
-            $: 'merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: [source], target: [target] })',
+            $: 'merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: source, target: target })',
           },
         },
         when: { $: '!home' },
@@ -242,7 +241,7 @@ export const CANVAS_OPERATIONS: Record<string, OperationDefinition> = {
           entity: 'Relationship',
           id: { $: 'connection' },
           fields: {
-            $: "merge(end == 'source' ? { sourceType: nodeType, source: [node] } : { targetType: nodeType, target: [node] }, key ? { connection: key } : {})",
+            $: "merge(end == 'source' ? { sourceType: nodeType, source: node } : { targetType: nodeType, target: node }, key ? { connection: key } : {})",
           },
         },
       },

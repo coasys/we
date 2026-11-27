@@ -32,6 +32,7 @@ import {
   CONTAINMENT_PREDICATE,
   type EntityManifest,
   type EntitySchema,
+  type RelationSchema,
   resolvesPolymorphically,
 } from '@we/backend-shared';
 import { FILE_STORAGE_LANGUAGE } from '@we/entities';
@@ -288,6 +289,26 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
     };
   };
 
+  /*
+    The predicate a relation is stored under. A `reverseOf` relation reads the link its forward
+    writes, so with no predicate of its own it takes the forward's: minted under its own name it
+    would read a predicate nothing writes, and come back empty. Where both ends name the other as
+    `reverseOf`, neither is the forward, so both take the one minted for the end whose
+    `Entity.relation` sorts first, and still agree.
+  */
+  const relationPredicate = (entityName: string, relName: string, spec: RelationSchema): string => {
+    if (spec.containment) return CONTAINMENT_PREDICATE;
+    if (spec.predicate) return spec.predicate;
+    const forward = spec.reverseOf && spec.target ? resolved(spec.target).relations[spec.reverseOf] : undefined;
+    if (!forward) return resolvePredicate(entityName, relName);
+    if (forward.containment) return CONTAINMENT_PREDICATE;
+    if (forward.predicate) return forward.predicate;
+    if (!forward.reverseOf) return resolvePredicate(spec.target, spec.reverseOf!);
+    const own = `${entityName}.${relName}`;
+    const other = `${spec.target}.${spec.reverseOf}`;
+    return own < other ? resolvePredicate(entityName, relName) : resolvePredicate(spec.target, spec.reverseOf!);
+  };
+
   return Object.keys(manifest.entities).map((name) => {
     const entity = resolved(name);
     return {
@@ -331,7 +352,7 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
           // Containment has one name on every backend, whatever a manifest spelled — see
           // `RelationSchema.containment`. The name, not the stored predicate: these entries are
           // also what `schemas.entries` reports, and the compiled class translates it.
-          predicate: spec.containment ? CONTAINMENT_PREDICATE : (spec.predicate ?? resolvePredicate(name, relName)),
+          predicate: relationPredicate(name, relName, spec),
           type: 'uri' as const,
           isCollection: spec.cardinality === 'many',
           required: false,

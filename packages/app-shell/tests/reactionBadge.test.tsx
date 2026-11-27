@@ -1,15 +1,21 @@
 /**
  * A card's reaction mark, pressed.
  *
- * The mark draws from the weighing the canvas seed put on the card. A press writes the reaction and
- * the mark moves at once — the score and the filled glyph — rather than a second later when the write
- * comes back through a subscription, which is what makes a press read as having worked.
+ * The mark draws from the weighing the canvas seed put on the card. A press invokes the reaction's
+ * operation, which the host draws before it lands in the reads the seed weighs from — so what is
+ * held here is that the press asks for the right write, and that the mark follows the card's data.
  */
 import { render as mount } from '@solidjs/testing-library';
 import type { JSX } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { writes } = vi.hoisted(() => ({ writes: [] as [string, string, number | null][] }));
+const { writes } = vi.hoisted(() => ({ writes: [] as [string, Record<string, unknown>][] }));
+
+vi.mock('../src/shared/invokeOperation', () => ({
+  invokeOperation: async (name: string, args: Record<string, unknown>) => {
+    writes.push([name, args]);
+  },
+}));
 
 vi.mock('@we/entities', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@we/entities');
@@ -25,7 +31,6 @@ vi.mock('@we/entities', async () => {
   };
 });
 import { ReactionBadge } from '../src/frameworks/solid/components/ReactionBadge';
-import { signalOptimism } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
@@ -33,13 +38,7 @@ import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 const stores = {
   datasetStore: { currentDataset: () => ({ id: 'ds', handle: {} }) },
   sessionStore: { me: () => ({ did: 'did:me' }) },
-  spaceStore: {
-    mutedDids: () => [],
-    upsertSignal: async (node: string, type: string, value: number | null) => {
-      writes.push([node, type, value]);
-      signalOptimism.hold(node, type, value);
-    },
-  },
+  spaceStore: { mutedDids: () => [] },
 } as unknown as Partial<StoreRegistry>;
 
 /** Render inside the store registry, as the host's composition hands it to every component. */
@@ -51,7 +50,6 @@ function render(ui: () => JSX.Element) {
 
 beforeEach(() => {
   writes.length = 0;
-  signalOptimism.reset();
 });
 
 /** The score the mark shows — a property of the number element, not text. */
@@ -66,15 +64,14 @@ const node = {
 };
 
 describe('a card’s reaction mark', () => {
-  it('shows the card’s score, and a press counts the reader in at once', async () => {
+  it('shows the card’s score, and a press gives the reader’s like', async () => {
     const { container } = render(() => <ReactionBadge node={node} recordId="n1" recordType="Note" />);
     await vi.waitFor(() => expect(container.querySelector('.reaction-badge')).not.toBeNull());
     expect(scoreIn(container)).toBe(2);
 
     press(container);
 
-    expect(writes).toEqual([['n1', 'like', 1]]);
-    await vi.waitFor(() => expect(scoreIn(container)).toBe(3));
+    expect(writes).toEqual([['core.upsertSignal', { node: 'n1', signalType: 'like', value: 1 }]]);
   });
 
   it('takes the reader’s like back when they already gave one', async () => {
@@ -84,8 +81,7 @@ describe('a card’s reaction mark', () => {
 
     press(container);
 
-    expect(writes).toEqual([['n1', 'like', null]]);
-    await vi.waitFor(() => expect(scoreIn(container)).toBe(1));
+    expect(writes).toEqual([['core.withdrawSignal', { node: 'n1', signalType: 'like' }]]);
   });
 
   it('opens the reaction’s own control for a slider, in the popover’s content', async () => {

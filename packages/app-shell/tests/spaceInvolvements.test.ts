@@ -1,15 +1,13 @@
 /**
  * The space store's involvements part: the kinds of involvement a space names, read per space; naming
- * and retiring one; joining a record's roster; and reactions drawn before they land, taken back when
- * refused, and every hold forgotten with the space.
+ * and retiring one; joining a record's roster; and what is drawn ahead of the data forgotten with the
+ * space.
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { CollectionBlock, SignalType } from '@we/entities';
+import { clearPredictions, CollectionBlock, predict, predictionsFor } from '@we/entities';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createInvolvementOptimism } from '../src/shared/involvementOptimism';
-import { createSignalOptimism } from '../src/shared/signalOptimism';
 import { createSpaceInvolvements, type SpaceInvolvements } from '../src/shared/stores/space/involvements';
 import { flush, ME, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
@@ -17,12 +15,12 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    clearPredictions();
   });
 
   interface Built {
     h: SpaceHarness;
     involvements: SpaceInvolvements;
-    signalOptimism: ReturnType<typeof createSignalOptimism>;
     orderResets: { count: number };
   }
 
@@ -33,19 +31,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     ]);
     const { reactivity } = h;
     const orderResets = { count: 0 };
-    const signalOptimism = createSignalOptimism(reactivity.signal);
     let involvements!: SpaceInvolvements;
     disposers.push(
       reactivity.root(() => {
         involvements = createSpaceInvolvements({
           ...h.ctx,
-          involvementOptimism: createInvolvementOptimism(reactivity.signal),
-          signalOptimism,
           signalOrder: { reset: () => void orderResets.count++ },
         });
       }),
     );
-    return { h, involvements, signalOptimism, orderResets };
+    return { h, involvements, orderResets };
   }
 
   it('reads the kinds per space, offers the ones in use, and names a new one', async () => {
@@ -65,28 +60,16 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     expect(involvements.members.involvementTypes()).toEqual([]);
   });
 
-  it('draws a reaction on the press and keeps it once stored', async () => {
-    const { h, involvements, signalOptimism } = await build();
-    h.datasets.show('ds-a');
-    await flush();
-    const handle = (await h.datasets.get('ds-a')).handle;
-    const post = await CollectionBlock.create(handle, { kind: 'post' });
-    const like = await SignalType.create(handle, { name: 'Like', slug: 'like', mode: 'toggle' });
-    const giving = involvements.members.upsertSignal(post.id, like.id, 1);
-    expect(signalOptimism.overlay()).toEqual([{ record: post.id, type: like.id, value: 1 }]);
-    await giving;
-    expect(h.toasts.said).toEqual([]);
-  });
-
-  it('forgets every hold and settled order when the space changes', async () => {
-    const { h, involvements, signalOptimism, orderResets } = await build();
+  it('forgets every prediction and settled order when the space changes', async () => {
+    const { h, involvements, orderResets } = await build();
     h.datasets.show('ds-a');
     await flush();
     const resetsInA = orderResets.count;
-    signalOptimism.hold('post-1', 'like', 1);
+    const handle = (await h.datasets.get('ds-a')).handle;
+    predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
     h.datasets.show('ds-b');
     await flush();
-    expect(signalOptimism.overlay()).toEqual([]);
+    expect(predictionsFor(handle)).toEqual([]);
     expect(orderResets.count).toBeGreaterThan(resetsInA);
     expect(involvements.members.involvementTypesLoaded()).toBe(true);
   });

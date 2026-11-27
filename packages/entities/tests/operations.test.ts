@@ -11,6 +11,7 @@ import { type EntityClass, registerEntity, unregisterEntity } from '../src/entit
 import { CORE_MANIFEST, CORE_OPERATIONS } from '../src/manifest';
 import { postBlockId, THREAD_SUBJECTS } from '../src/manifest/operations/content';
 import {
+  deriveIdentityId,
   deriveRecordId,
   describeEffects,
   describeOperation,
@@ -20,6 +21,7 @@ import {
   operationCatalog,
   registerOperations,
   runOperation,
+  serialKey,
   unregisterOperations,
   validateOperations,
 } from '../src/operations';
@@ -46,6 +48,42 @@ const issues = (definition: unknown, opts: Parameters<typeof validateOperations>
   validateOperations(MANIFEST({ t: definition }), { namespace: 'demo', ...opts }).map(
     (issue) => `${issue.path}: ${issue.message}`,
   );
+
+describe('an identity on a create', () => {
+  it('passes over a property and a to-one the create gives', () => {
+    expect(
+      issues(op([{ create: { entity: 'Board', identity: ['title', 'lead'], fields: { title: 'Plan', lead: 'c1' } } }])),
+    ).toEqual([]);
+  });
+
+  it('is refused on a chosen entity, over a to-many or an unknown field, twice over one, or not given', () => {
+    const found = issues(
+      op(
+        [
+          {
+            create: {
+              entity: { $: 'kind' },
+              oneOf: ['Board'],
+              identity: ['title'],
+              fields: { title: 'x' },
+            },
+          },
+          { create: { entity: 'Board', identity: ['columns', 'nope'], fields: { title: 'x' } } },
+          { create: { entity: 'Board', identity: ['title', 'title'], fields: { title: 'x' } } },
+          { create: { entity: 'Board', identity: ['note'], fields: { title: 'x' } } },
+        ],
+        { params: { kind: { type: 'string' } } },
+      ),
+    );
+    expect(found).toEqual([
+      expect.stringContaining('steps.0.create.identity: an identity keys one entity'),
+      expect.stringContaining('steps.1.create.identity.0: Board has no property or to-one relation "columns"'),
+      expect.stringContaining('steps.1.create.identity.1: Board has no property or to-one relation "nope"'),
+      expect.stringContaining('steps.2.create.identity: an identity names each field once'),
+      expect.stringContaining('steps.3.create.identity.0: "note" is the record’s identity'),
+    ]);
+  });
+});
 
 describe('static checks', () => {
   it('pass a well-formed operation', () => {
@@ -289,6 +327,36 @@ describe('static checks', () => {
   });
 });
 
+describe('a serial key', () => {
+  const params = { board: { type: 'string', required: true } };
+  const steps = [{ find: { entity: 'Board', as: 'found' } }];
+
+  it('reads the params and nothing else, as one expression', () => {
+    expect(issues(op(steps, { params, serial: { $: "'b ' + board" } }))).toEqual([]);
+    expect(issues(op(steps, { params, serial: { $: 'found' } }))).toEqual([
+      expect.stringContaining('operations.t.serial: "found" is not bound here'),
+    ]);
+    expect(issues(op(steps, { params, serial: { $: 'invoker' } }))).toEqual([
+      expect.stringContaining('operations.t.serial: "invoker" is not bound here'),
+    ]);
+  });
+
+  it('names the queue an invocation joins, and none when it comes out absent', () => {
+    const manifest = MANIFEST({
+      q: op(steps, { params: { ...params, note: { type: 'string' } }, serial: { $: 'note' } }),
+    });
+    registerOperations('demo', manifest.operations, { entities: manifest.entities });
+    try {
+      expect(serialKey('demo.q', { board: 'b1', note: 'n1' })).toBe('n1');
+      expect(serialKey('demo.q', { board: 'b1' })).toBeUndefined();
+      // Args the run would refuse join no queue; the run says why.
+      expect(serialKey('demo.q', { nope: 1 })).toBeUndefined();
+    } finally {
+      unregisterOperations('demo');
+    }
+  });
+});
+
 describe('the effect summary', () => {
   it('lists verbs per entity across branches and calls, with bulk and destructive', () => {
     const removeLead = op([{ unlink: { entity: 'Board', id: 'b', relation: 'columns', target: 'c' } }]);
@@ -398,6 +466,52 @@ describe('record ids', () => {
     expect(await deriveRecordId('other', ['0', 'k=a', '1'])).not.toBe(base);
     expect(await deriveRecordId('inv', ['0', 'k=a1', ''])).not.toBe(base);
     expect(await deriveRecordId('inv', ['0', '3:k=a', '1'])).not.toBe(base);
+  });
+});
+
+describe('identity ids', () => {
+  it('derive from the entity and the identity, pinned to the spec’s examples', async () => {
+    expect(await deriveIdentityId('TaskState', [['slug', 'blocked']])).toBe(
+      'urn:uuid:843d442c-0a43-850e-8a67-3a96966e5c49',
+    );
+    expect(
+      await deriveIdentityId('Seat', [
+        ['row', 'café'],
+        ['n', '1.5'],
+      ]),
+    ).toBe('urn:uuid:88084a04-6308-804b-8623-9ce69f883852');
+  });
+
+  it('differ by entity, field and value, and by the order the identity lists its fields', async () => {
+    const base = await deriveIdentityId('Vote', [
+      ['poll', 'p'],
+      ['voter', 'v'],
+    ]);
+    expect(
+      await deriveIdentityId('Ballot', [
+        ['poll', 'p'],
+        ['voter', 'v'],
+      ]),
+    ).not.toBe(base);
+    expect(
+      await deriveIdentityId('Vote', [
+        ['poll', 'p'],
+        ['voter', 'w'],
+      ]),
+    ).not.toBe(base);
+    expect(
+      await deriveIdentityId('Vote', [
+        ['voter', 'v'],
+        ['poll', 'p'],
+      ]),
+    ).not.toBe(base);
+  });
+
+  it('never equal an invocation’s, even one built to spell the same segments', async () => {
+    const identity = await deriveIdentityId('TaskState', [['slug', 'blocked']]);
+    expect(await deriveRecordId('TaskState', ['slug', 'blocked'])).not.toBe(identity);
+    expect(await deriveRecordId('0:TaskState', ['slug', 'blocked'])).not.toBe(identity);
+    await expect(deriveRecordId('', ['TaskState', 'slug', 'blocked'])).rejects.toThrow(/non-empty/);
   });
 });
 

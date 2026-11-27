@@ -34,6 +34,7 @@ import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
 import { ShellRouterRoot } from '@solid/layouts/ShellRouterRoot';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { publishTemplateScope } from '@solid/registries/templateScope';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
@@ -569,6 +570,8 @@ export function TemplateLayout(
                   because its links cross spaces.
                 */
                     context={{ surface: templateSurface.surface, $nav: { baseDepth: SPACE_ROUTE_DEPTH } }}
+                    // For the template's panels, which are docked outside this tree.
+                    onScope={publishTemplateScope}
                     children={props.children}
                   />
                 </RouteSurface.Provider>

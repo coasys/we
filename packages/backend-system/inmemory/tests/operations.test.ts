@@ -548,6 +548,31 @@ describe('any record type', () => {
     expect(await childrenOf(b.id)).toEqual([card.id]);
   });
 
+  it('asks the host about the entity actually chosen, and writes nothing it refuses', async () => {
+    const note = await Collection().create(dataset, { kind: 'note', title: 'old' });
+    const topic = await getEntity('Topic').create(dataset, { name: 'Soil' } as never);
+    const asked: string[] = [];
+    const admitChosen = (entity: string) => {
+      asked.push(entity);
+      return entity !== 'Topic';
+    };
+    const run = (records: unknown[]) =>
+      runOperation('generic.remove', { records }, { dataset, invoker: AGENT, admitChosen });
+
+    const refused = await failure(
+      run([
+        { entity: 'CollectionBlock', id: note.id },
+        { entity: 'Topic', id: topic.id },
+      ]),
+    );
+    expect([refused.class, refused.code]).toEqual(['static', 'notGranted']);
+    expect(asked).toEqual(['CollectionBlock', 'Topic']);
+    expect(await ofKind('note')).toHaveLength(1);
+
+    await run([{ entity: 'CollectionBlock', id: note.id }]);
+    expect(await ofKind('note')).toEqual([]);
+  });
+
   it('still refuses the entities that decide who may write, and an abstract one', async () => {
     const policy = await failure(generic('edit', { entity: 'Policy', id: 'x', fields: {} }));
     expect([policy.class, policy.code]).toEqual(['static', 'protectedEntity']);
@@ -567,7 +592,7 @@ describe('core.createRecord', () => {
       'core.createRecord',
       {
         entity: 'EventBlock',
-        fields: { title: 'Dawn walk', startDate: '2026-10-10', location: [place] },
+        fields: { title: 'Dawn walk', startDate: '2026-10-10', location: place },
         inline: [{ key: 'location.0', entity: 'LocationBlock', fields: { name: 'Ham Wall' } }],
       },
       { dataset, invoker: AGENT, invocationId },

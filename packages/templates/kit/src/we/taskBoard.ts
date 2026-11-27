@@ -674,7 +674,7 @@ export function moveTaskMenu(from: string, as = 'card'): SchemaNode {
       items: { $: `${VIEW}.choices.map(k, { id: k.id, label: \`Move to \${k.label}\` })` },
       onSelect: {
         $invoke: 'spaceStore.moveCardToColumn',
-        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, [], { $: `${VIEW}.contents[arg.id].slug` }],
+        args: [{ $: from }, { $: 'arg.id' }, { $: `${as}.id` }, []],
       },
     },
   };
@@ -837,7 +837,7 @@ const addTaskModal: SchemaNode = formModal({
       condition: { $: 'local.addExisting' },
       then: {
         $invoke: 'spaceStore.moveCardToColumn',
-        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, [], { $: `${CELL}.slug` }],
+        args: ['', { $: 'col.id' }, { $: 'local.addExisting' }, []],
       },
       else: {
         $invoke: 'spaceStore.addTaskToColumn',
@@ -1050,27 +1050,19 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
       flex: '1',
       width: '100%',
       /*
-        The column's whole order goes with the drop, as the third argument. A column showing all of
+        The column's whole order goes with the drop, as `order`. A column showing all of
         itself hands over the same list and nothing changes; one showing part — people hidden, or one
         person's row — would otherwise send every card it is not showing to the bottom, for everybody.
       */
       onReorder: {
-        $invoke: 'spaceStore.arrangeColumn',
-        args: [{ $: 'col.id' }, { $: 'arg.detail' }, { $: `${VIEW}.contents[col.id].order` }],
+        $invoke: 'ops.core.arrangeColumn',
+        args: [{ $: `{ column: col.id, ids: arg.detail, order: ${VIEW}.contents[col.id].order }` }],
       },
       /*
         `ids` is the target column's whole new order, with the card already at the index it was
         dropped at — so a cross-column drop seats it where the pointer put it. Without it the store
         can only append, which is what "move to that column" means from the menu and not what a drag
         means.
-      */
-      /*
-        The fifth argument is the state the target column stands for, and it is there for the
-        *drawing* rather than for the write. A drop writes an order and a state; the store cannot
-        know the state without reading the column, and until it does the card cannot be drawn in the
-        column it was dropped into — the stale-hint rule would throw it straight back out. The board
-        has the slug on screen already, so it says so and the card lands instantly. The store still
-        reads the column for the write itself, so a stale hint costs a frame and never a wrong write.
       */
       onMoved: {
         $invoke: 'spaceStore.moveCardToColumn',
@@ -1079,7 +1071,6 @@ function columnCards(opts: TaskBoardOptions, cell: string, group: SchemaProp): S
           { $: 'arg.detail.to' },
           { $: 'arg.detail.id' },
           { $: 'arg.detail.ids' },
-          { $: `${VIEW}.contents[arg.detail.to].slug` },
           { $: `${VIEW}.contents[arg.detail.to].order` },
         ],
       },
@@ -1377,7 +1368,6 @@ function unplacedColumn(opts: TaskBoardOptions): SchemaNode {
                   { $: 'arg.detail.to' },
                   { $: 'arg.detail.id' },
                   { $: 'arg.detail.ids' },
-                  { $: `${VIEW}.contents[arg.detail.to].slug` },
                   { $: `${VIEW}.contents[arg.detail.to].order` },
                 ],
               },
@@ -1492,7 +1482,10 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
               group: 'board-columns',
               gap: 'var(--we-space-400)',
               ay: 'start',
-              onReorder: { $invoke: 'spaceStore.reorderBoardColumns', args: [opts.boardId, { $: 'arg.detail' }] },
+              onReorder: {
+                $invoke: 'ops.core.reorderBoardColumns',
+                args: [{ board: opts.boardId, ids: { $: 'arg.detail' } }],
+              },
             },
             children: [
               { type: '$each', props: { items: { $: `${VIEW}.columns` }, as: 'col' }, children: [columnHead(opts)] },
@@ -1904,8 +1897,8 @@ export function taskBoard(opts: TaskBoardOptions): SchemaNode {
                           gap: 'var(--we-space-400)',
                           ay: 'start',
                           onReorder: {
-                            $invoke: 'spaceStore.reorderBoardColumns',
-                            args: [opts.boardId, { $: 'arg.detail' }],
+                            $invoke: 'ops.core.reorderBoardColumns',
+                            args: [{ board: opts.boardId, ids: { $: 'arg.detail' } }],
                           },
                         },
                         children: [

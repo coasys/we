@@ -205,6 +205,63 @@ describe('compileManifest — module-declared entities', () => {
     expect(book).toMatchObject({ reverse: true, reverseOf: 'chapters', relatedEntity: 'Book' });
   });
 
+  it("stores a reverse relation with no predicate of its own under its forward's", () => {
+    // Minted under its own name, the reverse read a predicate nothing writes, and an include of it
+    // read null.
+    const entries = manifestToEntries(
+      {
+        version: '1',
+        entities: {
+          Book: {
+            properties: {},
+            relations: {
+              chapters: { target: 'Chapter', cardinality: 'many' as const },
+              shelf: { target: 'Shelf', cardinality: 'one' as const, predicate: 'test://on_shelf' },
+            },
+          },
+          Chapter: {
+            properties: {},
+            relations: { book: { target: 'Book', cardinality: 'one' as const, reverseOf: 'chapters' } },
+          },
+          Shelf: {
+            properties: {},
+            relations: { books: { target: 'Book', cardinality: 'many' as const, reverseOf: 'shelf' } },
+          },
+        },
+      },
+      { moduleId: 'notes' },
+    );
+    const predicate = (entity: string, relation: string) =>
+      entries.find((e) => e.name === entity)!.properties.find((p) => p.name === relation)!.predicate;
+    expect(predicate('Chapter', 'book')).toBe('we://module/notes/chapters');
+    expect(predicate('Chapter', 'book')).toBe(predicate('Book', 'chapters'));
+    // A forward with a predicate of its own lends that one.
+    expect(predicate('Shelf', 'books')).toBe('test://on_shelf');
+  });
+
+  it('gives both ends of a pair that each name the other as reverseOf the same predicate', () => {
+    const entries = manifestToEntries(
+      {
+        version: '1',
+        entities: {
+          Book: {
+            properties: {},
+            relations: { author: { target: 'Author', cardinality: 'one' as const, reverseOf: 'books' } },
+          },
+          Author: {
+            properties: {},
+            relations: { books: { target: 'Book', cardinality: 'many' as const, reverseOf: 'author' } },
+          },
+        },
+      },
+      { moduleId: 'notes' },
+    );
+    const predicate = (entity: string, relation: string) =>
+      entries.find((e) => e.name === entity)!.properties.find((p) => p.name === relation)!.predicate;
+    expect(predicate('Author', 'books')).toBe('we://module/notes/books');
+    expect(predicate('Book', 'author')).toBe('we://module/notes/books');
+  });
+
   it('stores a containment relation as the one containment predicate, whatever it would have minted', () => {
     // Containment is how anything reading the graph finds a record's context, so it cannot live in
     // a module's own subtree the way its other relations do.

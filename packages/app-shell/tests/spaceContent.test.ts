@@ -10,7 +10,6 @@ import { CollectionBlock } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
-import { createBoardOptimism } from '../src/shared/boardOptimism';
 import { createSpaceContent, type SpaceContent } from '../src/shared/stores/space/content';
 import type { TaskStateView } from '../src/shared/stores/space/types';
 import { flush, reactivityPorts, type SpaceHarness, spaceHarness } from './support/spaceParts';
@@ -66,7 +65,6 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
               entryFor: (to) => to,
             },
           },
-          boardOptimism: createBoardOptimism(reactivity.signal),
         });
       }),
     );

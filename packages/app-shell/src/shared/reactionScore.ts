@@ -39,39 +39,6 @@ export function readWeighed(data: Record<string, unknown> | undefined, type: str
   };
 }
 
-/**
- * The score and the reader's own answer with a held answer in place — `undefined` when nothing is held,
- * `null` for a withdrawal. The reader's stored answer is taken out and the held one put in, so changing
- * a rating does not count twice and withdrawing one does not leave it behind.
- */
-export function withHeld(weighed: Weighed, held: number | null | undefined): { score?: number; mine?: number } {
-  if (held === undefined) {
-    return {
-      ...(weighed.weight === undefined ? {} : { score: weighed.weight }),
-      ...(weighed.mine === undefined ? {} : { mine: weighed.mine }),
-    };
-  }
-  const mine = held === null ? undefined : held;
-  const had = weighed.mine !== undefined;
-  const count = weighed.count - (had ? 1 : 0) + (mine === undefined ? 0 : 1);
-  const withMine = mine === undefined ? {} : { mine };
-
-  switch (weighed.aggregate) {
-    case 'count':
-      return { score: count, ...withMine };
-    case 'sum':
-      return { score: (weighed.weight ?? 0) - (weighed.mine ?? 0) + (mine ?? 0), ...withMine };
-    case 'mean': {
-      if (!count) return withMine;
-      const total = (weighed.weight ?? 0) * weighed.count - (weighed.mine ?? 0) + (mine ?? 0);
-      return { score: total / count, ...withMine };
-    }
-    default:
-      // A median moves with everybody's values; the reader's mark changes now and the score follows the data.
-      return { ...(weighed.weight === undefined ? {} : { score: weighed.weight }), ...withMine };
-  }
-}
-
 /** A score as a badge prints it: whole for a count or a net vote, to one decimal for an average. */
 export function roundScore(score: number, aggregate: ReactionAggregate): number {
   return aggregate === 'count' || aggregate === 'sum' ? Math.round(score) : Math.round(score * 10) / 10;

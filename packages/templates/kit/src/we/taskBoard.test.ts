@@ -164,7 +164,7 @@ describe('a board read by who is on the work', () => {
   it('hands every drag the column’s whole order, so a filtered column cannot reorder what it hides', () => {
     // Both the reorder inside a column and the move into one.
     expect(text).toContain(
-      '"$invoke":"spaceStore.arrangeColumn","args":[{"$":"col.id"},{"$":"arg.detail"},{"$":"arrangedBoard(',
+      '"$invoke":"ops.core.arrangeColumn","args":[{"$":"{ column: col.id, ids: arg.detail, order: arrangedBoard(',
     );
     expect(text.match(/\.contents\[arg\.detail\.to\]\.order/g)?.length).toBeGreaterThanOrEqual(2);
   });

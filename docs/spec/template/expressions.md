@@ -165,6 +165,13 @@ Pinned by: [`expressions.test.ts`](../../../packages/schema-system/expressions/s
   expression longer than 4,000 UTF-16 code units or nested deeper than 40 levels, and MUST accept
   anything within both. A refused expression is a parse error.
 
+---
+
+Implemented by: [`parser.ts`](../../../packages/schema-system/expressions/src/parser.ts),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts).
+Pinned by: expression vector `op.too-deep`; validate vector `validate.expression.syntax`; [`expressions.test.ts`](../../../packages/schema-system/expressions/src/expressions.test.ts)
+(the column of a syntax error).
+
 ## Planned
 
 > **Planned.** The expressivity ladder adds named functions a template defines for itself and

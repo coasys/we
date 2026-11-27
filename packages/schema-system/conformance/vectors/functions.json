@@ -5,6 +5,7 @@
       "id": "count.1",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": [[1, 2, 3]],
       "result": 3
     },
@@ -12,6 +13,7 @@
       "id": "count.2",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": ["a string"],
       "result": 0
     },
@@ -19,6 +21,7 @@
       "id": "count.3",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -30,6 +33,7 @@
       "id": "count.4",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": [5],
       "result": 0
     },
@@ -37,6 +41,7 @@
       "id": "filter.5",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -60,6 +65,7 @@
       "id": "filter.6",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [1, 2, 3, 4],
         {
@@ -72,6 +78,7 @@
       "id": "filter.7",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -86,6 +93,7 @@
       "id": "filter.8",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         "notalist",
         {
@@ -98,6 +106,7 @@
       "id": "find.9",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [
           {
@@ -119,6 +128,7 @@
       "id": "find.10",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [1, 2],
         {
@@ -133,6 +143,7 @@
       "id": "find.11",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -149,6 +160,7 @@
       "id": "split.12",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": ["a,b,c"],
       "result": ["a", "b", "c"]
     },
@@ -156,6 +168,7 @@
       "id": "split.13",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": ["a|b", "|"],
       "result": ["a", "b"]
     },
@@ -163,6 +176,7 @@
       "id": "split.14",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": [""],
       "result": []
     },
@@ -170,6 +184,7 @@
       "id": "split.15",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -181,6 +196,7 @@
       "id": "contains.16",
       "note": "the contains built-in",
       "fn": "contains",
+      "core": true,
       "args": ["Hello World", "world"],
       "result": true
     },
@@ -188,6 +204,7 @@
       "id": "contains.17",
       "note": "the contains built-in",
       "fn": "contains",
+      "core": true,
       "args": ["abc", "d"],
       "result": false
     },
@@ -195,6 +212,7 @@
       "id": "contains.18",
       "note": "the contains built-in",
       "fn": "contains",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -207,6 +225,7 @@
       "id": "first.19",
       "note": "the first built-in",
       "fn": "first",
+      "core": true,
       "args": [[1, 2, 3]],
       "result": 1
     },
@@ -214,6 +233,7 @@
       "id": "first.20",
       "note": "the first built-in",
       "fn": "first",
+      "core": true,
       "args": [
         [
           {
@@ -232,6 +252,7 @@
       "id": "first.21",
       "note": "the first built-in",
       "fn": "first",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -245,6 +266,7 @@
       "id": "startsWith.22",
       "note": "the startsWith built-in",
       "fn": "startsWith",
+      "core": true,
       "args": ["prefix-body", "prefix"],
       "result": true
     },
@@ -252,6 +274,7 @@
       "id": "startsWith.23",
       "note": "the startsWith built-in",
       "fn": "startsWith",
+      "core": true,
       "args": ["body", "pre"],
       "result": false
     },
@@ -259,6 +282,7 @@
       "id": "startsWith.24",
       "note": "the startsWith built-in",
       "fn": "startsWith",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -271,6 +295,7 @@
       "id": "distinct.25",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         [1, 1, 2],
         [2, 3]
@@ -281,6 +306,7 @@
       "id": "distinct.26",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         [
           {
@@ -307,6 +333,7 @@
       "id": "distinct.27",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -318,6 +345,7 @@
       "id": "plural.28",
       "note": "the plural built-in",
       "fn": "plural",
+      "core": true,
       "args": [1, "one", "many"],
       "result": "one"
     },
@@ -325,6 +353,7 @@
       "id": "plural.29",
       "note": "the plural built-in",
       "fn": "plural",
+      "core": true,
       "args": [3, "one", "many"],
       "result": "many"
     },
@@ -332,6 +361,7 @@
       "id": "plural.30",
       "note": "the plural built-in",
       "fn": "plural",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -345,6 +375,7 @@
       "id": "trim.31",
       "note": "the trim built-in",
       "fn": "trim",
+      "core": true,
       "args": ["  padded  "],
       "result": "padded"
     },
@@ -352,6 +383,7 @@
       "id": "trim.32",
       "note": "the trim built-in",
       "fn": "trim",
+      "core": true,
       "args": ["clean"],
       "result": "clean"
     },
@@ -359,6 +391,7 @@
       "id": "trim.33",
       "note": "the trim built-in",
       "fn": "trim",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -370,6 +403,7 @@
       "id": "lower.34",
       "note": "the lower built-in",
       "fn": "lower",
+      "core": true,
       "args": ["MiXeD Case"],
       "result": "mixed case"
     },
@@ -377,6 +411,7 @@
       "id": "lower.35",
       "note": "the lower built-in",
       "fn": "lower",
+      "core": true,
       "args": ["already"],
       "result": "already"
     },
@@ -384,6 +419,7 @@
       "id": "lower.36",
       "note": "the lower built-in",
       "fn": "lower",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -395,6 +431,7 @@
       "id": "join.37",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [["a", "b"], "-"],
       "result": "a-b"
     },
@@ -402,6 +439,7 @@
       "id": "join.38",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [[1, 2], ", "],
       "result": "1, 2"
     },
@@ -409,6 +447,7 @@
       "id": "join.39",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -421,6 +460,7 @@
       "id": "sum.40",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": [[1, 2, 3]],
       "result": 6
     },
@@ -428,6 +468,7 @@
       "id": "sum.41",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": ["nonsense"],
       "result": 0
     },
@@ -435,6 +476,7 @@
       "id": "sum.42",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -446,6 +488,7 @@
       "id": "last.43",
       "note": "the last built-in",
       "fn": "last",
+      "core": true,
       "args": [[1, 2, 3]],
       "result": 3
     },
@@ -453,6 +496,7 @@
       "id": "last.44",
       "note": "the last built-in",
       "fn": "last",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -466,6 +510,7 @@
       "id": "reverse.45",
       "note": "the reverse built-in",
       "fn": "reverse",
+      "core": true,
       "args": [[1, 2, 3]],
       "result": [3, 2, 1]
     },
@@ -473,6 +518,7 @@
       "id": "reverse.46",
       "note": "the reverse built-in",
       "fn": "reverse",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -484,6 +530,7 @@
       "id": "upper.47",
       "note": "the upper built-in",
       "fn": "upper",
+      "core": true,
       "args": ["mixed"],
       "result": "MIXED"
     },
@@ -491,6 +538,7 @@
       "id": "upper.48",
       "note": "the upper built-in",
       "fn": "upper",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -502,6 +550,7 @@
       "id": "endsWith.49",
       "note": "the endsWith built-in",
       "fn": "endsWith",
+      "core": true,
       "args": ["body-suffix", "suffix"],
       "result": true
     },
@@ -509,6 +558,7 @@
       "id": "endsWith.50",
       "note": "the endsWith built-in",
       "fn": "endsWith",
+      "core": true,
       "args": ["body", "x"],
       "result": false
     },
@@ -516,6 +566,7 @@
       "id": "endsWith.51",
       "note": "the endsWith built-in",
       "fn": "endsWith",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -528,6 +579,7 @@
       "id": "round.52",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [3.7],
       "result": 4
     },
@@ -535,6 +587,7 @@
       "id": "round.53",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [3.14159, 2],
       "result": 3.14
     },
@@ -542,6 +595,7 @@
       "id": "round.54",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -553,6 +607,7 @@
       "id": "min.55",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [[3, 1, 2]],
       "result": 1
     },
@@ -560,6 +615,7 @@
       "id": "min.56",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -571,6 +627,7 @@
       "id": "max.57",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [[3, 1, 2]],
       "result": 3
     },
@@ -578,6 +635,7 @@
       "id": "max.58",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -589,6 +647,7 @@
       "id": "pick.59",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "a": 1,
@@ -606,6 +665,7 @@
       "id": "pick.60",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -618,6 +678,7 @@
       "id": "pick.61",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -630,6 +691,7 @@
       "id": "error.62",
       "note": "the error built-in",
       "fn": "error",
+      "core": false,
       "args": ["name"],
       "result": ""
     },
@@ -637,6 +699,7 @@
       "id": "error.63",
       "note": "the error built-in",
       "fn": "error",
+      "core": false,
       "args": [
         {
           "$undefined": true
@@ -648,6 +711,7 @@
       "id": "valid.64",
       "note": "the valid built-in",
       "fn": "valid",
+      "core": false,
       "args": ["name"],
       "result": true
     },
@@ -655,6 +719,7 @@
       "id": "valid.65",
       "note": "the valid built-in",
       "fn": "valid",
+      "core": false,
       "args": [
         {
           "$undefined": true
@@ -666,6 +731,7 @@
       "id": "touched.66",
       "note": "the touched built-in",
       "fn": "touched",
+      "core": false,
       "args": ["name"],
       "result": false
     },
@@ -673,6 +739,7 @@
       "id": "touched.67",
       "note": "the touched built-in",
       "fn": "touched",
+      "core": false,
       "args": [
         {
           "$undefined": true
@@ -684,6 +751,7 @@
       "id": "formValid.68",
       "note": "the formValid built-in",
       "fn": "formValid",
+      "core": false,
       "args": [],
       "result": true
     },
@@ -691,6 +759,7 @@
       "id": "formValid.69",
       "note": "the formValid built-in",
       "fn": "formValid",
+      "core": false,
       "args": [
         {
           "$undefined": true
@@ -702,6 +771,7 @@
       "id": "count.70",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -713,6 +783,7 @@
       "id": "count.71",
       "note": "the count built-in",
       "fn": "count",
+      "core": true,
       "args": [[]],
       "result": 0
     },
@@ -720,6 +791,7 @@
       "id": "first.72",
       "note": "the first built-in",
       "fn": "first",
+      "core": true,
       "args": [[]],
       "result": {
         "$undefined": true
@@ -729,6 +801,7 @@
       "id": "first.73",
       "note": "the first built-in",
       "fn": "first",
+      "core": true,
       "args": ["abc"],
       "result": {
         "$undefined": true
@@ -738,6 +811,7 @@
       "id": "last.74",
       "note": "the last built-in",
       "fn": "last",
+      "core": true,
       "args": [[]],
       "result": {
         "$undefined": true
@@ -747,6 +821,7 @@
       "id": "last.75",
       "note": "the last built-in",
       "fn": "last",
+      "core": true,
       "args": ["abc"],
       "result": {
         "$undefined": true
@@ -756,6 +831,7 @@
       "id": "reverse.76",
       "note": "the reverse built-in",
       "fn": "reverse",
+      "core": true,
       "args": [[]],
       "result": []
     },
@@ -763,6 +839,7 @@
       "id": "reverse.77",
       "note": "the reverse built-in",
       "fn": "reverse",
+      "core": true,
       "args": ["abc"],
       "result": []
     },
@@ -770,6 +847,7 @@
       "id": "sum.78",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": [["3", 2, "x", null]],
       "result": 5
     },
@@ -777,6 +855,7 @@
       "id": "sum.79",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": [[]],
       "result": 0
     },
@@ -784,6 +863,7 @@
       "id": "filter.80",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [[1, 2, 3], "notawhere"],
       "result": [1, 2, 3]
     },
@@ -791,6 +871,7 @@
       "id": "filter.81",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [1, 2, 3, 4],
         {
@@ -804,6 +885,7 @@
       "id": "filter.82",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -831,6 +913,7 @@
       "id": "filter.83",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [1, 2, 3],
         {
@@ -844,6 +927,7 @@
       "id": "find.84",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [
           {
@@ -865,6 +949,7 @@
       "id": "find.85",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [],
         {
@@ -879,6 +964,7 @@
       "id": "distinct.86",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         [
           {
@@ -902,6 +988,7 @@
       "id": "distinct.87",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         [1, 2],
         "notalist",
@@ -916,6 +1003,7 @@
       "id": "distinct.88",
       "note": "the distinct built-in",
       "fn": "distinct",
+      "core": true,
       "args": [
         [
           {
@@ -939,6 +1027,7 @@
       "id": "join.89",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [["a", "b"]],
       "result": "a, b"
     },
@@ -946,6 +1035,7 @@
       "id": "join.90",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [[1, true, null], "-"],
       "result": "1-true-"
     },
@@ -953,6 +1043,7 @@
       "id": "join.91",
       "note": "the join built-in",
       "fn": "join",
+      "core": true,
       "args": [[], "-"],
       "result": ""
     },
@@ -960,6 +1051,7 @@
       "id": "split.92",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": ["a , b,, c", ","],
       "result": ["a", "b", "c"]
     },
@@ -967,6 +1059,7 @@
       "id": "split.93",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": ["a;b;c", ";"],
       "result": ["a", "b", "c"]
     },
@@ -974,6 +1067,7 @@
       "id": "split.94",
       "note": "the split built-in",
       "fn": "split",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -986,6 +1080,7 @@
       "id": "contains.95",
       "note": "the contains built-in",
       "fn": "contains",
+      "core": true,
       "args": ["Prefix Body", "PREFIX"],
       "result": true
     },
@@ -993,6 +1088,7 @@
       "id": "startsWith.96",
       "note": "the startsWith built-in",
       "fn": "startsWith",
+      "core": true,
       "args": ["Body", "body"],
       "result": false
     },
@@ -1000,6 +1096,7 @@
       "id": "endsWith.97",
       "note": "the endsWith built-in",
       "fn": "endsWith",
+      "core": true,
       "args": ["File.PNG", ".png"],
       "result": false
     },
@@ -1007,6 +1104,7 @@
       "id": "lower.98",
       "note": "the lower built-in",
       "fn": "lower",
+      "core": true,
       "args": ["ÜNICODE ß"],
       "result": "ünicode ß"
     },
@@ -1014,6 +1112,7 @@
       "id": "upper.99",
       "note": "the upper built-in",
       "fn": "upper",
+      "core": true,
       "args": ["unicode ß"],
       "result": "UNICODE SS"
     },
@@ -1021,6 +1120,7 @@
       "id": "trim.100",
       "note": "the trim built-in",
       "fn": "trim",
+      "core": true,
       "args": ["\t\n spaced \r\n"],
       "result": "spaced"
     },
@@ -1028,6 +1128,7 @@
       "id": "plural.101",
       "note": "the plural built-in",
       "fn": "plural",
+      "core": true,
       "args": ["1", "one", "many"],
       "result": "one"
     },
@@ -1035,6 +1136,7 @@
       "id": "plural.102",
       "note": "the plural built-in",
       "fn": "plural",
+      "core": true,
       "args": [0, "one", "many"],
       "result": "many"
     },
@@ -1042,6 +1144,7 @@
       "id": "round.103",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [2.5],
       "result": 3
     },
@@ -1049,6 +1152,7 @@
       "id": "round.104",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [-2.5],
       "result": -2
     },
@@ -1056,6 +1160,7 @@
       "id": "round.105",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [2.675, 2],
       "result": 2.68
     },
@@ -1063,6 +1168,7 @@
       "id": "round.106",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": ["x"],
       "result": 0
     },
@@ -1070,6 +1176,7 @@
       "id": "min.107",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [3, 1, 2],
       "result": 1
     },
@@ -1077,6 +1184,7 @@
       "id": "min.108",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [],
       "result": 0
     },
@@ -1084,6 +1192,7 @@
       "id": "min.109",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": ["5", 2],
       "result": 2
     },
@@ -1091,6 +1200,7 @@
       "id": "max.110",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [3, 1, 2],
       "result": 3
     },
@@ -1098,6 +1208,7 @@
       "id": "max.111",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [],
       "result": 0
     },
@@ -1105,6 +1216,7 @@
       "id": "max.112",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": ["x", 2],
       "result": 2
     },
@@ -1112,6 +1224,7 @@
       "id": "pick.113",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -1126,6 +1239,7 @@
       "id": "pick.114",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "constructor": 1,
@@ -1141,6 +1255,7 @@
       "id": "pick.115",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [[], ["a"]],
       "result": {}
     },
@@ -1148,6 +1263,7 @@
       "id": "pick.116",
       "note": "the pick built-in",
       "fn": "pick",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -1162,6 +1278,7 @@
       "id": "error.117",
       "note": "the error built-in with $localMeta context",
       "fn": "error",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1178,6 +1295,7 @@
       "id": "error.118",
       "note": "the error built-in with $localMeta context",
       "fn": "error",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1194,6 +1312,7 @@
       "id": "error.119",
       "note": "the error built-in with $localMeta context",
       "fn": "error",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1210,6 +1329,7 @@
       "id": "valid.120",
       "note": "the valid built-in with $localMeta context",
       "fn": "valid",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1226,6 +1346,7 @@
       "id": "valid.121",
       "note": "the valid built-in with $localMeta context",
       "fn": "valid",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1242,6 +1363,7 @@
       "id": "touched.122",
       "note": "the touched built-in with $localMeta context",
       "fn": "touched",
+      "core": false,
       "args": ["email"],
       "context": {
         "$localMeta": {
@@ -1258,6 +1380,7 @@
       "id": "formValid.123",
       "note": "the formValid built-in with $localMeta context",
       "fn": "formValid",
+      "core": false,
       "args": [],
       "context": {
         "$localMeta": {
@@ -1280,6 +1403,7 @@
       "id": "formValid.124",
       "note": "the formValid built-in with $localMeta context",
       "fn": "formValid",
+      "core": false,
       "args": [],
       "context": {
         "$localMeta": {
@@ -1302,6 +1426,7 @@
       "id": "filter.125",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1328,6 +1453,7 @@
       "id": "filter.126",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1352,6 +1478,7 @@
       "id": "filter.127",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1378,6 +1505,7 @@
       "id": "filter.128",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1399,6 +1527,7 @@
       "id": "filter.129",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1431,6 +1560,7 @@
       "id": "filter.130",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1454,6 +1584,7 @@
       "id": "filter.131",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1480,6 +1611,7 @@
       "id": "filter.132",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1500,6 +1632,7 @@
       "id": "filter.133",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1533,6 +1666,7 @@
       "id": "filter.134",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1559,6 +1693,7 @@
       "id": "filter.135",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1595,6 +1730,7 @@
       "id": "filter.136",
       "note": "the filter built-in",
       "fn": "filter",
+      "core": true,
       "args": [
         [
           {
@@ -1622,6 +1758,7 @@
       "id": "find.137",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [
           {
@@ -1647,6 +1784,7 @@
       "id": "find.138",
       "note": "the find built-in",
       "fn": "find",
+      "core": true,
       "args": [
         [
           {
@@ -1668,6 +1806,7 @@
       "id": "concat.139",
       "note": "the concat built-in",
       "fn": "concat",
+      "core": true,
       "args": [
         [1, 2],
         [2, 3]
@@ -1678,6 +1817,7 @@
       "id": "concat.140",
       "note": "the concat built-in",
       "fn": "concat",
+      "core": true,
       "args": [
         [1],
         "notalist",
@@ -1698,6 +1838,7 @@
       "id": "concat.141",
       "note": "the concat built-in",
       "fn": "concat",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1710,6 +1851,7 @@
       "id": "concat.142",
       "note": "the concat built-in",
       "fn": "concat",
+      "core": true,
       "args": [],
       "result": []
     },
@@ -1717,6 +1859,7 @@
       "id": "without.143",
       "note": "the without built-in",
       "fn": "without",
+      "core": true,
       "args": [[1, 2, 3, 2], 2],
       "result": [1, 3]
     },
@@ -1724,6 +1867,7 @@
       "id": "without.144",
       "note": "the without built-in",
       "fn": "without",
+      "core": true,
       "args": [
         [
           {
@@ -1744,6 +1888,7 @@
       "id": "without.145",
       "note": "the without built-in",
       "fn": "without",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1756,6 +1901,7 @@
       "id": "without.146",
       "note": "the without built-in",
       "fn": "without",
+      "core": true,
       "args": [[1, 2]],
       "result": [1, 2]
     },
@@ -1763,6 +1909,7 @@
       "id": "indexOf.147",
       "note": "the indexOf built-in",
       "fn": "indexOf",
+      "core": true,
       "args": [["a", "b", "a"], "a"],
       "result": 0
     },
@@ -1770,6 +1917,7 @@
       "id": "indexOf.148",
       "note": "the indexOf built-in",
       "fn": "indexOf",
+      "core": true,
       "args": [
         [
           {
@@ -1787,6 +1935,7 @@
       "id": "indexOf.149",
       "note": "the indexOf built-in",
       "fn": "indexOf",
+      "core": true,
       "args": [[1, 2], 9],
       "result": -1
     },
@@ -1794,6 +1943,7 @@
       "id": "indexOf.150",
       "note": "the indexOf built-in",
       "fn": "indexOf",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1806,6 +1956,7 @@
       "id": "insertAt.151",
       "note": "the insertAt built-in",
       "fn": "insertAt",
+      "core": true,
       "args": [["a", "c"], 1, "b"],
       "result": ["a", "b", "c"]
     },
@@ -1813,6 +1964,7 @@
       "id": "insertAt.152",
       "note": "the insertAt built-in",
       "fn": "insertAt",
+      "core": true,
       "args": [["a"], -5, "z"],
       "result": ["z", "a"]
     },
@@ -1820,6 +1972,7 @@
       "id": "insertAt.153",
       "note": "the insertAt built-in",
       "fn": "insertAt",
+      "core": true,
       "args": [["a"], 99, "z"],
       "result": ["a", "z"]
     },
@@ -1827,6 +1980,7 @@
       "id": "insertAt.154",
       "note": "the insertAt built-in",
       "fn": "insertAt",
+      "core": true,
       "args": [
         ["a"],
         0,
@@ -1840,6 +1994,7 @@
       "id": "insertAt.155",
       "note": "the insertAt built-in",
       "fn": "insertAt",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1853,6 +2008,7 @@
       "id": "insertAfter.156",
       "note": "the insertAfter built-in",
       "fn": "insertAfter",
+      "core": true,
       "args": [["a", "c"], "a", "b"],
       "result": ["a", "b", "c"]
     },
@@ -1860,6 +2016,7 @@
       "id": "insertAfter.157",
       "note": "the insertAfter built-in",
       "fn": "insertAfter",
+      "core": true,
       "args": [
         [
           {
@@ -1890,6 +2047,7 @@
       "id": "insertAfter.158",
       "note": "the insertAfter built-in",
       "fn": "insertAfter",
+      "core": true,
       "args": [["a"], "missing", "z"],
       "result": ["a", "z"]
     },
@@ -1897,6 +2055,7 @@
       "id": "insertAfter.159",
       "note": "the insertAfter built-in",
       "fn": "insertAfter",
+      "core": true,
       "args": [
         ["a"],
         "a",
@@ -1910,6 +2069,7 @@
       "id": "insertAfter.160",
       "note": "the insertAfter built-in",
       "fn": "insertAfter",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1923,6 +2083,7 @@
       "id": "slice.161",
       "note": "the slice built-in",
       "fn": "slice",
+      "core": true,
       "args": [[1, 2, 3, 4, 5], 1, 3],
       "result": [2, 3]
     },
@@ -1930,6 +2091,7 @@
       "id": "slice.162",
       "note": "the slice built-in",
       "fn": "slice",
+      "core": true,
       "args": [[1, 2, 3, 4, 5], -2],
       "result": [4, 5]
     },
@@ -1937,6 +2099,7 @@
       "id": "slice.163",
       "note": "the slice built-in",
       "fn": "slice",
+      "core": true,
       "args": [[1, 2, 3], "x"],
       "result": [1, 2, 3]
     },
@@ -1944,6 +2107,7 @@
       "id": "slice.164",
       "note": "the slice built-in",
       "fn": "slice",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -1957,6 +2121,7 @@
       "id": "sortBy.165",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -1987,6 +2152,7 @@
       "id": "sortBy.166",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -2018,6 +2184,7 @@
       "id": "sortBy.167",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -2054,6 +2221,7 @@
       "id": "sortBy.168",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -2087,6 +2255,7 @@
       "id": "sortBy.169",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -2119,6 +2288,7 @@
       "id": "sortBy.170",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         [
           {
@@ -2143,6 +2313,7 @@
       "id": "sortBy.171",
       "note": "the sortBy built-in",
       "fn": "sortBy",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2155,6 +2326,7 @@
       "id": "slug.172",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": ["Hello  World"],
       "result": "hello-world"
     },
@@ -2162,6 +2334,7 @@
       "id": "slug.173",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": ["Café au lait!"],
       "result": "caf-au-lait"
     },
@@ -2169,6 +2342,7 @@
       "id": "slug.174",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": ["  --Mixed-Case  "],
       "result": "--mixed-case"
     },
@@ -2176,6 +2350,7 @@
       "id": "slug.175",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": [42],
       "result": "42"
     },
@@ -2183,6 +2358,7 @@
       "id": "slug.176",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2194,6 +2370,7 @@
       "id": "slug.177",
       "note": "the slug built-in",
       "fn": "slug",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2205,6 +2382,7 @@
       "id": "put.178",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2221,6 +2399,7 @@
       "id": "put.179",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1,
@@ -2239,6 +2418,7 @@
       "id": "put.180",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2254,6 +2434,7 @@
       "id": "put.181",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2270,6 +2451,7 @@
       "id": "put.182",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2287,6 +2469,7 @@
       "id": "put.183",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2302,6 +2485,7 @@
       "id": "merge.184",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "a": 1,
@@ -2322,6 +2506,7 @@
       "id": "merge.185",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "a": {
@@ -2344,6 +2529,7 @@
       "id": "merge.186",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2361,6 +2547,7 @@
       "id": "merge.187",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2377,6 +2564,7 @@
       "id": "keys.188",
       "note": "the keys built-in",
       "fn": "keys",
+      "core": true,
       "args": [
         {
           "b": 1,
@@ -2390,6 +2578,7 @@
       "id": "keys.189",
       "note": "the keys built-in",
       "fn": "keys",
+      "core": true,
       "args": [
         {
           "a": 1,
@@ -2403,6 +2592,7 @@
       "id": "keys.190",
       "note": "the keys built-in",
       "fn": "keys",
+      "core": true,
       "args": [[1, 2]],
       "result": []
     },
@@ -2410,6 +2600,7 @@
       "id": "keys.191",
       "note": "the keys built-in",
       "fn": "keys",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2421,6 +2612,7 @@
       "id": "values.192",
       "note": "the values built-in",
       "fn": "values",
+      "core": true,
       "args": [
         {
           "b": 1,
@@ -2433,6 +2625,7 @@
       "id": "values.193",
       "note": "the values built-in",
       "fn": "values",
+      "core": true,
       "args": [
         {
           "a": 1,
@@ -2445,6 +2638,7 @@
       "id": "values.194",
       "note": "the values built-in",
       "fn": "values",
+      "core": true,
       "args": ["text"],
       "result": []
     },
@@ -2452,6 +2646,7 @@
       "id": "values.195",
       "note": "the values built-in",
       "fn": "values",
+      "core": true,
       "args": [
         {
           "$undefined": true
@@ -2463,6 +2658,7 @@
       "id": "min.196",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [[4, "x", 9]],
       "result": 0
     },
@@ -2470,6 +2666,7 @@
       "id": "min.197",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [[]],
       "result": 0
     },
@@ -2477,6 +2674,7 @@
       "id": "min.198",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [[5], 2],
       "result": 0
     },
@@ -2484,6 +2682,7 @@
       "id": "max.199",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [[4, "x", 9]],
       "result": 9
     },
@@ -2491,6 +2690,7 @@
       "id": "max.200",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [[]],
       "result": 0
     },
@@ -2498,6 +2698,7 @@
       "id": "max.201",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [[-3, -1]],
       "result": -1
     },
@@ -2505,6 +2706,7 @@
       "id": "round.202",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [-0.4],
       "result": 0
     },
@@ -2512,6 +2714,7 @@
       "id": "min.203",
       "note": "the min built-in",
       "fn": "min",
+      "core": true,
       "args": [
         0,
         {
@@ -2524,6 +2727,7 @@
       "id": "max.204",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": [
         [
           {
@@ -2537,6 +2741,7 @@
       "id": "round.205",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [-0.004, 2],
       "result": 0
     },
@@ -2544,6 +2749,7 @@
       "id": "put.206",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2559,6 +2765,7 @@
       "id": "put.207",
       "note": "the put built-in",
       "fn": "put",
+      "core": true,
       "args": [
         {
           "a": 1
@@ -2576,6 +2783,7 @@
       "id": "merge.208",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "color": "red",
@@ -2594,6 +2802,7 @@
       "id": "merge.209",
       "note": "the merge built-in",
       "fn": "merge",
+      "core": true,
       "args": [
         {
           "color": "red"
@@ -2612,6 +2821,7 @@
       "id": "keys.210",
       "note": "the keys built-in",
       "fn": "keys",
+      "core": true,
       "args": [
         {
           "b": null,
@@ -2624,6 +2834,7 @@
       "id": "values.211",
       "note": "the values built-in",
       "fn": "values",
+      "core": true,
       "args": [
         {
           "b": "",
@@ -2636,6 +2847,7 @@
       "id": "round.212",
       "note": "the round built-in",
       "fn": "round",
+      "core": true,
       "args": [[2.6]],
       "result": 0
     },
@@ -2643,6 +2855,7 @@
       "id": "sum.213",
       "note": "the sum built-in",
       "fn": "sum",
+      "core": true,
       "args": [[[1], "2", true, " 3"]],
       "result": 2
     },
@@ -2650,6 +2863,7 @@
       "id": "max.214",
       "note": "the max built-in",
       "fn": "max",
+      "core": true,
       "args": ["7", [9]],
       "result": 7
     }

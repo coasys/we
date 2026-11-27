@@ -16,12 +16,12 @@ import {
   type QueryAdapter,
   type QueryIR,
 } from '@we/backend-shared';
+import { clearPredictions, predict, predictionLanded, withPredictions } from '@we/entities';
 import { RenderSchema, resetSubscriptionPool, subscriptionPoolConfig } from '@we/schema-solid';
 import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { involvementOptimism } from '../src/frameworks/solid/stores/hostState';
 import { liveRows } from './liveRows';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
 
@@ -87,13 +87,27 @@ function live(initial: unknown[]) {
 }
 
 const ME = 'did:me';
+const SPACE = { uuid: 'space' };
 const assignee = (id: string) => ({ id, agent: ME, kind: 'assignee', node: 't1' });
 const reviewer = (id: string) => ({ id, agent: ME, kind: 'reviewer', node: 't1' });
 
-/** A press whose write has returned — what `setInvolvement` does around a hold. */
+/** The row each kind's press makes: the id the real run will give it, as an operation's ids are. */
+const ROW_ID: Record<string, string> = { assignee: 'i1', reviewer: 'i2' };
+let presses = 0;
+
+/**
+ * A press whose write has returned — `core.setInvolvement` as the host invokes it: its predicted
+ * write drawn in every read, and the real run back.
+ */
 function press(kind: string, on: boolean) {
-  involvementOptimism.ports.hold('t1', ME, kind, on);
-  involvementOptimism.ports.done('t1', ME, kind);
+  const invocation = `press-${++presses}`;
+  const id = ROW_ID[kind];
+  predict(SPACE, invocation, [
+    on
+      ? { kind: 'create', entity: 'Involvement', id, fields: { agent: ME, kind, node: 't1' } }
+      : { kind: 'delete', entity: 'Involvement', id },
+  ]);
+  predictionLanded(invocation);
 }
 
 let dispose: (() => void) | undefined;
@@ -106,7 +120,7 @@ beforeEach(() => {
 afterEach(() => {
   dispose?.();
   dispose = undefined;
-  involvementOptimism.reset();
+  clearPredictions();
 });
 
 /** One board with one column and one task, wired the way `TemplateProvider` wires the host functions. */
@@ -125,29 +139,15 @@ async function mountBoard() {
   const sources = hostSourceBag();
   const state = [{ id: 'todo', slug: 'todo', name: 'To do', semantic: 'open' }];
   const stores = {
+    // The reads as the host's bindings hand them over: with what is pending laid over them.
     $getEntity: (name: string) =>
-      name === 'Involvement' ? involvements.model : name === 'TaskBlock' ? tasks.model : boards,
-    $currentDataset: () => ({ uuid: 'space' }),
+      withPredictions(name === 'Involvement' ? involvements.model : name === 'TaskBlock' ? tasks.model : boards, [
+        name,
+      ]),
+    $currentDataset: () => SPACE,
     $queryAdapter: passthroughAdapter,
     $me: { did: ME },
-    $sources: {
-      ...sources,
-      arrangedBoard: (options: { involvements?: unknown }) => {
-        const view = sources.arrangedBoard({ ...options, pendingInvolvements: involvementOptimism.overlay() });
-        queueMicrotask(() => involvementOptimism.settleFromRows(options.involvements));
-        return view;
-      },
-      involvement: (options: { rows?: unknown }) => {
-        const view = sources.involvement({ ...options, pending: involvementOptimism.overlay() });
-        queueMicrotask(() => involvementOptimism.settleFromRows(options.rows));
-        return view;
-      },
-      involvementMenu: (options: { rows?: unknown }) => {
-        const view = sources.involvementMenu({ ...options, pending: involvementOptimism.overlay() });
-        queueMicrotask(() => involvementOptimism.settleFromRows(options.rows));
-        return view;
-      },
-    },
+    $sources: sources,
     spaceStore: {
       currentSpace: { id: 'space' },
       taskStates: state,
@@ -216,17 +216,17 @@ describe('faces on a board card', () => {
     expect(board.faces()).toHaveLength(0);
   });
 
-  it('keeps drawing a removal while a surface with no rows yet reports in', async () => {
-    // The inspector mounting mid-write read an empty list, released the hold, and the card drew the
-    // row the removal had not reached yet.
+  it('keeps drawing a removal until the rows without it arrive', async () => {
     const board = await mountBoard();
     board.involvements.push([assignee('i1'), reviewer('i2')]);
     await settled();
 
     press('assignee', false);
     await tick();
-    involvementOptimism.settleFromRows([]);
-    await tick();
+    expect(board.rings()).toEqual(['warning']);
+    // A page that has not caught up yet is no answer about the removal.
+    board.involvements.push([assignee('i1'), reviewer('i2')]);
+    await settled();
     expect(board.rings()).toEqual(['warning']);
 
     board.involvements.push([reviewer('i2')]);

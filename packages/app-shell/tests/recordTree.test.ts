@@ -73,7 +73,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const link = (id: string, source: string, target: string) =>
     model('Relationship').create(
       handle,
-      { relationshipTypeId: SPINE, source: [source], target: [target], sourceType: 'Card', targetType: 'Card' },
+      { relationshipTypeId: SPINE, source, target, sourceType: 'Card', targetType: 'Card' },
       { id },
     );
   const parentOf = async (card: string) =>
@@ -96,7 +96,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     for (const [card, rank] of [['p'], ['q'], ['x'], ['a', 1024], ['b', 2048]] as [string, number?][])
       await model('Placement').create(
         handle,
-        { nodeType: 'Card', node: [card], ...(rank ? { rank } : {}) },
+        { nodeType: 'Card', node: card, ...(rank ? { rank } : {}) },
         { id: `row-${card}`, parent: canvasChildren(CANVAS) },
       );
   });

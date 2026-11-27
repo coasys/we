@@ -59,7 +59,8 @@ Implemented by: [`templateSurface.ts`](../../../packages/app-shell/src/shared/re
 [`templateAcceptance.ts`](../../../packages/app-shell/src/shared/templateAcceptance.ts).
 Pinned by (the refusals): [`templateSurface.test.ts`](../../../packages/app-shell/tests/templateSurface.test.ts)
 (every member classified; a member outside the tier is absent from the bag; a space action's target
-argument dropped), [`templateAcceptance.test.ts`](../../../packages/app-shell/tests/templateAcceptance.test.ts)
+argument dropped); safety vectors `safety.grant.read-absent`, `safety.grant.invoke-absent`,
+`safety.grant.action-not-readable`, `safety.grant.absent-no-continuation`; [`templateAcceptance.test.ts`](../../../packages/app-shell/tests/templateAcceptance.test.ts)
 (a reference past the tier is admitted and reported, never granted).
 
 ## Gestures
@@ -94,7 +95,9 @@ Implemented by: [`gesture.ts`](../../../packages/schema-system/shared/src/gestur
 [`templateSurface.ts`](../../../packages/app-shell/src/shared/registries/templateSurface.ts)
 (`gated`, `ambient`).
 Pinned by (the refusals): render vectors `render.safety.gesture-refused` (a write on an event nobody causes does
-not run; the same write on a press does), `render.safety.gesture-continuation`;
+not run; the same write on a press does), `render.safety.gesture-continuation`; safety vectors
+`safety.gesture.exempt-runs-unasked`, `safety.gesture.on-error-continuation`,
+`safety.gesture.focus-is-not-asking`;
 [`gesture.test.ts`](../../../packages/schema-system/shared/src/gesture.test.ts);
 [`templateSurface.test.ts`](../../../packages/app-shell/tests/templateSurface.test.ts) ("the gesture
 gate": a write nobody asked for is refused, an exempt action runs).
@@ -149,7 +152,8 @@ restyle it or answer it.
 
 Implemented by: [`templateSurface.ts`](../../../packages/app-shell/src/shared/registries/templateSurface.ts)
 (`destructive`, `onDestructive`), [`destructiveWording.ts`](../../../packages/app-shell/src/shared/destructiveWording.ts).
-Pinned by (the refusals): [`templateSurface.test.ts`](../../../packages/app-shell/tests/templateSurface.test.ts)
+Pinned by (the refusals): safety vectors `safety.confirm.declined`, `safety.confirm.accepted`,
+`safety.confirm.not-for-ordinary-writes`; [`templateSurface.test.ts`](../../../packages/app-shell/tests/templateSurface.test.ts)
 ("destructive actions": refused by the host without the template knowing how),
 [`destructiveDialog.test.ts`](../../../packages/app-shell/tests/destructiveDialog.test.ts),
 [`destructiveFacts.test.ts`](../../../packages/app-shell/tests/destructiveFacts.test.ts),
@@ -185,7 +189,8 @@ Implemented by: [`templateElements.ts`](../../../packages/schema-system/shared/s
 (`TEMPLATE_HTML_ELEMENTS`, `refusedProp`),
 [`SchemaRenderer.tsx`](../../../packages/schema-system/frameworks/solid/src/SchemaRenderer.tsx).
 Pinned by (the refusals): render vectors `render.safety.native-tags` (`script`, `iframe` and `svg` mount nothing),
-`render.safety.javascript-href` (literal and computed), `render.safety.srcdoc`;
+`render.safety.native-tags-more`, `render.safety.javascript-href` (literal and computed),
+`render.safety.url-schemes`, `render.safety.inline-handler-text`, `render.safety.srcdoc`;
 [`templateElements.test.ts`](../../../packages/schema-system/shared/src/templateElements.test.ts).
 
 ## Expressions are inert
@@ -196,9 +201,10 @@ refused. A validation `pattern` is bounded ([Validation rules](values.md#validat
 `$ref` cycle cannot recurse ([Shared shapes](nodes.md#shared-shapes-defs-and-ref)), so no template
 can hang the page on data it chose.
 
-> **Planned.** Safety vectors in the language-neutral families for every rule above, so a host other
-> than WE can run its own refusals: today the grant, gesture, protected-piece and confirmation
-> refusals are tests of WE's own host.
+The refusals of every rule above but the protected pieces are vectors a host other than WE can run:
+`safety.json` for the grants, the gestures and the confirmation, `render.json` (`render.safety.*`) for
+the elements and URLs ([Conformance](conformance.md#running-each-family)). The protected pieces are
+host chrome no template can name, and stay pinned by the host's tests.
 
 ---
 

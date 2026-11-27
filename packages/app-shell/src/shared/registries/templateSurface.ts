@@ -46,9 +46,16 @@
  */
 import { RENDERER_BINDING_NAMES } from '@we/backend-shared';
 import { memberAmbient, memberKind } from '@we/module-shared';
-import { claimGesture, isExpressionToken, markReactive, parseExpression, referencedPaths } from '@we/schema-shared';
+import {
+  claimGesture,
+  isExpressionToken,
+  markReactive,
+  parseExpression,
+  referencedPaths,
+  REFUSED,
+} from '@we/schema-shared';
 
-import { operationMemberSpec, operationSurfaceEntries } from './operationGroups';
+import { admitsChosen, operationMemberSpec, operationSurfaceEntries } from './operationGroups';
 
 /**
  * What a group of capabilities lets a template do, in the words a person would use.
@@ -568,8 +575,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     taskStatesLoaded: state('content'),
     /*
       Who is on what. Reading the kinds is `content` for the reason reading states is. Giving your own
-      answer and assigning somebody are content too — any member may do either, as any member may drag
-      a card — and the store is what refuses one member answering for another, not this table.
+      answer is `ops.core.respond`; assigning somebody is this store action (the operation's untick is
+      destructive by its effects), content too, as any member may drag a card. The operations refuse
+      one member answering for another themselves.
     */
     involvementTypes: state('content'),
     offeredInvolvementTypes: state('content'),
@@ -583,7 +591,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // What the space's policy allows — read by any template deciding what to offer, through `can()`.
     policy: state('content'),
     setInvolvement: action('content'),
-    respondTo: action('content'),
     mutedDids: state('content'),
     mutedAgents: state('content'),
     setAgentMuted: action('content'),
@@ -603,8 +610,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // `createTaskState`, never from a schema, which has `ops.core.addBoardColumn` for a board it can see.
     addStateToSpaceBoard: WIRING,
     removeBoardColumn: action('content'),
-    reorderBoardColumns: action('content'),
-    arrangeColumn: action('content'),
     moveCardToColumn: action('content'),
     approveTaskMove: action('content'),
     withdrawTaskMove: action('content'),
@@ -617,8 +622,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
 
     // ── signals ──
     setSignalTypeRetired: action('signals'),
-    upsertSignal: action('signals'),
-    withdrawSignal: action('signals'),
     /*
       The vocabulary of states, the third of the same kind — a community naming what it means by
       something, alongside its reactions and its connections.
@@ -907,13 +910,6 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     rerouteOnCanvas: action('content'),
     retargetOnCanvas: action('content'),
     arrangeOnTree: action('content'),
-    // Host wiring, both halves of one mechanism: the graph host reads what is pending and reports
-    // the rows it read back. A template has no use for either — it writes through the actions above
-    // and the optimism is applied for it.
-    pendingCardStyle: WIRING,
-    confirmPending: WIRING,
-    pendingConnections: WIRING,
-    observeConnections: WIRING,
     // Template-facing: a control that reports while it moves previews through this and writes on
     // release, which is what makes a slider show its result before the drag ends.
     previewCardStyle: ambient('content'),
@@ -1820,8 +1816,8 @@ export interface BuildBagOptions {
    *
    * Awaiting it makes a destructive action async from the template's point of view, which costs
    * nothing: `$invoke` already awaits, and `onSuccess`/`onError`/`onFinally` are defined in terms
-   * of the returned promise. A refusal resolves `undefined` — the same nothing a blocked action
-   * resolves — so `onSuccess` does not fire on a cancel.
+   * of the returned promise. A refusal resolves `REFUSED`, which `$invoke` reads as the nothing a
+   * blocked action answers — so `onSuccess` does not fire on a cancel.
    */
   onDestructive?: (path: string, args: unknown[]) => boolean | Promise<boolean>;
   /**
@@ -1861,10 +1857,17 @@ function gated(path: string, method: AnyFn, gate: GestureGate): AnyFn {
 
 /**
  * What the host lends for declared operations: one runner, which every `ops.<ns>.<name>` in a bag
- * calls with its own name. `options.dataset` is the same store path `record.create` takes.
+ * calls with its own name. `options.dataset` is the same store path `record.create` takes;
+ * `options.admitChosen` is the bag's judgement of an entity an operation chooses at call time,
+ * which the host hands the runner (`RunOperationOptions.admitChosen`).
  */
+export interface OperationRunOptions {
+  dataset?: string;
+  admitChosen?: (entity: string) => boolean;
+}
+
 export interface OperationHost {
-  run(name: string, params?: Record<string, unknown>, options?: { dataset?: string }): Promise<unknown>;
+  run(name: string, params?: Record<string, unknown>, options?: OperationRunOptions): Promise<unknown>;
 }
 
 /**
@@ -1874,7 +1877,9 @@ export interface OperationHost {
  * effect summary through `operationGroups.ts`, so a new operation is reachable by exactly the
  * templates that could make its writes one at a time. One that is not granted is absent, as a store
  * member is; one that writes is gated on somebody asking, as a store write is; a destructive one is
- * confirmed by the host first.
+ * confirmed by the host first. An entity it chooses at call time is judged on each call against the
+ * same grants, so a generic delete held by a space template removes a post and is refused a task
+ * state.
  */
 function operationNamespaces(
   host: OperationHost,
@@ -1885,13 +1890,14 @@ function operationNamespaces(
   for (const [name, spec] of Object.entries(operationSurfaceEntries())) {
     if (!granted.has(spec.group)) continue;
     const path = `ops.${name}`;
-    // One argument, the params, and the dataset option after it; nothing else reaches the runner.
+    // One argument, the params, and the dataset option after it; nothing else of the caller's reaches
+    // the runner. The judgement of a chosen entity is the bag's own, never the template's.
+    const admitChosen = (entity: string) => admitsChosen(granted, entity);
     let method: AnyFn = (params?: unknown, given?: unknown) =>
-      host.run(
-        name,
-        params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined,
-        given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : undefined,
-      );
+      host.run(name, params && typeof params === 'object' ? (params as Record<string, unknown>) : undefined, {
+        ...(given && typeof given === 'object' ? { dataset: (given as { dataset?: string }).dataset } : {}),
+        admitChosen,
+      });
     if (spec.destructive && options.onDestructive) {
       const guard = options.onDestructive;
       const bound = method;
@@ -2052,7 +2058,8 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       if (spec.destructive && options.onDestructive) {
         const guard = options.onDestructive;
         const bound = method;
-        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : undefined);
+        // Declined, it answers as a refusal: `$invoke` runs no `onSuccess` for it.
+        method = async (...args: unknown[]) => ((await guard(path, args)) ? bound(...args) : REFUSED);
       }
 
       // Outermost, so the question is asked of the call as it arrives — before a destructive

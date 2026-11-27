@@ -286,6 +286,14 @@ export function hasGesture(): boolean {
   return !!inv && (inv.claimed || creditValid(inv.owner));
 }
 
+/**
+ * What an action answers when the host refuses it after the call has been made — a destructive one
+ * the person declined to confirm. A refusal made at the call returns nothing and no continuation
+ * runs; one that can only be decided later resolves with this, and `$invoke` treats it the same:
+ * `onSuccess` does not run, since nothing succeeded. `onFinally` still does, since it settled.
+ */
+export const REFUSED: unique symbol = Symbol.for('we.refused');
+
 /** What the current call is running under, to carry into a continuation — or null for nothing. */
 export function captureGesture(): GestureToken | null {
   const s = state();

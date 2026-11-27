@@ -63,7 +63,7 @@ const STARTER: SpaceStarter = {
     { $id: 'todo', entity: 'TaskState', fields: { slug: 'todo' } },
     { $id: 'done', entity: 'TaskState', fields: { slug: 'done' } },
     { $id: 'canvas', entity: 'CollectionBlock', fields: { kind: 'canvas' }, in: '$root' },
-    { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board', gathers: ['$root'] }, in: '$root' },
+    { $id: 'board', entity: 'CollectionBlock', fields: { kind: 'board', gathers: '$root' }, in: '$root' },
     { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'todo' }, in: '$board' },
     { $id: 'post', entity: 'CollectionBlock', fields: { kind: 'post' }, in: '$root' },
     {
@@ -113,7 +113,7 @@ describe('applying a starter', () => {
   it('resolves references in fields, to one record or a list of them, and leaves other strings alone', async () => {
     const { created, writer } = recorder();
     await applyStarterRecords(STARTER, TARGET, writer);
-    expect(created[4].fields.gathers).toEqual(['root-1']);
+    expect(created[4].fields.gathers).toBe('root-1');
     // `$5` is not a whole-string reference, and a structured value is written as it is.
     expect(created[7].fields.text).toBe('Welcome to Acme, $5 well spent');
     expect(created[7].fields.marks).toEqual([{ type: 'strong', start: 0, end: 7 }]);
@@ -207,7 +207,7 @@ describe('checking a starter', () => {
         records: [
           { $id: 'a', entity: 'NoSuchThing' },
           { entity: 'CollectionBlock', in: '$later' },
-          { $id: 'later', entity: 'CollectionBlock', fields: { gathers: ['$after'], title: '{{space.owner}}' } },
+          { $id: 'later', entity: 'CollectionBlock', fields: { gathers: '$after', title: '{{space.owner}}' } },
           { $id: 'a', entity: 'CollectionBlock' },
           { entity: 'CollectionBlock', in: '$space' },
           { entity: 'CollectionBlock', fields: { kind: 'column', slug: 'blocked' } },
@@ -247,7 +247,7 @@ describe('checking a starter', () => {
           { entity: 'CollectionBlock', in: '$board' },
           { $id: 'canvas', entity: 'CollectionBlock', in: '$root' },
           { $id: 'gathered', entity: 'CollectionBlock', in: '$root' },
-          { entity: 'CollectionBlock', fields: { gathers: ['$gathered'] }, in: '$root' },
+          { entity: 'CollectionBlock', fields: { gathers: '$gathered' }, in: '$root' },
           { $id: 'lonely', entity: 'SignalType' },
         ],
         landmarks: { canvas: '$canvas' },

@@ -545,6 +545,12 @@ export interface CreateStep {
   /** The fields, or one expression giving them all — for a record whose entity is chosen at run time. */
   fields: Record<string, OperationValue> | OperationExpression;
   parent?: { id: OperationValue; relation: string; entity?: string };
+  /**
+   * The fields whose values are the record's identity: its id derives from the entity and these
+   * values rather than from the invocation, so every create of the same identity, anywhere, names
+   * the same record, and a second is refused as `recordExists`.
+   */
+  identity?: string[];
 }
 
 export interface UpdateStep {
@@ -562,6 +568,12 @@ export interface DeleteStep {
   entity: string | OperationExpression;
   oneOf?: OneOfEntry[];
   id: OperationValue;
+  /**
+   * Only a record the invoker made: the run refuses (`notOwn`) to delete one somebody else made. So
+   * the step takes back the invoker's own contribution and nobody else's, and the effect summary does
+   * not count it as destructive.
+   */
+  own?: boolean;
 }
 
 export interface LinkStep {
@@ -592,6 +604,11 @@ export interface SetRelationStep {
   relation: string | OperationExpression;
   /** The whole ordered list. */
   targets: OperationValue;
+  /**
+   * Members the list leaves out stay, after it, in the order they held — so the step orders and adds,
+   * and never removes. The effect summary records it as an addition only.
+   */
+  keep?: boolean;
 }
 
 export interface ForEachStep {
@@ -665,6 +682,14 @@ export interface OperationDefinition {
   steps: OperationStep[];
   /** Evaluated after the last step and handed to the caller. */
   returns?: OperationValue;
+  /**
+   * The queue an invocation joins, as an expression over the params: invocations whose key comes out
+   * the same run one after another in the dataset, each starting once the one before it has finished.
+   * For an operation that reads before it writes, where two calls racing would both read the state
+   * before either wrote — two presses of one reaction making two reactions. An absent key queues
+   * nothing. Operations that share a key text share the queue.
+   */
+  serial?: { $: string };
 }
 
 // ─── Zod schema (structural validation) ────────────────────────────────────────
@@ -769,6 +794,7 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
         oneOf,
         fields: z.union([expressionToken, valueMap]),
         parent: z.strictObject({ id: present, relation: z.string(), entity: z.string().optional() }).optional(),
+        identity: z.array(z.string()).min(1).optional(),
       }),
     }),
     z.strictObject({
@@ -783,7 +809,12 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
     }),
     z.strictObject({
       ...guard,
-      delete: z.strictObject({ entity: z.union([z.string(), expressionToken]), oneOf, id: present }),
+      delete: z.strictObject({
+        entity: z.union([z.string(), expressionToken]),
+        oneOf,
+        id: present,
+        own: z.boolean().optional(),
+      }),
     }),
     z.strictObject({ ...guard, link: linkBody }),
     z.strictObject({ ...guard, unlink: linkBody }),
@@ -795,6 +826,7 @@ const operationStepSchema: z.ZodType<OperationStep> = z.lazy(() =>
         id: present,
         relation: z.union([z.string(), expressionToken]),
         targets: present,
+        keep: z.boolean().optional(),
       }),
     }),
     z.strictObject({
@@ -833,6 +865,7 @@ export const operationDefinitionSchema = z.strictObject({
   errors: z.record(name, z.string()).optional(),
   steps: z.array(operationStepSchema),
   returns: value.optional(),
+  serial: expressionToken.optional(),
 });
 
 export const operationsSchema = z.record(name, operationDefinitionSchema);

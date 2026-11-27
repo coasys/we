@@ -102,7 +102,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/graph-protocol` · `-core` · `-expanders` · `-layouts` · `-solid` | graph-system/* | The graph engine: expander/layout/renderer contracts, the neutral engine, first-party plugins, and the Solid adapter | **Agnostic** (Solid only in the adapter) |
 | `@we/block-shared` | block-system/shared | Block content types + serialization | Agnostic |
 | `@we/reactivity` · `@we/reactivity-solid` | reactivity-system/* | The reactivity port every store, module store and the prop resolvers take (signal, memo, effect, untrack, batch, root, onCleanup), its three timing guarantees, a second implementation for tests, and Solid's implementation | **Agnostic** (Solid only in `-solid`) |
-| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic (signal injected) |
+| `@we/optimism` | packages/optimism | A write drawn before it has been seen come back — hold, baseline, settle, and when to stop believing it | Agnostic |
 | `@we/clock` | packages/clock | A moment being looked at and the playback that moves it — clocks by name, so a globe, a scrubber and a module follow the same one | Agnostic |
 | `@we/history` | packages/history | Undo as a stack of this agent's own inverse writes, replayed **forwards** — the only shape that is safe on shared, last-write-wins data | Agnostic (signal injected) |
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
@@ -383,6 +383,10 @@ A schema is a tree of nodes. Each node can have:
 - props: An object of props for the component
 - children: An array of child nodes, strings for text, or expressions like { "$": "post.title" } (rendered as text).
 - slots: Named slots for advanced composition (optional)
+- Node props: a component prop the Component Registry types as JSX.Element (FlipCard's front and back,
+  GraphView's emptyAction) takes a NODE. Write { "props": { "front": { "type": "Card", … } } } and the
+  node is drawn, reading the same locals and names as the component around it. Any other prop holding
+  a node-shaped value is data, handed to the component as it is.
 - slot: The name of the slot this node should be rendered into (optional)
 - routes: For routing components, an array of nestable route objects (optional)
 - $localState / $queries: ephemeral state and hoisted subscriptions declared on the node (optional; see Dynamic Logic)
@@ -629,7 +633,6 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     involvement(options) — Who is on each record, from the Involvement rows — { byNode, answers, dids }. byNode[recordId] is { people, dids, responsible, reviewing, committed, interested, declined, pairs }: people are { did, kind, name, semantic, reflexive, icon, color, tone }, assignees first then reviewers and so on, and tone is the avatar ring the part wears ("warning" for reviewing, empty otherwise) — pass it as an AvatarStack avatar’s tone; the five lists are DIDs grouped by what each kind means, so a renamed or added kind still lands in the right one; dids is everyone not declined; pairs is every "did|kind" present, for a menu tick with `in`. answers[recordId] is the viewer’s own reflexive answer (going, maybe, …). Options: rows (an Involvement query), types (spaceStore.involvementTypes), me (me.did, who then leads the top-level dids), nodes (record ids the top-level dids is limited to).  e.g. involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[card.id].responsible
     involvementMenu(options) — The entries of a "who is on this" DropdownMenu for one record: the member a conversation named, when `said` matches exactly one and nobody is doing it yet; "Assign to me" while the viewer is not already on it, then a group per kind the entity is offered that anybody may give (the first open, the rest closed unless somebody holds them), each listing members with their faces — current holders ticked and first, then the viewer, then everyone by name. Every entry carries `kind`, and a toggle `checked`, so one handler serves all: setInvolvement(record, arg.id, arg.kind, !arg.checked). Options: node, entity, rows (an Involvement query), types (spaceStore.offeredInvolvementTypes), members (spaceStore.memberDids), profiles (profileStore.profiles — each member is drawn from it), me (me.did), said (a name somebody said — TaskBlock.assignee).  e.g. involvementMenu({ node: card.id, entity: 'TaskBlock', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.memberDids, profiles: profileStore.profiles, me: me.did })
     signalTally(options) — What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).  e.g. signalTally({ signals: row.signals, type: sig })
-    reactions(options) — A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).  e.g. reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })
     reactors(options) — Who reacted with one type and what each gave — { people, total, unresolved }. `people` are { did, name, avatar, value, mine }, the reader first and then by name; `total` counts everybody before any search, which is what "12 people" says. The record already carries this — `include: { signals: true }` hydrates each Signal's author and value — so nothing is fetched; what a schema cannot do is join a DID to a face and a name. `search` narrows by name, and `unresolved` says how many could not be judged because their profile has not arrived. Options: signals (one type's signals, hydrated), profiles (profileStore.profiles), me (me.did), search.  e.g. reactors({ signals: filter(row.signals, { signalTypeId: sig.id }), profiles: profileStore.profiles, me: me.did })
     signalTypesByUse(options) — Reaction types ordered by how many PEOPLE reacted with each, most first — never by what they said, since a total of values cannot compare a rating with a vote and a downvoted type would sort below one nobody has used. Ties keep the order they arrived in, so a panel does not reshuffle as reactions come in. Muted authors are left out of the count. It orders and nothing else: which types a surface draws is a filter, and stays in the schema — which is what keeps an overflow count evaluable, since reordering a list cannot change how long it is. Sorting is here because the expression language has no sort, the grammar is closed, and these types come from a subscription rather than a query that could carry an `order`. Pass `of` — the record's id — and the order SETTLES: it is worked out the first time that record's reactions are drawn and then held, so a reaction somebody withdraws does not slide down the column under their cursor. It has to be held outside the template, because a reaction surface sits inside an `$each` over a query and a subscription hands the renderer fresh objects, which remounts the row and takes any `$localState` with it. Types the settled order has never seen are appended by use, so nothing new is hidden; the order is dropped when the space changes. Options: of (the record whose order this is), types (the rows to order), signals (the record's `signals`, hydrated), muted (spaceStore.mutedDids), limit (keep the first N of that order).  e.g. signalTypesByUse({ of: row.id, types: local.signalTypes.filter(t, !t.retired), signals: row.signals, muted: spaceStore.mutedDids, limit: 4 })
     voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
@@ -1015,6 +1018,10 @@ Call function: { "$callLocal": "fieldName" } — event handler that calls the fu
   The field must be declared as type: 'function' and set via $setLocal.
   Example: { "onClick": { "$callLocal": "onConfirm" } }
 State is created on mount and destroyed on unmount. Nested $localState declarations merge, inner fields shadow outer.
+Scope is where a node is WRITTEN, not where it is drawn: a route sees the $localState and $queries of
+the node that lists it and every node above it (the template root's included), and a panel's node in
+meta.panels sees the root's. A field written in a route or a panel is the same field the root reads.
+Nothing declared between a node and its { "type": "$routes" } outlet reaches the routes.
 Local values can be used in $invoke args: { "$invoke": "store.method", "args": [{ "$": "local.name" }] }
 
 Object-typed local state (consolidating related scalar fields):
@@ -3738,9 +3745,7 @@ SpaceStore:
   - updatePost(postId: string, editorState: unknown): reconciles an edited post against its existing blocks — updates/reuses blocks whose id survived the edit, creates new ones, deletes ones no longer present
   - openBoardFor(anchorId?: string, title?: string, dataset?: string): the board for a container — one call’s, or the space’s own — making it if nobody has yet. Returns its id either way. The board it makes gathers from that container, a fact the board carries in its `gathers` relation, so anything rendering it needs only the id. Call it from a click rather than on mount: creating a board writes records into a space everybody shares (WE-host-only; use ops.core.openBoardFor, for a collection’s board (the space’s own board stays a store action) instead)
   - removeBoardColumn(boardId: string, columnId: string): takes a column off a board — the column record only, never the work in it. A column arranges its cards rather than owning them, so nothing that walks children can reach them; on a made board they are handed to the board itself so they stay on it. They keep their state, so they reappear in another column bound to it or in the unplaced column (WE-host-only; use ops.core.removeBoardColumn instead)
-  - reorderBoardColumns(boardId: string, orderedIds: string[]): the order this board reads its columns in. Pair with we-sortable’s onReorder and pass { $: "arg.detail" } (WE-host-only; use ops.core.reorderBoardColumns instead)
-  - arrangeColumn(columnId: string, orderedIds: string[], columnOrder?: string[]): records the order somebody dragged one column’s cards into — the column’s `arranges`, an ordered relation, so two people rearranging at once converge instead of one write discarding the other. Pair with we-sortable’s onReorder. Where the column shows only some of its cards — a people filter hiding the rest, one person’s row — pass the column’s whole order as columnOrder (arrangedBoard’s contents[col].order): the moved cards go back into their own slots and the hidden ones keep theirs, where without it every hidden card would drop to the bottom of the column for everybody (WE-host-only; use ops.core.arrangeColumn instead)
-  - moveCardToColumn(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], toSlug?: string, columnOrder?: string[]): moves a card between columns — and writes its state when the column it joins names one, which is what makes “done is done” true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns. Pass orderedIds — we-sortable’s `arg.detail.ids`, the target column’s whole new order — to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board — Unplaced, or a picker. Pass toSlug — the state the target column stands for, which the board already has on screen — and the card is drawn in its new column the instant it is dropped rather than a round trip later: the store cannot know that state without reading the column, and until it does the card cannot be drawn there at all. A hint for the drawing only; the write reads the column itself, so a stale one costs a frame and never a wrong write. columnOrder is the target column’s whole order, for a drop into a column showing only part of itself — see arrangeColumn (WE-host-only; use ops.core.moveCard instead)
+  - moveCardToColumn(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], columnOrder?: string[]): moves a card between columns — and writes its state when the column it joins names one, which is what makes “done is done” true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns, and drawn in its new column before it lands. Pass orderedIds — we-sortable’s `arg.detail.ids`, the target column’s whole new order — to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board — Unplaced, or a picker. columnOrder is the target column’s whole order (arrangedBoard’s contents[col].order), for a drop into a column showing only part of itself. A store action rather than ops.core.moveCard because where the space’s states ask for agreement the drop asks instead of writing, and a staged suggestion for the card’s state is settled first (WE-host-only; use ops.core.moveCard instead)
   - addTaskToColumn(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board’s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column’s state (WE-host-only; use ops.core.addTaskToColumn instead)
   - setAttending(nodeId: string, attending: boolean): joins or leaves a node's participant roster — an RSVP. Writes only this agent's own entry, so the roster stays conflict-free. Boolean, so a switch can pass `event.detail` bare
   - setAgentMuted(did: string, muted: boolean, description?: string): mutes or unmutes an agent for this agent everywhere, with an optional note. Positively phrased so a switch can pass `event.detail` bare
@@ -3761,7 +3766,7 @@ SpaceStore:
   - setViewEnabled(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen (WE-host-only; use ops.core.setViewEnabled instead)
   - reorderViews(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder (WE-host-only; use ops.core.reorderViews instead)
   - launchModule(moduleId: string): invokes that module's declared launcher action. Takes an id rather than a path because $invoke resolves a literal string, so a rail iterating over modules cannot build modules.<id>.<method> itself
-  - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given and re-creating one with the same slug does not restore them. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
+  - setSignalTypeRetired(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given, and re-creating one with the same slug gets the old id back but not its mode or range, so the old reactions are read by a type that may not mean what they were given as. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves
   - createTaskState(config: { name, semantic?, color?, icon? }): names a state this community’s work moves through — "Blocked", "In review". The counterpart to ops.core.createSignalType one concept along. A slug the space already has is refused. The space’s own board gains a column for the new state in the same act. Slug derived from the name; it is what tasks store, so it is not editable afterwards (WE-host-only; use ops.core.createTaskState instead)
   - updateTaskState(slug: string, updates: { name?, icon?, color?, semantic?, approvals?, approverKind?, evidence? }): changes a state the community already has — what it is called, the glyph and colour it is drawn with, and what the rest of the app reads it as. The counterpart createTaskState had no pair for, and the only way a state gets a colour after it is made. An empty string CLEARS a field, which is how a colour goes back to the template’s default without deleting the state. The slug is deliberately absent — every task stores it, so changing it would leave the work holding a word nothing defines; renaming is what `name` is for and it carries. `approvals` (a whole number, 1–20) and `approverKind` (an involvement kind’s slug, or empty) set what agreement the state asks for, and `evidence` ({ entity, via?, min? }[], the whole list) what must be there first — the first state that asks for either turns the space’s states into a workflow, see taskWorkflowEnabled. By slug, which is what a task and a screen both hold (WE-host-only; use ops.core.updateTaskState instead)
   - setTaskWorkflowRule(rule: '' | 'next' | 'next-and-back'): how a task may move between this space's states — read it as currentSpace.taskWorkflowRule ('' when unset). Only whoever administers the space; rejects otherwise
@@ -3772,13 +3777,10 @@ SpaceStore:
   - setWorkflowArchived(name: string, archived: boolean): puts a workflow away, or brings it back. Only whoever administers the space; rejects otherwise. Archiving never touches the records going through the workflow — offer it in place of deleting one that has any (WE-host-only; use ops.core.setWorkflowArchived instead)
   - setTaskStateRetired(slug: string, retired: boolean): withdraws a state from use, or brings it back. Never touches the work sitting in it — a task names its state by slug, so deleting the state would leave the work holding a word nothing defines. The same decision setSignalTypeRetired makes. By slug, which is what a task and a screen both hold (WE-host-only; use ops.core.setTaskStateRetired instead)
   - reorderTaskStates(orderedSlugs: string[]): sets the order this community reads its states in — which is the order of a board’s columns. An ordered relation rather than a number on each state, so two people reordering at once converge instead of one write discarding the other. A state the order does not mention still appears, after the ones it does. Slugs, which is what a screen holds. Key the rows by slug and pair with we-sortable’s onReorder, passing { $: "arg.detail" } (WE-host-only; use ops.core.reorderTaskStates instead)
-  - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to respondTo, and refused for anybody but the agent it is about. Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }` (WE-host-only; use ops.core.setInvolvement instead)
-  - respondTo(nodeId: string, kind: string): gives this agent’s own answer to a record — "going", "maybe", "not-going" — replacing any other answer it held there, in one transaction. Pass an empty kind to withdraw the answer. Refuses a kind that is not reflexive. Shown on the click, before the write lands (WE-host-only; use ops.core.respond instead)
+  - setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): puts somebody on a record as a kind one member says about another — assigning a task, asking for a review — or takes them off. `on` is the state wanted rather than a toggle, so a menu passes the opposite of the tick it shows and a double press cannot undo itself. Every copy of the pair goes on removal. A reflexive kind is routed to ops.core.respond, and refused for anybody but the agent it is about. Drawn before it lands. A store action rather than ops.core.setInvolvement because taking somebody off deletes an involvement another member made, so the operation is destructive by its effects and a template calling it would be asked to confirm every untick Pair with a DropdownMenu of toggle entries: `onSelect: { $invoke: "spaceStore.setInvolvement", args: [{ $: "card.id" }, { $: "arg.id" }, "assignee", { $: "!arg.checked" }] }` (WE-host-only; use ops.core.setInvolvement instead)
   - createInvolvementType(config: { name, semantic?, reflexive?, appliesTo?, icon?, color? }): names a kind of part a person can have — "Shepherd", "Second pair of eyes". `appliesTo` is entity names joined with commas. `reflexive` is fixed once made. A slug the space already has is refused (WE-host-only; use ops.core.createInvolvementType instead)
   - updateInvolvementType(slug: string, updates: { name?, icon?, color?, semantic?, appliesTo? }): changes a kind the community already has. The slug and `reflexive` are absent — every involvement stores the one, and changing the other would rewrite who said what. An empty string clears a field (WE-host-only; use ops.core.updateInvolvementType instead)
   - setInvolvementTypeRetired(slug: string, retired: boolean): withdraws a kind from use, or brings it back, without touching anybody who holds it (WE-host-only; use ops.core.setInvolvementTypeRetired instead)
-  - upsertSignal(nodeId: string, signalTypeId: string, value: number | null): gives a reaction on a node, or changes one. `null` WITHDRAWS it; a zero is an ordinary value and is stored like any other. Spelling a withdrawal as 0 is what made a 0–100 slider dragged to the bottom indistinguishable from an unanswered one — pass the control's own emitted value straight through (`{ $: 'arg' }`) and both cases are right (WE-host-only; use ops.core.upsertSignal, and ops.core.withdrawSignal to take one back instead)
-  - withdrawSignal(nodeId: string, signalTypeId: string): takes back this agent's reaction of one type on one record. The named form of `upsertSignal(node, type, null)`, for a control that only clears
   - canAdministerSpace(uuid: string): whether this agent may change what every member of that space sees — true for a personal space; for the shared space on screen, for whoever holds its `admin` role (its author, while nobody does); for any other shared space, for its author, since its roles are read once it is open. A UI affordance for deciding whether to offer the controls, NOT enforcement: a shared space is a neighbourhood every member can write to. Ask by name rather than comparing author to me.did, so the answer follows the space’s roles without every template changing
   - createRole(config: { name, description? }): names a role this community holds — "Moderator", "Steward". Its slug is derived from the name and fixed: grants and rules hold it. A name already used is refused, in a toast. Only whoever administers the space; rejects otherwise
   - updateRole(slug: string, updates: { name?, description? }): renames a role or changes what it says it means; the slug stays. Only whoever administers the space
@@ -4263,7 +4265,6 @@ Needs: backends ad4m.
 Ask the space a question and watch the answer arrive.
 - State (read in an expression as `modules.polls.<name>`):
   - lastError — Why the last vote could not be recorded, or empty.
-  - pendingVote — This agent’s vote on a poll, written and not yet read back — { author, option }, or nothing. Keyed by poll id.
   - revealBeforeVoting — Whether a poll shows its counts before this agent has voted — the community’s setting here.
   - voting — The id of the poll a vote is being written for, or empty.
 - Actions (`{ "$invoke": "modules.polls.<name>" }`):
@@ -4271,7 +4272,7 @@ Ask the space a question and watch the answer arrive.
 - Parts: `polls.pollCard` (needs block — the Poll record to show), `polls.pollComposer`
 - Settings: `revealBeforeVoting` (boolean; space) — Show counts before voting
 - Functions:
-  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices), pending (modules.polls.pendingVote[<poll id>] — this agent’s vote written and not yet read back, counted in place of their stored one so the bars move on the press).  e.g. tally({ votes: local.votes, options: block.options, pending: modules.polls.pendingVote[block.id] })
+  - tally(options) — Votes counted per choice — { option, count, share, leading }[] — one row per choice the poll offers, in its order, plus a row for any choice a vote names that the poll no longer does. Options: votes (a Vote query), options (the poll’s comma-separated choices).  e.g. tally({ votes: local.votes, options: block.options })
 - Views (sections a space enables): `polls` "Polls" at /polls
 - Blocks: Poll (`_type: "poll"`, drawn by `polls.pollCard`)
 - Entities (queryable with $query):
@@ -4298,7 +4299,10 @@ the person is told in a toast either way.
 An operation that writes is a write for the rule above: it runs only when somebody asked for it.
 One that deletes or takes records out of a relation is confirmed by the host first, as
 record.delete is — do not put a confirmation of your own in front of it. A template reaches an
-operation only where it could make the same writes one at a time.
+operation only where it could make the same writes one at a time. One that writes a record of a
+type chosen when it is called (any record type, any block type) is judged on each call by the
+record it is handed: the same call may delete a post and be refused a task state, failing with
+result.code notGranted.
 
 The namespace is who declared it: core for WE, a module id for a module, a bundle id for an app.
 An app installed at runtime brings its own, which this list does not show.
@@ -4316,7 +4320,7 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.addTaskStateEvidence — Add one requirement to what a state asks to be there before work moves into it.
   Params: slug: string (required) — The state’s slug.; requirement: object (required) — One requirement as the state stores it: { entity, where?, via?, min? }.
   Returns: nothing
-  Writes: edits a TaskState (may write many records in one call)
+  Writes: edits a TaskState
 
 - ops.core.addTaskToColumn — Make a task in a column: parented to the collection the board gathers from where there is one, arranged into the column, in the state given.
   Params: column: string (required) — The column.; title: string (required) — The task’s title.; status: string — The state it starts in.; anchor: string — The collection it belongs to — the call the board gathers from.; arrange: boolean — Whether to arrange it into the column. False where its state is still to be agreed.
@@ -4324,9 +4328,9 @@ An app installed at runtime brings its own, which this list does not show.
   Writes: adds to CollectionBlock.arranges; adds to CollectionBlock.children; creates a TaskBlock
 
 - ops.core.arrangeColumn — Store the order of a column’s cards: the ids given, then whatever the column still holds that they leave out.
-  Params: column: string (required) — The column (or a board, for what it holds in no column).; ids: list (required) — Card ids, in the order wanted.
+  Params: column: string (required) — The column (or a board, for what it holds in no column).; ids: list (required) — Card ids, in the order wanted.; order: list — The column’s whole order as the board draws it, for a column showing only some of its cards: the ids given go back into the places of the ones it shows, and the hidden ones keep theirs. Omit when the ids are the whole column.
   Returns: a value, read in onSuccess as result
-  Writes: adds to CollectionBlock.arranges; removes from CollectionBlock.arranges (destructive)
+  Writes: adds to CollectionBlock.arranges
 
 - ops.core.clearPlacements — Take a card off a canvas: every placement it has there, so no duplicate puts it back.
   Params: placements: list (required) — The placements’ ids.
@@ -4369,7 +4373,7 @@ An app installed at runtime brings its own, which this list does not show.
   Writes: adds to its parent.responses; adds to CollectionBlock.children; creates a CollectionBlock; adds to Relationship.thread; adds to Topic.thread; adds to thread on any block type; creates any block type (may write many records in one call)
 
 - ops.core.createRecord — Make one record of any type, with its relations and any records made inline for them, inside a collection where one is named — and answer with its id.
-  Params: inline: list — Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.; entity: string (required) — Its entity.; fields: object (required) — Its fields, relations among them as lists of ids (a to-one as a one-element list).; home: string — The collection it is made inside.
+  Params: inline: list — Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key.; entity: string (required) — Its entity.; fields: object (required) — Its fields, relations among them as ids: a to-many as a list of ids, a to-one as the one id.; home: string — The collection it is made inside.
   Returns: a value, read in onSuccess as result
   Writes: adds to CollectionBlock.children; creates any record type (may write many records in one call)
 
@@ -4466,7 +4470,7 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.removeTaskStateEvidence — Take one requirement, by its position, out of what a state asks to be there first.
   Params: slug: string (required) — The state’s slug.; index: number (required) — Its position in the list, from 0.
   Returns: nothing
-  Writes: edits a TaskState (may write many records in one call)
+  Writes: edits a TaskState
 
 - ops.core.renameBoardColumn — Rename a column on its board. The state it stands for is untouched; renamed back to the state’s own name, it follows the vocabulary again.
   Params: column: string (required) — The column.; name: string (required) — Its new heading.; states: list (required) — The states the community offers, in its own order, each { slug, name }.
@@ -4476,7 +4480,7 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.reorderBoardColumns — Put a board’s columns in an order. Only ids the board already holds are written; any it holds that the order leaves out follow.
   Params: board: string (required) — The board.; ids: list (required) — Column ids, in the order wanted.
   Returns: a value, read in onSuccess as result
-  Writes: adds to CollectionBlock.children; removes from CollectionBlock.children (destructive)
+  Writes: adds to CollectionBlock.children
 
 - ops.core.reorderTaskStates — Set the order the community reads its states in, by slug. A slug with no record is left out.
   Params: space: string (required) — The space record’s id.; slugs: list (required) — The states’ slugs, in the order wanted.
@@ -4491,7 +4495,7 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.respond — Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.
   Params: node: string (required) — The record answered.; kind: string — A reflexive InvolvementType’s slug; absent withdraws the answer.
   Returns: nothing
-  Writes: creates a Involvement; deletes a Involvement (may write many records in one call, destructive)
+  Writes: creates a Involvement; deletes the invoker’s own Involvement (may write many records in one call)
 
 - ops.core.restyleSpaceType — Say how the space presents one kind of record, whole: its styles removed and one made holding exactly the fields given — none, where nothing is left to say.
   Params: space: string (required) — The Space record.; nodeType: string (required) — The kind of record.; fields: object (required) — color, display, controls, authoring — what it says.
@@ -4516,12 +4520,12 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.setInvolvement — Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.
   Params: node: string (required) — The record they are on.; agent: string (required) — Who, as a DID.; kind: string (required) — The InvolvementType’s slug.; on: boolean (required) — The state wanted, so pressing twice cannot undo itself.
   Returns: nothing
-  Writes: creates a Involvement; deletes a Involvement (may write many records in one call, destructive)
+  Writes: creates a Involvement; deletes a Involvement; deletes the invoker’s own Involvement (may write many records in one call, destructive)
 
 - ops.core.setInvolvementTypeRetired — Withdraw a kind of involvement from use, or bring it back, leaving everybody already holding it as they are.
   Params: slug: string (required) — The kind’s slug.; retired: boolean (required) — Withdrawn from use, or brought back.
   Returns: nothing
-  Writes: edits a InvolvementType (may write many records in one call)
+  Writes: edits a InvolvementType
 
 - ops.core.setModuleEnabled — Turn a module on or off for the whole space.
   Params: space: string (required) — The space record’s id.; module: string (required) — The module id.; on: boolean (required) — The state wanted.; fallback: list — What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.
@@ -4556,7 +4560,7 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.setTaskStateRetired — Withdraw a state from use, or bring it back, leaving the work in it as it is.
   Params: slug: string (required) — The state’s slug.; retired: boolean (required) — Withdrawn from use, or brought back.
   Returns: nothing
-  Writes: edits a TaskState (may write many records in one call)
+  Writes: edits a TaskState
 
 - ops.core.setViewEnabled — Add a section to the space, at the end, or take it out — for every member. Sections this host does not know stay where they are.
   Params: space: string (required) — The space record’s id.; view: string (required) — The view id.; on: boolean (required) — The state wanted.; fallback: list — What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has.
@@ -4581,27 +4585,27 @@ An app installed at runtime brings its own, which this list does not show.
 - ops.core.updateInvolvementType — Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.
   Params: slug: string (required) — The kind’s slug.; name: string — A new name; empty or absent keeps the old one.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.; semantic: string — One of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; anything else is ignored.; appliesTo: string — The entities it is offered on, comma-separated; empty for all.
   Returns: nothing
-  Writes: edits a InvolvementType (may write many records in one call)
+  Writes: edits a InvolvementType
 
 - ops.core.updateSpaceMeta — Change what a space is called and says about itself, whether it is listed, and where it is — a new place replaces the old, and none takes it away.
   Params: space: string (required) — The space record’s id.; name: string; description: string; discovery: string — listed or hidden.; location: object — { latitude, longitude, name?, city?, country?, countryCode? }, to set the place.; clearLocation: boolean — Take the place away.
   Returns: nothing
-  Writes: creates a LocationBlock; deletes a LocationBlock; edits a Space (may write many records in one call, destructive)
+  Writes: creates a LocationBlock; deletes a LocationBlock; edits a Space (destructive)
 
 - ops.core.updateTaskState — Change a state the community has — its name, glyph, colour, what it counts as, and what moving into it asks for. The slug stays: it is what every task stores.
   Params: slug: string (required) — The state’s slug.; name: string — A new name; empty or absent keeps the old one.; icon: string — A glyph; empty clears it.; color: string — A colour; empty clears it.; semantic: string — What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; anything else is ignored.; approvals: number — How many must agree to a move into it.; approverKind: string — The involvement kind whose holders’ approval counts; empty for anybody’s.; evidence: json — What must be there first, as the state stores it; empty clears it.
   Returns: nothing
-  Writes: edits a TaskState (may write many records in one call)
+  Writes: edits a TaskState
 
 - ops.core.upsertSignal — Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.
   Params: node: string (required) — The record reacted to.; signalType: string (required) — The SignalType’s id.; value: number (required) — What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal.
   Returns: a value, read in onSuccess as result
-  Writes: adds to its parent.signals; creates a Signal; deletes a Signal; edits a Signal (may write many records in one call, destructive)
+  Writes: adds to its parent.signals; creates a Signal; deletes the invoker’s own Signal; edits a Signal (may write many records in one call)
 
 - ops.core.withdrawSignal — Take back the invoker’s reaction of one type on a record — every copy of it, so a doubled one does not survive the withdrawal.
   Params: node: string (required) — The record reacted to.; signalType: string (required) — The SignalType’s id.
   Returns: nothing
-  Writes: deletes a Signal (may write many records in one call, destructive)
+  Writes: deletes the invoker’s own Signal (may write many records in one call)
 
 - ops.core.writeEdgeRoute — Write how a connection is drawn on one canvas — its pinned sides and its bends — editing the route, replacing it, making one, or deleting one that says nothing any more.
   Params: canvas: string (required) — The canvas.; connection: string (required) — The Relationship.; route: string — The connection’s route on this canvas, where it has one.; action: string (required) — update, replace, create or delete.; fields: object — sourceAnchor, targetAnchor, points — what the route says.
@@ -4952,7 +4956,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                     "signalType": { "$": "sig" },
                     "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": { "$": "me.did" },
-                    "onSignal": { "$invoke": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
+                    "onSignal": { "$if": { "condition": { "$": "arg == null" }, "then": { "$invoke": "ops.core.withdrawSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id }" }] }, "else": { "$invoke": "ops.core.upsertSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id, value: arg }" }] } } }
                   }
                 }
               ]

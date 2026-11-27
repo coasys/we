@@ -44,26 +44,6 @@ const CASES: HostFunctionCase[] = [
   H('reactors', { signals: [], profiles: [], me: 'did:me' }),
   H('reactors', U),
 
-  /* ---- reactions: signals with the viewer's own optimistic answer overlaid ---- */
-  H('reactions', {
-    signals: [{ id: 's:1', author: 'did:a', value: 'up' }],
-    record: 'r:1',
-    type: 't:1',
-    me: 'did:me',
-  }),
-  H('reactions', {
-    signals: [
-      { id: 's:1', author: 'did:me', value: 'up', signalTypeId: 't:1' },
-      { id: 's:2', author: 'did:a', value: 'down', signalTypeId: 't:1' },
-    ],
-    record: 'r:1',
-    type: 't:1',
-    me: 'did:me',
-  }),
-  H('reactions', { signals: [], record: 'r:1', type: 't:1', me: 'did:me' }),
-  H('reactions', { signals: [{ author: 'did:a', value: 'up' }] }),
-  H('reactions', U),
-
   /* ---- signalTally: one number for a record's reactions ---- */
   H('signalTally', { signals: [{ value: 'up' }, { value: 'up' }, { value: 'down' }] }),
   H('signalTally', {

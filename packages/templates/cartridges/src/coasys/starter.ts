@@ -145,7 +145,7 @@ export const coasysStarter: SpaceStarter = {
         kind: 'board',
         mode: 'feed',
         title: 'Everything',
-        gathers: ['$root'],
+        gathers: '$root',
       },
       in: '$root',
     },

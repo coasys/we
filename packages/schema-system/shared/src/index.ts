@@ -110,6 +110,7 @@ export {
   hasGesture,
   installGestureTracking,
   newGestureOwner,
+  REFUSED,
   registerGestureOwner,
   runAsOwner,
   runWithGesture,

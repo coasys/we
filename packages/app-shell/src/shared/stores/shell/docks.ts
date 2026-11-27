@@ -26,14 +26,13 @@ import {
   NO_INSET,
   occupiedById,
   panelFramesOf,
-  placementFromDeclaration,
   railBand,
   type Rect,
   rectOf,
   resolveDocks,
+  resolvePlacement,
   seatLanes,
   seatSize,
-  seedPlacement,
   SIDEBAR_PX,
   stackCandidates,
   TITLE_BAR_PX,
@@ -433,30 +432,14 @@ export function createShellDocks(deps: {
     ...boxOnScreen(id, placement),
   });
 
-  /**
-   * A panel's placement, in three rungs: what the user last dragged it to, then what the interface
-   * asked for, then the module's own opening bid.
-   *
-   * The middle rung is resolved live and never written — so switching template or view is
-   * non-destructive, switching back restores what was there, and an author improving a layout is not
-   * overruled forever by one stray drag. The same shape `meta.themeId` follows for themes.
-   */
-  const placementOf = (request: DockRequest): FloatPlacement => {
-    const stored = placements()[placementKey(request.id)];
-    /*
-      A lane holds only what the interface declared for one — the rule a drop into a lane has always
-      kept (\`insertHome\`). A placement in a lane for any other panel is not honoured: it came from
-      stacking onto a section, which skipped that rule, and it outlives every template, since an
-      undeclared panel's placement is not scoped to one — so the call's stage, stacked into an
-      inspector's lane, followed its owner into every space and froze each on its next call (a lane
-      grows to fit what is in it, and the stage sizes itself to the box it is in). Read as no
-      placement, it goes back to its own bid.
-    */
-    if (stored && !(stored.snap === 'home' && !declarationFor()[request.id]?.home)) return stored;
-    const declared = declarationFor()[request.id];
-    if (declared) return placementFromDeclaration(declared, viewport());
-    return seedPlacement(request, viewport());
-  };
+  /** A panel's placement, from its three rungs — see `resolvePlacement`. */
+  const placementOf = (request: DockRequest): FloatPlacement =>
+    resolvePlacement({
+      disposition: placements()[placementKey(request.id)],
+      declared: declarationFor()[request.id],
+      request,
+      viewport: viewport(),
+    });
   /*
     A dependency on *registration itself*, so a store that arrives late is picked up.
 

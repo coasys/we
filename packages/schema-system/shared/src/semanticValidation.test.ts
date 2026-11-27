@@ -125,46 +125,109 @@ describe('undeclared local writes', () => {
 
 describe('local scope across a route boundary', () => {
   /**
-   * `buildRoutes` renders each route through its own `RenderSchema` call, so a route subtree
-   * inherits no context — `$localState` and `$queries` on the template root are invisible below a
-   * `$routes` outlet. The validator used to carry the parent scope across, which made it *approve*
-   * reads that resolve to nothing: the showcase Timeline template hoisted its `signalTypes` query
-   * onto the root, validated clean, and rendered no signal controls at all.
+   * A route sees the scope of the node that lists it, lexically: the template root's `$localState`
+   * and `$queries` are readable in every route, as the renderer draws them. Not what is declared
+   * between the root and its outlet, which a route is not inside.
    *
    * The reads are in `props` because that is where the real ones were (a `count()` guard and a
    * `find()` inside a query projection).
    */
-  const template = (routes: unknown): SchemaNode =>
+  const template = (routes: unknown, children: unknown[] = [{ type: '$routes' }]): SchemaNode =>
     ({
       meta: { name: 'T', description: 'd', icon: 'bug' },
       type: 'Column',
       $queries: { signalTypes: { entity: 'SignalType' } },
       $localState: { draft: { type: 'string', initial: '' } },
-      children: [{ type: '$routes' }],
+      children,
       routes,
     }) as SchemaNode;
 
   const readsSignalTypes = { type: 'we-text', props: { text: { $: 'local.signalTypes' } } };
 
-  it('rejects a route reading a $queries entry declared on the root', () => {
+  it('accepts a route reading a $queries entry declared on the root', () => {
     const node = template([{ path: '/', type: 'Column', children: [readsSignalTypes] }]);
-    expect(messages(node, 'error').join(' ')).toMatch(/signalTypes/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('rejects a route reading a $localState field declared on the root', () => {
+  it('accepts a route reading a $localState field declared on the root', () => {
     const node = template([
       { path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.draft' } } }] },
     ]);
-    expect(messages(node, 'error').join(' ')).toMatch(/draft/);
+    expect(messages(node, 'error')).toEqual([]);
   });
 
-  it('accepts the same read when the route declares it itself', () => {
+  it('rejects a route reading a field declared between the root and its outlet', () => {
+    const node = template(
+      [{ path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }] }],
+      [{ type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] }],
+    );
+    expect(messages(node, 'error').join(' ')).toMatch(/near/);
+  });
+
+  it('warns that a field declared on the way to the outlet belongs on the node with routes', () => {
+    const node = template(
+      [{ path: '/', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }] }],
+      [
+        {
+          type: 'Column',
+          children: [
+            { type: 'Row', $queries: { far: { entity: 'SignalType' } }, children: [] },
+            { type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] },
+          ],
+        },
+      ],
+    );
+    const warnings = messages(node, 'warning').filter((message) => message.includes('$routes outlet'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^local\.near is declared at children\[0\]\.children\[1\]/);
+    expect(warnings[0]).toContain('Move it to the node with `routes`.');
+  });
+
+  it('does not warn about a field declared beside the outlet but not on its way, nor one the route declares', () => {
+    const node = template(
+      [
+        {
+          path: '/',
+          type: 'Column',
+          $localState: { near: { type: 'string', initial: '' } },
+          children: [{ type: 'we-text', props: { text: { $: 'local.near' } } }],
+        },
+        { path: '/far', type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.far' } } }] },
+      ],
+      [
+        { type: 'Row', $localState: { far: { type: 'string', initial: '' } }, children: [] },
+        { type: 'Column', $localState: { near: { type: 'string', initial: '' } }, children: [{ type: '$routes' }] },
+      ],
+    );
+    expect(messages(node, 'warning').filter((message) => message.includes('outlet'))).toEqual([]);
+  });
+
+  it('warns that a field a panel reads from inside the tree belongs on the root', () => {
+    const node = {
+      ...template([]),
+      routes: undefined,
+      children: [{ type: 'Column', $localState: { inner: { type: 'string', initial: '' } }, children: [] }],
+      meta: {
+        name: 'T',
+        description: 'd',
+        icon: 'bug',
+        panels: [{ id: 'side', node: { type: 'we-text', props: { text: { $: 'local.inner' } } } }],
+      },
+    } as SchemaNode;
+    const warnings = messages(node, 'warning').filter((message) => message.includes('panel'));
+    expect(warnings).toEqual([
+      expect.stringMatching(/^local\.inner is declared at children\[0\],.*Move it to the template's root\.$/),
+    ]);
+  });
+
+  it('lets a nested route read the layout route that lists it', () => {
     const node = template([
       {
-        path: '/',
+        path: '/board',
         type: 'Column',
-        $queries: { signalTypes: { entity: 'SignalType' } },
-        children: [readsSignalTypes],
+        $localState: { open: { type: 'boolean', initial: false } },
+        children: [{ type: '$routes' }],
+        routes: [{ path: '/', type: 'Row', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
     expect(messages(node, 'error')).toEqual([]);
@@ -179,6 +242,21 @@ describe('local scope across a route boundary', () => {
         children: [{ type: 'Column', children: [{ type: 'we-text', props: { text: { $: 'local.open' } } }] }],
       },
     ]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('lets a panel read the root’s local state', () => {
+    const node = {
+      ...template([]),
+      routes: undefined,
+      children: [],
+      meta: {
+        name: 'T',
+        description: 'd',
+        icon: 'bug',
+        panels: [{ id: 'p', node: { type: 'we-text', props: { text: { $: 'local.draft' } } } }],
+      },
+    } as unknown as SchemaNode;
     expect(messages(node, 'error')).toEqual([]);
   });
 });
@@ -790,13 +868,22 @@ describe('tokens inside the data a prop holds', () => {
     ).toEqual([]);
   });
 
-  it('does not judge a subtree a prop holds against the scope outside it', () => {
-    // A node held in a prop is rendered by its component, which may bind names the scope outside
-    // it has never heard of. Data is opened; a subtree is left to whatever renders it.
+  it('does not judge a node-shaped value in an undeclared prop against the scope outside it', () => {
+    // A prop the component does not declare as holding a node is data, handed over as it is, so
+    // the names in it are the component's business.
+    const node = template([{ type: 'GraphView', props: { tooltip: { type: 'Row', children: [{ $: 'row.title' }] } } }]);
+    expect(messages(node, 'error')).toEqual([]);
+  });
+
+  it('judges a declared node prop as a node, in the scope of the node holding it', () => {
+    // `emptyAction` is element-typed in GraphView's declaration: the renderer draws it where the
+    // graph is, so it reads what the graph reads and nothing the graph binds.
     const node = template([
       { type: 'GraphView', props: { emptyAction: { type: 'Row', children: [{ $: 'row.title' }] } } },
     ]);
-    expect(messages(node, 'error')).toEqual([]);
+    expect(messages(node, 'error').some((m) => m.includes('row'))).toBe(true);
+    const fine = template([{ type: 'GraphView', props: { emptyAction: { type: 'Row', children: ['Start'] } } }]);
+    expect(messages(fine, 'error')).toEqual([]);
   });
 });
 

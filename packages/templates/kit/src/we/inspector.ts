@@ -998,7 +998,10 @@ const peopleSection: SchemaNode = {
                                             onClick: {
                                               $if: {
                                                 condition: { $: 'holder.reflexive' },
-                                                then: { $invoke: 'spaceStore.respondTo', args: [{ $: 'row.id' }, ''] },
+                                                then: {
+                                                  $invoke: 'ops.core.respond',
+                                                  args: [{ node: { $: 'row.id' } }],
+                                                },
                                                 else: {
                                                   $invoke: 'spaceStore.setInvolvement',
                                                   args: [

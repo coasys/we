@@ -62,6 +62,7 @@ export function describeEffects(effects: OperationEffects): string {
       if (verb === 'create') parts.push(`creates ${label}`);
       else if (verb === 'edit') parts.push(`edits ${label}`);
       else if (verb === 'delete') parts.push(`deletes ${label}`);
+      else if (verb === 'deleteOwn') parts.push(`deletes the invoker’s own ${label.replace(/^an? /, '')}`);
       else if (verb.startsWith('add:')) parts.push(`adds to ${relationOf(verb.slice(4))}`);
       else parts.push(`removes from ${relationOf(verb.slice(7))}`);
     }

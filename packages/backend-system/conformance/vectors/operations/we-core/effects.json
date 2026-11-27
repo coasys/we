@@ -1,0 +1,2820 @@
+{
+  "version": 1,
+  "groups": {
+    "default": "content",
+    "width": ["content", "signals", "space-settings", "agent", "library"],
+    "entities": {
+      "AgentSettings": "agent",
+      "InvolvementType": "space-settings",
+      "MutedAgent": "space-settings",
+      "ReadMarker": "agent",
+      "RelationshipType": "space-settings",
+      "Shape": "space-settings",
+      "Signal": "signals",
+      "SignalType": "signals",
+      "Space": "space-settings",
+      "SpaceLandmark": "space-settings",
+      "SpacePreference": "agent",
+      "SpaceTemplatePreference": "agent",
+      "TaskState": "space-settings",
+      "Template": "library",
+      "Theme": "library",
+      "TypeStyle": "space-settings"
+    }
+  },
+  "cases": [
+    {
+      "id": "effects.core-addBoardColumn",
+      "note": "WE’s core.addBoardColumn",
+      "operation": {
+        "description": "Add a column to a board: bound to a state when a slug is given — work in that state arrives on its own — or a lane of this board’s own when not.",
+        "params": {
+          "board": { "type": "string", "required": true, "description": "The board." },
+          "name": {
+            "type": "string",
+            "description": "The column’s heading. Stored only where it differs from its state’s name."
+          },
+          "slug": { "type": "string", "description": "The state the column stands for. Omit for a lane." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The states the community offers, in its own order, each { slug, name }."
+          }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "board" } } } },
+          {
+            "create": {
+              "entity": "CollectionBlock",
+              "fields": {
+                "kind": "column",
+                "mode": "feed",
+                "title": { "$": "slug && find(states, { slug: slug }).name == trim(name) ? '' : trim(name)" },
+                "slug": { "$": "slug" }
+              },
+              "parent": { "id": { "$": "board" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "count(found) > 0 && (slug || trim(name ?? '') != '')" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children", "create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-addStateColumn",
+      "note": "WE’s core.addStateColumn",
+      "operation": {
+        "description": "Give a board a column for a state, unless one of its columns is already bound to it — what naming a new state does to the space’s own board.",
+        "params": {
+          "board": { "type": "string", "required": true, "description": "The board." },
+          "slug": { "type": "string", "required": true, "description": "The state." },
+          "name": { "type": "string", "description": "The state’s name." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The states the community offers, in its own order, each { slug, name }."
+          }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "board" } } } },
+          {
+            "find": {
+              "as": "bound",
+              "entity": "CollectionBlock",
+              "where": { "kind": "column", "slug": { "$": "slug" } }
+            }
+          },
+          {
+            "call": {
+              "operation": "core.addBoardColumn",
+              "args": {
+                "board": { "$": "board" },
+                "name": { "$": "name" },
+                "slug": { "$": "slug" },
+                "states": { "$": "states" }
+              }
+            },
+            "when": { "$": "count(found) > 0 && !bound.exists(c, c.id in (first(found).children ?? []))" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children", "create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-addTaskStateEvidence",
+      "note": "WE’s core.addTaskStateEvidence",
+      "operation": {
+        "description": "Add one requirement to what a state asks to be there before work moves into it.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The state’s slug." },
+          "requirement": {
+            "type": "object",
+            "required": true,
+            "description": "One requirement as the state stores it: { entity, where?, via?, min? }."
+          }
+        },
+        "errors": { "unknownState": "This space has no state by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "TaskState", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownState" } },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": { "evidence": { "$": "concat(first(named).evidence, [requirement])" } }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "TaskState": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-addTaskToColumn",
+      "note": "WE’s core.addTaskToColumn",
+      "operation": {
+        "description": "Make a task in a column: parented to the collection the board gathers from where there is one, arranged into the column, in the state given.",
+        "params": {
+          "column": { "type": "string", "required": true, "description": "The column." },
+          "title": { "type": "string", "required": true, "description": "The task’s title." },
+          "status": { "type": "string", "description": "The state it starts in." },
+          "anchor": {
+            "type": "string",
+            "description": "The collection it belongs to — the call the board gathers from."
+          },
+          "arrange": {
+            "type": "boolean",
+            "description": "Whether to arrange it into the column. False where its state is still to be agreed."
+          }
+        },
+        "steps": [
+          {
+            "create": {
+              "as": "anchored",
+              "entity": "TaskBlock",
+              "fields": { "title": { "$": "trim(title)" }, "status": { "$": "status" } },
+              "parent": { "id": { "$": "anchor" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "anchor" }
+          },
+          {
+            "create": {
+              "as": "loose",
+              "entity": "TaskBlock",
+              "fields": { "title": { "$": "trim(title)" }, "status": { "$": "status" } }
+            },
+            "when": { "$": "!anchor" }
+          },
+          {
+            "link": {
+              "entity": "CollectionBlock",
+              "id": { "$": "column" },
+              "relation": "arranges",
+              "target": { "$": "anchored ?? loose" }
+            },
+            "when": { "$": "arrange != false" }
+          }
+        ],
+        "returns": { "$": "(anchored ?? loose).id" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:arranges", "add:children"], "TaskBlock": ["create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-arrangeColumn",
+      "note": "WE’s core.arrangeColumn",
+      "operation": {
+        "description": "Store the order of a column’s cards: the ids given, then whatever the column still holds that they leave out.",
+        "params": {
+          "column": {
+            "type": "string",
+            "required": true,
+            "description": "The column (or a board, for what it holds in no column)."
+          },
+          "ids": { "type": "list", "required": true, "description": "Card ids, in the order wanted." },
+          "order": {
+            "type": "list",
+            "description": "The column’s whole order as the board draws it, for a column showing only some of its cards: the ids given go back into the places of the ones it shows, and the hidden ones keep theirs. Omit when the ids are the whole column."
+          }
+        },
+        "serial": { "$": "'arrange ' + column" },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "column" } } } },
+          {
+            "setRelation": {
+              "entity": "CollectionBlock",
+              "id": { "$": "column" },
+              "relation": "arranges",
+              "targets": {
+                "$": "order ? concat(order.map(i, i in ids ? ids.filter(j, j in order)[indexOf(order.filter(j, j in ids), i)] : i), ids.filter(i, !(i in order))) : ids"
+              },
+              "keep": true
+            },
+            "when": { "$": "count(found) > 0 && count(ids) > 0" }
+          }
+        ],
+        "returns": { "found": { "$": "count(found) > 0" } }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:arranges"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-clearPlacements",
+      "note": "WE’s core.clearPlacements",
+      "operation": {
+        "description": "Take a card off a canvas: every placement it has there, so no duplicate puts it back.",
+        "params": { "placements": { "type": "list", "required": true, "description": "The placements’ ids." } },
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "placements" },
+              "as": "placement",
+              "key": { "$": "placement" },
+              "steps": [{ "delete": { "entity": "Placement", "id": { "$": "placement" } } }]
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Placement": ["delete"] }, "categories": {}, "bulk": true, "destructive": true },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-colorCanvasType",
+      "note": "WE’s core.colorCanvasType",
+      "operation": {
+        "description": "Colour every card of one kind on a canvas: the canvas’s style for the kind edited, or made where there is none.",
+        "params": {
+          "canvas": { "type": "string", "required": true, "description": "The canvas." },
+          "nodeType": { "type": "string", "required": true, "description": "The kind of record." },
+          "color": {
+            "type": "string",
+            "required": true,
+            "description": "The colour, or the host’s value for none of its own."
+          },
+          "create": {
+            "type": "boolean",
+            "description": "Whether to make a style where there is none. False when clearing."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "styles",
+              "entity": "TypeStyle",
+              "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": { "$": "canvas" } },
+              "where": { "nodeType": { "$": "nodeType" } }
+            }
+          },
+          {
+            "update": {
+              "entity": "TypeStyle",
+              "id": { "$": "first(styles)" },
+              "fields": { "color": { "$": "color" } }
+            },
+            "when": { "$": "count(styles) > 0" }
+          },
+          {
+            "create": {
+              "entity": "TypeStyle",
+              "fields": { "nodeType": { "$": "nodeType" }, "color": { "$": "color" } },
+              "parent": { "id": { "$": "canvas" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "count(styles) == 0 && create != false" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"], "TypeStyle": ["create", "edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-colorSpaceType",
+      "note": "WE’s core.colorSpaceType",
+      "operation": {
+        "description": "Colour one kind of record in the space’s key: its style edited, or made where there is none, and any duplicate removed.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The Space record." },
+          "nodeType": { "type": "string", "required": true, "description": "The kind of record." },
+          "color": { "type": "string", "required": true, "description": "The colour." }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "styles",
+              "entity": "TypeStyle",
+              "scope": { "anchor": "Space", "via": "typeStyles", "anchorId": { "$": "space" } },
+              "where": { "nodeType": { "$": "nodeType" } }
+            }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(styles, 1)" },
+              "as": "duplicate",
+              "steps": [{ "delete": { "entity": "TypeStyle", "id": { "$": "duplicate" } } }]
+            }
+          },
+          {
+            "update": {
+              "entity": "TypeStyle",
+              "id": { "$": "first(styles)" },
+              "fields": { "color": { "$": "color" } }
+            },
+            "when": { "$": "count(styles) > 0" }
+          },
+          {
+            "create": {
+              "entity": "TypeStyle",
+              "fields": { "nodeType": { "$": "nodeType" }, "color": { "$": "color" } },
+              "parent": { "id": { "$": "space" }, "relation": "typeStyles", "entity": "Space" }
+            },
+            "when": { "$": "count(styles) == 0" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Space": ["add:typeStyles"], "TypeStyle": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-composeCard",
+      "note": "WE’s core.composeCard",
+      "operation": {
+        "description": "Compose a card onto a canvas: the post, kept wherever the canvas’s content lives, and its placement on the canvas where a point is given.",
+        "params": {
+          "root": {
+            "type": "object",
+            "required": true,
+            "description": "The post’s own fields, as core.createPost takes them."
+          },
+          "blocks": { "type": "list", "required": true, "description": "Its blocks, as core.createPost takes them." },
+          "mentions": { "type": "list", "description": "The DIDs it mentions." },
+          "home": { "type": "string", "required": true, "description": "The collection the card is kept in." },
+          "canvas": { "type": "string", "required": true, "description": "The canvas it is placed on." },
+          "at": {
+            "type": "object",
+            "description": "Where on the canvas, { x, y }. Without one it is unplaced, in the tray."
+          }
+        },
+        "steps": [
+          {
+            "call": {
+              "as": "card",
+              "operation": "core.createPost",
+              "args": {
+                "root": { "$": "root" },
+                "blocks": { "$": "blocks" },
+                "mentions": { "$": "mentions" },
+                "container": { "$": "home" }
+              }
+            }
+          },
+          {
+            "create": {
+              "entity": "Placement",
+              "fields": {
+                "nodeType": "CollectionBlock",
+                "x": { "$": "at.x" },
+                "y": { "$": "at.y" },
+                "node": { "$": "card" }
+              },
+              "parent": { "id": { "$": "canvas" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "at" }
+          }
+        ],
+        "returns": { "$": "card" }
+      },
+      "summary": {
+        "entities": {
+          "*": ["add:responses"],
+          "CollectionBlock": ["add:children", "create"],
+          "Placement": ["create"],
+          "Relationship": ["add:thread"],
+          "Topic": ["add:thread"]
+        },
+        "categories": { "blockable": ["add:thread", "create"] },
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["blockable"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-connectRecords",
+      "note": "WE’s core.connectRecords",
+      "operation": {
+        "description": "Connect two records with a Relationship — of a community-named kind where one is given — and answer with its id.",
+        "params": {
+          "source": { "type": "string", "required": true, "description": "The record the connection runs from." },
+          "sourceType": { "type": "string", "description": "Its entity." },
+          "target": { "type": "string", "required": true, "description": "The record it runs to." },
+          "targetType": { "type": "string", "description": "Its entity." },
+          "key": {
+            "type": "string",
+            "description": "The connection’s dedup key, from both ends’ titles and its label."
+          },
+          "kind": { "type": "string", "description": "The RelationshipType it is one of." },
+          "fields": { "type": "object", "description": "Anything else it says — a label, a description." },
+          "home": { "type": "string", "description": "A collection to make it inside." },
+          "inline": {
+            "type": "list",
+            "description": "Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key."
+          }
+        },
+        "steps": [
+          { "call": { "operation": "core.createRecords", "args": { "records": { "$": "inline ?? []" } } } },
+          {
+            "create": {
+              "as": "housed",
+              "entity": "Relationship",
+              "fields": {
+                "$": "merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: source, target: target })"
+              },
+              "parent": { "id": { "$": "home" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "home" }
+          },
+          {
+            "create": {
+              "as": "loose",
+              "entity": "Relationship",
+              "fields": {
+                "$": "merge(fields ?? {}, { sourceType: sourceType, targetType: targetType, connection: key, relationshipTypeId: kind, source: source, target: target })"
+              }
+            },
+            "when": { "$": "!home" }
+          }
+        ],
+        "returns": { "$": "(housed ?? loose).id" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"], "Relationship": ["create"] },
+        "categories": { "any": ["create"] },
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createBoard",
+      "note": "WE’s core.createBoard",
+      "operation": {
+        "description": "Make a board with a column for each state given, in that order; optionally inside a collection and gathering from a record.",
+        "params": {
+          "title": { "type": "string", "required": true, "description": "What the board is called." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The slugs of the states to make a column for, in order, each once."
+          },
+          "parent": {
+            "type": "string",
+            "description": "A collection to put the board in. Left loose when the collection is not there."
+          },
+          "gathers": {
+            "type": "string",
+            "description": "The record the board draws its work from. Omit for a board showing only what is put on it."
+          }
+        },
+        "steps": [
+          {
+            "create": {
+              "as": "board",
+              "entity": "CollectionBlock",
+              "fields": {
+                "$": "merge({ kind: 'board', mode: 'feed', title: trim(title) }, gathers ? { gathers: gathers } : {})"
+              }
+            }
+          },
+          {
+            "forEach": {
+              "in": { "$": "states" },
+              "as": "slug",
+              "key": { "$": "slug" },
+              "steps": [
+                {
+                  "create": {
+                    "entity": "CollectionBlock",
+                    "fields": { "kind": "column", "mode": "feed", "slug": { "$": "slug" } },
+                    "parent": { "id": { "$": "board.id" }, "relation": "children", "entity": "CollectionBlock" }
+                  }
+                }
+              ]
+            }
+          },
+          { "find": { "as": "container", "entity": "CollectionBlock", "where": { "id": { "$": "parent" } } } },
+          {
+            "link": {
+              "entity": "CollectionBlock",
+              "id": { "$": "parent" },
+              "relation": "children",
+              "target": { "$": "board.id" }
+            },
+            "when": { "$": "count(container) > 0" }
+          }
+        ],
+        "returns": { "$": "board.id" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children", "create"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createInvolvementType",
+      "note": "WE’s core.createInvolvementType",
+      "operation": {
+        "description": "Name a kind of part somebody can have in a record — “Shepherd”, “Second pair of eyes” — refused when the space already has one by that name. Whether it is somebody’s own answer is fixed here.",
+        "params": {
+          "name": { "type": "string", "required": true, "description": "What the part is called." },
+          "semantic": {
+            "type": "string",
+            "description": "What it means, one of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; responsible otherwise."
+          },
+          "reflexive": {
+            "type": "boolean",
+            "description": "An answer only its own agent gives, rather than something said about them."
+          },
+          "appliesTo": {
+            "type": "string",
+            "description": "The entities it is offered on, comma-separated; empty for all."
+          },
+          "icon": { "type": "string", "description": "A glyph; empty clears it." },
+          "color": { "type": "string", "description": "A colour; empty clears it." }
+        },
+        "errors": {
+          "noSlug": "That name needs a letter or a digit in it.",
+          "slugTaken": "This space already has one called that."
+        },
+        "steps": [
+          { "check": { "condition": { "$": "slug(trim(name)) != ''" }, "error": "noSlug" } },
+          { "find": { "as": "taken", "entity": "InvolvementType", "where": { "slug": { "$": "slug(trim(name))" } } } },
+          { "check": { "condition": { "$": "count(taken) == 0" }, "error": "slugTaken" } },
+          {
+            "create": {
+              "as": "made",
+              "entity": "InvolvementType",
+              "identity": ["slug"],
+              "fields": {
+                "name": { "$": "trim(name)" },
+                "slug": { "$": "slug(trim(name))" },
+                "semantic": {
+                  "$": "semantic in ['responsible', 'reviewing', 'committed', 'interested', 'declined'] ? semantic : 'responsible'"
+                },
+                "reflexive": { "$": "reflexive == true" },
+                "appliesTo": { "$": "appliesTo" },
+                "icon": { "$": "icon" },
+                "color": { "$": "color" }
+              }
+            }
+          }
+        ],
+        "returns": { "$": "made" }
+      },
+      "summary": {
+        "entities": { "InvolvementType": ["create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createPost",
+      "note": "WE’s core.createPost",
+      "operation": {
+        "description": "Write a composed document — a post, a message or a reply — with its blocks, in a collection or in response to a record, threaded under its subject.",
+        "params": {
+          "root": {
+            "type": "object",
+            "required": true,
+            "description": "The root’s own fields: kind, mode, and what it stores about its blocks (editorState, textContent), plus where a copy came from."
+          },
+          "blocks": {
+            "type": "list",
+            "required": true,
+            "description": "The blocks in document order, each { key, entity, fields, parent } — parent the planned id of the collection block it is in, absent at the top level."
+          },
+          "mentions": { "type": "list", "description": "The DIDs the document mentions." },
+          "container": { "type": "string", "description": "The collection it is a child of." },
+          "respondsTo": { "type": "string", "description": "The record it answers." },
+          "thread": {
+            "type": "string",
+            "description": "The subject of the thread it joins — respondsTo, or the first record above it that is not itself a response."
+          },
+          "threadEntity": { "type": "string", "description": "The thread subject’s entity." },
+          "generatedBy": { "type": "string", "description": "The ModelRun that wrote it, when a model did." }
+        },
+        "errors": { "twoPlaces": "A post goes in a collection or answers a record, not both." },
+        "steps": [
+          { "check": { "condition": { "$": "!(container && respondsTo)" }, "error": "twoPlaces" } },
+          {
+            "create": {
+              "as": "post",
+              "entity": "CollectionBlock",
+              "fields": {
+                "$": "generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: generatedBy }) : merge(root, { mentions: mentions ?? [] })"
+              },
+              "parent": { "id": { "$": "respondsTo" }, "relation": "responses" }
+            }
+          },
+          {
+            "link": {
+              "entity": "CollectionBlock",
+              "id": { "$": "container" },
+              "relation": "children",
+              "target": { "$": "post" }
+            },
+            "when": { "$": "container" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "blocks" },
+              "as": "block",
+              "key": { "$": "block.key" },
+              "steps": [
+                {
+                  "create": {
+                    "entity": { "$": "block.entity" },
+                    "oneOf": [{ "category": "blockable" }],
+                    "fields": { "$": "block.fields" },
+                    "parent": {
+                      "id": { "$": "block.parent ?? post.id" },
+                      "relation": "children",
+                      "entity": "CollectionBlock"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "call": {
+              "operation": "core.thread",
+              "args": {
+                "record": { "$": "post.id" },
+                "thread": { "$": "thread" },
+                "threadEntity": { "$": "threadEntity" }
+              }
+            },
+            "when": { "$": "respondsTo && thread" }
+          }
+        ],
+        "returns": { "$": "post.id" }
+      },
+      "summary": {
+        "entities": {
+          "*": ["add:responses"],
+          "CollectionBlock": ["add:children", "create"],
+          "Relationship": ["add:thread"],
+          "Topic": ["add:thread"]
+        },
+        "categories": { "blockable": ["add:thread", "create"] },
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["blockable"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createRecord",
+      "note": "WE’s core.createRecord",
+      "operation": {
+        "description": "Make one record of any type, with its relations and any records made inline for them, inside a collection where one is named — and answer with its id.",
+        "params": {
+          "inline": {
+            "type": "list",
+            "description": "Records made inline, each { key, entity, fields }, for the new record’s relations to point at — by the id `inlineRecordId` gives each key."
+          },
+          "entity": { "type": "string", "required": true, "description": "Its entity." },
+          "fields": {
+            "type": "object",
+            "required": true,
+            "description": "Its fields, relations among them as ids: a to-many as a list of ids, a to-one as the one id."
+          },
+          "home": { "type": "string", "description": "The collection it is made inside." }
+        },
+        "steps": [
+          { "call": { "operation": "core.createRecords", "args": { "records": { "$": "inline ?? []" } } } },
+          {
+            "create": {
+              "as": "made",
+              "entity": { "$": "entity" },
+              "oneOf": [{ "category": "any" }],
+              "fields": { "$": "fields" },
+              "parent": { "id": { "$": "home" }, "relation": "children", "entity": "CollectionBlock" }
+            }
+          }
+        ],
+        "returns": { "$": "made.id" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"] },
+        "categories": { "any": ["create"] },
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createRecords",
+      "note": "WE’s core.createRecords",
+      "operation": {
+        "description": "Make several records of any type at once, each keyed so its id is known before it is written.",
+        "params": { "records": { "type": "list", "required": true, "description": "Each { key, entity, fields }." } },
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "records" },
+              "as": "record",
+              "key": { "$": "record.key" },
+              "steps": [
+                {
+                  "create": {
+                    "entity": { "$": "record.entity" },
+                    "oneOf": [{ "category": "any" }],
+                    "fields": { "$": "record.fields ?? {}" }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": { "entities": {}, "categories": { "any": ["create"] }, "bulk": true, "destructive": false },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createRelationshipType",
+      "note": "WE’s core.createRelationshipType",
+      "operation": {
+        "description": "Name a kind of connection between two records, refused when the space already has one by that name.",
+        "params": {
+          "name": { "type": "string", "required": true, "description": "What the connection is called." },
+          "slug": {
+            "type": "string",
+            "description": "The identifier everything holding it stores. Derived from the name when not given."
+          },
+          "description": { "type": "string" },
+          "icon": { "type": "string" },
+          "color": { "type": "string" },
+          "inverseName": { "type": "string", "description": "What it is called read from the other end." },
+          "directed": { "type": "boolean" }
+        },
+        "errors": {
+          "noSlug": "That name needs a letter or a digit in it.",
+          "slugTaken": "This space already has one called that."
+        },
+        "steps": [
+          {
+            "check": {
+              "condition": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? '')) != ''" },
+              "error": "noSlug"
+            }
+          },
+          {
+            "find": {
+              "as": "taken",
+              "entity": "RelationshipType",
+              "where": { "slug": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? ''))" } }
+            }
+          },
+          { "check": { "condition": { "$": "count(taken) == 0" }, "error": "slugTaken" } },
+          {
+            "create": {
+              "as": "made",
+              "entity": "RelationshipType",
+              "identity": ["slug"],
+              "fields": {
+                "name": { "$": "trim(name)" },
+                "slug": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? ''))" },
+                "description": { "$": "description" },
+                "icon": { "$": "icon" },
+                "color": { "$": "color" },
+                "inverseName": { "$": "inverseName" },
+                "directed": { "$": "directed" }
+              }
+            }
+          }
+        ],
+        "returns": { "$": "made" }
+      },
+      "summary": {
+        "entities": { "RelationshipType": ["create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createSignalType",
+      "note": "WE’s core.createSignalType",
+      "operation": {
+        "description": "Name a kind of reaction members can give. A toggle runs 0 to 1 and a vote −1 to 1 whatever is asked, and each mode is read as one number its own way unless told otherwise.",
+        "params": {
+          "name": { "type": "string", "required": true, "description": "What the reaction is called." },
+          "slug": {
+            "type": "string",
+            "description": "The identifier everything holding it stores. Derived from the name when not given."
+          },
+          "description": { "type": "string" },
+          "icon": { "type": "string" },
+          "iconSecondary": { "type": "string", "description": "The glyph for the other end of a vote or a range." },
+          "mode": { "type": "string", "description": "toggle, vote, rating or slider." },
+          "rangeMin": { "type": "number" },
+          "rangeMax": { "type": "number" },
+          "step": { "type": "number" },
+          "aggregate": {
+            "type": "string",
+            "description": "count, mean, sum or median; the mode’s own when not given."
+          },
+          "semantic": { "type": "string" },
+          "allowChange": { "type": "boolean" }
+        },
+        "errors": {
+          "noSlug": "That name needs a letter or a digit in it.",
+          "slugTaken": "This space already has one called that."
+        },
+        "steps": [
+          {
+            "check": {
+              "condition": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? '')) != ''" },
+              "error": "noSlug"
+            }
+          },
+          {
+            "find": {
+              "as": "taken",
+              "entity": "SignalType",
+              "where": { "slug": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? ''))" } }
+            }
+          },
+          { "check": { "condition": { "$": "count(taken) == 0" }, "error": "slugTaken" } },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SignalType",
+              "identity": ["slug"],
+              "fields": {
+                "name": { "$": "trim(name)" },
+                "slug": { "$": "trim(slug ?? '') != '' ? trim(slug) : slug(trim(name ?? ''))" },
+                "description": { "$": "description" },
+                "icon": { "$": "icon" },
+                "iconSecondary": { "$": "iconSecondary" },
+                "mode": { "$": "mode" },
+                "rangeMin": { "$": "mode == 'toggle' ? 0 : mode == 'vote' ? -1 : rangeMin" },
+                "rangeMax": { "$": "mode == 'toggle' || mode == 'vote' ? 1 : rangeMax" },
+                "step": { "$": "step" },
+                "aggregate": {
+                  "$": "aggregate ?? (mode == 'vote' ? 'sum' : mode == 'rating' || mode == 'slider' ? 'mean' : null)"
+                },
+                "semantic": { "$": "semantic" },
+                "allowChange": { "$": "allowChange" }
+              }
+            }
+          }
+        ],
+        "returns": { "$": "made" }
+      },
+      "summary": { "entities": { "SignalType": ["create"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "signals", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-createTaskState",
+      "note": "WE’s core.createTaskState",
+      "operation": {
+        "description": "Name a state this community’s work moves through, refused when the space already has one by that name.",
+        "params": {
+          "name": { "type": "string", "required": true, "description": "What the state is called." },
+          "semantic": {
+            "type": "string",
+            "description": "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; open when not given."
+          },
+          "icon": { "type": "string", "description": "A glyph; empty clears it." },
+          "color": { "type": "string", "description": "A colour; empty clears it." }
+        },
+        "errors": {
+          "noSlug": "That name needs a letter or a digit in it.",
+          "slugTaken": "This space already has one called that.",
+          "notASemantic": "That is not something a state can count as."
+        },
+        "steps": [
+          {
+            "check": {
+              "condition": { "$": "!semantic || semantic in ['open', 'active', 'blocked', 'done', 'cancelled']" },
+              "error": "notASemantic"
+            }
+          },
+          { "check": { "condition": { "$": "slug(trim(name)) != ''" }, "error": "noSlug" } },
+          { "find": { "as": "taken", "entity": "TaskState", "where": { "slug": { "$": "slug(trim(name))" } } } },
+          { "check": { "condition": { "$": "count(taken) == 0" }, "error": "slugTaken" } },
+          {
+            "create": {
+              "as": "made",
+              "entity": "TaskState",
+              "identity": ["slug"],
+              "fields": {
+                "name": { "$": "trim(name)" },
+                "slug": { "$": "slug(trim(name))" },
+                "semantic": { "$": "semantic ?? 'open'" },
+                "color": { "$": "color" },
+                "icon": { "$": "icon" }
+              }
+            }
+          }
+        ],
+        "returns": { "$": "made" }
+      },
+      "summary": { "entities": { "TaskState": ["create"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-deleteRecords",
+      "note": "WE’s core.deleteRecords",
+      "operation": {
+        "description": "Delete several records of any type, for everyone, as one act. Not undoable.",
+        "params": { "records": { "type": "list", "required": true, "description": "Each { entity, id }." } },
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "records" },
+              "as": "record",
+              "steps": [
+                {
+                  "delete": {
+                    "entity": { "$": "record.entity" },
+                    "oneOf": [{ "category": "any" }],
+                    "id": { "$": "record.id" }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": { "entities": {}, "categories": { "any": ["delete"] }, "bulk": true, "destructive": true },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-detachConnection",
+      "note": "WE’s core.detachConnection",
+      "operation": {
+        "description": "Delete a connection nobody has said anything about. One carrying comments or reactions is refused — select the line itself to remove an argued claim.",
+        "params": { "connection": { "type": "string", "required": true, "description": "The Relationship." } },
+        "errors": { "discussed": "People have discussed that connection. Select the line itself to remove it." },
+        "steps": [
+          {
+            "find": { "as": "found", "entity": "Relationship", "where": { "id": { "$": "connection" } }, "one": true }
+          },
+          {
+            "check": {
+              "condition": { "$": "count(found.responses) == 0 && count(found.signals) == 0" },
+              "error": "discussed"
+            }
+          },
+          { "delete": { "entity": "Relationship", "id": { "$": "connection" } } }
+        ]
+      },
+      "summary": { "entities": { "Relationship": ["delete"] }, "categories": {}, "bulk": false, "destructive": true },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-editRecord",
+      "note": "WE’s core.editRecord",
+      "operation": {
+        "description": "Change the named fields of one record of any type, leaving the rest — a relation among them as a list of ids, a to-one as one, and a field cleared by giving it no value.",
+        "params": {
+          "entity": { "type": "string", "required": true, "description": "Its entity." },
+          "id": { "type": "string", "required": true, "description": "The record." },
+          "fields": { "type": "object", "required": true, "description": "The fields to write." }
+        },
+        "steps": [
+          {
+            "update": {
+              "entity": { "$": "entity" },
+              "oneOf": [{ "category": "any" }],
+              "id": { "$": "id" },
+              "fields": { "$": "fields" }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": {}, "categories": { "any": ["edit"] }, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-ensureBoardFor",
+      "note": "WE’s core.ensureBoardFor",
+      "operation": {
+        "description": "Give a collection a board once it holds a task, and not before; answers with the board’s id, or nothing while it holds no task.",
+        "params": {
+          "collection": { "type": "string", "required": true, "description": "The collection — a call, usually." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The slugs a new board gets a column for, in order."
+          }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "collection" } } } },
+          {
+            "find": {
+              "as": "tasks",
+              "entity": "TaskBlock",
+              "where": { "id": { "$": "first(found).children" } },
+              "limit": 1
+            },
+            "when": { "$": "count(found) > 0 && !first(found).board" }
+          },
+          {
+            "call": {
+              "as": "opened",
+              "operation": "core.openBoardFor",
+              "args": {
+                "anchor": { "$": "collection" },
+                "title": { "$": "first(found).title ? first(found).title : 'This call'" },
+                "states": { "$": "states" }
+              }
+            },
+            "when": { "$": "count(tasks) > 0" }
+          }
+        ],
+        "returns": { "$": "count(found) == 0 ? '' : first(found).board ? first(found).board : opened ?? ''" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children", "create", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-makeSpaceBoard",
+      "note": "WE’s core.makeSpaceBoard",
+      "operation": {
+        "description": "Make the space’s own board — gathering from the space collection, or from the space where it has none — and name it the space’s board landmark.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The Space record’s id." },
+          "root": { "type": "string", "description": "The space collection’s id, where the space has one." },
+          "title": { "type": "string", "description": "What the board is called; \"Everything\" when omitted." },
+          "states": { "type": "list", "required": true, "description": "The slugs to make a column for, in order." }
+        },
+        "steps": [
+          {
+            "call": {
+              "as": "made",
+              "operation": "core.createBoard",
+              "args": {
+                "title": { "$": "title && trim(title) != '' ? title : 'Everything'" },
+                "states": { "$": "states" },
+                "parent": { "$": "root" },
+                "gathers": { "$": "root ?? space" }
+              }
+            }
+          },
+          {
+            "create": {
+              "entity": "SpaceLandmark",
+              "fields": { "name": "board", "node": { "$": "made" } },
+              "parent": { "id": { "$": "space" }, "relation": "landmarks", "entity": "Space" }
+            }
+          }
+        ],
+        "returns": { "$": "made" }
+      },
+      "summary": {
+        "entities": {
+          "CollectionBlock": ["add:children", "create"],
+          "Space": ["add:landmarks"],
+          "SpaceLandmark": ["create"]
+        },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-makeSpaceCollection",
+      "note": "WE’s core.makeSpaceCollection",
+      "operation": {
+        "description": "Make the one collection everything top-level in a new space hangs off, and name it the space’s own. A space that has one keeps it.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "autoExtract": { "type": "boolean", "description": "Whether it is interpreted as it grows." },
+          "extractionTargets": { "type": "list", "description": "What it is interpreted for." }
+        },
+        "errors": { "hasCollection": "This space already has its collection." },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          { "check": { "condition": { "$": "!record.root" }, "error": "hasCollection" } },
+          {
+            "create": {
+              "as": "root",
+              "entity": "CollectionBlock",
+              "fields": {
+                "kind": "channel",
+                "mode": "feed",
+                "autoExtract": { "$": "autoExtract" },
+                "extractionTargets": { "$": "extractionTargets" }
+              }
+            }
+          },
+          { "update": { "entity": "Space", "id": { "$": "space" }, "fields": { "root": { "$": "root.id" } } } }
+        ],
+        "returns": { "$": "root.id" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["create"], "Space": ["edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-markRead",
+      "note": "WE’s core.markRead",
+      "operation": {
+        "description": "Say the invoker has read a record as of now: one marker per record, moved forward.",
+        "params": {
+          "node": { "type": "string", "required": true, "description": "The record read." },
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "ReadMarker",
+              "where": { "nodeId": { "$": "node" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "ReadMarker",
+              "fields": { "nodeId": { "$": "node" }, "spaceUuid": { "$": "space" }, "lastReadAt": { "$": "invokedAt" } }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "ReadMarker",
+              "id": { "$": "first(rows)" },
+              "fields": { "spaceUuid": { "$": "space" }, "lastReadAt": { "$": "invokedAt" } }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "ReadMarker", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { nodeId: node, spaceUuid: space, lastReadAt: invokedAt })"
+        }
+      },
+      "summary": {
+        "entities": { "ReadMarker": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-moveCard",
+      "note": "WE’s core.moveCard",
+      "operation": {
+        "description": "Move a card from one column to another, in one transaction: it leaves the first, joins the second (where it was dropped, or at the end), and takes the second’s state when that column is bound to one.",
+        "params": {
+          "to": { "type": "string", "required": true, "description": "The column it joins." },
+          "from": { "type": "string", "description": "The column it leaves." },
+          "card": { "type": "string", "required": true, "description": "The card." },
+          "ids": {
+            "type": "list",
+            "description": "The joined column’s order with the card where it was dropped. Omit to append."
+          }
+        },
+        "serial": { "$": "'card ' + card" },
+        "steps": [
+          { "find": { "as": "target", "entity": "CollectionBlock", "where": { "id": { "$": "to" } }, "one": true } },
+          {
+            "find": { "as": "task", "entity": "TaskBlock", "where": { "id": { "$": "card" } } },
+            "when": { "$": "target.slug" }
+          },
+          {
+            "setRelation": {
+              "entity": "CollectionBlock",
+              "id": { "$": "to" },
+              "relation": "arranges",
+              "targets": { "$": "ids" },
+              "keep": true
+            },
+            "when": { "$": "card in (ids ?? [])" }
+          },
+          {
+            "link": {
+              "entity": "CollectionBlock",
+              "id": { "$": "to" },
+              "relation": "arranges",
+              "target": { "$": "card" }
+            },
+            "when": { "$": "!(card in (ids ?? []))" }
+          },
+          {
+            "unlink": {
+              "entity": "CollectionBlock",
+              "id": { "$": "from" },
+              "relation": "arranges",
+              "target": { "$": "card" }
+            },
+            "when": { "$": "from && from != to" }
+          },
+          {
+            "update": { "entity": "TaskBlock", "id": { "$": "card" }, "fields": { "status": { "$": "target.slug" } } },
+            "when": { "$": "count(task) > 0" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:arranges", "remove:arranges"], "TaskBlock": ["edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-moveUnder",
+      "note": "WE’s core.moveUnder",
+      "operation": {
+        "description": "Move a record from one holder to another through a to-many relation the holders declare — off the old list and onto the new in one write, so nobody reads it on neither or on both.",
+        "params": {
+          "holder": { "type": "string", "required": true, "description": "The holders’ entity." },
+          "relation": { "type": "string", "required": true, "description": "The relation holding it." },
+          "record": { "type": "string", "required": true, "description": "The record moved." },
+          "from": { "type": "string", "description": "The holder it leaves." },
+          "to": { "type": "string", "description": "The holder it joins; absent to take it off and put it nowhere." }
+        },
+        "steps": [
+          {
+            "unlink": {
+              "entity": { "$": "holder" },
+              "oneOf": [{ "category": "any" }],
+              "id": { "$": "from" },
+              "relation": { "$": "relation" },
+              "target": { "$": "record" }
+            },
+            "when": { "$": "from && from != to" }
+          },
+          {
+            "link": {
+              "entity": { "$": "holder" },
+              "oneOf": [{ "category": "any" }],
+              "id": { "$": "to" },
+              "relation": { "$": "relation" },
+              "target": { "$": "record" }
+            },
+            "when": { "$": "to && to != from" }
+          }
+        ]
+      },
+      "summary": { "entities": {}, "categories": { "any": ["add:*", "remove:*"] }, "bulk": false, "destructive": true },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-openBoardFor",
+      "note": "WE’s core.openBoardFor",
+      "operation": {
+        "description": "The board a collection points at, made — gathering from the collection, inside it — when it has none yet. Answers with its id, or nothing when the collection is not there.",
+        "params": {
+          "anchor": { "type": "string", "required": true, "description": "The collection whose board this is." },
+          "title": { "type": "string", "description": "What a board made here is called; \"This call\" when omitted." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The slugs a new board gets a column for, in order."
+          }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "anchor" } } } },
+          {
+            "call": {
+              "as": "made",
+              "operation": "core.createBoard",
+              "args": {
+                "title": { "$": "title && trim(title) != '' ? title : 'This call'" },
+                "states": { "$": "states" },
+                "parent": { "$": "anchor" },
+                "gathers": { "$": "anchor" }
+              }
+            },
+            "when": { "$": "count(found) > 0 && !first(found).board" }
+          },
+          {
+            "update": { "entity": "CollectionBlock", "id": { "$": "anchor" }, "fields": { "board": { "$": "made" } } },
+            "when": { "$": "made" }
+          }
+        ],
+        "returns": { "$": "count(found) == 0 ? '' : first(found).board ? first(found).board : made" }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children", "create", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-placeCard",
+      "note": "WE’s core.placeCard",
+      "operation": {
+        "description": "Write where a card sits on a canvas, or how it looks there: the placement the canvas draws is edited, or one made where there is none, and duplicates beside it removed. Answers { from, to } — what the fields held before — for an undo.",
+        "params": {
+          "canvas": { "type": "string", "required": true, "description": "The canvas." },
+          "node": { "type": "string", "required": true, "description": "The record the card is." },
+          "nodeType": { "type": "string", "description": "Its entity, for a placement made here." },
+          "fields": {
+            "type": "object",
+            "required": true,
+            "description": "Placement fields — x and y, a size, a colour, a rank …"
+          },
+          "placement": {
+            "type": "string",
+            "description": "The placement the canvas draws for the card, where it has one."
+          },
+          "duplicates": { "type": "list", "description": "Placements of the card the drawn one outranks, to remove." },
+          "create": {
+            "type": "boolean",
+            "description": "Whether a card with no placement may be given one. False for a style, which needs a position."
+          }
+        },
+        "errors": { "notPlaced": "Drag this onto the canvas first — how a card looks is saved with where it sits." },
+        "steps": [
+          { "find": { "as": "current", "entity": "Placement", "where": { "id": { "$": "placement" } } } },
+          { "check": { "condition": { "$": "count(current) > 0 || create != false" }, "error": "notPlaced" } },
+          {
+            "forEach": {
+              "in": { "$": "duplicates ?? []" },
+              "as": "duplicate",
+              "key": { "$": "duplicate" },
+              "steps": [{ "delete": { "entity": "Placement", "id": { "$": "duplicate" } } }]
+            }
+          },
+          {
+            "update": { "entity": "Placement", "id": { "$": "placement" }, "fields": { "$": "fields" } },
+            "when": { "$": "count(current) > 0" }
+          },
+          {
+            "create": {
+              "entity": "Placement",
+              "fields": { "$": "merge(fields, { nodeType: nodeType, node: node })" },
+              "parent": { "id": { "$": "canvas" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "count(current) == 0" }
+          }
+        ],
+        "returns": {
+          "from": { "$": "count(current) > 0 ? pick(first(current), keys(fields)) : null" },
+          "to": { "$": "fields" }
+        }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"], "Placement": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-rankCards",
+      "note": "WE’s core.rankCards",
+      "operation": {
+        "description": "Write the ranks that order cards among their siblings in a tree read as arranged, all at once, so the tree never reads a half-written row.",
+        "params": {
+          "ranks": {
+            "type": "list",
+            "required": true,
+            "description": "Each { placement, rank }: the placement the canvas draws for a card, and its new rank."
+          }
+        },
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "ranks" },
+              "as": "entry",
+              "key": { "$": "entry.placement" },
+              "steps": [
+                {
+                  "update": {
+                    "entity": "Placement",
+                    "id": { "$": "entry.placement" },
+                    "fields": { "rank": { "$": "entry.rank" } }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Placement": ["edit"] }, "categories": {}, "bulk": true, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-rekeyConnection",
+      "note": "WE’s core.rekeyConnection",
+      "operation": {
+        "description": "Bring a connection’s dedup key back in line with its ends’ titles and its label.",
+        "params": {
+          "connection": { "type": "string", "required": true, "description": "The Relationship." },
+          "key": { "type": "string", "required": true, "description": "The key as it should read." }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "Relationship", "where": { "id": { "$": "connection" } } } },
+          {
+            "update": {
+              "entity": "Relationship",
+              "id": { "$": "connection" },
+              "fields": { "connection": { "$": "key" } }
+            },
+            "when": { "$": "count(found) > 0 && first(found).connection != key" }
+          }
+        ]
+      },
+      "summary": { "entities": { "Relationship": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-removeBoardColumn",
+      "note": "WE’s core.removeBoardColumn",
+      "operation": {
+        "description": "Take a column off a board — never the work in it: its cards move to the board’s own arrangement, so a made board keeps them.",
+        "params": {
+          "board": { "type": "string", "required": true, "description": "The board." },
+          "column": { "type": "string", "required": true, "description": "The column." }
+        },
+        "steps": [
+          { "find": { "as": "boards", "entity": "CollectionBlock", "where": { "id": { "$": "board" } } } },
+          { "find": { "as": "columns", "entity": "CollectionBlock", "where": { "id": { "$": "column" } } } },
+          {
+            "setRelation": {
+              "entity": "CollectionBlock",
+              "id": { "$": "board" },
+              "relation": "arranges",
+              "targets": { "$": "distinct(first(boards).arranges, first(columns).arranges)" }
+            },
+            "when": {
+              "$": "count(boards) > 0 && count(distinct(first(boards).arranges, first(columns).arranges)) > count(first(boards).arranges)"
+            }
+          },
+          {
+            "setRelation": {
+              "entity": "CollectionBlock",
+              "id": { "$": "board" },
+              "relation": "children",
+              "targets": { "$": "without(first(boards).children, column)" }
+            },
+            "when": { "$": "count(boards) > 0" }
+          },
+          {
+            "delete": { "entity": "CollectionBlock", "id": { "$": "column" } },
+            "when": { "$": "first(columns).kind == 'column'" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": {
+          "CollectionBlock": ["add:arranges", "add:children", "delete", "remove:arranges", "remove:children"]
+        },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-removeTaskStateEvidence",
+      "note": "WE’s core.removeTaskStateEvidence",
+      "operation": {
+        "description": "Take one requirement, by its position, out of what a state asks to be there first.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The state’s slug." },
+          "index": { "type": "number", "required": true, "description": "Its position in the list, from 0." }
+        },
+        "errors": { "unknownState": "This space has no state by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "TaskState", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownState" } },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": {
+                "evidence": {
+                  "$": "count(concat(slice(first(named).evidence, 0, index), slice(first(named).evidence, index + 1))) > 0 ? concat(slice(first(named).evidence, 0, index), slice(first(named).evidence, index + 1)) : ''"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "TaskState": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-renameBoardColumn",
+      "note": "WE’s core.renameBoardColumn",
+      "operation": {
+        "description": "Rename a column on its board. The state it stands for is untouched; renamed back to the state’s own name, it follows the vocabulary again.",
+        "params": {
+          "column": { "type": "string", "required": true, "description": "The column." },
+          "name": { "type": "string", "required": true, "description": "Its new heading." },
+          "states": {
+            "type": "list",
+            "required": true,
+            "description": "The states the community offers, in its own order, each { slug, name }."
+          }
+        },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "column" } } } },
+          {
+            "update": {
+              "entity": "CollectionBlock",
+              "id": { "$": "column" },
+              "fields": {
+                "title": {
+                  "$": "first(found).slug && find(states, { slug: first(found).slug }).name == trim(name) ? '' : trim(name)"
+                }
+              }
+            },
+            "when": { "$": "count(found) > 0 && trim(name) != ''" }
+          }
+        ]
+      },
+      "summary": { "entities": { "CollectionBlock": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-reorderBoardColumns",
+      "note": "WE’s core.reorderBoardColumns",
+      "operation": {
+        "description": "Put a board’s columns in an order. Only ids the board already holds are written; any it holds that the order leaves out follow.",
+        "params": {
+          "board": { "type": "string", "required": true, "description": "The board." },
+          "ids": { "type": "list", "required": true, "description": "Column ids, in the order wanted." }
+        },
+        "serial": { "$": "'columns ' + board" },
+        "steps": [
+          { "find": { "as": "found", "entity": "CollectionBlock", "where": { "id": { "$": "board" } } } },
+          {
+            "setRelation": {
+              "entity": "CollectionBlock",
+              "id": { "$": "board" },
+              "relation": "children",
+              "targets": { "$": "ids.filter(i, i in first(found).children)" },
+              "keep": true
+            },
+            "when": { "$": "count(found) > 0 && ids.exists(i, i in first(found).children)" }
+          }
+        ],
+        "returns": {
+          "found": { "$": "count(found) > 0" },
+          "written": { "$": "count(found) > 0 && ids.exists(i, i in first(found).children)" }
+        }
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-reorderTaskStates",
+      "note": "WE’s core.reorderTaskStates",
+      "operation": {
+        "description": "Set the order the community reads its states in, by slug. A slug with no record is left out.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "slugs": { "type": "list", "required": true, "description": "The states’ slugs, in the order wanted." }
+        },
+        "steps": [
+          { "find": { "as": "states", "entity": "TaskState" } },
+          {
+            "setRelation": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "relation": "taskStates",
+              "targets": { "$": "distinct(slugs.map(s, states.find(t, t.slug == s)).filter(t, t).map(t, t.id))" }
+            }
+          }
+        ],
+        "returns": { "$": "distinct(slugs.map(s, states.find(t, t.slug == s)).filter(t, t).map(t, t.id))" }
+      },
+      "summary": {
+        "entities": { "Space": ["add:taskStates", "remove:taskStates"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-reorderViews",
+      "note": "WE’s core.reorderViews",
+      "operation": {
+        "description": "Put the space’s sections in a new order. Only reorders: a section not already on is left off.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "order": { "type": "list", "required": true, "description": "The section ids, in the order wanted." },
+          "fallback": {
+            "type": "list",
+            "description": "What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has."
+          }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": { "enabledViews": { "$": "order.filter(v, v in (record.enabledViews ?? fallback ?? []))" } }
+            }
+          }
+        ],
+        "returns": { "$": "order.filter(v, v in (record.enabledViews ?? fallback ?? []))" }
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-respond",
+      "note": "WE’s core.respond",
+      "operation": {
+        "description": "Give the invoker’s own answer to a record — going, maybe, not going — replacing any answer they gave before; with no kind, withdraw it.",
+        "params": {
+          "node": { "type": "string", "required": true, "description": "The record answered." },
+          "kind": {
+            "type": "string",
+            "description": "A reflexive InvolvementType’s slug; absent withdraws the answer."
+          }
+        },
+        "serial": { "$": "'answer ' + node" },
+        "errors": { "notAnAnswer": "That is not an answer anybody can give to this." },
+        "steps": [
+          { "find": { "as": "answers", "entity": "InvolvementType", "where": { "reflexive": true } } },
+          { "check": { "condition": { "$": "!kind || kind in answers.map(t, t.slug)" }, "error": "notAnAnswer" } },
+          {
+            "find": {
+              "as": "held",
+              "entity": "Involvement",
+              "where": {
+                "agent": { "$": "invoker" },
+                "kind": { "$": "answers.map(t, t.slug)" },
+                "node": { "$": "node" }
+              }
+            }
+          },
+          {
+            "forEach": {
+              "in": { "$": "held.filter(r, r.kind != kind)" },
+              "as": "stale",
+              "steps": [{ "delete": { "entity": "Involvement", "id": { "$": "stale" }, "own": true } }]
+            }
+          },
+          {
+            "create": {
+              "entity": "Involvement",
+              "fields": { "agent": { "$": "invoker" }, "kind": { "$": "kind" }, "node": { "$": "node" } }
+            },
+            "when": { "$": "kind && !held.exists(r, r.kind == kind)" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Involvement": ["create", "deleteOwn"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-restyleSpaceType",
+      "note": "WE’s core.restyleSpaceType",
+      "operation": {
+        "description": "Say how the space presents one kind of record, whole: its styles removed and one made holding exactly the fields given — none, where nothing is left to say.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The Space record." },
+          "nodeType": { "type": "string", "required": true, "description": "The kind of record." },
+          "fields": {
+            "type": "object",
+            "required": true,
+            "description": "color, display, controls, authoring — what it says."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "styles",
+              "entity": "TypeStyle",
+              "scope": { "anchor": "Space", "via": "typeStyles", "anchorId": { "$": "space" } },
+              "where": { "nodeType": { "$": "nodeType" } }
+            }
+          },
+          {
+            "forEach": {
+              "in": { "$": "styles" },
+              "as": "style",
+              "steps": [{ "delete": { "entity": "TypeStyle", "id": { "$": "style" } } }]
+            }
+          },
+          {
+            "create": {
+              "entity": "TypeStyle",
+              "fields": { "$": "merge(fields, { nodeType: nodeType })" },
+              "parent": { "id": { "$": "space" }, "relation": "typeStyles", "entity": "Space" }
+            },
+            "when": { "$": "values(fields).exists(v, v != null && v != '')" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Space": ["add:typeStyles"], "TypeStyle": ["create", "delete"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-retargetConnection",
+      "note": "WE’s core.retargetConnection",
+      "operation": {
+        "description": "Move one end of a connection onto a different record — the claim changes, on every canvas — with its key kept in step with the ends.",
+        "params": {
+          "connection": { "type": "string", "required": true, "description": "The Relationship." },
+          "end": { "type": "string", "required": true, "description": "source or target." },
+          "node": { "type": "string", "required": true, "description": "The record the end moves to." },
+          "nodeType": { "type": "string", "required": true, "description": "Its entity." },
+          "key": { "type": "string", "description": "The connection’s key with the end moved." }
+        },
+        "steps": [
+          {
+            "find": { "as": "found", "entity": "Relationship", "where": { "id": { "$": "connection" } }, "one": true }
+          },
+          {
+            "update": {
+              "entity": "Relationship",
+              "id": { "$": "connection" },
+              "fields": {
+                "$": "merge(end == 'source' ? { sourceType: nodeType, source: node } : { targetType: nodeType, target: node }, key ? { connection: key } : {})"
+              }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Relationship": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setAgentMuted",
+      "note": "WE’s core.setAgentMuted",
+      "operation": {
+        "description": "Mute an account for the invoker everywhere, or unmute it: one record per account while muted, none after.",
+        "params": {
+          "did": { "type": "string", "required": true, "description": "The account." },
+          "muted": { "type": "boolean", "required": true, "description": "The state wanted." },
+          "description": { "type": "string", "description": "Why, for the invoker’s own list." }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "MutedAgent",
+              "where": { "did": { "$": "did" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "entity": "MutedAgent",
+              "fields": { "did": { "$": "did" }, "description": { "$": "description" } }
+            },
+            "when": { "$": "muted && count(rows) == 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "muted ? slice(rows, 1) : rows" },
+              "as": "row",
+              "steps": [{ "delete": { "entity": "MutedAgent", "id": { "$": "row" } } }]
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "MutedAgent": ["create", "delete"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setCollectionInterpretation",
+      "note": "WE’s core.setCollectionInterpretation",
+      "operation": {
+        "description": "Change what one collection is interpreted for, for everyone in it: whether as it grows, and one model in or out of what it looks for.",
+        "params": {
+          "collection": { "type": "string", "required": true, "description": "The collection." },
+          "autoExtract": { "type": "boolean", "description": "Interpreted as it grows, or not; absent leaves it." },
+          "entity": { "type": "string", "description": "A model to add or remove; absent leaves the list." },
+          "on": { "type": "boolean", "description": "Whether the model is wanted." },
+          "fallback": {
+            "type": "list",
+            "description": "What the collection looks for while it holds no list of its own."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "record",
+              "entity": "CollectionBlock",
+              "where": { "id": { "$": "collection" } },
+              "one": true
+            }
+          },
+          {
+            "update": {
+              "entity": "CollectionBlock",
+              "id": { "$": "collection" },
+              "fields": { "autoExtract": { "$": "autoExtract" } }
+            },
+            "when": { "$": "autoExtract == true || autoExtract == false" }
+          },
+          {
+            "update": {
+              "entity": "CollectionBlock",
+              "id": { "$": "collection" },
+              "fields": {
+                "extractionTargets": {
+                  "$": "on == true ? (entity in (record.extractionTargets ?? fallback ?? []) ? (record.extractionTargets ?? fallback ?? []) : concat((record.extractionTargets ?? fallback ?? []), [entity])) : without((record.extractionTargets ?? fallback ?? []), entity)"
+                }
+              }
+            },
+            "when": { "$": "entity" }
+          }
+        ]
+      },
+      "summary": { "entities": { "CollectionBlock": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setInvolvement",
+      "note": "WE’s core.setInvolvement",
+      "operation": {
+        "description": "Put somebody on a record as one of the space’s kinds of involvement, or take them off. A kind that is somebody’s own answer is given only by them, and replaces their last.",
+        "params": {
+          "node": { "type": "string", "required": true, "description": "The record they are on." },
+          "agent": { "type": "string", "required": true, "description": "Who, as a DID." },
+          "kind": { "type": "string", "required": true, "description": "The InvolvementType’s slug." },
+          "on": {
+            "type": "boolean",
+            "required": true,
+            "description": "The state wanted, so pressing twice cannot undo itself."
+          }
+        },
+        "serial": { "$": "'involve ' + node + ' ' + agent + ' ' + kind" },
+        "errors": {
+          "unknownKind": "That is not a kind of involvement this space has.",
+          "notYours": "Only the person it is about can give that answer."
+        },
+        "steps": [
+          { "find": { "as": "kinds", "entity": "InvolvementType", "where": { "slug": { "$": "kind" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(kinds) > 0" }, "error": "unknownKind" } },
+          { "check": { "condition": { "$": "!first(kinds).reflexive || agent == invoker" }, "error": "notYours" } },
+          {
+            "call": {
+              "operation": "core.respond",
+              "args": { "node": { "$": "node" }, "kind": { "$": "on ? kind : null" } }
+            },
+            "when": { "$": "first(kinds).reflexive" }
+          },
+          {
+            "find": {
+              "as": "held",
+              "entity": "Involvement",
+              "where": { "agent": { "$": "agent" }, "kind": { "$": "kind" }, "node": { "$": "node" } }
+            },
+            "when": { "$": "!first(kinds).reflexive" }
+          },
+          {
+            "create": {
+              "entity": "Involvement",
+              "fields": { "agent": { "$": "agent" }, "kind": { "$": "kind" }, "node": { "$": "node" } }
+            },
+            "when": { "$": "!first(kinds).reflexive && on && count(held) == 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "held" },
+              "as": "row",
+              "steps": [{ "delete": { "entity": "Involvement", "id": { "$": "row" } } }]
+            },
+            "when": { "$": "!first(kinds).reflexive && !on" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Involvement": ["create", "delete", "deleteOwn"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setInvolvementTypeRetired",
+      "note": "WE’s core.setInvolvementTypeRetired",
+      "operation": {
+        "description": "Withdraw a kind of involvement from use, or bring it back, leaving everybody already holding it as they are.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The kind’s slug." },
+          "retired": { "type": "boolean", "required": true, "description": "Withdrawn from use, or brought back." }
+        },
+        "errors": { "unknownKind": "This space has no kind of involvement by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "InvolvementType", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownKind" } },
+          {
+            "update": {
+              "entity": "InvolvementType",
+              "id": { "$": "first(named)" },
+              "fields": { "retired": { "$": "retired" } }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "InvolvementType": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setModuleEnabled",
+      "note": "WE’s core.setModuleEnabled",
+      "operation": {
+        "description": "Turn a module on or off for the whole space.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "module": { "type": "string", "required": true, "description": "The module id." },
+          "on": { "type": "boolean", "required": true, "description": "The state wanted." },
+          "fallback": {
+            "type": "list",
+            "description": "What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has."
+          }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": {
+                "enabledModules": {
+                  "$": "on ? (module in (record.enabledModules ?? fallback ?? []) ? (record.enabledModules ?? fallback ?? []) : concat((record.enabledModules ?? fallback ?? []), [module])) : without((record.enabledModules ?? fallback ?? []), module)"
+                }
+              }
+            }
+          }
+        ],
+        "returns": {
+          "$": "on ? (module in (record.enabledModules ?? fallback ?? []) ? (record.enabledModules ?? fallback ?? []) : concat((record.enabledModules ?? fallback ?? []), [module])) : without((record.enabledModules ?? fallback ?? []), module)"
+        }
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setModuleVisible",
+      "note": "WE’s core.setModuleVisible",
+      "operation": {
+        "description": "Show or hide a module for the invoker only, in one space.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." },
+          "module": { "type": "string", "required": true, "description": "The module id." },
+          "visible": { "type": "boolean", "required": true, "description": "The state wanted." }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "SpacePreference",
+              "where": { "spaceUuid": { "$": "space" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SpacePreference",
+              "fields": {
+                "spaceUuid": { "$": "space" },
+                "mutedModules": {
+                  "$": "!visible ? (module in (first(rows).mutedModules ?? []) ? (first(rows).mutedModules ?? []) : concat((first(rows).mutedModules ?? []), [module])) : without((first(rows).mutedModules ?? []), module)"
+                }
+              }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "SpacePreference",
+              "id": { "$": "first(rows)" },
+              "fields": {
+                "mutedModules": {
+                  "$": "!visible ? (module in (first(rows).mutedModules ?? []) ? (first(rows).mutedModules ?? []) : concat((first(rows).mutedModules ?? []), [module])) : without((first(rows).mutedModules ?? []), module)"
+                }
+              }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "SpacePreference", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { spaceUuid: space, mutedModules: !visible ? (module in (first(rows).mutedModules ?? []) ? (first(rows).mutedModules ?? []) : concat((first(rows).mutedModules ?? []), [module])) : without((first(rows).mutedModules ?? []), module) })"
+        }
+      },
+      "summary": {
+        "entities": { "SpacePreference": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setMyModuleSetting",
+      "note": "WE’s core.setMyModuleSetting",
+      "operation": {
+        "description": "Write, or withdraw, the invoker’s own answer to one setting in one space.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." },
+          "group": {
+            "type": "string",
+            "required": true,
+            "description": "The module or capability the setting belongs to."
+          },
+          "key": { "type": "string", "required": true, "description": "The setting." },
+          "value": {
+            "type": "json",
+            "description": "The answer; absent withdraws it, so the level has no opinion again."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "SpacePreference",
+              "where": { "spaceUuid": { "$": "space" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SpacePreference",
+              "fields": {
+                "spaceUuid": { "$": "space" },
+                "moduleSettings": {
+                  "$": "count(keys(put(first(rows).moduleSettings[group], key, value))) > 0 ? put(first(rows).moduleSettings, group, put(first(rows).moduleSettings[group], key, value)) : pick(first(rows).moduleSettings, without(keys(first(rows).moduleSettings), group))"
+                }
+              }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "SpacePreference",
+              "id": { "$": "first(rows)" },
+              "fields": {
+                "moduleSettings": {
+                  "$": "count(keys(put(first(rows).moduleSettings[group], key, value))) > 0 ? put(first(rows).moduleSettings, group, put(first(rows).moduleSettings[group], key, value)) : pick(first(rows).moduleSettings, without(keys(first(rows).moduleSettings), group))"
+                }
+              }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "SpacePreference", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { spaceUuid: space, moduleSettings: count(keys(put(first(rows).moduleSettings[group], key, value))) > 0 ? put(first(rows).moduleSettings, group, put(first(rows).moduleSettings[group], key, value)) : pick(first(rows).moduleSettings, without(keys(first(rows).moduleSettings), group)) })"
+        }
+      },
+      "summary": {
+        "entities": { "SpacePreference": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setSpaceModuleSetting",
+      "note": "WE’s core.setSpaceModuleSetting",
+      "operation": {
+        "description": "Write, or withdraw, the community’s answer to one setting.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "group": {
+            "type": "string",
+            "required": true,
+            "description": "The module or capability the setting belongs to."
+          },
+          "key": { "type": "string", "required": true, "description": "The setting." },
+          "value": {
+            "type": "json",
+            "description": "The answer; absent withdraws it, so the level has no opinion again."
+          }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": {
+                "moduleSettings": {
+                  "$": "count(keys(put(record.moduleSettings[group], key, value))) > 0 ? put(record.moduleSettings, group, put(record.moduleSettings[group], key, value)) : pick(record.moduleSettings, without(keys(record.moduleSettings), group))"
+                }
+              }
+            }
+          }
+        ],
+        "returns": {
+          "$": "count(keys(put(record.moduleSettings[group], key, value))) > 0 ? put(record.moduleSettings, group, put(record.moduleSettings[group], key, value)) : pick(record.moduleSettings, without(keys(record.moduleSettings), group))"
+        }
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setSpaceTemplateOverride",
+      "note": "WE’s core.setSpaceTemplateOverride",
+      "operation": {
+        "description": "Choose the template the invoker sees in one space, over the space’s default.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." },
+          "template": {
+            "type": "string",
+            "required": true,
+            "description": "A template id, or the value that follows the space."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "SpacePreference",
+              "where": { "spaceUuid": { "$": "space" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SpacePreference",
+              "fields": { "spaceUuid": { "$": "space" }, "templateId": { "$": "template" } }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "SpacePreference",
+              "id": { "$": "first(rows)" },
+              "fields": { "templateId": { "$": "template" } }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "SpacePreference", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { spaceUuid: space, templateId: template })"
+        }
+      },
+      "summary": {
+        "entities": { "SpacePreference": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setSpaceThemeOverride",
+      "note": "WE’s core.setSpaceThemeOverride",
+      "operation": {
+        "description": "Choose the theme the invoker sees in one space, over the space’s default.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." },
+          "theme": {
+            "type": "string",
+            "required": true,
+            "description": "A theme id, or the value that follows the space."
+          }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "SpacePreference",
+              "where": { "spaceUuid": { "$": "space" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SpacePreference",
+              "fields": { "spaceUuid": { "$": "space" }, "themeId": { "$": "theme" } }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "SpacePreference",
+              "id": { "$": "first(rows)" },
+              "fields": { "themeId": { "$": "theme" } }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "SpacePreference", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { spaceUuid: space, themeId: theme })"
+        }
+      },
+      "summary": {
+        "entities": { "SpacePreference": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setTaskStateRetired",
+      "note": "WE’s core.setTaskStateRetired",
+      "operation": {
+        "description": "Withdraw a state from use, or bring it back, leaving the work in it as it is.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The state’s slug." },
+          "retired": { "type": "boolean", "required": true, "description": "Withdrawn from use, or brought back." }
+        },
+        "errors": { "unknownState": "This space has no state by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "TaskState", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownState" } },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": { "retired": { "$": "retired" } }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "TaskState": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setViewEnabled",
+      "note": "WE’s core.setViewEnabled",
+      "operation": {
+        "description": "Add a section to the space, at the end, or take it out — for every member. Sections this host does not know stay where they are.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "view": { "type": "string", "required": true, "description": "The view id." },
+          "on": { "type": "boolean", "required": true, "description": "The state wanted." },
+          "fallback": {
+            "type": "list",
+            "description": "What the space has while its community has not decided — written whole by the first change, so later defaults do not join a space that has."
+          }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": {
+                "enabledViews": {
+                  "$": "on ? (view in (record.enabledViews ?? fallback ?? []) ? (record.enabledViews ?? fallback ?? []) : concat((record.enabledViews ?? fallback ?? []), [view])) : without((record.enabledViews ?? fallback ?? []), view)"
+                }
+              }
+            }
+          }
+        ],
+        "returns": {
+          "$": "on ? (view in (record.enabledViews ?? fallback ?? []) ? (record.enabledViews ?? fallback ?? []) : concat((record.enabledViews ?? fallback ?? []), [view])) : without((record.enabledViews ?? fallback ?? []), view)"
+        }
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-setViewVisible",
+      "note": "WE’s core.setViewVisible",
+      "operation": {
+        "description": "Show or hide one of a space’s sections for the invoker only.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space’s dataset id." },
+          "view": { "type": "string", "required": true, "description": "The view id." },
+          "visible": { "type": "boolean", "required": true, "description": "The state wanted." }
+        },
+        "steps": [
+          {
+            "find": {
+              "as": "rows",
+              "entity": "SpacePreference",
+              "where": { "spaceUuid": { "$": "space" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "SpacePreference",
+              "fields": {
+                "spaceUuid": { "$": "space" },
+                "hiddenViews": {
+                  "$": "!visible ? (view in (first(rows).hiddenViews ?? []) ? (first(rows).hiddenViews ?? []) : concat((first(rows).hiddenViews ?? []), [view])) : without((first(rows).hiddenViews ?? []), view)"
+                }
+              }
+            },
+            "when": { "$": "count(rows) == 0" }
+          },
+          {
+            "update": {
+              "entity": "SpacePreference",
+              "id": { "$": "first(rows)" },
+              "fields": {
+                "hiddenViews": {
+                  "$": "!visible ? (view in (first(rows).hiddenViews ?? []) ? (first(rows).hiddenViews ?? []) : concat((first(rows).hiddenViews ?? []), [view])) : without((first(rows).hiddenViews ?? []), view)"
+                }
+              }
+            },
+            "when": { "$": "count(rows) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(rows, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "SpacePreference", "id": { "$": "extra" } } }]
+            }
+          }
+        ],
+        "returns": {
+          "$": "merge({ id: count(rows) > 0 ? first(rows).id : made.id }, { spaceUuid: space, hiddenViews: !visible ? (view in (first(rows).hiddenViews ?? []) ? (first(rows).hiddenViews ?? []) : concat((first(rows).hiddenViews ?? []), [view])) : without((first(rows).hiddenViews ?? []), view) })"
+        }
+      },
+      "summary": {
+        "entities": { "SpacePreference": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": true
+      },
+      "permission": { "group": "agent", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-setWorkflowArchived",
+      "note": "WE’s core.setWorkflowArchived",
+      "operation": {
+        "description": "Put a workflow away, or bring it back: the records in it still show and can still finish.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "workflow": { "type": "string", "required": true, "description": "The workflow’s name." },
+          "archived": { "type": "boolean", "required": true, "description": "The state wanted." }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": {
+                "archivedWorkflows": {
+                  "$": "archived ? (workflow in (record.archivedWorkflows ?? []) ? (record.archivedWorkflows ?? []) : concat((record.archivedWorkflows ?? []), [workflow])) : without((record.archivedWorkflows ?? []), workflow)"
+                }
+              }
+            }
+          }
+        ],
+        "returns": {
+          "$": "archived ? (workflow in (record.archivedWorkflows ?? []) ? (record.archivedWorkflows ?? []) : concat((record.archivedWorkflows ?? []), [workflow])) : without((record.archivedWorkflows ?? []), workflow)"
+        }
+      },
+      "summary": { "entities": { "Space": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-thread",
+      "note": "WE’s core.thread",
+      "operation": {
+        "description": "Link a response from the subject of the thread it joins, so the whole discussion under a record is one read.",
+        "params": {
+          "record": { "type": "string", "required": true, "description": "The response." },
+          "thread": {
+            "type": "string",
+            "required": true,
+            "description": "The subject of the thread it joins — what it answers, or the first record above that is not itself a response."
+          },
+          "threadEntity": { "type": "string", "required": true, "description": "The subject’s entity." }
+        },
+        "steps": [
+          {
+            "link": {
+              "entity": { "$": "threadEntity" },
+              "oneOf": [{ "category": "blockable" }, "Relationship", "Topic"],
+              "id": { "$": "thread" },
+              "relation": "thread",
+              "target": { "$": "record" }
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Relationship": ["add:thread"], "Topic": ["add:thread"] },
+        "categories": { "blockable": ["add:thread"] },
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["blockable"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-updateInvolvementType",
+      "note": "WE’s core.updateInvolvementType",
+      "operation": {
+        "description": "Change a kind of involvement — its name, glyph, colour, meaning and where it is offered. The slug stays, and so does whether it is an answer.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The kind’s slug." },
+          "name": { "type": "string", "description": "A new name; empty or absent keeps the old one." },
+          "icon": { "type": "string", "description": "A glyph; empty clears it." },
+          "color": { "type": "string", "description": "A colour; empty clears it." },
+          "semantic": {
+            "type": "string",
+            "description": "One of ['responsible', 'reviewing', 'committed', 'interested', 'declined']; anything else is ignored."
+          },
+          "appliesTo": {
+            "type": "string",
+            "description": "The entities it is offered on, comma-separated; empty for all."
+          }
+        },
+        "errors": { "unknownKind": "This space has no kind of involvement by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "InvolvementType", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownKind" } },
+          {
+            "update": {
+              "entity": "InvolvementType",
+              "id": { "$": "first(named)" },
+              "fields": { "icon": { "$": "icon" }, "color": { "$": "color" }, "appliesTo": { "$": "appliesTo" } }
+            }
+          },
+          {
+            "update": {
+              "entity": "InvolvementType",
+              "id": { "$": "first(named)" },
+              "fields": { "name": { "$": "trim(name)" } }
+            },
+            "when": { "$": "trim(name ?? '') != ''" }
+          },
+          {
+            "update": {
+              "entity": "InvolvementType",
+              "id": { "$": "first(named)" },
+              "fields": { "semantic": { "$": "semantic" } }
+            },
+            "when": { "$": "semantic in ['responsible', 'reviewing', 'committed', 'interested', 'declined']" }
+          }
+        ]
+      },
+      "summary": { "entities": { "InvolvementType": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-updateSpaceMeta",
+      "note": "WE’s core.updateSpaceMeta",
+      "operation": {
+        "description": "Change what a space is called and says about itself, whether it is listed, and where it is — a new place replaces the old, and none takes it away.",
+        "params": {
+          "space": { "type": "string", "required": true, "description": "The space record’s id." },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "discovery": { "type": "string", "description": "listed or hidden." },
+          "location": {
+            "type": "object",
+            "description": "{ latitude, longitude, name?, city?, country?, countryCode? }, to set the place."
+          },
+          "clearLocation": { "type": "boolean", "description": "Take the place away." }
+        },
+        "steps": [
+          { "find": { "as": "record", "entity": "Space", "where": { "id": { "$": "space" } }, "one": true } },
+          {
+            "update": {
+              "entity": "Space",
+              "id": { "$": "space" },
+              "fields": {
+                "name": { "$": "name" },
+                "description": { "$": "description" },
+                "discovery": { "$": "discovery" }
+              }
+            }
+          },
+          {
+            "delete": { "entity": "LocationBlock", "id": { "$": "record.location" } },
+            "when": { "$": "(location || clearLocation) && record.location" }
+          },
+          {
+            "create": {
+              "as": "place",
+              "entity": "LocationBlock",
+              "fields": {
+                "latitude": { "$": "location.latitude" },
+                "longitude": { "$": "location.longitude" },
+                "name": { "$": "location.name" },
+                "city": { "$": "location.city" },
+                "country": { "$": "location.country" },
+                "countryCode": { "$": "location.countryCode" }
+              }
+            },
+            "when": { "$": "location" }
+          },
+          {
+            "update": { "entity": "Space", "id": { "$": "space" }, "fields": { "location": { "$": "place.id" } } },
+            "when": { "$": "location" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "LocationBlock": ["create", "delete"], "Space": ["edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.core-updateTaskState",
+      "note": "WE’s core.updateTaskState",
+      "operation": {
+        "description": "Change a state the community has — its name, glyph, colour, what it counts as, and what moving into it asks for. The slug stays: it is what every task stores.",
+        "params": {
+          "slug": { "type": "string", "required": true, "description": "The state’s slug." },
+          "name": { "type": "string", "description": "A new name; empty or absent keeps the old one." },
+          "icon": { "type": "string", "description": "A glyph; empty clears it." },
+          "color": { "type": "string", "description": "A colour; empty clears it." },
+          "semantic": {
+            "type": "string",
+            "description": "What it counts as, one of ['open', 'active', 'blocked', 'done', 'cancelled']; anything else is ignored."
+          },
+          "approvals": { "type": "number", "description": "How many must agree to a move into it." },
+          "approverKind": {
+            "type": "string",
+            "description": "The involvement kind whose holders’ approval counts; empty for anybody’s."
+          },
+          "evidence": {
+            "type": "json",
+            "description": "What must be there first, as the state stores it; empty clears it."
+          }
+        },
+        "errors": { "unknownState": "This space has no state by that slug." },
+        "steps": [
+          { "find": { "as": "named", "entity": "TaskState", "where": { "slug": { "$": "slug" } }, "limit": 1 } },
+          { "check": { "condition": { "$": "count(named) > 0" }, "error": "unknownState" } },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": {
+                "icon": { "$": "icon" },
+                "color": { "$": "color" },
+                "approvals": { "$": "approvals" },
+                "approverKind": { "$": "approverKind" },
+                "evidence": { "$": "evidence" }
+              }
+            }
+          },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": { "name": { "$": "trim(name)" } }
+            },
+            "when": { "$": "trim(name ?? '') != ''" }
+          },
+          {
+            "update": {
+              "entity": "TaskState",
+              "id": { "$": "first(named)" },
+              "fields": { "semantic": { "$": "semantic" } }
+            },
+            "when": { "$": "semantic in ['open', 'active', 'blocked', 'done', 'cancelled']" }
+          }
+        ]
+      },
+      "summary": { "entities": { "TaskState": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "space-settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-upsertSignal",
+      "note": "WE’s core.upsertSignal",
+      "operation": {
+        "description": "Give the invoker’s reaction of one type on a record, or change it: one per person per type, edited in place, any duplicates removed.",
+        "params": {
+          "node": { "type": "string", "required": true, "description": "The record reacted to." },
+          "signalType": { "type": "string", "required": true, "description": "The SignalType’s id." },
+          "value": {
+            "type": "number",
+            "required": true,
+            "description": "What the reaction says. Zero is a value like any other; withdrawing is withdrawSignal."
+          }
+        },
+        "serial": { "$": "'signal ' + node + ' ' + signalType" },
+        "steps": [
+          {
+            "find": {
+              "as": "mine",
+              "entity": "Signal",
+              "scope": { "anchor": "WeNode", "via": "signals", "anchorId": { "$": "node" } },
+              "where": { "signalTypeId": { "$": "signalType" }, "author": { "$": "invoker" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "create": {
+              "as": "made",
+              "entity": "Signal",
+              "fields": { "signalTypeId": { "$": "signalType" }, "value": { "$": "value" } },
+              "parent": { "id": { "$": "node" }, "relation": "signals" }
+            },
+            "when": { "$": "count(mine) == 0" }
+          },
+          {
+            "update": { "entity": "Signal", "id": { "$": "first(mine)" }, "fields": { "value": { "$": "value" } } },
+            "when": { "$": "count(mine) > 0" }
+          },
+          {
+            "forEach": {
+              "in": { "$": "slice(mine, 1)" },
+              "as": "extra",
+              "steps": [{ "delete": { "entity": "Signal", "id": { "$": "extra" }, "own": true } }]
+            }
+          }
+        ],
+        "returns": { "$": "count(mine) ? first(mine).id : made.id" }
+      },
+      "summary": {
+        "entities": { "*": ["add:signals"], "Signal": ["create", "deleteOwn", "edit"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "signals", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-withdrawSignal",
+      "note": "WE’s core.withdrawSignal",
+      "operation": {
+        "description": "Take back the invoker’s reaction of one type on a record — every copy of it, so a doubled one does not survive the withdrawal.",
+        "params": {
+          "node": { "type": "string", "required": true, "description": "The record reacted to." },
+          "signalType": { "type": "string", "required": true, "description": "The SignalType’s id." }
+        },
+        "serial": { "$": "'signal ' + node + ' ' + signalType" },
+        "steps": [
+          {
+            "find": {
+              "as": "mine",
+              "entity": "Signal",
+              "scope": { "anchor": "WeNode", "via": "signals", "anchorId": { "$": "node" } },
+              "where": { "signalTypeId": { "$": "signalType" }, "author": { "$": "invoker" } },
+              "order": { "createdAt": "asc" }
+            }
+          },
+          {
+            "forEach": {
+              "in": { "$": "mine" },
+              "as": "signal",
+              "steps": [{ "delete": { "entity": "Signal", "id": { "$": "signal" }, "own": true } }]
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Signal": ["deleteOwn"] }, "categories": {}, "bulk": true, "destructive": false },
+      "permission": { "group": "signals", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.core-writeEdgeRoute",
+      "note": "WE’s core.writeEdgeRoute",
+      "operation": {
+        "description": "Write how a connection is drawn on one canvas — its pinned sides and its bends — editing the route, replacing it, making one, or deleting one that says nothing any more.",
+        "params": {
+          "canvas": { "type": "string", "required": true, "description": "The canvas." },
+          "connection": { "type": "string", "required": true, "description": "The Relationship." },
+          "route": { "type": "string", "description": "The connection’s route on this canvas, where it has one." },
+          "action": { "type": "string", "required": true, "description": "update, replace, create or delete." },
+          "fields": { "type": "object", "description": "sourceAnchor, targetAnchor, points — what the route says." }
+        },
+        "steps": [
+          {
+            "update": { "entity": "EdgeRoute", "id": { "$": "route" }, "fields": { "$": "fields ?? {}" } },
+            "when": { "$": "action == 'update' && route" }
+          },
+          {
+            "delete": { "entity": "EdgeRoute", "id": { "$": "route" } },
+            "when": { "$": "(action == 'replace' || action == 'delete') && route" }
+          },
+          {
+            "create": {
+              "entity": "EdgeRoute",
+              "fields": { "$": "merge(fields ?? {}, { connection: connection })" },
+              "parent": { "id": { "$": "canvas" }, "relation": "children", "entity": "CollectionBlock" }
+            },
+            "when": { "$": "action == 'replace' || action == 'create'" }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "CollectionBlock": ["add:children"], "EdgeRoute": ["create", "delete", "edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    }
+  ]
+}

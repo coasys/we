@@ -1,0 +1,924 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "safety.grant.read-absent",
+      "note": "a member outside the grant reads as no value, exactly like one that does not exist",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "routeStore.page ?? 'absent'"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "spaceStore.memberDids ?? 'absent'"
+              }
+            ]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "spaceStore.noSuchMember ?? 'absent'"
+              }
+            ]
+          }
+        ]
+      },
+      "grants": ["identity"],
+      "data": {
+        "routeStore": {
+          "page": "/board"
+        },
+        "spaceStore": {
+          "memberDids": ["did:a"]
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["absent"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["did:a"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["absent"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.grant.invoke-absent",
+      "note": "an action outside the grant does nothing when invoked; a granted one runs",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": {
+                "$invoke": "routeStore.navigate",
+                "args": ["~/"]
+              }
+            },
+            "children": ["go"]
+          },
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "make",
+              "onClick": {
+                "$invoke": "record.create",
+                "args": [
+                  "Post",
+                  {
+                    "title": "x"
+                  }
+                ]
+              }
+            },
+            "children": ["make"]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "routeStore.navigate": {
+          "returns": null
+        },
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        },
+        {
+          "op": "click",
+          "target": "make"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "make"
+                  },
+                  "children": ["make"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "make"
+                  },
+                  "children": ["make"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "make"
+                  },
+                  "children": ["make"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "record.create",
+              "args": [
+                "Post",
+                {
+                  "title": "x"
+                }
+              ]
+            }
+          ],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.grant.action-not-readable",
+      "note": "an action read in an expression is no value, so naming one can never call it",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "record.create ?? 'not a value'"
+              }
+            ]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-text",
+                  "children": ["not a value"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.grant.absent-no-continuation",
+      "note": "an action outside the grant does nothing, its continuations included, as for a member that does not exist",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "said": {
+            "type": "string",
+            "initial": "nothing yet"
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "go",
+              "onClick": {
+                "$invoke": "routeStore.navigate",
+                "args": ["~/"],
+                "onSuccess": [
+                  {
+                    "$setLocal": "said",
+                    "value": {
+                      "$": "result ?? 'no result'"
+                    }
+                  }
+                ]
+              }
+            },
+            "children": ["go"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.said"
+              }
+            ]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "routeStore.navigate": {
+          "returns": "moved"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "go"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["nothing yet"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "go"
+                  },
+                  "children": ["go"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["nothing yet"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.gesture.exempt-runs-unasked",
+      "note": "an exempt action (navigating) runs on an event nobody causes; a write there does not",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-image",
+            "props": {
+              "data-case": "img",
+              "onLoad": [
+                {
+                  "$invoke": "routeStore.navigate",
+                  "args": ["~/loaded"]
+                },
+                {
+                  "$invoke": "record.create",
+                  "args": [
+                    "Post",
+                    {
+                      "title": "on load"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "grants": ["content", "navigation"],
+      "actions": {
+        "routeStore.navigate": {
+          "returns": null
+        },
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "steps": [
+        {
+          "op": "emit",
+          "target": "img",
+          "event": "load"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-image",
+                  "props": {
+                    "data-case": "img"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-image",
+                  "props": {
+                    "data-case": "img"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "routeStore.navigate",
+              "args": ["~/loaded"]
+            }
+          ],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.gesture.on-error-continuation",
+      "note": "onError counts as part of the press that started it, so a write there runs",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "press",
+              "onClick": {
+                "$invoke": "record.update",
+                "args": [
+                  "Post",
+                  "p1",
+                  {
+                    "title": "x"
+                  }
+                ],
+                "onError": [
+                  {
+                    "$invoke": "record.create",
+                    "args": [
+                      "Post",
+                      {
+                        "title": {
+                          "$": "result.message"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "children": ["press"]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "record.update": {
+          "reject": "refused by policy"
+        },
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "press"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "press"
+                  },
+                  "children": ["press"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "record.update",
+              "args": [
+                "Post",
+                "p1",
+                {
+                  "title": "x"
+                }
+              ]
+            },
+            {
+              "call": "record.create",
+              "args": [
+                "Post",
+                {
+                  "title": "refused by policy"
+                }
+              ]
+            }
+          ],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.gesture.focus-is-not-asking",
+      "note": "a field taking focus is an event that happens to it: a write wired there is refused",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-input",
+            "props": {
+              "data-case": "field",
+              "onFocus": {
+                "$invoke": "record.create",
+                "args": [
+                  "Post",
+                  {
+                    "title": "focused"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "steps": [
+        {
+          "op": "emit",
+          "target": "field",
+          "event": "focus"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-input",
+                  "props": {
+                    "data-case": "field"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-input",
+                  "props": {
+                    "data-case": "field"
+                  }
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        }
+      ]
+    },
+    {
+      "id": "safety.confirm.declined",
+      "note": "a destructive action asks first; declined, it does not run and onSuccess does not fire",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "done": {
+            "type": "boolean",
+            "initial": false
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "delete",
+              "onClick": {
+                "$invoke": "record.delete",
+                "args": ["Post", "p1"],
+                "onSuccess": [
+                  {
+                    "$setLocal": "done",
+                    "value": true
+                  }
+                ]
+              }
+            },
+            "children": ["delete"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.done ? 'deleted' : 'kept'"
+              }
+            ]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "confirm": false,
+      "actions": {
+        "record.delete": {
+          "resolve": true
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "delete"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "delete"
+                  },
+                  "children": ["delete"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["kept"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "delete"
+                  },
+                  "children": ["delete"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["kept"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": [
+            {
+              "call": "record.delete",
+              "args": ["Post", "p1"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "safety.confirm.accepted",
+      "note": "accepted, the destructive action runs and its continuation follows",
+      "template": {
+        "type": "Column",
+        "$localState": {
+          "done": {
+            "type": "boolean",
+            "initial": false
+          }
+        },
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "delete",
+              "onClick": {
+                "$invoke": "record.delete",
+                "args": ["Post", "p1"],
+                "onSuccess": [
+                  {
+                    "$setLocal": "done",
+                    "value": true
+                  }
+                ]
+              }
+            },
+            "children": ["delete"]
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.done ? 'deleted' : 'kept'"
+              }
+            ]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "confirm": true,
+      "actions": {
+        "record.delete": {
+          "resolve": true
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "delete"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "delete"
+                  },
+                  "children": ["delete"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["kept"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "delete"
+                  },
+                  "children": ["delete"]
+                },
+                {
+                  "type": "we-text",
+                  "children": ["deleted"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "record.delete",
+              "args": ["Post", "p1"]
+            }
+          ],
+          "confirmations": [
+            {
+              "call": "record.delete",
+              "args": ["Post", "p1"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "safety.confirm.not-for-ordinary-writes",
+      "note": "an ordinary write asks nothing",
+      "template": {
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "data-case": "make",
+              "onClick": {
+                "$invoke": "record.create",
+                "args": [
+                  "Post",
+                  {
+                    "title": "x"
+                  }
+                ]
+              }
+            },
+            "children": ["make"]
+          }
+        ]
+      },
+      "grants": ["content"],
+      "actions": {
+        "record.create": {
+          "returns": "id"
+        }
+      },
+      "steps": [
+        {
+          "op": "click",
+          "target": "make"
+        }
+      ],
+      "expect": [
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "make"
+                  },
+                  "children": ["make"]
+                }
+              ]
+            }
+          ],
+          "actions": [],
+          "confirmations": []
+        },
+        {
+          "tree": [
+            {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "we-button",
+                  "props": {
+                    "data-case": "make"
+                  },
+                  "children": ["make"]
+                }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "call": "record.create",
+              "args": [
+                "Post",
+                {
+                  "title": "x"
+                }
+              ]
+            }
+          ],
+          "confirmations": []
+        }
+      ]
+    }
+  ]
+}

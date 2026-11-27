@@ -64,14 +64,14 @@ const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel, MeetingM
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
     const instance: AnyRow = { ...row };
-    // An edit through the record, as the operations runner makes one: '' clears a field, a to-one
-    // with accessors takes a one-element list, anything else is written as given.
+    // An edit through the record, as the operations runner makes one: '' clears a field, anything
+    // else is written as given — a to-one as its one id.
     instance.save = async () => {
       const stored = table.get(row.id)!;
       for (const [field, value] of Object.entries(instance)) {
         if (typeof value === 'function' || field === 'id' || value == null) continue;
         if (value === '') delete stored[field];
-        else stored[field] = Array.isArray(value) && toOnes.includes(field) ? value[0] : value;
+        else stored[field] = value;
       }
     };
     for (const prop of world.bare ? [] : toOnes) {
@@ -359,7 +359,7 @@ let handle: unknown;
 const place = (node: string, rank?: number) =>
   model('Placement').create(
     handle,
-    { nodeType: 'Position', node: [node], ...(rank ? { rank } : {}) },
+    { nodeType: 'Position', node, ...(rank ? { rank } : {}) },
     { id: `row-${node}`, parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
   );
 const placementOf = async (node: string) =>

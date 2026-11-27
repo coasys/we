@@ -24,14 +24,10 @@ export const HOST_ONLY_EQUIVALENTS: Readonly<Record<string, string>> = {
 
   // Writes that are declared operations.
   'spaceStore.createPost': 'ops.core.createPost',
-  'spaceStore.upsertSignal': 'ops.core.upsertSignal, and ops.core.withdrawSignal to take one back',
   'spaceStore.setInvolvement': 'ops.core.setInvolvement',
-  'spaceStore.respondTo': 'ops.core.respond',
   'spaceStore.openBoardFor':
     'ops.core.openBoardFor, for a collection’s board (the space’s own board stays a store action)',
   'spaceStore.removeBoardColumn': 'ops.core.removeBoardColumn',
-  'spaceStore.reorderBoardColumns': 'ops.core.reorderBoardColumns',
-  'spaceStore.arrangeColumn': 'ops.core.arrangeColumn',
   'spaceStore.moveCardToColumn': 'ops.core.moveCard',
   'spaceStore.addTaskToColumn': 'ops.core.addTaskToColumn',
   'spaceStore.createTaskState': 'ops.core.createTaskState',

@@ -331,8 +331,8 @@ describe('the workshop template’s call selection', () => {
     /*
       The canvas is the landing route, so it is where "there is no call yet" is read most often —
       and its placeholder is drawn by `GraphView` out of a string rather than by a node this
-      template owns, so there is nothing here to hang a button under. A slot is how a node hands a
-      component something already rendered: it lands inside the graph's own centred box and stays
+      template owns, so there is nothing here to hang a button under. `emptyAction` is a node prop,
+      so the node is drawn and handed over: it lands inside the graph's own centred box and stays
       under the sentence at every size, through every panel opening and closing.
 
       Gated, because that box answers two questions. `empty` says one thing when there is no call
@@ -341,7 +341,7 @@ describe('the workshop template’s call selection', () => {
     */
     const canvas = (workshop.routes ?? []).find((entry) => entry.path === '/canvas') as unknown as SchemaNode;
     const graph = (canvas.children as SchemaNode[]).find((child) => child.type === 'GraphView');
-    const action = (graph?.slots as Record<string, GateNode> | undefined)?.emptyAction;
+    const action = (graph?.props as Record<string, GateNode> | undefined)?.emptyAction;
 
     expect(action?.type).toBe('$if');
     // Offered when the space has its canvas and nobody is in a call — the canvas is the space's now,
@@ -1709,7 +1709,7 @@ describe('the workshop’s people', () => {
 
   it('lets a member answer an event, reading answers rather than the call’s roster', () => {
     const calendar = route('/calendar');
-    expect(calendar).toContain('"$invoke":"spaceStore.respondTo"');
+    expect(calendar).toContain('"$invoke":"ops.core.respond"');
     expect(calendar).toContain('.committed');
     expect(calendar).not.toContain('event.participants');
     expect(calendar).not.toContain('setAttending');
@@ -1899,7 +1899,7 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('involvementMenu({ node: row.id');
     expect(inspector).toContain('"$invoke":"spaceStore.setInvolvement"');
     // Your own answer is withdrawn, never somebody else's.
-    expect(inspector).toContain('"$invoke":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
+    expect(inspector).toContain('"$invoke":"ops.core.respond","args":[{"node":{"$":"row.id"}}]');
     expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
   });
 

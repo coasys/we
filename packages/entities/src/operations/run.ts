@@ -41,9 +41,22 @@ import {
   referencedRoots,
 } from '@we/expressions';
 
-import { getEntityForDataset, runEntityTransaction } from '../entityRegistry';
-import { isOperationError, OperationError, preconditionError, staticError } from './errors';
-import { callSegment, deriveRecordId, keySegment } from './ids';
+import {
+  getEntityForDataset,
+  type IdentityDomain,
+  identityDomainOf,
+  isDomainArriving,
+  runEntityTransaction,
+} from '../entityRegistry';
+import {
+  declaredError,
+  isOperationError,
+  OperationError,
+  preconditionError,
+  spaceNotReadyError,
+  staticError,
+} from './errors';
+import { callSegment, deriveIdentityId, deriveRecordId, identityText, keySegment } from './ids';
 import { categoryMembers, getOperation, isAbstract, operationsVersion } from './registry';
 import { splitName } from './validate';
 import {
@@ -66,6 +79,38 @@ export interface RunOperationOptions {
   invocationId?: string;
   /** The version of the declaring manifest the caller wrote against; refused when it is not the registered one. */
   version?: string;
+  /**
+   * The host's judgement of an entity a step chooses when it runs (an expression `entity` with a
+   * `oneOf`): asked with the entity actually chosen, before the step writes it, and the operation
+   * fails with static `notGranted` when it answers false. How a host lets one operation write a
+   * post for a caller that may write content and refuse a task state to the same caller, where the
+   * static summary can only say "a record of any type". Not asked for a literal entity, which the
+   * summary already names. Absent, every chosen entity the `oneOf` admits is written.
+   */
+  admitChosen?: (entity: string) => boolean;
+  /**
+   * The dataset's identity domain, which an identity-keyed create's id is derived within; `null` for
+   * a dataset with none, `{ arriving: true }` for one naming itself by a record not held yet (an
+   * identity create there fails with precondition `spaceNotReady`). Absent, the one the host
+   * registered says (`registerIdentityDomain`), so a caller passes it only where no host is (a
+   * vector, a test).
+   */
+  domain?: IdentityDomain;
+  /**
+   * What the steps read and write through, in place of the connected backend: the statics an entity
+   * is reached by, and the write group the steps run in. A host's speculative run passes a view that
+   * reads committed rows with its own pending writes laid over them and records each write instead of
+   * making it (`speculateOperation`). Absent, the backend's own classes and transaction runner.
+   */
+  view?: OperationView;
+}
+
+/** A dataset as an operation sees it — see {@link RunOperationOptions.view}. */
+export interface OperationView {
+  /** The statics `name` is read and written through, or undefined when the dataset has no such entity. */
+  entity(name: string, dataset: unknown): unknown;
+  /** Run the steps as one write group, as `runEntityTransaction` does. */
+  transaction<R>(dataset: unknown, fn: (tx: { batchId?: string }) => Promise<R>): Promise<R>;
 }
 
 /** A record as a step binds it: its fields as data, never the backend's instance. */
@@ -104,10 +149,17 @@ interface Expectation {
 /** What one run shares across its steps and the operations it calls. */
 interface Run {
   dataset: unknown;
+  view?: OperationView;
   batchId?: string;
   invocationId: string;
   invoker: string;
   invokedAt: string;
+  admitChosen?: (entity: string) => boolean;
+  /**
+   * The dataset's identity domain, null when it has none, or arriving: what identity ids derive within. Asked
+   * of the host on the first identity-keyed create, since most operations make none.
+   */
+  domain: () => Promise<IdentityDomain>;
   /** Instances a step made or found, by id, so a later write reaches a record the backend has only staged. */
   instances: Map<string, Instance>;
   /** Relation membership as this operation has left it, by `id`, then relation — for strict links. */
@@ -122,6 +174,12 @@ interface Run {
 const NEVER = Symbol('never');
 
 const MAX_CALL_DEPTH = 16;
+
+/** `fn` asked at most once, its answer kept. */
+function once<T>(fn: () => T): () => T {
+  let held: { value: T } | undefined;
+  return () => (held ??= { value: fn() }).value;
+}
 
 /**
  * Run a registered operation by qualified name (`core.createPost`), and answer with its `returns`.
@@ -141,11 +199,17 @@ export async function runOperation(
       'versionMismatch',
       `${name} was called for version ${options.version} of "${namespace}", and version ${registeredVersion} is registered`,
     );
+  if (options.invocationId === '') throw staticError('malformed', 'An invocation id is a non-empty string');
   const run: Run = {
     dataset: options.dataset,
     invocationId: options.invocationId ?? crypto.randomUUID(),
     invoker: options.invoker,
     invokedAt: options.invokedAt ?? new Date().toISOString(),
+    domain: once(() =>
+      options.domain !== undefined ? Promise.resolve(options.domain || null) : identityDomainOf(options.dataset),
+    ),
+    ...(options.admitChosen ? { admitChosen: options.admitChosen } : {}),
+    ...(options.view ? { view: options.view } : {}),
     instances: new Map(),
     membership: new Map(),
     created: new Map(),
@@ -154,14 +218,37 @@ export async function runOperation(
   };
 
   try {
-    return await runEntityTransaction(options.dataset, async ({ batchId }) => {
+    const steps = async ({ batchId }: { batchId?: string }) => {
       run.batchId = batchId;
       const result = await invoke(run, name, op, args ?? {}, [], name);
       await checkExpectations(run);
       return result;
-    });
+    };
+    return await (options.view
+      ? options.view.transaction(options.dataset, steps)
+      : runEntityTransaction(options.dataset, steps));
   } catch (error) {
     throw asOperationError(error, run);
+  }
+}
+
+/**
+ * The queue an invocation joins — its operation's `serial` evaluated over these args — or undefined
+ * when it joins none: the operation declares no key, the key comes out absent, or the args are ones
+ * the run will refuse anyway. Prefixed with nothing, so two operations writing the same thing can
+ * share a queue by giving the same key.
+ */
+export function serialKey(name: string, args: Record<string, unknown> | undefined): string | undefined {
+  const op = getOperation(name);
+  if (!op?.serial) return undefined;
+  try {
+    const scope = new Map<string, unknown>(Object.entries(checkArgs(name, op, args ?? {}, `${name}/serial`)));
+    const key = evaluate(op.serial.$, scope, `${name}/serial`);
+    if (typeof key === 'string') return key || undefined;
+    if (typeof key === 'number' && Number.isFinite(key)) return String(key);
+    return undefined;
+  } catch {
+    return undefined;
   }
 }
 
@@ -279,10 +366,12 @@ async function runStep(
       return find(run, body, scope, step);
 
     case 'create': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
-      const Model = statics(entity, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
+      const Model = statics(run, entity, step);
       const fields = fieldsOf(value('fields'), step);
-      const id = await deriveRecordId(run.invocationId, segments);
+      const id = body.identity
+        ? await identityId(run, entity, body.identity as string[], fields, step)
+        : await deriveRecordId(run.invocationId, segments);
       const parentSpec = body.parent as { id: unknown; relation: string; entity?: string } | undefined;
       // A parent whose id is absent is no parent, as an absent field is not written: one create
       // serves a record that is sometimes under something and sometimes not.
@@ -295,6 +384,10 @@ async function runStep(
               ...(parentSpec.entity ? { entity: parentSpec.entity } : {}),
             }
           : undefined;
+      // A backend judges a held id against what is committed; one this operation made already is
+      // the runner's to know, and an identity is the one way the same id comes up twice in a run.
+      if (run.created.has(id))
+        throw preconditionError('recordExists', `${entity} ${id} was made earlier in this operation`, step);
       run.created.set(id, step);
       const instance = await Model.create(run.dataset, fields, {
         id,
@@ -313,7 +406,7 @@ async function runStep(
     }
 
     case 'update': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const instance = (await instanceOf(run, entity, idOf(value('id'), `${step}.id`), step))!;
       const fields = body.fields === undefined ? {} : fieldsOf(value('fields'), step);
       // Clearing a field is writing '' on every backend: the contract never stores it.
@@ -324,10 +417,13 @@ async function runStep(
     }
 
     case 'delete': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
       const id = idOf(value('id'), `${step}.id`);
       // Deleting what is not there is the state asked for, as the contract's own delete has it.
       const instance = await instanceOf(run, entity, id, step, { optional: true });
+      // A record made earlier in this operation is the invoker's; one read is theirs when it says so.
+      if (instance && body.own && !run.created.has(id) && instance.author !== run.invoker)
+        throw preconditionError('notOwn', `${entity} ${id} was made by somebody else`, step);
       if (instance) await instance.delete(run.batchId);
       run.instances.delete(id);
       return undefined;
@@ -335,8 +431,8 @@ async function runStep(
 
     case 'link':
     case 'unlink': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
-      const Model = statics(entity, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
+      const Model = statics(run, entity, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
       const target = idOf(value('target'), `${step}.target`);
@@ -364,12 +460,19 @@ async function runStep(
     }
 
     case 'setRelation': {
-      const entity = chosenEntity(body, scope, run.dataset, step);
-      const Model = statics(entity, run.dataset, step);
+      const entity = chosenEntity(run, body, scope, step);
+      const Model = statics(run, entity, step);
       const id = idOf(value('id'), `${step}.id`);
       const relation = relationOf(body, scope, step);
-      const targets = idsOf(value('targets') ?? []);
-      if (!targets) throw staticError('notAList', `${step}.targets is not a list of records or ids`, step);
+      const given = idsOf(value('targets') ?? []);
+      if (!given) throw staticError('notAList', `${step}.targets is not a list of records or ids`, step);
+      // Kept: whatever the relation holds that the list leaves out follows it, in the order it was.
+      const targets = body.keep
+        ? [
+            ...given,
+            ...(await membershipOf(run, Model, id, relation, step)).filter((member) => !given.includes(member)),
+          ]
+        : given;
       await Model.setRelation(run.dataset, id, relation, targets, run.batchId);
       setMembership(run, id, relation, targets);
       return undefined;
@@ -381,7 +484,7 @@ async function runStep(
       const message = op.errors?.[code];
       if (message === undefined)
         throw staticError('malformed', `"${code}" is not one of this operation's errors`, step);
-      throw preconditionError(code, message, step);
+      throw declaredError(code, message, step);
     }
 
     case 'forEach': {
@@ -436,7 +539,7 @@ async function runStep(
 
 async function find(run: Run, body: Record<string, unknown>, scope: Map<string, unknown>, step: string) {
   const entity = body.entity as string;
-  const Model = statics(entity, run.dataset, step);
+  const Model = statics(run, entity, step);
   const query = findQuery(body, scope, step);
   const rows = query === null ? [] : await Model.findAll(run.dataset, query);
   for (const row of rows) if (!run.instances.has(row.id)) run.instances.set(row.id, row);
@@ -533,7 +636,7 @@ function withoutAbsentValue(clause: unknown): unknown {
 /** Read each `expect` find again, still inside the transaction, and refuse if its answer moved. */
 async function checkExpectations(run: Run): Promise<void> {
   for (const expectation of run.expectations) {
-    const Model = statics(expectation.entity, run.dataset, expectation.step);
+    const Model = statics(run, expectation.entity, expectation.step);
     const rows = expectation.query === null ? [] : await Model.findAll(run.dataset, expectation.query);
     const now = rows.map((row) => row.id).sort();
     const then = [...expectation.ids].sort();
@@ -548,23 +651,19 @@ async function checkExpectations(run: Run): Promise<void> {
 
 // ── Writes ────────────────────────────────────────────────────────────────────
 
-function chosenEntity(
-  body: Record<string, unknown>,
-  scope: Map<string, unknown>,
-  dataset: unknown,
-  step: string,
-): string {
+function chosenEntity(run: Run, body: Record<string, unknown>, scope: Map<string, unknown>, step: string): string {
   if (typeof body.entity === 'string') return writable(body.entity, step);
   const chosen = resolve(body.entity, scope, `${step}.entity`);
   const oneOf = (body.oneOf as OneOfEntry[] | undefined) ?? [];
   const allowed =
     typeof chosen === 'string' &&
-    oneOf.some((entry) =>
-      typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, dataset),
-    );
+    oneOf.some((entry) => (typeof entry === 'string' ? entry === chosen : inCategoryNow(entry.category, chosen, run)));
   if (!allowed)
     throw staticError('outsideOneOf', `${String(chosen)} is not one of ${oneOf.map(oneOfLabel).join(', ')}`, step);
-  return writable(chosen, step);
+  writable(chosen, step);
+  if (run.admitChosen && !run.admitChosen(chosen))
+    throw staticError('notGranted', `The caller may not write ${chosen} through this operation`, step);
+  return chosen;
 }
 
 /**
@@ -573,9 +672,34 @@ function chosenEntity(
  * dataset can write — a community's shape and a foreign app's model included, which no registered
  * manifest declares — save an abstract one, which nothing is ever made as.
  */
-function inCategoryNow(category: OperationCategory, entity: string, dataset: unknown): boolean {
-  if (category === 'any') return !isAbstract(entity) && getEntityForDataset(entity, dataset) !== undefined;
+function inCategoryNow(category: OperationCategory, entity: string, run: Run): boolean {
+  if (category === 'any') return !isAbstract(entity) && entityIn(run, entity) !== undefined;
   return categoryMembers(category).has(entity);
+}
+
+/**
+ * The id of a record a create keys by identity: derived from the entity and the identity fields'
+ * values, within the dataset's identity domain when it has one, so it is the same whichever
+ * invocation makes it, on whichever peer. A field with no value cannot be part of an identity — two records without one would share an id for nothing they have in common.
+ */
+async function identityId(
+  run: Run,
+  entity: string,
+  identity: readonly string[],
+  fields: Record<string, unknown>,
+  step: string,
+): Promise<string> {
+  const pairs = identity.map((field): [string, string] => {
+    const text = identityText(fields[field]);
+    if (text === undefined)
+      throw staticError('malformed', `${step}.identity: "${field}" has no value to be the record's identity`, step);
+    return [field, text];
+  });
+  // Never derived without the domain a space has: that id would name another record than every
+  // member who holds the space's own record names.
+  const domain = await run.domain();
+  if (isDomainArriving(domain)) throw spaceNotReadyError(step);
+  return deriveIdentityId(entity, pairs, domain);
 }
 
 /** A step's relation: the name written, or what its expression gives. */
@@ -593,10 +717,15 @@ function writable(entity: string, step: string): string {
   return entity;
 }
 
-function statics(entity: string, dataset: unknown, step: string): Statics {
-  const Model = getEntityForDataset(entity, dataset) as unknown as Statics | undefined;
+function statics(run: Run, entity: string, step: string): Statics {
+  const Model = entityIn(run, entity) as Statics | undefined;
   if (!Model) throw staticError('unknownEntity', `No entity "${entity}" is registered for this dataset`, step);
   return Model;
+}
+
+/** The class an entity is reached by: the view's, else the backend's. */
+function entityIn(run: Run, entity: string): unknown {
+  return run.view ? run.view.entity(entity, run.dataset) : getEntityForDataset(entity, run.dataset);
 }
 
 /** The instance a write reaches a record through: the one a step held, else the committed record. */
@@ -609,7 +738,7 @@ async function instanceOf(
 ): Promise<Instance | null> {
   const held = run.instances.get(id);
   if (held) return held;
-  const found = await statics(entity, run.dataset, step).findOne(run.dataset, { where: { id } });
+  const found = await statics(run, entity, step).findOne(run.dataset, { where: { id } });
   if (found) run.instances.set(id, found);
   else if (!opts.optional) throw preconditionError('notFound', `No ${entity} ${id}`, step);
   return found;

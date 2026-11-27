@@ -591,7 +591,7 @@ export class GraphEngine {
         coloured from the number it had before the round trip, so the fill and the order disagree for
         the second it takes to land.
       */
-      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
+      nodes: [...this.store.nodes()],
       edges: [...this.store.edges()].map((edge) => ({ source: edge.source, target: edge.target })),
     };
 
@@ -1924,19 +1924,7 @@ export class GraphEngine {
 
     const { width, height } = this.viewport.get();
     const result = this.layout.init({
-      /*
-        Overlaid, which is the layout being treated as downstream of an optimistic edit like
-        everything else is.
-
-        `overlaid` calls itself "a node as everything downstream should see it", and the layout was
-        the one consumer not getting it. That was invisible while the overlay only carried a card's
-        colour and shape — nothing about those moves a node — and load-bearing the moment it carries
-        a coordinate: `manual` reads `x`/`y` off node data, so a position written and drawn before
-        the round trip has no way to reach the screen without this. It also quietly fixes a smaller
-        case that was always wrong, since `manual` sizes its tray slots from `canvasWidth`: a card
-        optimistically resized was parked around by its old size until the write came back.
-      */
-      nodes: [...this.store.nodes()].map((node) => this.overlaid(node)),
+      nodes: [...this.store.nodes()],
       edges: [...this.store.edges()],
       previous: this.warmStart(),
       containment: this.containment(),
@@ -2412,58 +2400,9 @@ export class GraphEngine {
    * and a 28px type node one smaller than it looks.
    */
   /**
-   * Fields drawn over a node's own, by node id — see {@link setDataOverlay}.
+   * Fields drawn over a connection's own, by edge id.
    *
-   * Deliberately beside the store rather than merged into it. The overlay stands for a write that
-   * has not come back yet, and the host works out that it has come back by comparing the patch
-   * against the node's *seeded* data — so merging would make every patch look confirmed the instant
-   * it was applied, and the card would flick back to the old value.
-   */
-  private overlay: ReadonlyMap<string, Record<string, GraphValue>> = new Map();
-
-  /**
-   * Lay fields over nodes without touching what the seeds returned.
-   *
-   * This is what makes an optimistic edit *whole*. Drawing one is not enough: a card is picked by
-   * the spatial index and its edges are routed to its border, and both are resolved from the same
-   * style rules the drawing is. Overlay only the drawing and a resized card is picked at its old
-   * size and has arrows pointing at where it used to end — a graph that disagrees with itself until
-   * something else forces a re-read.
-   *
-   * Re-indexes and re-routes, since both are derived from it, and bumps the version so a renderer
-   * watching for changes redraws.
-   */
-  setDataOverlay(overlay: ReadonlyMap<string, Record<string, GraphValue>>): void {
-    this.overlay = overlay;
-    /*
-      Laid out again where position *is* the data, and only there.
-
-      `manual` reads a node's coordinate off its own fields, so an overlay carrying one has moved the
-      layout's input and nothing will draw it until the layout is asked again. Every other layout
-      derives positions from the graph's shape instead, and re-running one on an overlay change would
-      reheat a force simulation every frame somebody drags a colour slider — so `derivesPositions` is
-      the question, which is the same flag that already decides whether pinning means anything here.
-    */
-    if (this.layout?.derivesPositions === false) this.relayout();
-    else {
-      this.reindex();
-      this.routeEdges();
-    }
-    // `graph` rather than `positions`: a node's size, colour and shape can all have changed, and
-    // those are read off the node projection rather than off the placements.
-    this.notify('graph');
-  }
-
-  /** Whether anything is currently laid over the graph — so a renderer can skip clearing nothing. */
-  hasDataOverlay(): boolean {
-    return this.overlay.size > 0;
-  }
-
-  /**
-   * The same, for edges — fields drawn over a connection's own, by edge id.
-   *
-   * Its own map rather than a second use of the node one: they are keyed in different namespaces and
-   * a collision would be silent. Routing is all it can affect, which is why this re-routes and does
+   * Routing is all it can affect, which is why this re-routes and does
    * not re-index — an edge is not in the spatial index; `hitTestEdge` measures the geometry.
    *
    * Two jobs, and they are the same job at different moments. While somebody drags an anchor around
@@ -2575,18 +2514,6 @@ export class GraphEngine {
     ];
   }
 
-  /** The fields laid over this node, if any. Read by a renderer so it draws from the same values. */
-  overlayFor(id: string): Record<string, GraphValue> | undefined {
-    return this.overlay.get(id);
-  }
-
-  /** A node as everything downstream should see it: its own fields, with the overlay in front. */
-  private overlaid(node: GraphNode): GraphNode {
-    const patch = this.overlay.get(node.id);
-    if (!patch) return node;
-    return { ...node, data: { ...node.data, ...patch } };
-  }
-
   /**
    * How a node is drawn — and, mid-rearrangement, how far between two answers it is.
    *
@@ -2599,10 +2526,9 @@ export class GraphEngine {
    *
    * One resolution per node per frame, blended mid-travel with how the card was drawn when the travel
    * started. Deliberately uncached: the rules are a handful of comparisons, and a cache keyed by node would
-   * have to be invalidated by every overlay, metric and marker that can change what a card looks like.
+   * have to be invalidated by every metric and marker that can change what a card looks like.
    */
-  private resolvedVisual(rawNode: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
-    const node = this.overlaid(rawNode);
+  private resolvedVisual(node: GraphNode, metrics: ReadonlyMap<string, ReadonlyMap<string, number>>) {
     return this.travel.visual(node.id, nodeVisual(node, resolveStyle(node, this.spec.nodeStyle, metrics), metrics));
   }
 
@@ -3395,7 +3321,7 @@ export class GraphEngine {
     const spec = this.spec.layout ?? { type: 'force' };
     const layout = places.length ? this.registry.layout(spec.type, spec.options) : undefined;
     if (!layout) return places.map(() => null);
-    const nodes = [...this.store.nodes()].map((node) => this.overlaid(node));
+    const nodes = [...this.store.nodes()];
     const edges = [...this.store.edges()];
     const containment = this.containment();
     const { width, height } = this.viewport.get();

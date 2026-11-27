@@ -1,4 +1,5 @@
 export { RenderSchema } from './SchemaRenderer';
+export type { PassScope } from './SchemaRenderer';
 export { resetSubscriptionPool, subscriptionPoolConfig } from './subscriptionPool';
 
 /*

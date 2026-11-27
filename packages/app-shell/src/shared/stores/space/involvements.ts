@@ -1,57 +1,38 @@
 /**
- * Who is on what in a space, and what each person gave: the kinds of involvement the community names,
- * putting somebody on a record or taking them off, answering one, joining a record's roster, and
- * reactions. Part of `SpaceStore` — see `../SpaceStore.ts`.
+ * The kinds of involvement and reaction a space names, and joining a record's roster. Part of
+ * `SpaceStore` — see `../SpaceStore.ts`.
  *
  * The vocabulary is held here, for the reason task states are: a template can filter a list it was
  * handed and cannot substitute one it was not. The involvements and reactions themselves are not —
- * they change with every click anybody makes, so a template holds them in a live query and reads them
- * through the `involvement` and `reactions` host functions. What an involvement write *means* lives in
- * `involvements.ts`; a reaction's in `core.upsertSignal`.
- *
- * Every write here is drawn before it lands — see `@we/optimism` — and the holds are promises about
- * the space on screen, so all of them are dropped when it changes.
+ * they change with every click anybody makes, so a template holds them in a live query, reads them
+ * through the `involvement` host function and the record's own `signals`, and writes them straight
+ * through `core.respond`, `core.upsertSignal` and `core.withdrawSignal` (and `setInvolvement` here,
+ * see there), which the host draws before they land. What is drawn is a promise about the space on screen, so it is
+ * dropped when that changes.
  */
-import { CollectionBlock, type InvolvementSemantic, InvolvementType, runOperation, SignalType } from '@we/entities';
+import { clearPredictions, CollectionBlock, type InvolvementSemantic, InvolvementType, SignalType } from '@we/entities';
 
 import { distinctSignal } from '../../distinctSignal';
 import { isoOf } from '../../interpretation/callExport';
-import type { InvolvementOptimism } from '../../involvementOptimism';
+import { invokeOperation } from '../../invokeOperation';
 import {
-  createInvolvementActions,
   INVOLVEMENT_SEMANTICS,
   type InvolvementTypeView,
   parseAppliesTo,
   resolveInvolvementTypes,
 } from '../../involvements';
-import { oneAtATime } from '../../oneAtATime';
-import type { SignalOptimism } from '../../signalOptimism';
 import type { signalOrder } from '../../signalOrder';
 import { deriveSlug } from '../../utils';
 import type { SpaceStore } from '../SpaceStore';
 import type { SpaceContext } from './context';
 
 export interface SpaceInvolvementsDeps extends SpaceContext {
-  /** People put on or taken off a record, ahead of the data — the app's one. */
-  involvementOptimism: InvolvementOptimism;
-  /** Reactions drawn ahead of the data — the app's one. */
-  signalOptimism: SignalOptimism;
   /** The order each record's reactions settled into — the app's one, forgotten with the space. */
   signalOrder: Pick<typeof signalOrder, 'reset'>;
 }
 
 export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
-  const {
-    reactivity,
-    toasts,
-    sessionStore: session,
-    datasetStore,
-    runCore,
-    reportOperation,
-    involvementOptimism,
-    signalOptimism,
-    signalOrder,
-  } = deps;
+  const { reactivity, toasts, sessionStore: session, datasetStore, runCore, reportOperation, signalOrder } = deps;
   const { memo, effect, untrack, batch } = reactivity;
 
   const [ownInvolvementTypes, setOwnInvolvementTypes] = reactivity.signal<InvolvementTypeView[]>([]);
@@ -108,9 +89,8 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
     void datasetStore.isWeSpace();
     void session.backendPorts();
     untrack(() => {
-      // A hold is a promise about records on the screen being left; see `involvementOptimism.reset`.
-      involvementOptimism.reset();
-      signalOptimism.reset();
+      // A write drawn before it landed is a promise about the screen being left.
+      clearPredictions();
       // The order a record's reactions settled into is a promise about the same screen. See
       // `signalOrder`.
       signalOrder.reset();
@@ -120,14 +100,6 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
 
   const involvementTypes = memo<InvolvementTypeView[]>(() => resolveInvolvementTypes(ownInvolvementTypes()));
   const offeredInvolvementTypes = memo<InvolvementTypeView[]>(() => involvementTypes().filter((kind) => !kind.retired));
-
-  const involvements = createInvolvementActions({
-    dataset: () => datasetStore.currentDataset()?.handle,
-    me: () => session.me()?.did,
-    types: () => involvementTypes(),
-    notify: (message) => toasts.error(message),
-    ...involvementOptimism.ports,
-  });
 
   /**
    * A change to the space's kinds of involvement, then the one read the screen has of them — they
@@ -199,6 +171,26 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
   }
 
   /**
+   * Put somebody on a record, or take them off — `core.setInvolvement`, invoked as every operation
+   * is, so the tick is drawn before it lands and presses on one pair are written in order.
+   *
+   * A store action rather than a template's `ops.core.setInvolvement`, for one reason: taking
+   * somebody off deletes an involvement another member may have made, so the operation is
+   * destructive by its effect summary, and a template invoking it would be asked to confirm every
+   * untick. Invoked from here it is not, as assigning never was.
+   */
+  async function setInvolvement(nodeId: string, agent: string, kind: string, on: boolean): Promise<void> {
+    const p = datasetStore.currentDataset()?.handle;
+    const me = session.me()?.did;
+    if (!p || !me || !nodeId || !agent || !kind) return;
+    await invokeOperation(
+      'core.setInvolvement',
+      { node: nodeId, agent, kind, on },
+      { dataset: p, invoker: me, notify: (message) => toasts.error(message), failure: 'Could not save that' },
+    ).catch(() => undefined);
+  }
+
+  /**
    * Join or leave a node's participant roster — an event RSVP, a document's co-editor list.
    *
    * **Writes only this agent's own entry, ever.** That is not a convenience, it is what keeps
@@ -236,9 +228,10 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
    *
    * - Deleting the type removes nothing. Every reaction ever given stays in the dataset, now
    *   naming an id nothing resolves, counted by no projection and rendered by nothing.
-   * - Re-creating a type with the same slug does not bring them back either. The backend mints a
-   *   fresh record id, so the old rows still name the dead one. "Delete it and add it back" loses the
-   *   history permanently, which is exactly the thing a person would expect to be safe.
+   * - Re-creating a type with the same slug brings the id back — a type's id derives from its slug —
+   *   but not what it was: its mode, range and reading are whatever the new one is given, so the old
+   *   rows are read by a type that may no longer mean what they were given as. "Delete it and add it
+   *   back" is not the safe round trip a person would expect.
    * - Cascading the delete instead — sweeping up every `Signal` with that id — is worse than it
    *   looks. It is thousands of sequential removals in an established space; it destroys *other
    *   members'* reactions on one person's click, in a shared space every member can write to; it
@@ -269,109 +262,27 @@ export function createSpaceInvolvements(deps: SpaceInvolvementsDeps) {
     }
   }
 
-  /*
-    One reaction write at a time, per record-and-type pair.
-
-    `upsertSignal` reads before it writes, so two calls for the same pair both read first: both find
-    the same stored record, both delete it, and both create a replacement. That is how one person
-    came to be listed twice under one signal type with the same value — and it is not a bug in
-    whatever called twice, because a read-then-write is racy against any second caller at all.
-
-    Per pair rather than globally: reacting to one post has no reason to wait on a reaction to
-    another. See `oneAtATime`.
-  */
-  const queueSignalWrite = oneAtATime();
-
-  /**
-   * Give a reaction, or change one — and `null` withdraws it.
-   *
-   * ## Why a withdrawal is its own value rather than a zero
-   *
-   * It was a zero, and that made **0 unstorable**. Every mode whose range includes it lost the
-   * answer: a 0–100 mood slider dragged to the bottom was written as "did not answer", so the
-   * strongest thing somebody could say was the one thing the average then ignored. Silent, and
-   * invisible from the call site — `upsertSignal(node, type, 0)` reads like storing a nought.
-   *
-   * A toggle and a vote are unaffected, because there 0 genuinely IS absence. That is what let the
-   * overload survive: it is correct for two of the four modes, and the two it is wrong for are the
-   * two whose range a community chooses.
-   */
-  async function upsertSignal(nodeId: string, signalTypeId: string, value: number | null): Promise<void> {
-    const p = datasetStore.currentDataset()?.handle;
-    const myDid = session.me()?.did;
-    if (!p || !myDid) return;
-
-    /*
-      Drawn on the press, before anything is read.
-
-      A reaction is the worst case there is for the round trip: it is a press-and-see control, and
-      the answer comes back through a subscription about a second later — with the backend's own
-      debounce under that. Held here, the glyph fills and the count moves on the click; `reactions`
-      is where the hold meets the list every surface draws from.
-    */
-    signalOptimism.hold(nodeId, signalTypeId, value);
-
-    await queueSignalWrite(`${nodeId}|${signalTypeId}`, async () => {
-      /*
-        The writes are `core.upsertSignal` and `core.withdrawSignal`: every reaction of mine on this
-        type is found, one is kept and edited in place, and the rest are removed, so a pair written
-        twice heals on the next change. A withdrawal — `null` — removes the record rather than storing
-        anything, which keeps a withdrawn reaction absent everywhere instead of being a row every count
-        has to remember to exclude. A zero is an ordinary value and is stored like any other.
-      */
-      try {
-        const args = { node: nodeId, signalType: signalTypeId };
-        if (value === null) await runOperation('core.withdrawSignal', args, { dataset: p, invoker: myDid });
-        else await runOperation('core.upsertSignal', { ...args, value }, { dataset: p, invoker: myDid });
-        // The write is back. Not a release — what retires a hold is the data moving — but it ends
-        // the hold's exemption from what the next draw says. See `@we/optimism`.
-        signalOptimism.done(nodeId, signalTypeId);
-      } catch (error) {
-        // What is on screen is a lie the moment the write is refused.
-        signalOptimism.release(nodeId, signalTypeId);
-        console.error('SpaceStore: could not record that reaction', error);
-        toasts.error('Could not record that reaction.');
-      }
-    });
-  }
-
-  /**
-   * Take back this agent's reaction of one type on one record.
-   *
-   * Its own action rather than `upsertSignal(node, type, 0)`: on a mode whose range includes zero a
-   * nought is a rating, so the two acts are spelled apart and a schema says which one it means.
-   */
-  async function withdrawSignal(nodeId: string, signalTypeId: string): Promise<void> {
-    await upsertSignal(nodeId, signalTypeId, null);
-  }
-
   const members: Pick<
     SpaceStore,
     | 'involvementTypes'
     | 'offeredInvolvementTypes'
     | 'involvementTypesLoaded'
     | 'setInvolvement'
-    | 'respondTo'
     | 'createInvolvementType'
     | 'updateInvolvementType'
     | 'setInvolvementTypeRetired'
     | 'setAttending'
     | 'setSignalTypeRetired'
-    | 'upsertSignal'
-    | 'withdrawSignal'
   > = {
     involvementTypes,
     offeredInvolvementTypes,
     involvementTypesLoaded,
-    setInvolvement: involvements.setInvolvement,
-    respondTo: involvements.respond,
+    setInvolvement,
     createInvolvementType,
     updateInvolvementType,
     setInvolvementTypeRetired,
     setAttending,
     setSignalTypeRetired,
-    upsertSignal,
-    withdrawSignal,
   };
 
   return { members };

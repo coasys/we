@@ -10,10 +10,20 @@
  * Everything compares persons rather than signing keys, through the backend's `PersonPort` — so a
  * role granted to somebody covers every device they speak from.
  */
-import { isPolicyRefusal, SELF_PERSONS, validatePolicy } from '@we/backend-shared';
-import { type DatasetProxy, Policy, registerEntityWriteCheck, Role, RoleGrant, Space } from '@we/entities';
+import { isPolicyRefusal, isRecordExists, SELF_PERSONS, validatePolicy } from '@we/backend-shared';
+import {
+  type DatasetProxy,
+  deriveIdentityId,
+  Policy,
+  registerEntityWriteCheck,
+  Role,
+  RoleGrant,
+  settledIdentityDomain,
+  Space,
+} from '@we/entities';
 import type { SpaceStarter } from '@we/schema-shared';
 
+import { datasetOfHandle } from '../../datasetIdentity';
 import { distinctSignal } from '../../distinctSignal';
 import { followLive } from '../../followLive';
 import {
@@ -248,7 +258,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     const me = session.me()?.did;
     if (!me) return;
     const existing = (await Role.findAll(dataset, { where: { slug: ADMIN_ROLE } }).catch(() => [])) as Role[];
-    if (!existing.length) await Role.create(dataset, { ...ADMIN_ROLE_RECORD });
+    if (!existing.length) await createRoleRecord(dataset, { ...ADMIN_ROLE_RECORD });
     await RoleGrant.create(dataset, { role: ADMIN_ROLE, agent: await personOf(me) });
   }
 
@@ -264,8 +274,19 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
     Roles are written here rather than by a declared operation, and that is the format's rule, not a
     gap: what decides who may write is never written by an operation, so a template cannot reach it
     through one. They follow the operations' slug rule all the same — derived from the name, refused
-    when the space holds it, an edit by slug reaching every record that holds it.
+    when the space holds it — and its identity: a role's id derives from its slug as a vocabulary
+    create's does, within the space's own record, so two nodes naming one role at once write one record.
   */
+  async function createRoleRecord(dataset: DatasetProxy, fields: { slug: string; name: string; description?: string }) {
+    const id = await deriveIdentityId('Role', [['slug', fields.slug]], await settledIdentityDomain(dataset));
+    try {
+      await Role.create(dataset, fields, { id });
+    } catch (error) {
+      // Made meanwhile, by another node or another press: the role asked for is there.
+      if (!isRecordExists(error)) throw error;
+    }
+  }
+
   async function createRole(config: { name: string; description?: string }): Promise<void> {
     const name = config?.name?.trim();
     if (!name) return;
@@ -276,7 +297,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
       toasts.error('This space already has one called that.');
       return;
     }
-    await Role.create(p, { slug, name, description: config.description?.trim() ?? '' });
+    await createRoleRecord(p, { slug, name, description: config.description?.trim() ?? '' });
     await reloadRoles();
   }
 
@@ -438,19 +459,14 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
   });
 
   /** The dataset a write names, among the ones this agent has open. */
-  function datasetOfHandle(handle: unknown) {
+  function datasetOfWrite(handle: unknown) {
     const known = [
       ...datasetStore.datasets(),
       datasetStore.rootDataset(),
       datasetStore.personalDataset(),
       datasetStore.testDataset(),
     ].filter((d): d is NonNullable<typeof d> => Boolean(d));
-    const byHandle = known.find((d) => d.handle === handle);
-    if (byHandle) return byHandle;
-    // A backend may hand a model a handle object of its own for the same dataset. `uuid` first: one
-    // backend's handle also carries an unrelated `id`.
-    const id = (handle as { uuid?: string; id?: string } | null)?.uuid ?? (handle as { id?: string } | null)?.id;
-    return id ? known.find((d) => d.id === id) : undefined;
+    return datasetOfHandle(known, handle);
   }
 
   /*
@@ -479,7 +495,7 @@ export function createSpaceRoles(deps: SpaceRolesDeps) {
 
   /** The space a dataset is, with its rules — `null` for anything that is not a space. */
   async function governedSpace(handle: unknown): Promise<GovernedSpace | null> {
-    const ds = datasetOfHandle(handle);
+    const ds = datasetOfWrite(handle);
     if (!ds || isSystemDataset(ds.name) || datasetStore.systemDatasetUuids().includes(ds.id)) return null;
     if (ds.id === datasetStore.currentDataset()?.id && policyLoaded() && rolesLoaded() && currentSpace()) {
       return { ...currentStanding(), policy: currentPolicy() };

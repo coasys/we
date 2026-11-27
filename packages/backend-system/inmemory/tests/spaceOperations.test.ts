@@ -2,7 +2,7 @@
  * WE's own space operations, run against the reference backend: the vocabularies a community names,
  * what an agent keeps privately about a space, and the settings on the space's own record.
  */
-import { getEntity, isOperationError, runOperation } from '@we/entities';
+import { deriveIdentityId, getEntity, isOperationError, runOperation } from '@we/entities';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createInMemoryBackendPorts } from '../src/lifecycle';
@@ -61,12 +61,10 @@ describe('task states', () => {
     expect(await errorOf(run('createTaskState', { name: 'Blocked' }))).toBe('precondition:slugTaken');
   });
 
-  it('edits every record holding a slug, keeping the name when none is given and ignoring an unknown meaning', async () => {
-    await model('TaskState').create(dataset, { name: 'Doing', slug: 'doing', semantic: 'active' });
+  it('edits the record a slug names, keeping the name when none is given and ignoring an unknown meaning', async () => {
     await model('TaskState').create(dataset, { name: 'Doing', slug: 'doing', semantic: 'active' });
     await run('updateTaskState', { slug: 'doing', name: ' ', color: 'red', semantic: 'nonsense', approvals: 2 });
     expect((await all('TaskState')).map((s) => [s.name, s.color, s.semantic, s.approvals])).toEqual([
-      ['Doing', 'red', 'active', 2],
       ['Doing', 'red', 'active', 2],
     ]);
     await run('updateTaskState', { slug: 'doing', name: 'Underway', semantic: 'blocked', color: '' });
@@ -90,11 +88,17 @@ describe('task states', () => {
     expect((await all('TaskState'))[0]?.evidence ?? null).toBeNull();
   });
 
-  it('orders the states by slug, through the earliest record for a doubled slug, dropping slugs nobody has', async () => {
+  it('names a state by its slug, the same id from any invocation, and refuses the slug again', async () => {
+    const made = (await run('createTaskState', { name: 'Blocked', semantic: 'blocked' })) as { id: string };
+    expect(made.id).toBe(await deriveIdentityId('TaskState', [['slug', 'blocked']]));
+    expect(await errorOf(run('createTaskState', { name: ' BLOCKED ' }))).toBe('precondition:slugTaken');
+    expect(await all('TaskState')).toHaveLength(1);
+  });
+
+  it('orders the states by slug, dropping slugs nobody has and a slug given twice', async () => {
     const space = await model('Space').create(dataset, { name: 'S', description: '' });
     const todo = await model('TaskState').create(dataset, { name: 'To do', slug: 'todo' });
     const done = await model('TaskState').create(dataset, { name: 'Done', slug: 'done' });
-    await model('TaskState').create(dataset, { name: 'Done again', slug: 'done' });
     const order = await run('reorderTaskStates', { space: space.id, slugs: ['done', 'ghost', 'todo', 'done'] });
     expect(order).toEqual([done.id, todo.id]);
     expect((await model('Space').findOne(dataset, { where: { id: space.id } }))?.taskStates).toEqual([

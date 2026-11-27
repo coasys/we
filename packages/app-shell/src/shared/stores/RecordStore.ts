@@ -34,7 +34,6 @@ import type { HistoryState } from '@we/history';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
 
 import { type BringInItem } from '../bringIn';
-import type { PendingConnectionWrites } from '../canvas/connectionHolds';
 import { hostSlot } from '../hostSlot';
 import { type CreatableEntity } from '../shapes/creatableKinds';
 import { type TypePresentation } from '../shapes/presentation';
@@ -62,16 +61,6 @@ export interface PendingLink {
   sourceLabel?: string;
   targetLabel?: string;
 }
-
-/**
- * Field patches waiting to be seen in a read, keyed by the record they were written to.
- *
- * The shape a DRAWER takes, which is all this is now: the holds themselves live per field in
- * `@we/optimism` (a card's colour and its size are written by different gestures and settle at
- * different times, so holding them together means one retires the other). This is assembled from
- * them for the graph host, which draws a node from one patch.
- */
-export type PendingWrites = Record<string, Record<string, unknown>>;
 
 export interface RecordStore {
   /**
@@ -464,46 +453,12 @@ export interface RecordStore {
    */
   setCardStyle: (canvas: string, node: string | string[], field: string, value: unknown) => Promise<void>;
   /**
-   * Placement fields written but not yet read back, keyed by the placed record's id.
-   *
-   * The optimistic half of every canvas gesture that writes presentation. A resize, a colour or a
-   * shape is answered by a record, and the answer comes back through a subscription and a re-read —
-   * a round trip at best, and a re-seed of the whole canvas after it. A slider that lags that far
-   * behind the finger reads as broken rather than as slow, so the change is drawn immediately and
-   * this is what says so.
-   *
-   * Cleared by {@link confirmPending} once the graph is drawing the real value, so the optimistic
-   * value and the stored one are never both authoritative for longer than that. A failed write
-   * clears it too, which is what makes the card snap back to the truth rather than lying about a
-   * change that did not happen.
-   */
-  pendingCardStyle: Accessor<PendingWrites>;
-  /**
-   * Forget the pending fields for these records — whatever draws them now has the real values.
-   *
-   * Called by whoever draws on the store's behalf, which is the graph host today. Reported from the
-   * drawing rather than judged here, because a read landing is not the same moment as a card being
-   * redrawn from it: clearing on the read put the old value back for the rest of the seed, so an
-   * edit flashed to its new size, snapped back, and arrived again.
-   */
-  confirmPending: (recordIds: readonly string[]) => void;
-  /**
-   * Connections written and not yet seen come back — a line just drawn, one just deleted, an end just
-   * moved — in records, for the graph to draw ahead of the data. See `holdConnection`.
-   */
-  pendingConnections: Accessor<PendingConnectionWrites>;
-  /**
-   * What the graph is drawing from its own data, in records, so each pending connection can be judged
-   * against it and dropped once the data has caught up. Called by whoever draws on the store's behalf.
-   */
-  observeConnections: (connections: readonly { id: string; source: string; target: string }[]) => void;
-  /**
    * Show a presentation change without writing it — for a control that reports while it is moving.
    *
    * The half of `setCardStyle` that costs nothing: a slider emits continuously as it is dragged and
    * a write per frame would be absurd, but waiting for the release to see the result means choosing
-   * a size blind. So the drag previews and the release writes, and because both go through the same
-   * pending map the card never jumps between them.
+   * a size blind. So the drag previews and the release writes, and because both are drawn as
+   * predictions over the same placements the card never jumps between them.
    */
   previewCardStyle: (node: string | string[], field: string, value: unknown) => void;
   /**
@@ -583,7 +538,7 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
   const kinds = createRecordKinds({ ...context, shapeStore: deps.shapeStore });
   const { creatableEntities, displays, titleField } = kinds;
   const connections = createRecordConnections({ ...context, kinds });
-  const { pendingConnections, observeConnections, rekeyConnection } = connections;
+  const { rekeyConnection } = connections;
 
   const contentHomes = hostSlot<{ forCanvas: (canvas: string) => string; root: () => string }>();
   /** Where content made on `canvas` lives — or, with no canvas, content with no other home. See `provideContentHomes`. */
@@ -633,8 +588,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     provideVocabularies: kinds.provideVocabularies,
     setSpaceTypeColor: kinds.setSpaceTypeColor,
     setSpaceTypePresentation: kinds.setSpaceTypePresentation,
-    pendingConnections,
-    observeConnections,
     rekeyConnection,
     createCardOnCanvas: onCanvas.createCardOnCanvas,
     placeOnCanvas: onCanvas.placeOnCanvas,
@@ -644,8 +597,6 @@ export function createRecordStore(deps: RecordStoreDeps): RecordStore {
     canvasHistory: onCanvas.canvasHistory,
     undoCanvas: onCanvas.undoCanvas,
     redoCanvas: onCanvas.redoCanvas,
-    pendingCardStyle: onCanvas.pendingCardStyle,
-    confirmPending: onCanvas.confirmPending,
     previewCardStyle: onCanvas.previewCardStyle,
     resizeOnCanvas: onCanvas.resizeOnCanvas,
     anchorOnCanvas: onCanvas.anchorOnCanvas,

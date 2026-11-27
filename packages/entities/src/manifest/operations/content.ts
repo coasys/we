@@ -90,7 +90,7 @@ export const CONTENT_OPERATIONS: Record<string, OperationDefinition> = {
           as: 'post',
           entity: 'CollectionBlock',
           fields: {
-            $: 'generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: [generatedBy] }) : merge(root, { mentions: mentions ?? [] })',
+            $: 'generatedBy ? merge(root, { mentions: mentions ?? [], generatedBy: generatedBy }) : merge(root, { mentions: mentions ?? [] })',
           },
           parent: { id: { $: 'respondsTo' }, relation: 'responses' },
         },

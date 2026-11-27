@@ -2293,8 +2293,7 @@ describe('staged suggestions', () => {
         previousValue: 'todo',
         newValue: 'done',
         nodeType: 'TaskBlock',
-        // A to-one relation, as the single-entry list the model layer takes.
-        node: ['task-1'],
+        node: 'task-1',
       });
     });
 
@@ -2825,7 +2824,7 @@ describe('typing into a transcript', () => {
 
     const lines = h.created.filter((c) => c.entity === 'TextBlock');
     expect(lines).toHaveLength(2);
-    for (const line of lines) expect(line.fields.generatedBy).toEqual([h.runs[0].id]);
+    for (const line of lines) expect(line.fields.generatedBy).toBe(h.runs[0].id);
   });
 
   it('writes a typed message into the same timeline, saying it was typed', async () => {

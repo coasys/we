@@ -317,6 +317,72 @@ white space; trim it as `trim` does; replace each run of white space with one `-
 > old. `sortBy`, `keys` and `values` fix their order by code point so a stored order is the same on
 > every host. There is no `now()`: the time is `invokedAt`.
 
+## Relation to CEL
+
+The subset is close to the Common Expression Language (CEL) in its shape, and a reader who knows CEL
+can read most expressions on sight. It is not CEL, and a CEL engine does not evaluate it: where the
+two differ, an expression that is correct here is an error in CEL or means something else. This
+section says which, so that nobody treats one as the other. It is informative; the rules above are
+the ones that hold.
+
+**Where they agree.**
+
+- **The surface.** Literals for `null`, booleans, numbers, strings, lists and maps; member access
+  with `.` and indexing with `[]`; `!`, `&&`, `||`, `? :`, the comparisons, `in`, and `+ - * / %`; a
+  function called as `f(x, y)` or on its receiver as `x.f(y)`. `true`, `false`, `null` and `in` are
+  reserved words in both.
+- **The list macros.** `list.filter(x, body)`, `list.map(x, body)`, `list.exists(x, body)` and
+  `list.all(x, body)` bind `x` to each entry in turn and mean what CEL's macros of the same names
+  mean over a list: the entries whose body holds, the bodies' values, whether any holds, whether all
+  hold (`all` of an empty list is true). `find` is this subset's own; CEL has `exists_one` instead,
+  which this subset does not have.
+- **No side effects, nothing but the names given.** An expression reads its bindings and calls pure
+  functions, and the host decides what is bound, as with a CEL environment.
+- **`contains`, `startsWith`, `endsWith`** exist in both, as functions on text.
+
+**Where they differ.**
+
+- **Totality.** CEL evaluates to a value or an error: a missing map key, a field of `null`, a
+  division by zero, an overflow, an operand of the wrong type (`1 + 'a'`) are errors, which `&&` and
+  `||` can absorb. Here nothing that parses and reads bound names fails at run time
+  ([Evaluation](#evaluation)): wrong-typed input gives the empty value of its kind, `/` and `%` by
+  zero give `0`, and a list joins text as text.
+- **Absent values.** CEL has no "no value": reading a key a map lacks is an error, and `has()` asks
+  first. Here a missing field is **no value**, distinct from `null` to `==` and the same as it to
+  `??` ([Values](#values)), and the data model reads `''` as no value as well
+  ([The absent-value rule](README.md#the-absent-value-rule)). There is no `has()`; `x ?? d`, `!x`
+  and `exists` in a where-object ask instead. CEL has no `??` (its optional values are an extension).
+- **Truthiness.** CEL's `!`, `&&`, `||` and `? :` take booleans only, and anything else is an error.
+  Here every value is truthy or falsy ([Truthiness](#truthiness)); `&&` and `||` still answer with a
+  boolean, as CEL's do.
+- **The number rule.** CEL has `int`, `uint` and `double` as separate types, with integer
+  arithmetic that errors on overflow. Here every number is a double, and text that is wholly a
+  numeral reads as a number in comparisons and arithmetic ([Conversions](#conversions)), so `'3' < '10'`
+  is true here and false in CEL, which compares text as text. `+` with text on either side joins
+  text here and is a type error in CEL unless both sides are text.
+- **Text.** CEL measures text in code points; here length and indexing are in UTF-16 code units
+  ([Text is UTF-16](#text-is-utf-16)). `contains` ignores case here and does not in CEL.
+- **Interpolation.** `` `…${e}…` `` is this subset's own; CEL has no string templates.
+- **Equality of lists and maps.** CEL compares them by value; here a list or an object equals only
+  itself, and `distinct`, `without` and `indexOf` compare records by `id` ([Core functions](#core-functions)).
+- **The where-object.** `filter(items, where)` and `find(items, where)` take the same where-object a
+  `find` step sends to the backend ([The where-object](#the-where-object)), so one grammar selects
+  records in both places. CEL has no counterpart; its macros take only an expression body.
+- **The library.** Of the core functions, CEL's language definition has `contains`, `startsWith`
+  and `endsWith`, and `size` where this subset has `count` and `.length`. The rest (`concat`,
+  `distinct`, `first`, `last`, `indexOf`, `insertAfter`, `insertAt`, `join`, `reverse`, `slice`,
+  `sortBy`, `split`, `sum`, `without`, `lower`, `upper`, `plural`, `slug`, `trim`, `min`, `max`,
+  `round`, `keys`, `values`, `merge`, `pick`, `put`) are not in it. Some have counterparts in CEL
+  implementations' extension libraries, with CEL's error rules rather than these, and with their own
+  names and argument orders; `sortBy`, `keys` and `values` here fix their order by code point so a
+  stored order is the same on every host ([Code point order](#core-functions)).
+
+> **Why not CEL.** An operation's expressions decide what is written, and a failure part-way through
+> a write has to be a failure of the whole operation, which the runner reports as a named error. An
+> expression language that can fail in the middle of computing a field would give every operation a
+> second, implicit error path. The absent-value rule is the data model's, and an expression language
+> that made a missing field an error would contradict it at every read.
+
 ---
 
 Implemented by: [`lexer.ts`](../../../packages/schema-system/expressions/src/lexer.ts),
@@ -329,4 +395,7 @@ Implemented by: [`lexer.ts`](../../../packages/schema-system/expressions/src/lex
 [`queryCompiler.ts`](../../../packages/backend-system/shared/src/queryCompiler.ts) (`leafFilter`).
 Pinned by: [`expressions.test.ts`](../../../packages/schema-system/expressions/src/expressions.test.ts)
 ("parsing and printing", "evaluation", "the functions a declared operation builds its writes with",
-"the core subset").
+"the core subset"), and the cases marked `core` in the template suite's
+[`expressions.json`](../../../packages/schema-system/conformance/vectors/expressions.json) and
+[`functions.json`](../../../packages/schema-system/conformance/vectors/functions.json) (`eval.core-*`,
+[Conformance](conformance.md#the-core-subset-expression-vectors)).

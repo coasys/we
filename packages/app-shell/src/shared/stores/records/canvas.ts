@@ -5,18 +5,17 @@
  * **Placement is membership.** A record is on a canvas because a `Placement` parented to the canvas
  * names it, with its coordinate and its presentation beside it — facts about the pair, not the record,
  * so the same record on two canvases sits and looks differently on each. Every write here is a declared
- * operation over those rows (`core.placeCard` …); what is drawn ahead and the undo stay here.
+ * operation over those rows (`core.placeCard` …), drawn before it lands as the host draws every one;
+ * the undo stays here, and so does a preview, which is drawn the same way with nothing written.
  *
  * **Undo is this agent's own forward writes**, scoped to the canvas on screen (`@we/history`): a move,
  * a resize, a colour, a card taken off. Each entry replays as a new write guarded by what it expects to
  * find, so a peer's change in between is left alone.
  */
 import { type ContentInput, planPost } from '@we/block-shared';
-import { COMPOSE_CARD_POST, EdgeRoute, Placement, runOperation } from '@we/entities';
+import { COMPOSE_CARD_POST, EdgeRoute, heldRows, Placement, predict, predictionLanded } from '@we/entities';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type History } from '@we/history';
-import { createOptimism, keyOf, sameValue } from '@we/optimism';
-import type { Accessor } from '@we/reactivity';
 
 import {
   cardStyleValue,
@@ -31,12 +30,14 @@ import {
   styleBaseline,
 } from '../../canvas/placements';
 import { rerouteWrite, routeWrite } from '../../edgeRoute';
-import type { PendingWrites, RecordStore } from '../RecordStore';
+import { heldFirst, heldRecord } from '../../heldFirst';
+import { invokeOperation } from '../../invokeOperation';
+import type { RecordStore } from '../RecordStore';
 import type { RecordConnections } from './connections';
 import { canvasChildren, entityNamed, type RecordContext, RELATIONSHIP } from './context';
 
 export interface RecordCanvasDeps extends RecordContext {
-  connections: Pick<RecordConnections, 'hold' | 'done' | 'release' | 'keyFor'>;
+  connections: Pick<RecordConnections, 'keyFor'>;
   /** Where content made on `canvas` lives — see `RecordStore.provideContentHomes`. */
   contentHome: (canvas?: string) => string | undefined;
 }
@@ -57,8 +58,6 @@ export interface RecordCanvas extends Pick<
   | 'canvasHistory'
   | 'undoCanvas'
   | 'redoCanvas'
-  | 'pendingCardStyle'
-  | 'confirmPending'
   | 'previewCardStyle'
   | 'resizeOnCanvas'
   | 'anchorOnCanvas'
@@ -91,46 +90,21 @@ export interface RecordCanvas extends Pick<
     patch: Record<string, unknown>,
     expect?: Record<string, unknown>,
   ) => Promise<Record<string, unknown> | undefined>;
-  /** Draw these placement fields from now on, ahead of the write that makes them. */
-  hold: (nodeId: string, patch: Record<string, unknown>) => void;
-  /** The write behind them is back: the held fields stop being exempt from what the next drawing says. */
-  done: (nodeId: string, patch: Record<string, unknown>) => void;
-  /** Stop drawing them — the write failed, or was never possible. */
-  drop: (nodeId: string, patch?: Record<string, unknown>) => void;
 }
 
 export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
   const { reactivity, toasts, datasetStore, sessionStore, runOp, connections, contentHome } = deps;
 
+  /**
+   * The placement the canvas draws for a card, and the ones it outranks — as the canvas on screen
+   * holds them where it does, so the write after it is drawn on the gesture rather than a round trip
+   * later.
+   */
   async function drawnPlacement(handle: unknown, canvas: string, nodeId: string) {
-    const rows = (await Placement.findAll(handle, { parent: canvasChildren(canvas) })) as unknown as PlacementRow[];
-    return drawnAmong(rows, nodeId);
+    const query = { parent: canvasChildren(canvas) };
+    const rows = await heldFirst('Placement', handle, query, () => Placement.findAll(handle, query));
+    return drawnAmong(rows as unknown as PlacementRow[], nodeId);
   }
-
-  /*
-    A card's presentation, held per FIELD rather than per record.
-
-    A card's colour and its size are written by different gestures that land at different times, so
-    holding them together means one settling retires the other — the key is `<nodeId>\0<field>`, and
-    each answers for itself. The patch-per-record shape survives only as `pendingCardStyle`, which is
-    what the graph host draws from.
-  */
-  const cardStyle = createOptimism<unknown>(reactivity.signal, { same: sameValue });
-
-  const hold = (nodeId: string, patch: Record<string, unknown>) => {
-    for (const [field, value] of Object.entries(patch)) cardStyle.hold(keyOf(nodeId, field), value);
-  };
-  const done = (nodeId: string, patch: Record<string, unknown>) => {
-    for (const field of Object.keys(patch)) cardStyle.done(keyOf(nodeId, field));
-  };
-  const fieldsHeldFor = (nodeId: string): string[] =>
-    Object.keys(cardStyle.holds())
-      .filter((key) => key.startsWith(`${nodeId}\u0000`))
-      .map((key) => key.slice(nodeId.length + 1));
-  const drop = (nodeId: string, patch?: Record<string, unknown>) => {
-    const fields = patch ? Object.keys(patch) : fieldsHeldFor(nodeId);
-    for (const field of fields) cardStyle.release(keyOf(nodeId, field));
-  };
 
   /**
    * What this agent has done to the canvas on screen, so it can be put back.
@@ -166,7 +140,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         kind: 'card',
         within: COMPOSE_CARD_POST,
       });
-      await runOperation(
+      await invokeOperation(
         'core.composeCard',
         {
           root: args.root,
@@ -213,26 +187,13 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId) return null;
 
-    /*
-      Held before the read, not after it.
-
-      The whole value of this on an undo is that the card moves on the keystroke; holding after the
-      read would put a round trip in front of the very thing the hold exists to hide. Dropped again
-      below if the guard refuses or the write fails, so the only cost of being eager is that a
-      refused undo shows the card moving and coming back — which is the honest drawing of what
-      happened.
-    */
-    hold(nodeId, { x, y });
     try {
       const { drawn: already, duplicates } = await drawnPlacement(dataset.handle, canvas, nodeId);
       const before = already ? spotOf(already) : null;
 
       if (expect !== undefined) {
         const matches = expect === null ? already === undefined : before !== null && sameSpot(before, expect);
-        if (!matches) {
-          drop(nodeId, { x, y });
-          return null;
-        }
+        if (!matches) return null;
       }
 
       // Edited where the canvas draws one, made where it has none, and its duplicates gone, together.
@@ -241,10 +202,8 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         { canvas, node: nodeId, nodeType, fields: { x, y }, placement: already?.id, duplicates },
         dataset.handle,
       );
-      done(nodeId, { x, y });
       return { from: moved.from ? spotOf(moved.from) : null, to: { x, y } };
     } catch (error) {
-      drop(nodeId, { x, y });
       console.error('RecordStore: placing a record on a canvas failed', error);
       toasts.error('Could not save that position.');
       return null;
@@ -353,41 +312,6 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     rememberMoves(canvas, moves);
   }
 
-  /** The holds a drawer takes: record → field → value, with anything expired already gone. */
-  const pendingCardStyle: Accessor<PendingWrites> = () => {
-    const out: PendingWrites = {};
-    for (const key of Object.keys(cardStyle.holds())) {
-      const split = key.indexOf('\u0000');
-      const nodeId = key.slice(0, split);
-      const field = key.slice(split + 1);
-      // `toDraw` needs what the data says, and the caller here has no view of it — passing the held
-      // value asks only "is this still live", which is the backstop and the in-flight rule.
-      const held = cardStyle.holds()[key];
-      const live = cardStyle.toDraw(key, held.before ?? held.value);
-      if (live === undefined) continue;
-      out[nodeId] = { ...out[nodeId], [field]: live };
-    }
-    return out;
-  };
-
-  /*
-    What the graph reports is AGREEMENT — the records whose own data already says what was written —
-    because that comparison happens in the graph's own field space, where both halves are mapped
-    already. So a reported record is one whose observed value equals the held one, which is the rule
-    the core drops an entry on.
-
-    What is not reported, and so is not covered, is a peer moving a card's colour to a THIRD value:
-    the graph never says "this disagrees", only "this agrees". Such a hold stands until the backstop
-    rather than retiring on the push that overtook it — the one place the canvas is short of what
-    the board and involvements get. Closing it means the graph reporting observed values rather
-    than a verdict.
-  */
-  function confirmPending(recordIds: readonly string[]): void {
-    if (!cardStyle.inFlight()) return;
-    const agreed = new Set(recordIds);
-    cardStyle.settle((key, entry) => (agreed.has(key.slice(0, key.indexOf('\u0000'))) ? entry.value : undefined));
-  }
-
   /**
    * Patch the placement for one node on one canvas.
    *
@@ -403,13 +327,9 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
   ): Promise<Record<string, unknown> | undefined> {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !canvas || !nodeId || !Object.keys(patch).length) return undefined;
-    // Before the write, not after it: the point is that the card changes on the gesture rather than
-    // on the round trip. Dropped again below if the write turns out not to be possible.
-    hold(nodeId, patch);
     try {
       const { drawn: already, duplicates } = await drawnPlacement(dataset.handle, canvas, nodeId);
       if (!already) {
-        drop(nodeId, patch);
         toasts.error('Drag this onto the canvas first — how a card looks is saved with where it sits.');
         return undefined;
       }
@@ -424,22 +344,15 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         overwriting it. Only a *replay* passes `expect` — a fresh gesture is somebody deciding now,
         and deciding now beats whatever was there.
       */
-      if (expect && !stillHolds(already, expect)) {
-        drop(nodeId, patch);
-        return undefined;
-      }
+      if (expect && !stillHolds(already, expect)) return undefined;
 
       await runOp(
         'core.placeCard',
         { canvas, node: nodeId, fields: patch, placement: already.id, duplicates, create: false },
         dataset.handle,
       );
-      // The write is back, so the hold stops being exempt from what the next draw says — see
-      // `BoardDeps.done` for why that is not the same as releasing it.
-      done(nodeId, patch);
       return before;
     } catch (error) {
-      drop(nodeId, patch);
       console.error('RecordStore: styling a card on a canvas failed', error);
       toasts.error('Could not save that.');
       return undefined;
@@ -508,8 +421,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
    * one of them.
    *
    * The endpoint and its type are written together. `sourceType` is an ordinary property; the
-   * endpoint is a to-one relation, written in an edit as a one-element list — a plain value is
-   * skipped by the model layer, so `{ source: uri }` typechecks, runs, and moves nothing.
+   * endpoint is a to-one relation, written as the one id it points at.
    *
    * That end's **anchor is cleared**, and the waypoints are left alone. A side pinned against the
    * card that used to be there is a decision about something no longer in the picture, and applying
@@ -528,18 +440,14 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !event.recordId || !event.end || !event.nodeId || !event.nodeType) return;
 
-    // The end drawn at its new card from now, not when the write comes back — see `connections`.
-    const held = connections.hold({ kind: 'moved', id: event.recordId, end: event.end, to: event.nodeId });
     try {
-      const Model = entityNamed(event.recordType || RELATIONSHIP);
-      const record = (await Model.findOne(dataset.handle, { where: { id: event.recordId } })) as Record<
-        string,
-        unknown
-      > | null;
-      if (!record) {
-        connections.release(held);
-        return;
-      }
+      const entity = event.recordType || RELATIONSHIP;
+      const Model = entityNamed(entity);
+      // As the canvas holds the line, so the end moves on the gesture rather than a round trip later.
+      const record = await heldRecord<Record<string, unknown>>(entity, dataset.handle, event.recordId, () =>
+        Model.findOne(dataset.handle, { where: { id: event.recordId } }),
+      );
+      if (!record) return;
 
       /*
         The key moves with the end. It names both ends, so left alone it would tell the next extraction
@@ -580,8 +488,8 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
             id: event.recordId,
             fields:
               event.end === 'source'
-                ? { sourceType: event.nodeType, source: [event.nodeId] }
-                : { targetType: event.nodeType, target: [event.nodeId] },
+                ? { sourceType: event.nodeType, source: event.nodeId }
+                : { targetType: event.nodeType, target: event.nodeId },
           },
           dataset.handle,
         );
@@ -590,9 +498,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
       // The anchor for the end that moved, dropped — see the note above. Reusing the same action a
       // person's own clear goes through, so there is one path that knows how to unset one.
       if (canvas) await anchorOnCanvas(canvas, { recordId: event.recordId, end: event.end, side: '' });
-      connections.done(held);
     } catch (error) {
-      connections.release(held);
       console.error('RecordStore: re-attaching a connection failed', error);
       toasts.error('Could not move that connection.');
     }
@@ -659,13 +565,35 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     return scalar;
   }
 
+  /**
+   * Draw a presentation field on cards as though it were written, writing nothing — a colour under
+   * the pointer in a picker.
+   *
+   * Drawn as a write is: a prediction over every placement of the card on screen, so the canvas
+   * shows it through the same reads a real write reaches. Marked landed at once, since there is no
+   * run to wait for, so it is drawn until the data moves past it — the colour picked, or anybody
+   * else's — and the backstop retires one nothing ever answers. One per card and field, so the next
+   * preview replaces the last.
+   */
   function previewCardStyle(node: string | string[], field: string, value: unknown): void {
     const scalar = styleValue(field, value);
-    if (scalar === undefined) return;
+    const dataset = datasetStore.currentDataset();
+    if (scalar === undefined || !dataset) return;
     for (const nodeId of (Array.isArray(node) ? node : [node]).filter(Boolean)) {
-      // A preview, not a write — nothing is coming back for it, so counting one would leave the hold
-      // exempt from judgement until the backstop. See `preview` in `@we/optimism`.
-      cardStyle.preview(keyOf(nodeId, field), scalar);
+      const placements = heldRows('Placement', dataset.handle, { node: nodeId });
+      if (!placements.length) continue;
+      const id = `preview\u0000${nodeId}\u0000${field}`;
+      predict(
+        dataset.handle,
+        id,
+        placements.map((row) => ({
+          kind: 'edit' as const,
+          entity: 'Placement',
+          id: row.id,
+          fields: { [field]: scalar },
+        })),
+      );
+      predictionLanded(id);
     }
   }
 
@@ -836,10 +764,8 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     const rows = (records ?? []).filter((row) => row?.recordId && row.recordType);
     if (!dataset || !rows.length) return;
 
-    // Connections among them stop being drawn now rather than when the delete comes back.
-    const held = rows
-      .filter((row) => row.recordType === RELATIONSHIP)
-      .map((row) => connections.hold({ kind: 'removed', id: row.recordId! }));
+    // Drawn gone at once, connections among them included: the host draws an invoked operation's
+    // deletes before they land. What stays here is the undo history, which only this store holds.
     try {
       await runOp(
         'core.deleteRecords',
@@ -855,9 +781,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         is rare, and a lost undo stack is a smaller surprise than an undo that resurrects a ghost.
       */
       history.clear();
-      for (const key of held) connections.done(key);
     } catch (error) {
-      for (const key of held) connections.release(key);
       console.error('RecordStore: deleting records failed', error);
       toasts.error('Could not delete those.');
     }
@@ -885,8 +809,6 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
       history.scopeTo(canvas);
       await history.redo();
     },
-    pendingCardStyle,
-    confirmPending,
     previewCardStyle,
     resizeOnCanvas,
     anchorOnCanvas,
@@ -897,8 +819,5 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     history,
     writePlacement,
     stylePlacement,
-    hold,
-    done,
-    drop,
   };
 }

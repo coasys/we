@@ -5,7 +5,7 @@
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
 import { ad4mCapabilities, createAd4mQueryAdapter } from '@we/backend-ad4m';
-import { CONTAINMENT_PREDICATE, type QueryIR, type Scope } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type Filter, type IncludeMap, type QueryIR, type Scope } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
@@ -96,6 +96,61 @@ describe('adapter.plan — AD4M conditional degradations', () => {
     const ir = base({ sort: [{ by: 'location.country', dir: 'asc' }] });
     const features = adapter.plan(ir).gaps.map((g) => g.feature);
     expect(features).toContain('sort:needs-limit');
+  });
+
+  it('a projection with a select, at any depth → refused, not sent with the select dropped', () => {
+    const projection = { over: 'replies', select: ['body'] };
+    const includes: IncludeMap[] = [{ $latest: projection }, { children: { include: { $latest: projection } } }];
+    for (const include of includes) {
+      const plan = adapter.plan(base({ include }));
+      expect(plan.gaps.map((g) => g.feature)).toContain('projection:select');
+      expect(plan.runnable).toBe(false);
+    }
+    expect(adapter.plan(base({ include: { children: { select: ['body'] } } })).gaps).toEqual([]);
+  });
+
+  it("a projection's or a count's where beyond equality, at any depth → refused, not sent with it dropped", () => {
+    const beyond: Filter[] = [
+      { field: 'stars', op: 'gt', value: 3 },
+      { field: 'stars', op: 'ne', value: 1 },
+      { field: 'body', op: 'contains', value: 'x' },
+      {
+        or: [
+          { field: 'stars', op: 'eq', value: 1 },
+          { field: 'stars', op: 'eq', value: 5 },
+        ],
+      },
+      { not: { field: 'stars', op: 'eq', value: 1 } },
+      { rel: 'author', op: 'some', where: { field: 'name', op: 'eq', value: 'a' } },
+    ];
+    for (const filter of beyond) {
+      const shapes: Partial<QueryIR>[] = [
+        { include: { $good: { over: 'replies', filter } } },
+        { aggregate: [{ as: '$good', over: 'replies', fn: 'count', filter }] },
+        { include: { children: { aggregate: [{ as: '$good', over: 'replies', fn: 'count', filter }] } } },
+      ];
+      for (const shape of shapes) {
+        const plan = adapter.plan(base(shape));
+        expect(
+          plan.gaps.map((g) => g.feature),
+          JSON.stringify(shape),
+        ).toContain('projection:where');
+        expect(plan.runnable).toBe(false);
+      }
+    }
+    // Equality, a list, and several fields named once each compile.
+    const equality: Filter = {
+      and: [
+        { field: 'kind', op: 'eq', value: 'reply' },
+        { field: 'author', op: 'in', value: ['a', 'b'] },
+      ],
+    };
+    expect(adapter.plan(base({ include: { $mine: { over: 'replies', filter: equality } } })).gaps).toEqual([]);
+    expect(
+      adapter.plan(base({ aggregate: [{ as: '$n', over: 'replies', fn: 'count', filter: equality }] })).gaps,
+    ).toEqual([]);
+    // A sub-query include is not a projection: its where is the top-level grammar.
+    expect(adapter.plan(base({ include: { children: { filter: beyond[0] } } })).gaps).toEqual([]);
   });
 
   it('no sort → no degradation gaps even under OR', () => {
@@ -308,6 +363,42 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
       scope: { anchor: 'Topic', via: 'about', anchorId: ['t1'], direction: 'in' },
     });
     expect(opts).toMatchObject({ parent: { predicate: 'x://position_about', direction: 'in' } });
+  });
+
+  it('reads, for a scope naming no anchor, the relation called `via` that holds the query entity', () => {
+    const rel = (predicate: string, relatedEntity: string) => ({
+      name: 'sections',
+      predicate,
+      type: 'uri' as const,
+      isCollection: true,
+      required: false,
+      writable: true,
+      relatedEntity,
+    });
+    const models = (...entries: Array<[string, ReturnType<typeof rel>]>) =>
+      createAd4mQueryAdapter(() =>
+        entries.map(([name, property]) => ({ name, targetClass: `x://${name}`, properties: [property] })),
+      );
+    const scoped = (scope: Partial<Scope> = {}): QueryIR => ({
+      irVersion: 1,
+      entity: 'Section',
+      scope: { via: 'sections', anchorId: 'r1', ...scope },
+    });
+
+    // One entity's `sections` holds sections; another's of the same name holds something else.
+    const one = models(['Book', rel('x://book_sections', 'Section')], ['Shelf', rel('x://shelf_sections', 'Shelf')]);
+    expect(one.lower(scoped())).toMatchObject({ parent: { id: 'r1', predicate: 'x://book_sections' } });
+    // Two that agree on the predicate are one relation.
+    const agree = models(['Book', rel('x://sections', 'Section')], ['Part', rel('x://sections', 'Section')]);
+    expect(agree.lower(scoped())).toMatchObject({ parent: { predicate: 'x://sections' } });
+    // Two that disagree are ambiguous, and refused rather than read along the first found.
+    const disagree = models(
+      ['Book', rel('x://book_sections', 'Section')],
+      ['Part', rel('x://part_sections', 'Section')],
+    );
+    expect(() => disagree.lower(scoped())).toThrow(/cannot resolve scope/);
+    // A named anchor still decides, whatever else declares the name.
+    expect(disagree.lower(scoped({ anchor: 'Part' }))).toMatchObject({ parent: { predicate: 'x://part_sections' } });
   });
 
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {

@@ -5,7 +5,7 @@
  *
  * Every question a card or a row asks — who is assigned, who is reviewing, am I going, how many said
  * maybe — is a join of three things an expression handles badly: a list of rows keyed by a relation
- * that may arrive as a string or a one-element list, the community's vocabulary to learn what each
+ * that arrives as an id or, included, as the record, the community's vocabulary to learn what each
  * slug *means*, and a rule about duplicates. Written as comprehensions it would be the same join
  * inlined at every call site, which is the shape `arrangedBoard` was moved out of the expression
  * layer to escape.
@@ -22,11 +22,8 @@
  *   who said they are not going is exactly the person a "who is coming" filter must not surface the
  *   event for.
  *
- * ## Pending writes
- *
- * `pending` is applied to the rows before anything else, so a toggle shows on the click rather than
- * a round trip later — the same arrangement `arrangedBoard` has with `boardOptimism`, for the same
- * reason. See `involvementOptimism`.
+ * A toggle shows on the click rather than a round trip later because the rows already carry it: the
+ * host lays an invoked operation's predicted writes over the query they come from.
  */
 import type { InvolvementSemantic } from '@we/entities';
 
@@ -48,14 +45,6 @@ export interface InvolvementKindInput {
   color?: string;
 }
 
-/** A written-but-not-yet-seen involvement: whether this pair should read as present. */
-export interface PendingInvolvement {
-  node: string;
-  agent: string;
-  kind: string;
-  on: boolean;
-}
-
 export interface InvolvementOptions {
   rows?: InvolvementRowInput[] | null;
   /** `spaceStore.involvementTypes` — withdrawn kinds included, since somebody may still hold one. */
@@ -67,7 +56,6 @@ export interface InvolvementOptions {
    * `byNode` still answers for every record. Omit for everyone on anything.
    */
   nodes?: string[] | null;
-  pending?: readonly PendingInvolvement[] | null;
 }
 
 /** One person's part in one record, resolved against the vocabulary. */
@@ -138,36 +126,10 @@ const SEMANTIC_KEYS: readonly InvolvementSemantic[] = [
 
 const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
-/** Held writes applied to observed rows: an `on` adds the pair if absent, an `off` removes every copy. */
-export function applyPendingInvolvements(
-  rows: readonly InvolvementRowInput[],
-  pending: readonly PendingInvolvement[] | null | undefined,
-): InvolvementRowInput[] {
-  if (!pending?.length) return [...rows];
-  const key = (node: string, agent: string, kind: string) => `${node}\u0000${agent}\u0000${kind}`;
-  const held = new Map(pending.map((p) => [key(p.node, p.agent, p.kind), p]));
-  const out = rows.filter((row) => {
-    const entry = held.get(key(relationId(row.node), row.agent ?? '', row.kind ?? ''));
-    return !entry || entry.on;
-  });
-  const present = new Set(out.map((row) => key(relationId(row.node), row.agent ?? '', row.kind ?? '')));
-  for (const entry of pending) {
-    const k = key(entry.node, entry.agent, entry.kind);
-    if (entry.on && !present.has(k)) {
-      out.push({ node: entry.node, agent: entry.agent, kind: entry.kind });
-      present.add(k);
-    }
-  }
-  return out;
-}
-
 export function involvement(options: InvolvementOptions | null | undefined): InvolvementView {
   const types = asRows<InvolvementKindInput>(options?.types).filter((t) => t && t.slug);
   const bySlug = new Map(types.map((t) => [t.slug, t]));
-  const rows = applyPendingInvolvements(
-    asRows<InvolvementRowInput>(options?.rows).filter((r) => r && typeof r === 'object'),
-    options?.pending,
-  );
+  const rows = asRows<InvolvementRowInput>(options?.rows).filter((r) => r && typeof r === 'object');
   const me = options?.me ?? '';
   const counted = Array.isArray(options?.nodes) ? new Set(options.nodes) : null;
 

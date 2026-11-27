@@ -6,7 +6,7 @@
  * the in-memory backend, compared before and after.
  */
 import { createInMemoryBackendPorts } from '@we/backend-inmemory';
-import { getEntity } from '@we/entities';
+import { getEntity, predictionsFor } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createBoardActions } from '../src/shared/boards';
@@ -32,9 +32,6 @@ const state = async () => ({
 });
 const made = async () => (await model('TaskBlock').findAll(dataset)).find((task) => task.id !== 't1')!;
 
-const holds: string[] = [];
-const releases: string[] = [];
-
 function actions(
   outcome: 'moved' | 'waiting' | 'already-approved' | 'stalled' | 'already-there' | 'slow' | null,
   asking = new Set(['done']),
@@ -49,10 +46,6 @@ function actions(
       { name: 'Done', slug: 'done' },
     ],
     notify,
-    hold: (id, relation) => holds.push(`${relation} ${id}`),
-    release: (id, relation) => releases.push(`${relation} ${id}`),
-    holdStatus: (id, status) => holds.push(`status ${id} ${status}`),
-    releaseStatus: (id) => releases.push(`status ${id}`),
     workflow: {
       enabled: () => outcome !== null,
       needsAgreement: (slug) => asking.has(slug),
@@ -70,8 +63,6 @@ beforeEach(async () => {
     { agent: { id: 'did:test:me', unlocked: true }, datasets: [{ id: 'ds-flow', name: 'Flow' }] },
   );
   dataset = (await ports.lifecycle.get('ds-flow'))!.handle;
-  holds.length = 0;
-  releases.length = 0;
   await model('TaskBlock').create(dataset, { title: 'One', status: 'todo' }, { id: 't1' });
   await model('CollectionBlock').create(
     dataset,
@@ -84,20 +75,20 @@ beforeEach(async () => {
 describe('a drop into a state that asks for agreement', () => {
   it('asks, and writes nothing — not the order, not the state — while the move is waiting', async () => {
     const { board, move } = actions('waiting');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(move).toHaveBeenCalledWith('t1', 'todo', 'done');
     expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
   });
 
   it('draws nothing ahead of it either, so the card never jumps to Done and back', async () => {
     const { board } = actions('waiting');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
-    expect(holds).toEqual([]);
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
+    expect(predictionsFor(dataset)).toEqual([]);
   });
 
   it('writes the arrangement and the state once the move has happened', async () => {
     const { board } = actions('moved');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(await status('t1')).toBe('done');
     expect(await arranges('col-done')).toEqual(['t1']);
     expect(await arranges('col-todo')).toEqual([]);
@@ -105,7 +96,7 @@ describe('a drop into a state that asks for agreement', () => {
 
   it('says so when the card is stuck', async () => {
     const { board, notify } = actions('stalled');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('stuck'));
     expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
   });
@@ -114,14 +105,14 @@ describe('a drop into a state that asks for agreement', () => {
 describe('a drop the backend could not answer plainly', () => {
   it('writes the state when the run was already there, and says the column may lag', async () => {
     const { board, notify } = actions('already-there');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(await status('t1')).toBe('done');
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('already there'));
   });
 
   it('writes nothing on a timeout, and says the vote is still being counted', async () => {
     const { board, notify } = actions('slow');
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(await state()).toEqual({ todo: ['t1'], done: [], t1: 'todo', tasks: 1 });
     expect(notify).toHaveBeenCalledWith(expect.stringContaining('still counting'));
   });
@@ -130,10 +121,9 @@ describe('a drop the backend could not answer plainly', () => {
 describe('a drop in a space that asks for nothing', () => {
   it('writes the state as it always has', async () => {
     const { board, move } = actions(null);
-    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1'], 'done');
+    await board.moveCardToColumn('col-todo', 'col-done', 't1', ['t1']);
     expect(move).not.toHaveBeenCalled();
     expect(await status('t1')).toBe('done');
-    expect(holds).toContain('status t1 done');
   });
 });
 

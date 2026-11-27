@@ -21,6 +21,7 @@
   "devDependencies": {
     "@solidjs/router": "^0.16.3",
     "@solidjs/testing-library": "^0.8.10",
+    "@types/jsonld": "^1.5.15",
     "@types/node": "^26.6.6",
     "@we/app-shell": "workspace:*",
     "@we/themes": "workspace:*",
@@ -28,6 +29,7 @@
     "esbuild": "^0.28.2",
     "esbuild-plugin-solid": "^0.6.0",
     "jsdom": "~30.0.1",
+    "jsonld": "^8.3.3",
     "playwright-core": "^1.64.1",
     "sass": "^1.107.1",
     "solid-js": "^1.9.10",

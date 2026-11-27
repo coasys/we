@@ -1,6 +1,6 @@
 import type { ReactivityPort } from '@we/reactivity';
 
-import { captureGesture, runWithGesture } from '../gesture';
+import { captureGesture, REFUSED, runWithGesture } from '../gesture';
 import type { resolveProp } from './dispatcher';
 import { isDeferredArg } from './expression';
 import { deepUnwrap } from './reactive';
@@ -152,6 +152,8 @@ export function resolveInvokeProp(
         const gesture = captureGesture();
         result
           .then((resolved: unknown) => {
+            // Refused after the call (a declined confirmation): nothing succeeded.
+            if (resolved === REFUSED) return;
             if (token.onSuccess)
               runWithGesture(gesture, () => dispatchActions(token.onSuccess!, { ...context, result: resolved }));
           })

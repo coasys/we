@@ -15,8 +15,8 @@
  * ## What it draws from
  *
  * The weighing the canvas seed put on the card — the score, how many people gave it, how it was read and
- * what the reader gave — with this agent's own answer in place from the moment of the press, through the
- * same hold every other reaction surface uses. Nothing is fetched to draw it, which is what lets a tree of
+ * what the reader gave. A press is in it from the moment it is made: the seed reads the cards' reactions
+ * through the same reads every surface uses, and those draw an invoked operation's predicted writes. Nothing is fetched to draw it, which is what lets a tree of
  * a hundred cards carry a hundred of them. The popover reads the card's reactions when it is opened,
  * because the control shows every answer and the card carries only the total.
  *
@@ -26,14 +26,14 @@
  * then records that person's answer on this device instead of writing a reaction — nothing can be
  * written as another agent — and the canvas seed, which is handed the same answers, re-weighs with it.
  */
-import { Column, CountMark, Row, SignalControl, type SignalTypeData } from '@we/components/solid';
+import { Column, CountMark, Row, SignalControl, type SignalTypeData, toastService } from '@we/components/solid';
 import { Signal, SignalType } from '@we/entities';
 import type { GraphNode } from '@we/graph-protocol';
 import { createEffect, createMemo, createSignal, onCleanup, Show } from 'solid-js';
 
-import { readWeighed, roundScore, withHeld } from '../../../shared/reactionScore';
-import { reactions } from '../../../shared/sources/signalTally';
-import { actingAs, answerAs, signalOptimism } from '../stores/hostState';
+import { invokeOperation } from '../../../shared/invokeOperation';
+import { readWeighed, roundScore } from '../../../shared/reactionScore';
+import { actingAs, answerAs } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 
 type TypeRow = SignalTypeData & { id: string; name?: string };
@@ -88,19 +88,10 @@ export function ReactionBadge(props: {
   const weighed = createMemo(() => readWeighed(props.node.data as Record<string, unknown> | undefined, typeId()));
   // The pretend person answered as, or empty — in which case every answer here is the reader's own.
   const pretend = () => actingAs();
-  const held = () => (record() && typeId() && !pretend() ? signalOptimism.held(record(), typeId()) : undefined);
-
-  // What the card says the reader gave is the evidence a held answer waits for — see `@we/optimism`.
-  createEffect(() => {
+  const shown = () => {
     const read = weighed();
-    // Not while acting: the card then reports the pretend person's answer, which is no evidence about ours.
-    if (read && record() && !pretend()) signalOptimism.settleObserved(record(), typeId(), read.mine ?? null);
-  });
-
-  const shown = createMemo(() => {
-    const read = weighed();
-    return read ? withHeld(read, held()) : null;
-  });
+    return read ? { score: read.weight, mine: read.mine } : null;
+  };
   const score = () => {
     const read = weighed();
     const value = shown()?.score;
@@ -111,7 +102,22 @@ export function ReactionBadge(props: {
   const give = (value: number | null) => {
     if (!record() || !typeId()) return;
     if (pretend()) return answerAs(pretend(), record(), value);
-    void spaceStore.upsertSignal(record(), typeId(), value);
+    const dataset = datasetStore.currentDataset()?.handle;
+    const invoker = sessionStore.me()?.did;
+    if (!dataset || !invoker) return;
+    const target = { node: record(), signalType: typeId() };
+    void invokeOperation(
+      value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
+      value === null ? target : { ...target, value },
+      {
+        dataset,
+        invoker,
+        notify: (message) => toastService.error(message),
+        failure: 'Could not record that reaction.',
+      },
+    )
+      // The open control reads everybody's answers again, now with this one among them.
+      .then(readRows, () => undefined);
   };
 
   /*
@@ -134,15 +140,7 @@ export function ReactionBadge(props: {
   };
   const answers = () => {
     const acting = pretend();
-    if (!acting) {
-      return reactions({
-        signals: rows(),
-        record: record(),
-        type: typeId(),
-        me: sessionStore.me()?.did,
-        pending: signalOptimism.overlay(),
-      }) as ReactionRow[];
-    }
+    if (!acting) return rows();
     // The pretend person's answer is the one the card reports — made up, or given while acting as them.
     const mine = weighed()?.mine;
     return mine === undefined ? rows() : [...rows(), { signalTypeId: typeId(), value: mine, author: acting }];

@@ -19,13 +19,17 @@ import { provideFileSaver } from '@we/design-utils';
 import {
   AgentSettings,
   CollectionBlock,
+  deriveIdentityId,
   getEntity,
   getEntityForDataset,
+  identityDomainOf,
   ModelRun,
   Policy,
+  registerOperations,
   Space,
   SpaceLandmark,
   unregisterEntity,
+  unregisterOperations,
 } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
 import { notesModule } from '@we/module-notes';
@@ -276,6 +280,7 @@ import { useBackend, usePlatform } from '../src/frameworks/solid/providers/Platf
 import { solidLiveTemplates } from '../src/frameworks/solid/stores/liveTemplate';
 import { agentDataKernel } from '../src/shared/agentData';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
+import { invokeOperation } from '../src/shared/invokeOperation';
 import { createModuleStoreDeps, provideModuleHostServices } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
@@ -2591,6 +2596,149 @@ describe('what the stores actually wrote', () => {
     }
   }, 10000);
 
+  it('refuses an identity create in a space whose own record has not arrived, rather than derive without it', async () => {
+    /*
+      A member who joined before the space's record synced has no domain to derive a task state's id
+      within. The create waits for the record, briefly, and lands within it when the record comes;
+      past the wait it is refused as spaceNotReady, and nothing is written under a domain-less id.
+    */
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      // A dataset holding WE's schema and no Space record: a space joined before its record synced.
+      const joined = await lifecycle.create('Joined');
+      await vi.waitFor(() => expect(stores.datasets.datasets().map((d) => d.id)).toContain(joined.id));
+      const name = (slug: string) =>
+        runOperation('identitytest.nameState', { slug }, { dataset: joined.handle, invoker: 'did:test:me' });
+
+      expect(await identityDomainOf(joined.handle)).toEqual({ arriving: true });
+      await expect(name('done')).rejects.toMatchObject({
+        name: 'OperationError',
+        class: 'precondition',
+        code: 'spaceNotReady',
+      });
+      expect(await getEntityForDataset('TaskState', joined.handle)!.findAll(joined.handle)).toEqual([]);
+
+      // The record lands while a create waits for it: the create derives within it.
+      const pending = name('doing');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const space = await Space.create(joined.handle as never, { name: 'Joined', uuid: joined.id } as never);
+      const made = (await pending) as { id: string };
+      expect(made.id).toBe(await deriveIdentityId('TaskState', [['slug', 'doing']], space.id));
+    } finally {
+      unregisterOperations('identitytest');
+    }
+  }, 15000);
+
+  it('seeds a new space’s vocabulary within its own record, so the same slug made after sharing is the same record', async () => {
+    /*
+      A task state's id derives from what it is (its slug) within the space's own record, which is
+      written before the vocabulary and is the same on every member. So the starter's "done" and a
+      "done" made after the space is shared, here or by a member who joined, are one record: the
+      second create is refused as recordExists. A starter naming one twice writes one.
+    */
+    provideSeed({
+      name: 'test',
+      modules: [],
+      spaceStarters: [
+        {
+          id: 'test',
+          records: [
+            { entity: 'TaskState', fields: { name: 'Doing', slug: 'doing' } },
+            { entity: 'TaskState', fields: { name: 'Done', slug: 'done' } },
+            { entity: 'TaskState', fields: { name: 'Done again', slug: 'done' } },
+          ],
+        },
+      ],
+    } as never);
+    // A create keyed by the slug and nothing else: what a member's create comes to when its find
+    // has not yet seen the state, as on a member who has not synced it.
+    registerOperations('identitytest', {
+      nameState: {
+        description: 'Name a task state by its slug.',
+        params: { slug: { type: 'string', required: true, description: 'The slug.' } },
+        steps: [
+          {
+            create: {
+              as: 'made',
+              entity: 'TaskState',
+              identity: ['slug'],
+              fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+            },
+          },
+        ],
+        returns: { $: 'made' },
+      },
+    });
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const id = (await stores.spaces.createSpace('Vocabulary', 'x', 'personal', 'hidden'))!;
+      const ref = (await lifecycle.list()).find((d) => d.id === id)!;
+      const [space] = await Space.findAll(ref.handle, { where: { uuid: id } });
+      expect(await identityDomainOf(ref.handle)).toBe(space.id);
+      const states = (await getEntityForDataset('TaskState', ref.handle)!.findAll(ref.handle)) as unknown as {
+        id: string;
+        slug: string;
+        name: string;
+      }[];
+      expect(states.map((s) => [s.slug, s.name]).sort()).toEqual([
+        ['doing', 'Doing'],
+        ['done', 'Done'],
+      ]);
+      for (const state of states)
+        expect(state.id).toBe(await deriveIdentityId('TaskState', [['slug', state.slug]], space.id));
+
+      await stores.spaces.shareSpace(id);
+      const shared = await vi.waitFor(async () => {
+        const now = (await lifecycle.list()).find((d) => d.id === id)!;
+        expect(now.sharedId).toBeTruthy();
+        return now;
+      });
+      // The record a member who joins reads the space by (its address) is the one the domain is.
+      const joinerReads = await Space.findOne(shared.handle, { where: { url: shared.sharedId } });
+      expect(joinerReads?.id).toBe(space.id);
+      expect(await identityDomainOf(shared.handle)).toBe(space.id);
+
+      const done = states.find((s) => s.slug === 'done')!;
+      await expect(
+        runOperation('identitytest.nameState', { slug: 'done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError', code: 'recordExists' });
+      // The vocabulary operation itself finds the state first and refuses the name it already has.
+      await expect(
+        runOperation('core.createTaskState', { name: 'Done' }, { dataset: shared.handle, invoker: 'did:test:me' }),
+      ).rejects.toMatchObject({ name: 'OperationError' });
+      // A slug nobody made yet lands, at the id every member derives for it.
+      const blocked = await runOperation(
+        'identitytest.nameState',
+        { slug: 'blocked' },
+        { dataset: shared.handle, invoker: 'did:test:me' },
+      );
+      expect((blocked as { id: string }).id).toBe(await deriveIdentityId('TaskState', [['slug', 'blocked']], space.id));
+      expect(done.id).not.toBe(await deriveIdentityId('TaskState', [['slug', 'done']]));
+    } finally {
+      unregisterOperations('identitytest');
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
+  }, 10000);
+
   it('hears a landmark written after the space was entered', async () => {
     /*
       Landmarks were read once, on entering. A space entered while its starter was still writing — or
@@ -3865,12 +4013,19 @@ describe('changing a reaction', () => {
         where: { signalTypeId: stars.id, author: 'did:test:james' },
       } as never)) as unknown as { id: string; value: number }[];
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 3);
+    // As a template invokes them: through the host's one way to run an operation.
+    const give = (value: number | null) =>
+      invokeOperation(
+        value === null ? 'core.withdrawSignal' : 'core.upsertSignal',
+        { node: subject.id, signalType: stars.id, ...(value === null ? {} : { value }) },
+        { dataset: handle, invoker: 'did:test:james' },
+      );
+    await give(3);
     const first = await mine();
     expect(first).toHaveLength(1);
     expect(first[0].value).toBe(3);
 
-    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    await give(4);
     const second = await mine();
     // One reaction, the new value — not two rows where the reader finds the stale one first.
     expect(second).toHaveLength(1);
@@ -3885,7 +4040,7 @@ describe('changing a reaction', () => {
       { parent: { id: subject.id, relation: 'signals' } } as never,
     );
     expect(await mine()).toHaveLength(2);
-    await stores.spaces.upsertSignal(subject.id, stars.id, 5);
+    await give(5);
     const healed = await mine();
     expect(healed).toHaveLength(1);
     expect(healed[0].value).toBe(5);
@@ -3897,60 +4052,14 @@ describe('changing a reaction', () => {
       0–100 slider dragged to the bottom was written as "did not answer". The two acts are spelled
       apart: a number is a reaction, `null` takes it back.
     */
-    await stores.spaces.upsertSignal(subject.id, stars.id, 0);
+    await give(0);
     const zeroed = await mine();
     expect(zeroed).toHaveLength(1);
     expect(zeroed[0].value).toBe(0);
 
     // And withdrawing is its own act, which removes the record rather than storing anything.
-    await stores.spaces.withdrawSignal(subject.id, stars.id);
+    await give(null);
     expect(await mine()).toHaveLength(0);
-  }, 10000);
-});
-
-describe('a card’s presentation, drawn before it is stored', () => {
-  it('holds each field on its own, so one settling does not retire the other', async () => {
-    /*
-      The improvement consolidating on `@we/optimism` bought the canvas.
-
-      A colour and a size are written by different gestures and answered by different pushes. Held
-      together as one patch per record, the first to come back retired the other — so recolouring a
-      card you had just resized snapped it back to its old size for the rest of that round trip.
-      Keyed per field, each answers for itself.
-
-      `previewCardStyle` is used because it is synchronous and holds exactly as a write does; what is
-      under test is the holding and the settling, not the round trip.
-    */
-    const stores = mountShell();
-    await ready(stores);
-
-    stores.records.previewCardStyle('card-1', 'color', 'danger-100');
-    stores.records.previewCardStyle('card-1', 'rotation', 15);
-    expect(stores.records.pendingCardStyle()['card-1']).toEqual({ color: 'danger-100', rotation: 15 });
-
-    // The graph reports the records whose own data now says what was written. Only the colour has
-    // landed, but the report is per record — so the rotation must survive it on its own terms.
-    stores.records.confirmPending(['card-1']);
-    expect(stores.records.pendingCardStyle()['card-1']).toBeUndefined();
-
-    // And a second card's holds are untouched by a report about the first.
-    stores.records.previewCardStyle('card-2', 'color', 'warning-100');
-    stores.records.confirmPending(['card-1']);
-    expect(stores.records.pendingCardStyle()['card-2']).toEqual({ color: 'warning-100' });
-  }, 10000);
-
-  it('a preview is not a write, so it settles rather than standing until the backstop', async () => {
-    // A slider emits continuously as it is dragged. Counted as writes those holds would never be
-    // judged — nothing returns to decrement them — and the card would show its last dragged frame
-    // for ten seconds after the real value had landed.
-    const stores = mountShell();
-    await ready(stores);
-
-    for (const degrees of [5, 10, 15, 20]) stores.records.previewCardStyle('card-3', 'rotation', degrees);
-    expect(stores.records.pendingCardStyle()['card-3']).toEqual({ rotation: 20 });
-
-    stores.records.confirmPending(['card-3']);
-    expect(stores.records.pendingCardStyle()['card-3']).toBeUndefined();
   }, 10000);
 });
 

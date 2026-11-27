@@ -7,7 +7,7 @@
  * a setting written to a space is published onto the held record (`updateSpaceInCache`).
  */
 import type { DatasetHandle, DatasetRef, EntityStatic, RecordInstance } from '@we/backend-shared';
-import { parseServerUrl, trace } from '@we/backend-shared';
+import { isRecordExists, parseServerUrl, trace } from '@we/backend-shared';
 import { refreshComposition } from '@we/block-shared';
 import {
   collectionInterpretationDefaults,
@@ -16,7 +16,10 @@ import {
   dataURIToFileData,
   type FileData,
   getEntityForDataset,
+  type IdentityDomain,
+  identityIdOf,
   LocationBlock,
+  registerIdentityDomain,
   Space,
 } from '@we/entities';
 import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSettings } from '@we/schema-shared';
@@ -24,7 +27,7 @@ import { applyStarterRecords, linkSpaceRelations, type SpaceStarter, starterSett
 import { spaceStarterChoices } from '../../bundles/bundleStarter';
 import { installBundleWorkflows } from '../../bundles/installWorkflows';
 import { setUpForApp } from '../../bundles/setUpForApp';
-import { datasetAddressedBy } from '../../datasetIdentity';
+import { datasetAddressedBy, datasetOfHandle, handleDatasetId } from '../../datasetIdentity';
 import { distinctSignal, updatingSignal } from '../../distinctSignal';
 import { buildGuestLink } from '../../guestLink';
 import { reportModuleRefusal } from '../../moduleSchemaRefusal';
@@ -81,6 +84,9 @@ export type SpaceRowDetails = Pick<
   SpaceListEntry,
   'canAdminister' | 'modules' | 'views' | 'usesSections' | 'templateOverride' | 'themeOverride'
 >;
+
+/** The pauses an identity create waits through for a space's own record that has not arrived: 3 s in all. */
+const DOMAIN_ARRIVAL_WAITS_MS = [200, 400, 800, 1600];
 
 export interface SpaceListDeps extends SpaceContext {
   routeStore: Pick<RouteStore, 'segments' | 'navigate'>;
@@ -450,12 +456,81 @@ export function createSpaceList(deps: SpaceListDeps) {
     }
   }
 
+  /*
+    Each space's identity domain, by the local id of the dataset it is: the id of the space's own
+    record, which an identity-keyed record (a task state, a role) is derived within. That record is
+    written first, reaches every member, and never changes, where the dataset's shared id appears
+    only once it is shared: vocabulary seeded before sharing would otherwise take other ids than the
+    same slug made after. Noted as a space's record is made, so what is written right after it,
+    before the dataset is tracked, finds it; otherwise found from the record held or read.
+  */
+  const domains = new Map<string, string>();
+
+  async function spaceRecordId(ds: AppDataset): Promise<string | null> {
+    const space =
+      untrack(mySpaces).find((s) => isSpaceSelf(s, ds)) ??
+      (await Space.findOne(ds.handle, { where: spaceSelfWhere(ds) }).catch(() => null));
+    // Not kept when there is none: a member who joined may not have the space's record yet.
+    if (!space) return null;
+    domains.set(ds.id, space.id);
+    return space.id;
+  }
+
+  /*
+    Whether a dataset with no space record is a space all the same, whose record has not arrived:
+    it holds WE's schema, or none at all yet (just joined, nothing synced, and WE makes it a space
+    once it has). Another app's community holds its own schema and names nothing. A check that
+    fails says yes, so a doubt is a refusal rather than an id that names the wrong record.
+  */
+  async function isSpaceAwaitingRecord(ds: AppDataset): Promise<boolean> {
+    const schemas = session.backendPorts()?.schemas;
+    if (!schemas) return false;
+    try {
+      return (await schemas.hasCoreSchema(ds.handle)) || !(await schemas.hasAnySchema(ds.handle));
+    } catch {
+      return true;
+    }
+  }
+
+  async function identityDomain(handle: unknown): Promise<IdentityDomain> {
+    const known = [
+      ...untrack(datasetStore.datasets),
+      untrack(datasetStore.rootDataset),
+      untrack(datasetStore.personalDataset),
+      untrack(datasetStore.testDataset),
+    ].filter((d): d is AppDataset => Boolean(d));
+    const ds = datasetOfHandle(known, handle);
+    const id = ds?.id ?? handleDatasetId(handle);
+    const noted = id ? domains.get(id) : undefined;
+    if (noted) return noted;
+    // Only a space names itself: a system dataset is none, and one this agent does not hold is unknown.
+    if (!ds || isSystemDataset(ds.name) || untrack(datasetStore.systemDatasetUuids).includes(ds.id)) return null;
+    const found = await spaceRecordId(ds);
+    if (found) return found;
+    if (!(await isSpaceAwaitingRecord(ds))) return null;
+    /*
+      A member who joined before the space's record synced. Its record usually lands within moments,
+      so the create waits for it, briefly; past that it is refused as arriving rather than derived
+      without the domain, which would name another record than every other member's "done".
+    */
+    for (const ms of DOMAIN_ARRIVAL_WAITS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      const arrived = await spaceRecordId(ds);
+      if (arrived) return arrived;
+    }
+    return { arriving: true };
+  }
+  registerIdentityDomain(identityDomain);
+  onCleanup(() => registerIdentityDomain(null));
+
   async function addSpaceToDataset(
     dataset: DatasetProxy,
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
     const spaceRecord = await Space.create(dataset, space);
+    // `uuid` is the local id of the dataset being made a space, at both callers.
+    if (space.uuid) domains.set(space.uuid, spaceRecord.id);
     if (location) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
@@ -517,12 +592,23 @@ export function createSpaceList(deps: SpaceListDeps) {
         // Any entity a starter names; the registry answers untyped, but every class has this surface.
         const Model = getEntityForDataset(entity, dataset) as EntityStatic<RecordInstance> | undefined;
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
-        const made = await Model.create(
-          dataset,
-          fields,
-          parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {},
-        );
-        return made.id;
+        /*
+          Vocabulary (a task state, a reaction, a kind of involvement) takes the id its operation's
+          create would give it, from what it is and within the space's own record: a member later
+          making "done", before the space is shared or after, names this record, not a second one.
+        */
+        const id = await identityIdOf(entity, fields, dataset, space.id);
+        try {
+          const made = await Model.create(dataset, fields, {
+            ...(id ? { id } : {}),
+            ...(parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}),
+          });
+          return made.id;
+        } catch (error) {
+          // A starter naming one identity twice: the record asked for is there.
+          if (id && isRecordExists(error)) return id;
+          throw error;
+        }
       },
       landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),

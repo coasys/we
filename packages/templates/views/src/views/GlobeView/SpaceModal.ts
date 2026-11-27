@@ -10,7 +10,7 @@
  *   • Signal controls row
  *   • "Join Space" CTA button
  */
-import { OFFERED_SIGNAL_TYPES } from '@we/template-kit';
+import { giveSignal, OFFERED_SIGNAL_TYPES } from '@we/template-kit';
 
 export const spaceModal = {
   type: 'we-modal',
@@ -101,10 +101,7 @@ export const spaceModal = {
                         signalType: { $: 'sig' },
                         signals: { $: 'filter(space.signals, { signalTypeId: sig.id })' },
                         myDid: { $: 'me.did' },
-                        onSignal: {
-                          $invoke: 'spaceStore.upsertSignal',
-                          args: [{ $: 'space.id' }, { $: 'sig.id' }, { $: 'arg' }],
-                        },
+                        onSignal: giveSignal('space.id', 'sig.id'),
                       },
                     },
                   ],

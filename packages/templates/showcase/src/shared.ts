@@ -17,6 +17,7 @@ import {
   composerModal as kitComposerModal,
   field,
   formModal,
+  giveSignal,
   HAS_OFFERED_SIGNAL_TYPES,
   OFFERED_SIGNAL_TYPES,
 } from '@we/template-kit';
@@ -210,10 +211,7 @@ export function signalRow(nodeRef: string): SchemaNode {
                       signalType: { $: 'sig' },
                       signals: { $: `filter(${nodeRef}.signals, { signalTypeId: sig.id })` },
                       myDid: { $: 'me.did' },
-                      onSignal: {
-                        $invoke: 'spaceStore.upsertSignal',
-                        args: [{ $: `${nodeRef}.id` }, { $: 'sig.id' }, { $: 'arg' }],
-                      },
+                      onSignal: giveSignal(`${nodeRef}.id`, 'sig.id'),
                     },
                   },
                 },

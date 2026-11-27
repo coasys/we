@@ -6,8 +6,10 @@ import {
   applyThemeVars,
   deepUnwrap,
   expandDefinitions,
+  forEachChild,
   hasToken,
   isRelativePath,
+  isSchemaChild,
   isTemplateElement,
   isUndefinedWeElement,
   localPersistKey,
@@ -15,6 +17,7 @@ import {
   localWriteMirror,
   markReactive,
   newGestureOwner,
+  nodePropsOf,
   noMemo,
   pruneUnresolvedWhere,
   REACTIVE_ACCESSOR,
@@ -22,6 +25,7 @@ import {
   type RefProps,
   refusedProp,
   registerGestureOwner,
+  RENDERED_POSITIONS,
   resolveLocalInitial,
   resolveProp,
   resolveQueryProp,
@@ -30,7 +34,19 @@ import {
   unresolvedRef,
   validateField,
 } from '@we/schema-shared';
-import { batch, createEffect, createMemo, createSignal, For, JSX, onCleanup, Show, untrack } from 'solid-js';
+import {
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  JSX,
+  onCleanup,
+  Show,
+  untrack,
+  useContext,
+} from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
 import { Dynamic } from 'solid-js/web';
 
@@ -682,24 +698,144 @@ function UndefinedElement(props: RenderProps & { node: SchemaNode & { type: stri
 }
 
 /**
+ * What one render pass hands the passes drawn inside it or for it: the lexical scope of its root.
+ *
+ * A template is drawn in several passes — its root, each route body, each panel body — because a
+ * router mounts a route where the root's outlet is and a host docks a panel wherever it likes. Each
+ * pass used to start from a context of its own, so a route could not read the root's `$localState`
+ * and a `$ref` in a route or a panel met no `$defs` and drew the missing marker. Lexically, a route
+ * is a child of the node that lists it and a panel a child of the root, so each sees what its
+ * declaring node sees: the locals in scope there, and the template's shapes.
+ *
+ * Only the lexical part travels. What the host gives a pass of its own — its surface, its place in
+ * the address, the panel it is — stays that pass's, and a pass drawn with a different bag (chrome
+ * drawn inside a template) inherits nothing, since what is in scope for one author is not for the
+ * other.
+ */
+export interface PassScope {
+  /** The bag the scope's locals were made against. */
+  readonly stores: unknown;
+  /** The template's shapes, for a `$ref` anywhere in the pass. */
+  readonly defs?: Record<string, SchemaNode>;
+  /** The context keys that hold local state: what a nested pass reads as `local`. */
+  readonly values: Record<string, unknown>;
+}
+
+/** The context keys local state lives under. Everything else in a context is the pass's own. */
+const LEXICAL_KEYS = ['$local', '$localSetters', '$localMeta', '$localScopeFields'] as const;
+
+/**
+ * The scope the enclosing pass published, found through the render tree: a route body is mounted
+ * at its parent's outlet, inside that pass. A holder rather than the scope, since the scope exists
+ * only once the enclosing root has made its local state, which is after the holder is provided.
+ */
+const PassScopeContext = createContext<{ current?: PassScope }>();
+
+/** Whether a `$ref` stands anywhere in the tree as drawn — expanding copies the tree, so only then. */
+function holdsRef(node: SchemaNode): boolean {
+  if (node.type === REF_TYPE) return true;
+  let found = false;
+  forEachChild(
+    node,
+    (child) => {
+      if (!found && holdsRef(child)) found = true;
+    },
+    RENDERED_POSITIONS,
+  );
+  return found;
+}
+
+/** A pass's node with every `$ref` put back as its shape, from the node's own `$defs` or the scope's. */
+function expandInPass(node: SchemaNode, defs: Record<string, SchemaNode> | undefined): SchemaNode {
+  if (node.$defs) return expandDefinitions(node);
+  if (!defs || !holdsRef(node)) return node;
+  // Wrapped, so a pass whose node is itself a `$ref` is expanded too.
+  const wrapped = expandDefinitions({ children: [node], $defs: defs });
+  return (wrapped.children as SchemaNode[])[0];
+}
+
+/** The pass's own context, with the enclosing scope's locals under it. */
+function withScope(context: Record<string, unknown>, scope: PassScope | undefined): Record<string, unknown> {
+  if (!scope) return context;
+  const merged: Record<string, unknown> = { ...context };
+  for (const key of LEXICAL_KEYS) {
+    const outer = scope.values[key];
+    if (outer === undefined) continue;
+    const own = context[key];
+    merged[key] =
+      own === undefined
+        ? outer
+        : Array.isArray(own) || typeof own !== 'object' || own === null
+          ? own
+          : { ...(outer as object), ...own };
+  }
+  return merged;
+}
+
+/**
+ * Where a render pass begins: a template's root, a route body, a panel body.
+ *
  * A template that says a repeated shape once is put back together here, and nowhere else.
- *
- * `$defs` lives on the root and only on the root, so this fires exactly once per mounted tree:
- * the expansion carries no definitions of its own, and recursion goes through this same component,
- * so no descendant pays the check more than a property read.
- *
  * Expanded at the boundary rather than resolved as a node type, deliberately. A `$ref` the
  * renderer understood would be a node every OTHER consumer also has to understand — the indexer,
  * the scope walker, the inspector, the validator, every audit that walks a composed tree — and
  * each one that forgot would fail by quietly skipping a subtree. One place knows, and everything
  * downstream sees the tree it has always seen.
+ *
+ * The pass also takes the lexical scope of the pass it is drawn in ({@link PassScope}): from the
+ * render tree for a route, or as `scope` for a pass mounted somewhere else (a docked panel). And it
+ * publishes its own, for the passes drawn inside it and to `onScope` for a host that mounts the
+ * others elsewhere.
  */
-export function RenderSchema(props: RenderProps): RendererOutput {
+export function RenderSchema(
+  props: RenderProps & { scope?: PassScope; onScope?: (scope: PassScope) => void },
+): RendererOutput {
   // A mounted node never changes under its renderer (see `renderChildren`), so this is decided once.
-  return RenderNode(untrack(() => (props.node?.$defs ? { ...props, node: expandDefinitions(props.node) } : props)));
+  return untrack(() => {
+    const enclosing = props.scope ?? useContext(PassScopeContext)?.current;
+    const scope = enclosing && enclosing.stores === props.stores ? enclosing : undefined;
+    const defs = props.node?.$defs ?? scope?.defs;
+    const node = props.node ? expandInPass(props.node, defs) : null;
+    const holder: { current?: PassScope } = {};
+    const publish = (effective: Record<string, unknown>) => {
+      const values: Record<string, unknown> = {};
+      for (const key of LEXICAL_KEYS) if (effective[key] !== undefined) values[key] = effective[key];
+      holder.current = { stores: props.stores, defs, values };
+      props.onScope?.(holder.current);
+    };
+    return (
+      <PassScopeContext.Provider value={holder}>
+        {RenderNode({
+          node,
+          stores: props.stores,
+          registry: props.registry,
+          context: withScope(props.context ?? {}, scope),
+          publishScope: publish,
+          get children() {
+            return props.children;
+          },
+        })}
+      </PassScopeContext.Provider>
+    );
+  });
 }
 
-function RenderNode({ node, stores, registry, context = {}, children }: RenderProps): RendererOutput {
+/** A node inside a pass: drawn in the context its parent made, with no pass of its own to begin. */
+function RenderInner(props: RenderProps): RendererOutput {
+  return untrack(() => RenderNode(props));
+}
+
+function RenderNode(
+  props: RenderProps & { publishScope?: (context: Record<string, unknown>) => void },
+): RendererOutput {
+  // eslint-disable-next-line solid/reactivity -- a mounted node's inputs are decided once (see `renderChildren`)
+  const { node, stores, registry, context = {}, publishScope } = props;
+  /*
+    Read where it is placed, never here: a pass's children are a router's outlet, and reading them
+    mounts the route passes, which take this node's scope — complete only once its local state is
+    made, below.
+  */
+  const children = () => props.children;
   if (!node) return null;
   // Decided before anything on the node is set up, so a marker holds no state or subscription of its own.
   // A registry entry under the name is a definition too: a host may draw a primitive its own way.
@@ -710,7 +846,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         stores={stores}
         registry={registry}
         context={context}
-        children={children}
+        children={children()}
       />
     );
   }
@@ -915,14 +1051,17 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     };
   }
 
+  // This node's scope is complete: it is what a pass drawn inside it, or for it, sees.
+  publishScope?.(effectiveContext);
+
   function renderNode(node?: SchemaNode, nodeContext?: Record<string, unknown>) {
     return (
-      <RenderSchema
+      <RenderInner
         node={node ?? null}
         stores={stores}
         registry={registry}
         context={nodeContext ?? effectiveContext}
-        children={children}
+        children={children()}
       />
     );
   }
@@ -1025,7 +1164,8 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   }
 
   // Render routed children at $routes token
-  if (node.type === '$routes') return children ?? null;
+  // eslint-disable-next-line solid/reactivity -- read where the outlet is drawn, once; see `children` above
+  if (node.type === '$routes') return children() ?? null;
 
   // Handle conditional rendering
   if (node.type === '$if') {
@@ -1351,6 +1491,28 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     }
   });
 
+  /*
+    The props this node's type declares as holding a node (`NODE_PROPS`: a FlipCard's faces, a
+    graph's empty-state action), each drawn as a node here and handed over drawn, as a slot is.
+    Never resolved as a value: every walk counts what is in them as a child, so they are drawn where
+    the walks put them — in this node's scope, with ids an editor can address.
+
+    A memo per prop, keyed on the value it holds, so a change inside the node it holds updates that
+    node in place, and only a different node in the prop draws afresh.
+  */
+  const nodePropNames = nodePropsOf(node.type);
+  const nodePropElements: Record<string, JSX.Element> = {};
+  for (const name of nodePropNames) {
+    const held = createMemo(() => (node.props as Record<string, unknown> | undefined)?.[name]);
+    const drawn = createMemo(() => {
+      const value = held();
+      if (isSchemaChild(value)) return untrack(() => renderNode(value));
+      return typeof value === 'string' ? value : undefined;
+    });
+    Object.defineProperty(nodePropElements, name, { get: drawn, enumerable: true });
+  }
+  const isNodeProp = (key: string) => nodePropNames.includes(key);
+
   // --- Per-prop resolution (fine-grained reactivity) ---
   // Create per-prop memos — each prop resolves independently,
   // isolating its reactive dependencies. Static props still read from
@@ -1367,6 +1529,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   // are tracked as the memo's signal dependencies.
   const propMemos: Record<string, () => unknown> = {};
   for (const [key, rawValue] of Object.entries(node.props ?? {})) {
+    if (isNodeProp(key)) continue;
     if (isStaticValue(rawValue)) {
       // Read from the store node so Solid tracks changes from updateSchema.
       // If the value transitions from static to token (e.g. via AI patching),
@@ -1564,7 +1727,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       const currentDynamicKeys = new Set<string>();
       if (currentProps) {
         for (const key of Object.keys(currentProps)) {
-          if (!(key in propMemos) && !isEventProp(key)) {
+          if (!(key in propMemos) && !isEventProp(key) && !isNodeProp(key)) {
             const resolved = resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo);
             assignToHost(hostRef, key, permitted(key, deepUnwrap(resolved), false));
             currentDynamicKeys.add(key);
@@ -1590,7 +1753,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     });
 
     const wcElement = (
-      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotElements}>
+      <Dynamic ref={hostRef} component={component()} {...eventAttrs()} {...slotElements} {...nodePropElements}>
         {childrenEl()}
       </Dynamic>
     );
@@ -1621,7 +1784,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
     const currentProps = node.props as Record<string, unknown> | undefined;
     if (currentProps) {
       for (const key of Object.keys(currentProps)) {
-        if (!(key in propMemos)) {
+        if (!(key in propMemos) && !isNodeProp(key)) {
           const resolved = deepUnwrap(resolveProp(currentProps[key], stores, effectiveContext, solidReactivity.memo));
           attrs[key] = isEventProp(key) ? asThisNode(resolved) : permitted(key, resolved, native);
         }
@@ -1631,7 +1794,7 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
   });
 
   const solidElement = (
-    <Dynamic component={component()} {...reactiveAttrs()} {...slotElements}>
+    <Dynamic component={component()} {...reactiveAttrs()} {...slotElements} {...nodePropElements}>
       {childrenEl()}
     </Dynamic>
   );

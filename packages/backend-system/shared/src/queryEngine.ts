@@ -140,9 +140,8 @@ function applySort(rows: Row[], sort: SortKey[], entity: string, data: InMemoryD
 function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMemoryDataset): number {
   const resolved = relatedRows(row, entity, agg.over, data);
   if (!resolved) return 0;
-  const set = agg.filter
-    ? resolved.rows.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data))
-    : resolved.rows;
+  const members = agg.transitive ? reachable(resolved.rows, resolved.rel.target, agg.over, data) : resolved.rows;
+  const set = agg.filter ? members.filter((r) => matchesFilter(r, agg.filter!, resolved.rel.target, data)) : members;
   if (agg.fn === 'count') return set.length;
   const values = set.map((r) => Number(r[agg.field!])).filter((n) => !Number.isNaN(n));
   if (values.length === 0) return 0;
@@ -158,6 +157,28 @@ function computeAggregate(row: Row, entity: string, agg: Aggregation, data: InMe
     default:
       return 0;
   }
+}
+
+/**
+ * Everything reached from `first` along `relation` at any depth, `first` included: what a transitive
+ * count counts. A record reached two ways counts once, and the visited set is what stops a cycle.
+ * Answering with the first step alone would be a plausible wrong number.
+ */
+function reachable(first: Row[], entity: string, relation: string, data: InMemoryDataset): Row[] {
+  const seen = new Set<string | number>();
+  const out: Row[] = [];
+  let frontier = first;
+  while (frontier.length) {
+    const next: Row[] = [];
+    for (const r of frontier) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(r);
+      next.push(...(relatedRows(r, entity, relation, data)?.rows ?? []));
+    }
+    frontier = next;
+  }
+  return out;
 }
 
 /**
@@ -264,8 +285,8 @@ function scopeRows(rows: Row[], entity: string, scope: Scope, data: InMemoryData
 
   if (scope.limitPerAnchor === undefined) return kept;
 
-  // Per-anchor, in the order the rows already carry — the caller's `sort` has not run yet here, so
-  // this mirrors the backend contract rather than promising a "top" N of its own.
+  // Per-anchor, in the order the rows already carry: the query's order when it has one, since
+  // `executeQueryIR` sorts before a bounded walk, and otherwise whichever order they are stored in.
   const takenPerAnchor = new Map<string, number>();
   return kept.filter((r) => {
     const key = scope.direction === 'in' ? idOf(r) : parentOf(r);
@@ -305,6 +326,7 @@ function hydrate(row: Row, entity: string, include: IncludeMap, data: InMemoryDa
         rows = rows.slice(offset, offset + spec.page.limit);
       }
       if (spec.include) rows = rows.map((r) => hydrate(r, classOf(r), spec.include!, data));
+      if (spec.select) rows = rows.map((r) => selected(r, spec.select!, spec.aggregate, spec.include));
     }
     const asObject = resolved.rel.cardinality === 'one' || (spec !== true && spec.first === true);
     out[key] = asObject ? (rows[0] ?? null) : rows;
@@ -319,7 +341,13 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
   const entity = query.entity;
   let rows = (data.tables[entity] ?? []).slice();
 
-  if (query.scope) rows = scopeRows(rows, entity, query.scope, data);
+  if (query.scope) {
+    // A bounded walk keeps the first records of the order where it must drop some, so the order is
+    // applied before the walk chooses; the sort below then orders what was kept.
+    const bounded = query.scope.levels !== undefined || query.scope.limitPerAnchor !== undefined;
+    if (bounded && query.sort) rows = applySort(rows, query.sort, entity, data);
+    rows = scopeRows(rows, entity, query.scope, data);
+  }
   if (query.filter) rows = rows.filter((r) => matchesFilter(r, query.filter!, entity, data));
 
   for (const agg of query.aggregate ?? []) {
@@ -338,19 +366,24 @@ export function executeQueryIR(query: QueryIR, data: InMemoryDataset): Row[] {
   // Scalar projection: keep only `id`, the selected props, and derived fields (aggregate aliases +
   // included relations, which `select` never strips). Cursor paging (`page.after`) is intentionally
   // not handled here — a stable cursor is adapter-specific and can't be minted in JS.
-  if (query.select) {
-    const keep = new Set<string>([
-      'id',
-      ...query.select,
-      ...(query.aggregate ?? []).map((a) => a.as),
-      ...Object.keys(query.include ?? {}),
-    ]);
-    rows = rows.map((r) => {
-      const out = {} as Row;
-      for (const k of Object.keys(r)) if (keep.has(k)) out[k] = r[k];
-      return out;
-    });
-  }
+  if (query.select) rows = rows.map((r) => selected(r, query.select!, query.aggregate, query.include));
 
   return rows;
+}
+
+/**
+ * A row narrowed to `id`, the selected fields and what the query derived on it (count aliases and
+ * included relations, which `select` never strips), and the entity a polymorphic read named.
+ */
+function selected(row: Row, select: string[], aggregate?: Aggregation[], include?: IncludeMap): Row {
+  const keep = new Set<string>([
+    'id',
+    RECORD_TYPE_KEY,
+    ...select,
+    ...(aggregate ?? []).map((a) => a.as),
+    ...Object.keys(include ?? {}),
+  ]);
+  const out = {} as Row;
+  for (const k of Object.keys(row)) if (keep.has(k)) out[k] = row[k];
+  return out;
 }

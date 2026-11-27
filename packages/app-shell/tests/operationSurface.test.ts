@@ -2,8 +2,16 @@
  * Declared operations on the template surface: classified from what they write, never by hand, and
  * reached by a template exactly as far as their writes would be one at a time.
  */
+import { createInMemoryBackendPorts } from '@we/backend-inmemory';
 import type { OperationDefinition } from '@we/backend-shared';
-import { listOperations, registerOperations, unregisterOperations } from '@we/entities';
+import {
+  getEntity,
+  isOperationError,
+  listOperations,
+  registerOperations,
+  runOperation,
+  unregisterOperations,
+} from '@we/entities';
 import { runWithGesture } from '@we/schema-shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,11 +69,11 @@ describe('the surface entry of an operation', () => {
   it('exists for every registered operation, derived from its effects', () => {
     const entries = operationSurfaceEntries();
     expect(Object.keys(entries).sort()).toEqual(listOperations());
-    expect(entries['demo.post']).toEqual({ group: 'content', destructive: false, ambient: false });
-    expect(entries['demo.prune']).toEqual({ group: 'content', destructive: true, ambient: false });
+    expect(entries['demo.post']).toEqual({ group: 'content', chosen: [], destructive: false, ambient: false });
+    expect(entries['demo.prune']).toEqual({ group: 'content', chosen: [], destructive: true, ambient: false });
     expect(entries['demo.rename']?.group).toBe('space-settings');
     expect(entries['demo.remember']?.group).toBe('agent');
-    expect(entries['demo.peek']).toEqual({ group: 'content', destructive: false, ambient: true });
+    expect(entries['demo.peek']).toEqual({ group: 'content', chosen: [], destructive: false, ambient: true });
   });
 
   it('follows the registry: a namespace gone is an entry gone', () => {
@@ -89,7 +97,9 @@ describe('a bag', () => {
     await expect(
       bag.ops.demo.post({ title: 'Hi' }, { dataset: 'datasetStore.rootDataset', other: 1 }, 'extra'),
     ).resolves.toBe('ran demo.post');
-    expect(calls).toEqual([['demo.post', { title: 'Hi' }, { dataset: 'datasetStore.rootDataset' }]]);
+    expect(calls).toEqual([
+      ['demo.post', { title: 'Hi' }, { dataset: 'datasetStore.rootDataset', admitChosen: expect.any(Function) }],
+    ]);
   });
 
   it('refuses a writing operation nobody asked for, and lets one that writes nothing run', async () => {
@@ -130,6 +140,71 @@ describe('a bag', () => {
     } finally {
       unregisterOperations('later');
     }
+  });
+});
+
+/*
+  A generic write — `core.deleteRecords`, a form over whatever record is in front of it — names no
+  entity of its own, so what it needs is decided per call, from the record it is handed: content for a
+  post, space settings for a task state, as the two deletes made one at a time would need.
+*/
+describe('an entity chosen at call time', () => {
+  const ME = 'did:test:me';
+  let dataset: unknown;
+  const model = (name: string) =>
+    getEntity(name) as unknown as {
+      create(p: unknown, data: Record<string, unknown>, options?: Record<string, unknown>): Promise<{ id: string }>;
+      findAll(p: unknown): Promise<{ id: string }[]>;
+    };
+
+  beforeEach(async () => {
+    const ports = createInMemoryBackendPorts(
+      { selfId: () => ME },
+      { agent: { id: ME, unlocked: true }, datasets: [{ id: 'ds-chosen', name: 'Chosen' }] },
+    );
+    dataset = (await ports.lifecycle.get('ds-chosen'))!.handle;
+    await model('CollectionBlock').create(dataset, { kind: 'post', title: 'Hello' }, { id: 'post' });
+    await model('TaskState').create(dataset, { name: 'Blocked', slug: 'blocked' }, { id: 'state' });
+  });
+
+  /** The host as the app lends it: the real runner, with the bag's judgement of a chosen entity. */
+  const realHost: OperationHost = {
+    run: (name, params, options) =>
+      runOperation(name, params, {
+        dataset: dataset as never,
+        invoker: ME,
+        ...(options?.admitChosen ? { admitChosen: options.admitChosen } : {}),
+      }),
+  };
+  const remove = (bag: Bag, entity: string, id: string) =>
+    asked(() => bag.ops.core.deleteRecords({ records: [{ entity, id }] }) as Promise<unknown>);
+
+  it('is recorded in the summary as a category, and holding the operation needs only its named writes', () => {
+    const entry = operationSurfaceEntries()['core.deleteRecords'];
+    expect(entry).toMatchObject({ group: 'content', chosen: ['any'], destructive: true });
+  });
+
+  it('takes its group from the entity passed: a content bag deletes a post and is refused a task state', async () => {
+    const bag = buildTemplateBag({ ops: realHost }, { grants: ['content'] }) as unknown as Bag;
+    await remove(bag, 'CollectionBlock', 'post');
+    expect(await model('CollectionBlock').findAll(dataset)).toEqual([]);
+
+    const refused = await remove(bag, 'TaskState', 'state').catch((error: unknown) => error);
+    expect(isOperationError(refused) && [refused.class, refused.code]).toEqual(['static', 'notGranted']);
+    expect((await model('TaskState').findAll(dataset)).map((row) => row.id)).toEqual(['state']);
+  });
+
+  it('is allowed the settings entity where the bag holds the group', async () => {
+    const bag = buildTemplateBag({ ops: realHost }, { grants: SPACE_TIER }) as unknown as Bag;
+    await remove(bag, 'TaskState', 'state');
+    expect(await model('TaskState').findAll(dataset)).toEqual([]);
+  });
+
+  it('never reaches a chrome entity from a space template, whatever the operation names', async () => {
+    await model('AgentSettings').create(dataset, {}, { id: 'mine' });
+    const bag = buildTemplateBag({ ops: realHost }, { grants: SPACE_TIER }) as unknown as Bag;
+    const refused = await remove(bag, 'AgentSettings', 'mine').catch((error: unknown) => error);
+    expect(isOperationError(refused) && refused.code).toBe('notGranted');
   });
 });
 

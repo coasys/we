@@ -20,9 +20,23 @@ never renamed or reused), and `note`, one line saying what it pins.
 | `navigation.json`     | navigation     | a script of navigations and local-state writes → the address and history after each                | format            |
 | `query-compile.json`  | query-compile  | a `$query`, a where-object or a scope → its descriptor, its pruned form, or whether it is anchored | format            |
 | `render.json`         | render         | a template, data and a script of events → the drawn tree and the actions fired, after each         | format            |
+| `validate.json`       | validate       | a document → whether it is valid, and the path of each error                                       | format            |
+| `safety.json`         | safety         | a template, its grants and a script of events → the drawn tree, actions fired and confirmations    | host              |
+| `panels.json`         | panels         | panel declarations and an address → the panels present; a panel's three rungs → its placement      | host              |
+| `rdf.json`            | rdf            | a template → the triples it denotes through the [JSON-LD context](rdf.md), as canonical N-Quads    | format            |
 | `style.json`          | style          | design-system props and a theme → the style emitted and each token's value                         | core catalog      |
 | `tokens/<theme>.json` | tokens         | a theme → every token's computed value                                                             | core catalog      |
 | `host-functions.json` | host-functions | a host function and its options → value                                                            | WE's host catalog |
+| `query/query.json`    | query          | entity schemas, a dataset and a query → the rows it answers with; after writes, for a live case    | backend           |
+
+**Kind** says who runs a family. A `format` family is the format's own: every implementation of the
+class that runs it ([below](#which-families-a-class-runs)) passes it. A `host` family is the host
+profile's: `safety` judges the grants, gestures and confirmations a host makes when a template acts,
+and `panels` the panels a host resolves and places, so they run through a host's bag and its shell,
+not a renderer. **A renderer-only implementation MAY skip the host families**, and a renderer that
+passes every format family conforms as a renderer without them. A `core catalog` family is run by a
+host that provides the core catalog, `WE's host catalog` by one that provides WE's host functions,
+and `backend` by a backend.
 
 ### Values
 
@@ -51,8 +65,8 @@ inverted, so a gap that closes is noticed and a new failure is not hidden among 
 
 ## Running each family
 
-**expressions.** A case is `{ id, note, source, env?, result, print }`, or
-`{ id, note, source, env?, error: "syntax", message, span }` for a source that must not parse. `env`
+**expressions.** A case is `{ id, note, core, source, env?, result, print }`, or
+`{ id, note, core, source, env?, error: "syntax", message, span }` for a source that must not parse. `env`
 names an entry of the file's `envs`, an object of root name to value: a root is bound when it is a
 key, and unbound otherwise. Parse `source` and evaluate it in that environment, where a call goes to
 the core library and the form readers first, and then to the environment's host functions, called
@@ -60,8 +74,16 @@ with their first argument as the options object. Compare the value with `result`
 form of the parse with `print` (printing what was parsed reproduces it). For an error case, compare
 only that the source is refused; `message` and `span` are informative.
 
-**functions.** `{ id, note, fn, args, context?, result }`: call `fn` with the decoded `args` and
-compare with `result`. `context` supplies the local-state scope the form readers read. An
+`core` says whether the case is in the core subset an operation's expressions are written in
+([Operations: Expressions](../operations/expressions.md)): `true` for a case of the grammar, of
+evaluation or of the printer over no env or plain names, calling only core functions. A host that
+runs operations and no templates runs the `core` cases only, as the operations suite says
+([The core-subset expression vectors](../operations/conformance.md#the-core-subset-expression-vectors));
+a template host runs every case.
+
+**functions.** `{ id, note, core, fn, args, context?, result }`: call `fn` with the decoded `args`
+and compare with `result`. `core` is `true` for a core function called with no `context`, the cases
+an operations-only host runs. `context` supplies the local-state scope the form readers read. An
 implementation that throws records `{ "$error": "<message>" }`, which only a reference
 implementation should ever produce.
 
@@ -87,6 +109,37 @@ is still `anchored`.
 
 **render.** See [below](#render).
 
+**validate.** `{ id, note, document, valid, errors }`. Judge `document` as a whole: a template (it
+has `meta`) or, without `meta`, a node on its own. `errors` lists each error as `{ at, message }`,
+where `at` is the path from the document's root as a list of segments (keys as text, list positions
+as numbers) — the position in the document as [expanded](nodes.md#shared-shapes-defs-and-ref), so a
+mistake inside a shape is reported at every use. Compare `valid`, and the **set** of `at` paths
+(duplicates and order do not count); `message` is informative. Warnings are not recorded, since what
+a validator advises is its own, except in a case whose point is a warning the format asks for: such a
+case carries `warnings`, as `errors`, and a validator SHOULD warn at each of its paths (the
+`validate.scope.*-advice` cases). The cases name only the core catalog's vocabulary.
+
+**safety.** A host family: a renderer-only implementation MAY skip it. A render case (below) with `grants`, the [capability groups](safety.md#capability-grants)
+the template is granted, and `confirm`, the person's answer to every confirmation the host asks
+(default: declined). The template is drawn through the host's bag: a member outside the grant is
+absent, a write nobody asked for is refused, a destructive action asks first. Each `expect` entry
+also lists `confirmations`, the destructive actions the host asked about during that step, as
+`{ "call", "args" }`. The members the cases name are WE's catalog's; a host maps them onto its own
+members of the same group and kind.
+
+**rdf.** `{ id, note, template, nquads }`. Read `template` as RDF with [`context.jsonld`](context.jsonld)
+and canonicalize the result; `nquads` is each statement, one a line, sorted. Compare the statements,
+then read them back as JSON ([Lossless both ways](rdf.md#lossless-both-ways)) and compare with
+`template` as JSON values.
+
+**panels.** A host family: a renderer-only implementation MAY skip it. `{ id, note, op, … }`. `op: "active"`: given the interface's declarations `shell`, the
+section's `view`, the app's `app` and the address as `segments`, `present` lists the panels on the
+screen, by id (and title, where the case gives one), in order. `op: "placement"`: given a panel's
+own bid `request` (`{ id, edge, size, float }`), the template's `declared` entry, the reader's
+`disposition` and a `viewport`, `placement` is where the panel is ([Three rungs](panels.md#three-rungs)).
+Compare the placement's `snap`, `displace`, `order`, `band`, `tab` and `home` exactly; its pixel
+sizes are WE's host's, which another host compares only if it uses the same size table.
+
 **style, tokens.** The design system's catalog: `{ id, props, theme, direction, style, resolved }`,
 the style a component's props emit under a theme, and each prop's token and computed value from
 `tokens/<theme>.json`. Recorded in a browser; a host that provides the core catalog runs them.
@@ -102,6 +155,21 @@ differ by one.
 
 **host-functions.** `{ id, note, fn, options, result }`: WE's host functions, called with one
 options object. A host that provides WE's host catalog runs them; no other host has to.
+
+**query.** The backend's family, in [`@we/backend-conformance`](../../../packages/backend-system/conformance/src/queryVectors.ts)
+rather than beside the others, and written by hand rather than recorded: it is the
+[query semantics](query.md) as cases. The file is `{ version, invoker, entities, dataset, cases }`:
+self-contained entity schemas, the records to write (each created with its id, then its to-many
+relations set), and the agent that writes them, put wherever a query names it. A case is
+`{ id, level, note, query, expect, pending?, then? }`. `level` is one of `core`, `traversal`,
+`aggregates`, `live`, `provenance`, and the id starts `query.<level>.`; `pending` names an open
+question the case records WE's answer to. Ask `query` as a host asks a template's (with every
+expression already a value) and compare with `expect`: `{ refused: true }`, `{ notAsked: true }`
+(a falsy `when`), `{ count, contains? }`, or `{ rows, ordered?, inOrder? }`, the rows by `id`, as a
+set unless `ordered`, each naming only the fields it checks (`null` for no value; a nested object
+for an included record; a nested list as a set unless its key is in `inOrder`). A live case opens
+the query, compares its first snapshot (flagged initial) with `expect`, makes the writes in
+`then.writes`, and compares the latest snapshot (not initial) with `then.expect`.
 
 ## Render
 
@@ -157,25 +225,32 @@ A **static renderer** compares only the first entry of each case's `expect`.
 
 ## Which families a class runs
 
-| Class                                            | Runs                                                                                                               |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| [Validator](README.md#conformance-classes)       | `expressions.json`'s syntax-error cases. The rest of what a validator does is pinned by tests, not yet by vectors. |
-| [Static renderer](README.md#conformance-classes) | `expressions`, `functions`, `paths`, `query-compile`, and the mount entry of every `render` case.                  |
-| [Renderer](README.md#conformance-classes)        | The format families: `expressions`, `functions`, `paths`, `navigation`, `query-compile`, `render`.                 |
-| [Host](README.md#conformance-classes)            | As a renderer, and the [safety](safety.md) refusals.                                                               |
-| A host providing the core catalog                | Also `style` and `tokens`.                                                                                         |
+| Class                                            | Runs                                                                                                           |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| [Validator](README.md#conformance-classes)       | `validate`, and `expressions.json`'s syntax-error cases. A validator reading templates as RDF also runs `rdf`. |
+| [Static renderer](README.md#conformance-classes) | `expressions`, `functions`, `paths`, `query-compile`, and the mount entry of every `render` case.              |
+| [Renderer](README.md#conformance-classes)        | The format families: `expressions`, `functions`, `paths`, `navigation`, `query-compile`, `render`.             |
+| [Host](README.md#conformance-classes)            | As a renderer, and `safety` and `panels`: the refusals and the panel resolution a host makes.                  |
+| A host providing the core catalog                | Also `style` and `tokens`.                                                                                     |
+| A backend                                        | `query`: the cases of the levels it implements, its known gaps listed and run inverted.                        |
 
 The render family has a case for every block type (`$each`, `$if`, `$single`, `$animate`, `$routes`,
 `$surface`, `$slot`, `$part`, `$panels`, `$agent`, `$ref`) and every handler (`$invoke`,
 `$setLocal`, `$toggleLocal`, `$toggleLocalIn`, `$callLocal`, `$touch`, `$resetLocal`, handler `$if`,
 and the three lifecycle callbacks), which a coverage test holds it to. The expression and function
-families are held to every operator and every function the shipped bundle uses.
+families are held to every operator and every function the shipped bundle uses. The validate family
+is held to a case for every refusal the format names (each version refusal, the structural ones,
+`$if` children, a template `$slot`, `$resetLocal`, a token in children, an unknown radius, a missing
+or cyclic `$ref`, `$defs` off the root); the safety family to cases refused and allowed for grants,
+gestures and confirmation, with the renderer's element and URL refusals in `render`; the panels
+family to both questions and every rung; the query family to a case for every key, operator,
+combinator and option [the query semantics](query.md) list.
 
 ## What the vectors do not yet carry
 
-> **Planned.** Validator vectors (a document in, valid or the error paths out); `$single` and
-> `$queries` with an answer, which need a data source; transition timing; themes on nodes; the
-> safety refusals of a host as vectors rather than tests of WE's own; panel resolution.
+> **Planned.** `$single` and `$queries` with an answer, which need a data source; transition timing;
+> themes on nodes. The protected pieces stay pinned by the host's own tests: they are host chrome a
+> template cannot name, and drawing them needs the host.
 
 ---
 
@@ -183,9 +258,14 @@ Implemented by: [`@we/template-conformance`](../../../packages/schema-system/con
 [`src/cases/`](../../../packages/schema-system/conformance/src/cases/) (the cases),
 [`encode.ts`](../../../packages/schema-system/conformance/src/encode.ts) (the value markers),
 [`renderRecorder.tsx`](../../../packages/schema-system/conformance/tests/support/renderRecorder.tsx)
-(recording render vectors through the real renderer).
+(recording render and safety vectors through the real renderer and the host's bag),
+[`record.ts`](../../../packages/schema-system/conformance/src/record.ts) (the other families,
+`validate` and `panels` included).
 The vectors: [`vectors/`](../../../packages/schema-system/conformance/vectors/).
 Pinned by: [`vectors.test.ts`](../../../packages/schema-system/conformance/tests/vectors.test.ts) and
 [`render.test.tsx`](../../../packages/schema-system/conformance/tests/render.test.tsx) (re-recording
 in memory against the committed files),
-[`coverage.test.ts`](../../../packages/schema-system/conformance/tests/coverage.test.ts).
+[`coverage.test.ts`](../../../packages/schema-system/conformance/tests/coverage.test.ts); the query
+family by [`queryVectors.test.ts`](../../../packages/backend-system/inmemory/tests/queryVectors.test.ts)
+(every case from the file alone, and its coverage of `query.md`) and every backend's conformance
+suite.

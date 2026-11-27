@@ -124,7 +124,7 @@ export async function appendMessage(
       { kind: CHAT_KIND, model: message.model ?? '', trigger: 'manual', outcome: 'done' },
       { parent: { id: chatId, relation: 'runs', entity: 'CollectionBlock' } },
     )) as unknown as Row;
-    fields.generatedBy = [run.id];
+    fields.generatedBy = run.id;
   }
   const block = (await TextBlock.create(dataset, fields, parent)) as unknown as Row;
   return block.id;

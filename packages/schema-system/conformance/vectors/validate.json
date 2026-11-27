@@ -1,0 +1,1171 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "validate.valid.minimal",
+      "note": "a template with a version, meta and one node is valid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["Hello"]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.valid.local-and-ref",
+      "note": "local state read in its subtree and a $ref naming a shape are valid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          },
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.title"
+              }
+            ]
+          }
+        ],
+        "$localState": {
+          "title": {
+            "type": "string",
+            "initial": ""
+          }
+        },
+        "$defs": {
+          "d1": {
+            "type": "Card",
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["Shared"]
+              }
+            ]
+          }
+        }
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.version.newer",
+      "note": "a format newer than the validator reads is refused before anything else",
+      "document": {
+        "schemaVersion": 2,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "NoSuchThing"
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["schemaVersion"],
+          "message": "Written for template format 2; this build reads format 1. Update WE to use it."
+        }
+      ]
+    },
+    {
+      "id": "validate.version.not-a-number",
+      "note": "a version that is not a whole number is refused",
+      "document": {
+        "schemaVersion": "one",
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["x"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["schemaVersion"],
+          "message": "schemaVersion must be a whole number from 1, the template format it is written in; it is \"one\""
+        }
+      ]
+    },
+    {
+      "id": "validate.version.zero",
+      "note": "a version below 1 is refused",
+      "document": {
+        "schemaVersion": 0,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["x"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["schemaVersion"],
+          "message": "schemaVersion must be a whole number from 1, the template format it is written in; it is 0"
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.unknown-key",
+      "note": "a node carrying a key outside the closed set is invalid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Row",
+            "colour": "red"
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0],
+          "message": "Unrecognized key: \"colour\""
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.child-number",
+      "note": "a child that is neither text nor an object is invalid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["a"]
+          },
+          42
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 1],
+          "message": "Invalid input: expected object, received number"
+        },
+        {
+          "at": ["children", 1],
+          "message": "Invalid input: expected string, received number"
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.query-in-children",
+      "note": "a query in children is invalid: only an expression may stand there",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "$query": {
+              "entity": "Post"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0],
+          "message": "A child is text, a node or an expression. A $query has no owner here: hoist it into $queries and read it back as local.<name>."
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.handler-in-children",
+      "note": "a handler in children is invalid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "$invoke": "routeStore.navigate",
+            "args": ["~/"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0],
+          "message": "A child is text, a node or an expression. $invoke has no event to run on here: put it in an event prop such as onClick."
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.defs-not-root",
+      "note": "$defs on any node but the root is invalid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Row",
+            "$defs": {
+              "d1": {
+                "type": "we-text",
+                "children": ["x"]
+              }
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "$defs"],
+          "message": "$defs is the root's alone: move these shapes to the template root, where every $ref finds them."
+        }
+      ]
+    },
+    {
+      "id": "validate.structure.unknown-token",
+      "note": "an object with a $ key that is no token of the format is invalid",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "props": {
+              "text": {
+                "$nope": "x"
+              }
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "text"],
+          "message": "Unrecognized key: \"$nope\""
+        }
+      ]
+    },
+    {
+      "id": "validate.if.children",
+      "note": "$if draws then or else and never children, so children on it are an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": true,
+              "then": {
+                "type": "we-text",
+                "children": ["then"]
+              }
+            },
+            "children": [
+              {
+                "type": "we-text",
+                "children": ["never"]
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "children"],
+          "message": "{ type: \"$if\" } draws its \"then\" or its \"else\", never children, so these 1 would not appear. Move them into \"then\" — one node, or a node with no type holding several."
+        }
+      ]
+    },
+    {
+      "id": "validate.if.token-branch",
+      "note": "a token where $if takes a node is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$if",
+            "props": {
+              "condition": true,
+              "then": {
+                "$": "'text'"
+              }
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "then"],
+          "message": "Operator token \"$\" used where a schema node is required. This slot renders a node, so a \"$\" token here renders nothing."
+        }
+      ]
+    },
+    {
+      "id": "validate.slot.in-template",
+      "note": "a template may not write a $slot outlet: chrome is the modules'",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$slot",
+            "props": {
+              "anchor": "call-controls"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "type"],
+          "message": "{ type: \"$slot\" } is an outlet in a module's own chrome, where other modules contribute; a template has no anchors, so here it draws an \"Unknown component\" marker. Place the module's part with $part instead."
+        }
+      ]
+    },
+    {
+      "id": "validate.component.unknown",
+      "note": "a component the catalog does not have is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Collumn"
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "type"],
+          "message": "Unknown component \"Collumn\". Did you mean \"Column\"?"
+        }
+      ]
+    },
+    {
+      "id": "validate.element.refused",
+      "note": "a native element off the allowlist is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "script",
+            "children": ["alert(1)"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "type"],
+          "message": "<script> is not an element a template may mount: it runs code, loads something into the page, or creates a document of its own, so it renders nothing. For an embedded page use we-iframe; for formatted markup use we-html or we-markdown."
+        }
+      ]
+    },
+    {
+      "id": "validate.value.unknown-radius",
+      "note": "a radius that is not on the scale is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "r": "42"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "r"],
+          "message": "\"42\" is not a radius token. Use a step of the scale (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, pill, full), a theme family (control, surface, input, avatar, media) or a CSS length — a card or any other sheet is \"surface\". As written it resolves to var(--we-radius-42), which no theme declares, so the corners are square."
+        }
+      ]
+    },
+    {
+      "id": "validate.value.unknown-space",
+      "note": "a spacing value that is not on the scale is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Column",
+            "props": {
+              "gap": "450"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "gap"],
+          "message": "\"450\" is not a space token. Use a step of the scale (0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000), a theme family (control, surface) or a CSS length. As written it resolves to var(--we-space-450), which nothing declares, so no space is applied."
+        }
+      ]
+    },
+    {
+      "id": "validate.value.string-reference",
+      "note": "a string spelling a reference is refused: a reference is an expression",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "props": {
+              "text": "$item.name"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "text"],
+          "message": "\"$item.name\" is a reference in the old string spelling and would render as text. Write { \"$\": \"item.name\" }."
+        }
+      ]
+    },
+    {
+      "id": "validate.expression.syntax",
+      "note": "an expression that does not parse is an error at the token",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "a +"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "children", 0, "$"],
+          "message": "Expression: Unexpected end of expression (column 3)"
+        }
+      ]
+    },
+    {
+      "id": "validate.expression.undeclared-local",
+      "note": "reading a local nothing declares is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": [
+              {
+                "$": "local.missing"
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "children", 0, "$"],
+          "message": "Expression: local.missing is not declared in $localState or $queries here (column 0)"
+        }
+      ]
+    },
+    {
+      "id": "validate.reset-local.not-scope",
+      "note": "$resetLocal names $scope and nothing else",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "onClick": {
+                "$resetLocal": "title"
+              }
+            },
+            "children": ["Reset"]
+          }
+        ],
+        "$localState": {
+          "title": {
+            "type": "string",
+            "initial": ""
+          }
+        }
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "onClick", "$resetLocal"],
+          "message": "$resetLocal resets the whole enclosing scope and takes only \"$scope\"."
+        }
+      ]
+    },
+    {
+      "id": "validate.set-local.undeclared",
+      "note": "$setLocal of a field no scope declares is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-button",
+            "props": {
+              "onClick": {
+                "$setLocal": "nope",
+                "value": 1
+              }
+            },
+            "children": ["Set"]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "onClick", "$setLocal"],
+          "message": "$setLocal references \"nope\" but no $localState is declared in scope"
+        }
+      ]
+    },
+    {
+      "id": "validate.ref.missing",
+      "note": "a $ref naming no shape is an error, at the $ref",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "nope"
+            }
+          }
+        ],
+        "$defs": {
+          "d1": {
+            "type": "we-text",
+            "children": ["x"]
+          }
+        }
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "def"],
+          "message": "{ type: \"$ref\" } names \"nope\", which is not one of the root's $defs, so a marker is drawn in its place."
+        }
+      ]
+    },
+    {
+      "id": "validate.ref.no-defs",
+      "note": "a $ref in a document with no $defs is an error",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "def"],
+          "message": "{ type: \"$ref\" } names \"d1\", which is not one of the root's $defs, so a marker is drawn in its place."
+        }
+      ]
+    },
+    {
+      "id": "validate.ref.cycle",
+      "note": "a shape that reaches itself is an error, where the cycle closes",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          }
+        ],
+        "$defs": {
+          "d1": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d2"
+                }
+              }
+            ]
+          },
+          "d2": {
+            "type": "Row",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "children", 0, "children", 0, "props", "def"],
+          "message": "The shape \"d1\" contains a { type: \"$ref\" } to itself, so it would never end: it is drawn once, and a marker stands where it reaches itself again."
+        }
+      ]
+    },
+    {
+      "id": "validate.ref.inside-shape-reported-per-use",
+      "note": "a mistake inside a shape is reported at each place the shape is used",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$ref",
+            "props": {
+              "def": "d1"
+            }
+          },
+          {
+            "type": "Row",
+            "children": [
+              {
+                "type": "$ref",
+                "props": {
+                  "def": "d1"
+                }
+              }
+            ]
+          }
+        ],
+        "$defs": {
+          "d1": {
+            "type": "Collumn"
+          }
+        }
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "type"],
+          "message": "Unknown component \"Collumn\". Did you mean \"Column\"?"
+        },
+        {
+          "at": ["children", 1, "children", 0, "type"],
+          "message": "Unknown component \"Collumn\". Did you mean \"Column\"?"
+        }
+      ]
+    },
+    {
+      "id": "validate.scope.route-reads-root",
+      "note": "a route reads the root's local state: lexical scope",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "$routes"
+          }
+        ],
+        "$localState": {
+          "count": {
+            "type": "number",
+            "initial": 0
+          }
+        },
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.count"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.scope.route-not-outlet",
+      "note": "a route does not read what is declared between the root and its outlet",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "near": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": [
+              {
+                "type": "$routes"
+              }
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.near"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["routes", 0, "children", 0, "children", 0, "$"],
+          "message": "Expression: local.near is not declared in $localState or $queries here (column 0)"
+        }
+      ]
+    },
+    {
+      "id": "validate.scope.route-not-outlet-advice",
+      "note": "a route reading what is declared on the way to its outlet is told to move it to the node with routes; a route reading what is declared beside the outlet is not",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Row",
+            "$localState": {
+              "beside": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": []
+          },
+          {
+            "type": "Column",
+            "$localState": {
+              "near": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": [
+              {
+                "type": "$routes"
+              }
+            ]
+          }
+        ],
+        "routes": [
+          {
+            "path": "/",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.near"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "path": "/beside",
+            "type": "Column",
+            "children": [
+              {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.beside"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["routes", 0, "children", 0, "children", 0, "$"],
+          "message": "Expression: local.near is not declared in $localState or $queries here (column 0)"
+        },
+        {
+          "at": ["routes", 1, "children", 0, "children", 0, "$"],
+          "message": "Expression: local.beside is not declared in $localState or $queries here (column 0)"
+        }
+      ],
+      "warnings": [
+        {
+          "at": ["routes", 0, "children", 0, "children", 0, "$"],
+          "message": "local.near is declared at children[1], between the node with routes (the template's root) and its $routes outlet, which a route does not see: a route's scope is where it is written, not where it is drawn. Move it to the node with `routes`."
+        }
+      ]
+    },
+    {
+      "id": "validate.scope.panel-not-tree-advice",
+      "note": "a panel reading what is declared below the root is told to move it to the template's root",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "panels": [
+            {
+              "id": "side",
+              "node": {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.inner"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Column",
+            "$localState": {
+              "inner": {
+                "type": "string",
+                "initial": ""
+              }
+            },
+            "children": []
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["meta", "panels", 0, "node", "children", 0, "$"],
+          "message": "Expression: local.inner is not declared in $localState or $queries here (column 0)"
+        }
+      ],
+      "warnings": [
+        {
+          "at": ["meta", "panels", 0, "node", "children", 0, "$"],
+          "message": "local.inner is declared at children[0], inside the template's tree, which a panel does not see: a panel's scope is the root's, wherever it is drawn. Move it to the template's root."
+        }
+      ]
+    },
+    {
+      "id": "validate.scope.panel-reads-root",
+      "note": "a panel's node reads the root's local state",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check",
+          "panels": [
+            {
+              "id": "side",
+              "node": {
+                "type": "we-text",
+                "children": [
+                  {
+                    "$": "local.count"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "we-text",
+            "children": ["x"]
+          }
+        ],
+        "$localState": {
+          "count": {
+            "type": "number",
+            "initial": 0
+          }
+        }
+      },
+      "valid": true,
+      "errors": []
+    },
+    {
+      "id": "validate.node-prop.judged",
+      "note": "a component's declared node prop is judged as a node",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "FlipCard",
+            "props": {
+              "front": {
+                "type": "Collumn"
+              }
+            }
+          }
+        ]
+      },
+      "valid": false,
+      "errors": [
+        {
+          "at": ["children", 0, "props", "front", "type"],
+          "message": "Unknown component \"Collumn\". Did you mean \"Column\"?"
+        }
+      ]
+    },
+    {
+      "id": "validate.node-prop.undeclared-is-data",
+      "note": "a node-shaped value in a prop the component does not declare is data, not judged",
+      "document": {
+        "schemaVersion": 1,
+        "meta": {
+          "name": "Case",
+          "description": "A validator case",
+          "icon": "check"
+        },
+        "type": "Column",
+        "children": [
+          {
+            "type": "Card",
+            "props": {
+              "front": {
+                "type": "Collumn"
+              }
+            }
+          }
+        ]
+      },
+      "valid": true,
+      "errors": []
+    }
+  ]
+}

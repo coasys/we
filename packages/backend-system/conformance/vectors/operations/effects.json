@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "groups": {
+    "default": "content",
+    "width": ["content", "reactions", "settings", "library"],
+    "entities": { "Document": "library", "Reaction": "reactions", "ReactionType": "reactions", "Status": "settings" }
+  },
+  "cases": [
+    {
+      "id": "effects.one-create",
+      "note": "one create: not bulk, not destructive, in the default group",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "create": { "entity": "Item", "fields": { "kind": "note" } } }]
+      },
+      "summary": { "entities": { "Item": ["create"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.reads-only",
+      "note": "a find and a check write nothing, so the operation is not a write",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "find": { "as": "f", "entity": "Status" } }, { "check": { "condition": true, "error": "no" } }],
+        "errors": { "no": "No." }
+      },
+      "summary": { "entities": {}, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": false }
+    },
+    {
+      "id": "effects.loop-is-bulk",
+      "note": "a create and a link inside a forEach make the operation bulk",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "items" },
+              "as": "item",
+              "steps": [
+                { "create": { "as": "made", "entity": "Item", "fields": { "kind": "note" } } },
+                {
+                  "link": {
+                    "entity": "Item",
+                    "id": { "$": "id" },
+                    "relation": "children",
+                    "target": { "$": "made.id" }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Item": ["add:children", "create"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.parent",
+      "note": "a create under a parent adds to the parent’s relation, under * when the parent names no entity",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "create": {
+              "entity": "Reaction",
+              "fields": { "value": 1 },
+              "parent": { "id": { "$": "id" }, "relation": "reactions" }
+            }
+          },
+          {
+            "create": {
+              "entity": "Text",
+              "fields": { "text": "x" },
+              "parent": { "id": { "$": "id" }, "relation": "children", "entity": "Item" }
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "*": ["add:reactions"], "Item": ["add:children"], "Reaction": ["create"], "Text": ["create"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "reactions", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.widest-group",
+      "note": "a write of a status beside an item needs settings, the wider of the two groups",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          { "create": { "entity": "Item", "fields": { "kind": "post" } } },
+          { "update": { "entity": "Status", "id": { "$": "id" }, "fields": { "name": "Done" } } }
+        ]
+      },
+      "summary": {
+        "entities": { "Item": ["create"], "Status": ["edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "settings", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.library",
+      "note": "an edit of a document is the library’s, the widest group",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "update": { "entity": "Document", "id": { "$": "id" }, "fields": { "name": "x" } } }]
+      },
+      "summary": { "entities": { "Document": ["edit"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "library", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.delete-is-destructive",
+      "note": "a delete makes the operation destructive",
+      "operation": { "description": "A case.", "steps": [{ "delete": { "entity": "Item", "id": { "$": "id" } } }] },
+      "summary": { "entities": { "Item": ["delete"] }, "categories": {}, "bulk": false, "destructive": true },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.delete-own",
+      "note": "a delete of only the invoker’s own record is deleteOwn, and not destructive",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "delete": { "entity": "Reaction", "id": { "$": "id" }, "own": true } }]
+      },
+      "summary": { "entities": { "Reaction": ["deleteOwn"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "reactions", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.unlink",
+      "note": "an unlink removes from a relation, and is destructive",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          { "unlink": { "entity": "Item", "id": { "$": "id" }, "relation": "children", "target": { "$": "card" } } }
+        ]
+      },
+      "summary": { "entities": { "Item": ["remove:children"] }, "categories": {}, "bulk": false, "destructive": true },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.set-relation",
+      "note": "a setRelation adds and removes, and is destructive",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "setRelation": { "entity": "Item", "id": { "$": "id" }, "relation": "children", "targets": [] } }]
+      },
+      "summary": {
+        "entities": { "Item": ["add:children", "remove:children"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": true
+      },
+      "permission": { "group": "content", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.set-relation-keep",
+      "note": "a setRelation that keeps what it leaves out only adds, and is not destructive",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "setRelation": {
+              "entity": "Item",
+              "id": { "$": "id" },
+              "relation": "children",
+              "targets": [],
+              "keep": true
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Item": ["add:children"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.relation-by-expression",
+      "note": "a relation chosen by expression is recorded as *",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "link": {
+              "entity": "Item",
+              "id": { "$": "id" },
+              "relation": { "$": "relation" },
+              "target": { "$": "card" }
+            }
+          }
+        ]
+      },
+      "summary": { "entities": { "Item": ["add:*"] }, "categories": {}, "bulk": false, "destructive": false },
+      "permission": { "group": "content", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.one-of-names",
+      "note": "an entity chosen among names records under each name, and the group is the widest of them",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "update": {
+              "entity": { "$": "kind" },
+              "oneOf": ["Item", "ReactionType"],
+              "id": { "$": "id" },
+              "fields": { "$": "fields" }
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Item": ["edit"], "ReactionType": ["edit"] },
+        "categories": {},
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "reactions", "chosen": [], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.per-call-any",
+      "note": "an entity chosen from any record type is chosen at call time: listed as the category, judged per call, adding nothing to the group",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "delete": { "entity": { "$": "kind" }, "oneOf": [{ "category": "any" }], "id": { "$": "id" } } }]
+      },
+      "summary": { "entities": {}, "categories": { "any": ["delete"] }, "bulk": false, "destructive": true },
+      "permission": { "group": "content", "chosen": ["any"], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.per-call-blockable",
+      "note": "a create of any block type records under the category, chosen at call time, beside a named write that sets the group",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          { "create": { "as": "post", "entity": "Item", "fields": { "kind": "post" } } },
+          {
+            "create": {
+              "entity": { "$": "kind" },
+              "oneOf": [{ "category": "blockable" }],
+              "fields": { "$": "fields" },
+              "parent": { "id": { "$": "post.id" }, "relation": "children", "entity": "Item" }
+            }
+          }
+        ]
+      },
+      "summary": {
+        "entities": { "Item": ["add:children", "create"] },
+        "categories": { "blockable": ["create"] },
+        "bulk": false,
+        "destructive": false
+      },
+      "permission": { "group": "content", "chosen": ["blockable"], "destructive": false, "writes": true }
+    },
+    {
+      "id": "effects.when-ignored",
+      "note": "a step a when may skip is still counted: the summary says what the operation could write",
+      "operation": {
+        "description": "A case.",
+        "steps": [{ "delete": { "entity": "Status", "id": { "$": "id" } }, "when": false }]
+      },
+      "summary": { "entities": { "Status": ["delete"] }, "categories": {}, "bulk": false, "destructive": true },
+      "permission": { "group": "settings", "chosen": [], "destructive": true, "writes": true }
+    },
+    {
+      "id": "effects.call",
+      "note": "what a called operation writes is the caller’s, and a call from a loop makes it bulk",
+      "operation": {
+        "description": "A case.",
+        "steps": [
+          {
+            "forEach": {
+              "in": { "$": "items" },
+              "as": "item",
+              "steps": [{ "call": { "operation": "conformance.react" } }]
+            }
+          }
+        ]
+      },
+      "calls": {
+        "conformance.react": {
+          "description": "A case.",
+          "steps": [
+            {
+              "create": {
+                "entity": "Reaction",
+                "fields": { "value": 1 },
+                "parent": { "id": { "$": "id" }, "relation": "reactions" }
+              }
+            }
+          ]
+        }
+      },
+      "summary": {
+        "entities": { "*": ["add:reactions"], "Reaction": ["create"] },
+        "categories": {},
+        "bulk": true,
+        "destructive": false
+      },
+      "permission": { "group": "reactions", "chosen": [], "destructive": false, "writes": true }
+    }
+  ]
+}

@@ -36,7 +36,7 @@ import {
 import {
   callsOf,
   type EntityWriteCheck,
-  getEntity,
+  getEntityForDataset,
   isOperationError,
   PROTECTED_ENTITIES,
   registerEntityWriteCheck,
@@ -56,11 +56,25 @@ export const VECTOR_NAMESPACE = 'conformance';
 export const VECTOR_INVOKER = 'did:example:invoker';
 
 /**
- * The policy every case runs under: the narrowest one that gives a refusal and an author something
- * to decide. Anyone may write anything, a collection is deleted only by its author, and a tag only
- * made by a curator, which the invoker is not. Frozen, since nothing here may change it.
+ * The policy the format's cases run under: the narrowest one that gives a refusal and an author
+ * something to decide. Anyone may write anything, an item is deleted only by its author, and a label
+ * only made by a curator, which the invoker is not. Frozen, since nothing here may change it.
  */
 export const VECTOR_POLICY: VectorPolicy = {
+  rules: {
+    format: 1,
+    frozen: true,
+    permissions: [
+      { action: '*', by: ['anyone'] },
+      { action: 'Item.delete', by: ['author'] },
+      { action: 'Label.create', by: [{ role: 'curator' }] },
+    ],
+  },
+  invoker: { member: true, roles: [] },
+};
+
+/** The policy WE's own operations run under: the same rules, over WE's entities. */
+export const CORE_VECTOR_POLICY: VectorPolicy = {
   rules: {
     format: 1,
     frozen: true,
@@ -71,6 +85,42 @@ export const VECTOR_POLICY: VectorPolicy = {
     ],
   },
   invoker: { member: true, roles: [] },
+};
+
+/**
+ * The entities the format's cases run over: a few neutral ones, so a host passes them without
+ * adopting WE's domain. An item is anything that holds others (`children`, ordered; `mentions`, a
+ * set); a card is a second record type to collide with; a label is one only a curator makes; a
+ * status is keyed by its slug. The access-control entities are the format's, with WE's fields.
+ */
+export const FORMAT_ENTITIES: Record<string, VectorEntity> = {
+  Card: { properties: { status: { type: 'string' }, title: { type: 'string', required: true } }, relations: {} },
+  Item: {
+    properties: { kind: { type: 'string' }, slug: { type: 'string' }, title: { type: 'string' } },
+    relations: {
+      children: { target: 'Item', cardinality: 'many', ordered: true },
+      mentions: { target: 'Item', cardinality: 'many' },
+    },
+  },
+  Label: { properties: { name: { type: 'string', required: true } }, relations: {} },
+  Policy: { properties: { document: { type: 'json', required: true } }, relations: {} },
+  Role: {
+    properties: {
+      description: { type: 'string', default: '' },
+      name: { type: 'string', required: true, default: '' },
+      slug: { type: 'string', default: '' },
+    },
+    relations: {},
+  },
+  RoleGrant: {
+    properties: {
+      agent: { type: 'string', required: true, default: '' },
+      revokedAt: { type: 'string', default: '' },
+      role: { type: 'string', required: true, default: '' },
+    },
+    relations: {},
+  },
+  Status: { properties: { name: { type: 'string', required: true }, slug: { type: 'string' } }, relations: {} },
 };
 
 /** A record the dataset starts with. */
@@ -100,6 +150,12 @@ export interface OperationCase {
   /** The bare name; it runs as `conformance.<name>`. */
   operation: string;
   args: Record<string, unknown>;
+  /**
+   * Somebody other than the invoker the dataset was seeded by, for a case about what may be done to
+   * another person's records. Such a case ends before anything is written: the runner's agent is the
+   * only writer there is.
+   */
+  invoker?: string;
   invocationId: string;
   invokedAt: string;
   /**
@@ -107,6 +163,16 @@ export interface OperationCase {
    * and before the operation ends. What an `expect` exists to notice.
    */
   concurrent?: SeedRecord[];
+  /**
+   * The dataset's identity domain, for a case about a dataset that names itself by a record (a
+   * space); `{ arriving: true }` for one naming itself by a record the agent does not hold yet.
+   * Absent: none.
+   */
+  domain?: string | { arriving: true };
+  /** The manifest version the caller wrote against, for a case about calling the wrong one. Absent: none given. */
+  version?: string;
+  /** Entities the host refuses this caller when a step chooses them at call time. Absent: none. */
+  deniedChosen?: string[];
   observe: Observation[];
 }
 
@@ -156,6 +222,9 @@ export interface OperationVector {
   invocationId: string;
   invokedAt: string;
   concurrent?: SeedRecord[];
+  domain?: string | { arriving: true };
+  version?: string;
+  deniedChosen?: string[];
   observe: Observation[];
   outcome: { result: unknown } | { error: { class: string; code: string } };
   records: Record<string, ObservedRecord[]>;
@@ -180,14 +249,14 @@ export type VectorContext = Pick<OperationVectorFile, 'entities' | 'policy'>;
 
 export type ObservedRecord = Record<string, unknown> & { id: string };
 
-const COLLECTIONS: Observation = {
-  entity: 'CollectionBlock',
+const ITEMS: Observation = {
+  entity: 'Item',
   fields: ['kind', 'title', 'slug'],
   relations: ['children'],
 };
 
 const link = (of: string, target: string) => ({
-  link: { entity: 'CollectionBlock', id: { $: of }, relation: 'children', target: { $: target } },
+  link: { entity: 'Item', id: { $: of }, relation: 'children', target: { $: target } },
 });
 
 const OPERATIONS: Record<string, OperationDefinition> = {
@@ -195,7 +264,7 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     description: 'A board and a column under it for each column given.',
     params: { title: { type: 'string', required: true }, columns: { type: 'list', required: true } },
     steps: [
-      { create: { as: 'board', entity: 'CollectionBlock', fields: { kind: 'board', title: { $: 'title' } } } },
+      { create: { as: 'board', entity: 'Item', fields: { kind: 'board', title: { $: 'title' } } } },
       {
         forEach: {
           in: { $: 'columns' },
@@ -204,7 +273,7 @@ const OPERATIONS: Record<string, OperationDefinition> = {
             {
               create: {
                 as: 'column',
-                entity: 'CollectionBlock',
+                entity: 'Item',
                 fields: { kind: 'column', title: { $: 'col.title' } },
               },
             },
@@ -219,9 +288,9 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     description: 'The tag with this slug, made when there is none.',
     params: { slug: { type: 'string', required: true } },
     steps: [
-      { find: { as: 'found', entity: 'CollectionBlock', where: { kind: 'tag', slug: { $: 'slug' } } } },
+      { find: { as: 'found', entity: 'Item', where: { kind: 'tag', slug: { $: 'slug' } } } },
       {
-        create: { as: 'made', entity: 'CollectionBlock', fields: { kind: 'tag', slug: { $: 'slug' } } },
+        create: { as: 'made', entity: 'Item', fields: { kind: 'tag', slug: { $: 'slug' } } },
         when: { $: 'count(found) == 0' },
       },
     ],
@@ -232,28 +301,28 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     params: { n: { type: 'number', required: true } },
     errors: { tooBig: 'The number is too big.' },
     steps: [
-      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'Item', fields: { kind: 'note', title: 'before' } } },
       { check: { condition: { $: 'n < 10' }, error: 'tooBig' } },
-      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'after' } } },
+      { create: { entity: 'Item', fields: { kind: 'note', title: 'after' } } },
     ],
   },
   writeTwice: {
     description: 'Makes a note and retitles it in the same operation.',
     steps: [
-      { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: 'first' } } },
-      { update: { entity: 'CollectionBlock', id: { $: 'note.id' }, fields: { title: 'second' } } },
+      { create: { as: 'note', entity: 'Item', fields: { kind: 'note', title: 'first' } } },
+      { update: { entity: 'Item', id: { $: 'note.id' }, fields: { title: 'second' } } },
     ],
     returns: { $: 'note.id' },
   },
   touchTags: {
     description: 'Marks every tag as seen, one at a time, and answers with the tags it found.',
     steps: [
-      { find: { as: 'tags', entity: 'CollectionBlock', where: { kind: 'tag' }, order: { slug: 'asc' } } },
+      { find: { as: 'tags', entity: 'Item', where: { kind: 'tag' }, order: { slug: 'asc' } } },
       {
         forEach: {
           in: { $: 'tags' },
           as: 'tag',
-          steps: [{ update: { entity: 'CollectionBlock', id: { $: 'tag.id' }, fields: { title: 'seen' } } }],
+          steps: [{ update: { entity: 'Item', id: { $: 'tag.id' }, fields: { title: 'seen' } } }],
         },
       },
     ],
@@ -265,7 +334,7 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     steps: [
       {
         link: {
-          entity: 'CollectionBlock',
+          entity: 'Item',
           id: { $: 'parent' },
           relation: 'children',
           target: { $: 'child' },
@@ -277,8 +346,8 @@ const OPERATIONS: Record<string, OperationDefinition> = {
   expecting: {
     description: 'Reads the notes, expecting them to stay as read, and makes a tag.',
     steps: [
-      { find: { as: 'notes', entity: 'CollectionBlock', where: { kind: 'note' }, expect: true } },
-      { create: { entity: 'CollectionBlock', fields: { kind: 'tag', slug: 'seen' } } },
+      { find: { as: 'notes', entity: 'Item', where: { kind: 'note' }, expect: true } },
+      { create: { entity: 'Item', fields: { kind: 'tag', slug: 'seen' } } },
     ],
     returns: { $: 'count(notes)' },
   },
@@ -289,8 +358,8 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       {
         find: {
           as: 'found',
-          entity: 'CollectionBlock',
-          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, levels: [10, 10] },
+          entity: 'Item',
+          scope: { anchor: 'Item', via: 'children', anchorId: { $: 'root' }, levels: [10, 10] },
           order: { title: 'asc' },
         },
       },
@@ -304,8 +373,8 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       {
         find: {
           as: 'found',
-          entity: 'CollectionBlock',
-          scope: { anchor: 'CollectionBlock', via: 'children', anchorId: { $: 'root' }, transitive: true },
+          entity: 'Item',
+          scope: { anchor: 'Item', via: 'children', anchorId: { $: 'root' }, transitive: true },
           order: { title: 'asc' },
         },
       },
@@ -318,7 +387,7 @@ const OPERATIONS: Record<string, OperationDefinition> = {
       {
         find: {
           as: 'found',
-          entity: 'CollectionBlock',
+          entity: 'Item',
           where: { kind: 'tag', NOT: { slug: 'garden' } },
           order: { title: 'asc' },
         },
@@ -327,23 +396,43 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     returns: { $: 'found.map(r, r.title)' },
   },
   noteThenTag: {
-    description: 'Makes a note and then a tag, which the policy lets only a curator make.',
+    description: 'Makes a note and then a label, which the policy lets only a curator make.',
     steps: [
-      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
-      { create: { entity: 'TagBlock', fields: { name: 'garden' } } },
+      { create: { entity: 'Item', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'Label', fields: { name: 'garden' } } },
     ],
+  },
+  orderKept: {
+    description: 'Puts the children named first, keeping the rest after them in the order they held.',
+    params: { parent: { type: 'string', required: true }, ids: { type: 'list', required: true } },
+    steps: [
+      {
+        setRelation: {
+          entity: 'Item',
+          id: { $: 'parent' },
+          relation: 'children',
+          targets: { $: 'ids' },
+          keep: true,
+        },
+      },
+    ],
+  },
+  takeBack: {
+    description: 'Deletes a record, only if the invoker made it.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ delete: { entity: 'Item', id: { $: 'id' }, own: true } }],
   },
   makeAndDrop: {
     description: 'Makes a note and deletes it, which only its author may.',
     steps: [
-      { create: { as: 'note', entity: 'CollectionBlock', fields: { kind: 'note', title: 'brief' } } },
-      { delete: { entity: 'CollectionBlock', id: { $: 'note.id' } } },
+      { create: { as: 'note', entity: 'Item', fields: { kind: 'note', title: 'brief' } } },
+      { delete: { entity: 'Item', id: { $: 'note.id' } } },
     ],
   },
   note: {
     description: 'A note with this title.',
     params: { title: { type: 'string', required: true } },
-    steps: [{ create: { as: 'made', entity: 'CollectionBlock', fields: { kind: 'note', title: { $: 'title' } } } }],
+    steps: [{ create: { as: 'made', entity: 'Item', fields: { kind: 'note', title: { $: 'title' } } } }],
     returns: { $: 'made.id' },
   },
   noteThroughCall: {
@@ -357,7 +446,7 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     params: { make: { type: 'boolean', required: true } },
     steps: [
       {
-        create: { as: 'made', entity: 'CollectionBlock', fields: { kind: 'note', title: 'maybe' } },
+        create: { as: 'made', entity: 'Item', fields: { kind: 'note', title: 'maybe' } },
         when: { $: 'make' },
       },
     ],
@@ -367,9 +456,190 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     description: 'Makes a note, then a record of the entity it is given, from a list naming a protected one.',
     params: { entity: { type: 'string', required: true } },
     steps: [
-      { create: { entity: 'CollectionBlock', fields: { kind: 'note', title: 'before' } } },
-      { create: { entity: { $: 'entity' }, oneOf: ['CollectionBlock', 'Policy'], fields: {} } },
+      { create: { entity: 'Item', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: { $: 'entity' }, oneOf: ['Item', 'Policy'], fields: {} } },
     ],
+  },
+  /*
+    Records keyed by identity: their ids derive from the entity and the slug, never the invocation.
+  */
+  nameState: {
+    description: 'A status, keyed by its slug.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'made',
+          entity: 'Status',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+    ],
+    returns: { $: 'made.id' },
+  },
+  nameStateTwice: {
+    description: 'The same status named twice in one operation, and a note before it.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      { create: { entity: 'Item', fields: { kind: 'note', title: 'before' } } },
+      { create: { entity: 'Status', identity: ['slug'], fields: { name: 'One', slug: { $: 'slug' } } } },
+      { create: { entity: 'Status', identity: ['slug'], fields: { name: 'Two', slug: { $: 'slug' } } } },
+    ],
+  },
+  nameStateBesideNote: {
+    description: 'A status keyed by its slug and a note keyed by the invocation, answering both ids.',
+    params: { slug: { type: 'string', required: true } },
+    steps: [
+      {
+        create: {
+          as: 'state',
+          entity: 'Status',
+          identity: ['slug'],
+          fields: { name: { $: 'slug' }, slug: { $: 'slug' } },
+        },
+      },
+      { create: { as: 'note', entity: 'Item', fields: { kind: 'note', title: { $: 'slug' } } } },
+    ],
+    returns: { $: '[state.id, note.id]' },
+  },
+  retitle: {
+    description: 'Retitles one note.',
+    params: { id: { type: 'string', required: true } },
+    steps: [{ update: { entity: 'Item', id: { $: 'id' }, fields: { title: 'retitled' } } }],
+  },
+  theTag: {
+    description: 'The one tag there is, or a failure.',
+    steps: [{ find: { as: 'tag', entity: 'Item', where: { kind: 'tag' }, one: true } }],
+    returns: { $: 'tag.id' },
+  },
+  unlinkStrictly: {
+    description: 'Takes a record out of a holder, asserting it was in it.',
+    params: { holder: { type: 'string', required: true }, target: { type: 'string', required: true } },
+    steps: [
+      {
+        unlink: {
+          entity: 'Item',
+          id: { $: 'holder' },
+          relation: 'children',
+          target: { $: 'target' },
+          strict: true,
+        },
+      },
+    ],
+  },
+  readsNobody: {
+    description: 'Titles a note from a name nothing binds.',
+    steps: [{ create: { entity: 'Item', fields: { kind: 'note', title: { $: 'nobody' } } } }],
+  },
+  makesNowhere: {
+    description: 'Creates a record of an entity the dataset has no type for.',
+    steps: [{ create: { entity: 'Nowhere', fields: { title: 'x' } } }],
+  },
+  makesChosen: {
+    description: 'Creates a record of the entity the caller names, among items only.',
+    params: { kind: { type: 'string', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: ['Item'], fields: { $: '{ kind: "note" }' } } }],
+  },
+  makesAny: {
+    description: 'Creates a record of whatever entity the caller names, with the fields given.',
+    params: { kind: { type: 'string', required: true }, fields: { type: 'object', required: true } },
+    steps: [{ create: { entity: { $: 'kind' }, oneOf: [{ category: 'any' }], fields: { $: 'fields' } } }],
+  },
+  notesFor: {
+    description: 'A note per item given.',
+    params: { items: { type: 'json', required: true } },
+    steps: [
+      {
+        forEach: {
+          in: { $: 'items' },
+          as: 'item',
+          steps: [{ create: { entity: 'Item', fields: { kind: 'note', title: { $: 'item.title' } } } }],
+        },
+      },
+    ],
+  },
+  firstTags: {
+    description: 'The first tags, as many as asked for.',
+    params: { n: { type: 'number', required: true } },
+    steps: [{ find: { as: 'tags', entity: 'Item', where: { kind: 'tag' }, limit: { $: 'n' } } }],
+    returns: { $: 'count(tags)' },
+  },
+  callsNowhere: {
+    description: 'Calls an operation nobody registered.',
+    steps: [{ call: { operation: 'conformance.nowhere' } }],
+  },
+  deep0: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep1' } }],
+  },
+  deep1: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep2' } }],
+  },
+  deep2: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep3' } }],
+  },
+  deep3: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep4' } }],
+  },
+  deep4: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep5' } }],
+  },
+  deep5: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep6' } }],
+  },
+  deep6: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep7' } }],
+  },
+  deep7: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep8' } }],
+  },
+  deep8: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep9' } }],
+  },
+  deep9: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep10' } }],
+  },
+  deep10: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep11' } }],
+  },
+  deep11: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep12' } }],
+  },
+  deep12: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep13' } }],
+  },
+  deep13: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep14' } }],
+  },
+  deep14: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep15' } }],
+  },
+  deep15: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep16' } }],
+  },
+  deep16: {
+    description: 'One call of a chain seventeen deep.',
+    steps: [{ call: { operation: 'conformance.deep17' } }],
+  },
+  deep17: {
+    description: 'The bottom of a chain of calls seventeen deep.',
+    steps: [{ create: { entity: 'Item', fields: { kind: 'note', title: 'bottom' } } }],
   },
   linkFour: {
     description: 'Links four records under a holder, in the order given, through an ordered and an unordered relation.',
@@ -382,10 +652,10 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     },
     steps: [
       ...(['first', 'second', 'third', 'fourth'] as const).map((target) => ({
-        link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'children', target: { $: target } },
+        link: { entity: 'Item', id: { $: 'holder' }, relation: 'children', target: { $: target } },
       })),
       ...(['first', 'second', 'third', 'fourth'] as const).map((target) => ({
-        link: { entity: 'CollectionBlock', id: { $: 'holder' }, relation: 'mentions', target: { $: target } },
+        link: { entity: 'Item', id: { $: 'holder' }, relation: 'mentions', target: { $: target } },
       })),
     ],
   },
@@ -401,32 +671,32 @@ const board = (id: string, invocationId: string, columns: unknown[], note: strin
   args: { title: 'Plan', columns },
   invocationId,
   invokedAt: AT,
-  observe: [COLLECTIONS],
+  observe: [ITEMS],
 });
 const TODO = { key: 'todo', title: 'To do' };
 const DONE = { key: 'done', title: 'Done' };
-const TAG = { entity: 'CollectionBlock', id: 'urn:example:tag-garden', fields: { kind: 'tag', slug: 'garden' } };
+const TAG = { entity: 'Item', id: 'urn:example:tag-garden', fields: { kind: 'tag', slug: 'garden' } };
 /** The ids create-and-link's invocation derives for its board (path `0`) and its done column (`1`, `k=done`, `0`). */
 const BOARD = 'urn:uuid:30198dab-4163-8c59-abb3-e132517aa975';
 const DONE_COLUMN = 'urn:uuid:b5aaccfb-347d-82b8-844c-ed58404febc5';
 /** root holds a and b; a holds a1; a1 holds a1x — three levels under root. */
 const TREE: SeedRecord[] = [
-  { entity: 'CollectionBlock', id: 'urn:example:a1x', fields: { kind: 'folder', title: 'a1x' } },
+  { entity: 'Item', id: 'urn:example:a1x', fields: { kind: 'folder', title: 'a1x' } },
   {
-    entity: 'CollectionBlock',
+    entity: 'Item',
     id: 'urn:example:a1',
     fields: { kind: 'folder', title: 'a1' },
     relations: { children: ['urn:example:a1x'] },
   },
   {
-    entity: 'CollectionBlock',
+    entity: 'Item',
     id: 'urn:example:a',
     fields: { kind: 'folder', title: 'a' },
     relations: { children: ['urn:example:a1'] },
   },
-  { entity: 'CollectionBlock', id: 'urn:example:b', fields: { kind: 'folder', title: 'b' } },
+  { entity: 'Item', id: 'urn:example:b', fields: { kind: 'folder', title: 'b' } },
   {
-    entity: 'CollectionBlock',
+    entity: 'Item',
     id: 'urn:example:root',
     fields: { kind: 'folder', title: 'root' },
     relations: { children: ['urn:example:a', 'urn:example:b'] },
@@ -455,7 +725,7 @@ const CASES: OperationCase[] = [
     args: { slug: 'garden' },
     invocationId: '00000000-0000-4000-8000-000000000002',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
   },
   {
     id: 'upsert-missing',
@@ -466,18 +736,18 @@ const CASES: OperationCase[] = [
     args: { slug: 'weeds' },
     invocationId: '00000000-0000-4000-8000-000000000003',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
   },
   {
     id: 'found-carries-id',
     note: 'a found record carries its id: a step reads it by name, and a forEach over found records keys by it',
     operations: OPERATIONS,
-    dataset: [TAG, { entity: 'CollectionBlock', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    dataset: [TAG, { entity: 'Item', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
     operation: 'touchTags',
     args: {},
     invocationId: '00000000-0000-4000-8000-000000000024',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
   },
   {
     id: 'rollback-on-check',
@@ -488,7 +758,7 @@ const CASES: OperationCase[] = [
     args: { n: 12 },
     invocationId: '00000000-0000-4000-8000-000000000004',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
   },
   {
     id: 'second-write',
@@ -499,16 +769,16 @@ const CASES: OperationCase[] = [
     args: {},
     invocationId: '00000000-0000-4000-8000-000000000005',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
   },
   {
     id: 'strict-link',
     note: 'a strict link to a record already linked fails as alreadyLinked and changes nothing',
     operations: OPERATIONS,
     dataset: [
-      { entity: 'CollectionBlock', id: 'urn:example:child', fields: { kind: 'card' } },
+      { entity: 'Item', id: 'urn:example:child', fields: { kind: 'card' } },
       {
-        entity: 'CollectionBlock',
+        entity: 'Item',
         id: 'urn:example:parent',
         fields: { kind: 'board' },
         relations: { children: ['urn:example:child'] },
@@ -518,12 +788,480 @@ const CASES: OperationCase[] = [
     args: { parent: 'urn:example:parent', child: 'urn:example:child' },
     invocationId: '00000000-0000-4000-8000-000000000006',
     invokedAt: AT,
-    observe: [COLLECTIONS],
+    observe: [ITEMS],
+  },
+  {
+    id: 'set-relation-keep',
+    note: 'a setRelation that keeps puts the named members first and every other member after them, in the order they held',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'Item', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'Item', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'Item', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'Item',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2', 'urn:example:k3'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3'] },
+    invocationId: '00000000-0000-4000-8000-000000000090',
+    invokedAt: AT,
+    observe: [ITEMS],
   },
   /*
-    WE's own operations, run under this namespace: what a second implementation must produce for a
-    reaction, an answer and a reply, the shapes a community's data is mostly made of.
+    The runner's rules the cases above leave open: a read that must not move under the operation, a
+    walk down a relation, a NOT over a field a record lacks, the write check refusing, an id made
+    inside a call, a guarded create that does not run, a replay, and a write no operation may make.
   */
+  {
+    id: 'expect-holds',
+    note: 'an expect find that reads the same at the end lets the operation land',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Item', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'expecting',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000030',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'expect-changed',
+    note: 'a note committed by another writer after the expect find read fails the operation as expectChanged, and its tag does not land',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Item', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'expecting',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000031',
+    invokedAt: AT,
+    concurrent: [{ entity: 'Item', id: 'urn:example:their-note', fields: { kind: 'note', title: 'theirs' } }],
+    observe: [ITEMS],
+  },
+  {
+    id: 'find-scope-levels',
+    note: 'a find walking two levels down a relation reaches the children and grandchildren, and stops there',
+    operations: OPERATIONS,
+    dataset: TREE,
+    operation: 'walkTwoDeep',
+    args: { root: 'urn:example:root' },
+    invocationId: '00000000-0000-4000-8000-000000000032',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'find-scope-transitive',
+    note: 'a transitive find reaches everything under the record, however deep',
+    operations: OPERATIONS,
+    dataset: TREE,
+    operation: 'walkAll',
+    args: { root: 'urn:example:root' },
+    invocationId: '00000000-0000-4000-8000-000000000033',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'not-absent',
+    note: 'NOT over a comparison matches a record with no value for the field, as well as one with another value',
+    operations: OPERATIONS,
+    dataset: [
+      { ...TAG, fields: { ...TAG.fields, title: 'Garden' } },
+      {
+        entity: 'Item',
+        id: 'urn:example:tag-weeds',
+        fields: { kind: 'tag', slug: 'weeds', title: 'Weeds' },
+      },
+      { entity: 'Item', id: 'urn:example:tag-bare', fields: { kind: 'tag', title: 'Bare' } },
+    ],
+    operation: 'otherTags',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000034',
+    invokedAt: AT,
+    observe: [],
+  },
+  {
+    id: 'refused-write',
+    note: 'a write the policy refuses fails the operation as refused, and the note made before it does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'noteThenTag',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000035',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Label', fields: ['name'], relations: [] }],
+  },
+  {
+    id: 'author-deletes-own',
+    note: 'a record the operation made is its invoker’s, so a policy letting only the author delete lets the operation delete it',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makeAndDrop',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000036',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'call-derived-id',
+    note: 'a record made inside a call takes its id from the call’s path, and its author is the invoker',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'noteThroughCall',
+    args: { title: 'called' },
+    invocationId: '00000000-0000-4000-8000-000000000037',
+    invokedAt: AT,
+    observe: [{ entity: 'Item', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'when-false-create',
+    note: 'a create whose when is false writes nothing, and the name it would have bound reads as no value',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'maybeNote',
+    args: { make: false },
+    invocationId: '00000000-0000-4000-8000-000000000038',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'forEach-replay',
+    note: 'create-and-link replayed onto a dataset holding its done column: the replay names the same id for that key, is refused as recordExists, and adds nothing',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Item', id: DONE_COLUMN, fields: { kind: 'column', title: 'Done' } }],
+    operation: 'makeBoard',
+    args: { title: 'Plan', columns: [TODO, DONE] },
+    invocationId: '00000000-0000-4000-8000-000000000001',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'create-onto-held-id',
+    note: 'a create whose derived id a record of another entity already holds is refused as recordExists',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Card', id: BOARD, fields: { title: 'Squatter', status: 'todo' } }],
+    operation: 'note',
+    args: { title: 'late' },
+    invocationId: '00000000-0000-4000-8000-000000000001',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Card', fields: ['title'], relations: [] }],
+  },
+  {
+    id: 'protected-entity',
+    note: 'a write to an access-control entity, chosen at run time, fails as static protectedEntity, and the note made before it does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'writeChosen',
+    args: { entity: 'Policy' },
+    invocationId: '00000000-0000-4000-8000-000000000039',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Policy', fields: [], relations: [] }],
+  },
+  {
+    id: 'relation-order',
+    // Written in the reverse of code-point order, four of them: a backend that loses the written
+    // order shows it, rather than happening to answer in it.
+    note: 'an ordered relation reads back in the order written, an unordered one compares as a set, and records list by id in code-point order',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'Item', id: 'urn:example:holder', fields: { kind: 'board' } },
+      { entity: 'Item', id: 'urn:example:alpha', fields: { kind: 'card' } },
+      { entity: 'Item', id: 'urn:example:Zed', fields: { kind: 'card' } },
+      { entity: 'Item', id: 'urn:example:Yew', fields: { kind: 'card' } },
+      { entity: 'Item', id: 'urn:example:Xi', fields: { kind: 'card' } },
+    ],
+    operation: 'linkFour',
+    args: {
+      holder: 'urn:example:holder',
+      first: 'urn:example:alpha',
+      second: 'urn:example:Zed',
+      third: 'urn:example:Yew',
+      fourth: 'urn:example:Xi',
+    },
+    invocationId: '00000000-0000-4000-8000-000000000040',
+    invokedAt: AT,
+    observe: [{ entity: 'Item', fields: ['kind'], relations: ['children', 'mentions'] }],
+  },
+  /*
+    Identity: the id a keyed create derives is the entity's and the slug's, the same from any
+    invocation; a second create of it is refused; and it is never an id an invocation derives.
+  */
+  {
+    id: 'identity-id',
+    note: 'a create keyed by identity derives its id from the entity and the slug, not the invocation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    observe: [{ entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-id-other-invocation',
+    note: 'another invocation naming the same identity derives the same id as identity-id',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000042',
+    invokedAt: AT,
+    observe: [{ entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-id-in-space',
+    note: 'in a dataset with an identity domain (a space), the same identity derives another id, within that domain',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000041',
+    invokedAt: AT,
+    domain: 'urn:example:space-a',
+    observe: [{ entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-space-not-ready',
+    note: 'in a dataset naming itself by a record not held yet, an identity create is refused as spaceNotReady, never derived without the domain',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameState',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000091',
+    invokedAt: AT,
+    domain: { arriving: true },
+    observe: [{ entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-twice',
+    note: 'a second create of the same identity is refused as recordExists, and nothing the operation made lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateTwice',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000043',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'identity-not-invocation',
+    note: 'a record keyed by identity and one keyed by the invocation get different ids, the first the one identity-id derives',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'nameStateBesideNote',
+    args: { slug: 'blocked' },
+    invocationId: '00000000-0000-4000-8000-000000000044',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Status', fields: ['slug'], relations: [] }],
+  },
+  {
+    id: 'delete-own-mine',
+    note: 'a delete of the invoker’s own record deletes it',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Item', id: 'urn:example:mine', fields: { kind: 'note', title: 'mine' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:mine' },
+    invocationId: '00000000-0000-4000-8000-000000000045',
+    invokedAt: AT,
+    observe: [{ entity: 'Item', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'delete-own-not-mine',
+    note: 'a delete of one’s own record, invoked by somebody who did not make it, fails as notOwn and deletes nothing',
+    operations: OPERATIONS,
+    dataset: [{ entity: 'Item', id: 'urn:example:theirs', fields: { kind: 'note', title: 'theirs' } }],
+    operation: 'takeBack',
+    args: { id: 'urn:example:theirs' },
+    invoker: 'did:example:visitor',
+    invocationId: '00000000-0000-4000-8000-000000000046',
+    invokedAt: AT,
+    observe: [{ entity: 'Item', fields: ['kind', 'title', 'author'], relations: [] }],
+  },
+  {
+    id: 'set-relation-keep-adds',
+    note: 'a setRelation that keeps adds a member it names that the relation did not hold, and removes none',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'Item', id: 'urn:example:k1', fields: { kind: 'card', title: 'k1' } },
+      { entity: 'Item', id: 'urn:example:k2', fields: { kind: 'card', title: 'k2' } },
+      { entity: 'Item', id: 'urn:example:k3', fields: { kind: 'card', title: 'k3' } },
+      {
+        entity: 'Item',
+        id: 'urn:example:holder',
+        fields: { kind: 'board', title: 'holder' },
+        relations: { children: ['urn:example:k1', 'urn:example:k2'] },
+      },
+    ],
+    operation: 'orderKept',
+    args: { parent: 'urn:example:holder', ids: ['urn:example:k3', 'urn:example:k1'] },
+    invocationId: '00000000-0000-4000-8000-000000000047',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+
+  {
+    id: 'update-missing',
+    note: 'an update naming a record that is not there fails as notFound',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: { id: 'urn:example:gone' },
+    invocationId: '00000000-0000-4000-8000-000000000048',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'find-one-ambiguous',
+    note: 'a find with one that matches two records fails as ambiguous',
+    operations: OPERATIONS,
+    dataset: [TAG, { entity: 'Item', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    operation: 'theTag',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000049',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'strict-unlink',
+    note: 'a strict unlink of a record that is not a member fails as notLinked and changes nothing',
+    operations: OPERATIONS,
+    dataset: [
+      { entity: 'Item', id: 'urn:example:parent', fields: { kind: 'board', title: 'parent' } },
+      { entity: 'Item', id: 'urn:example:stranger', fields: { kind: 'note', title: 'stranger' } },
+    ],
+    operation: 'unlinkStrictly',
+    args: { holder: 'urn:example:parent', target: 'urn:example:stranger' },
+    invocationId: '00000000-0000-4000-8000-000000000050',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'bad-args',
+    note: 'args missing a required param fail as badArgs before anything runs',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'retitle',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000051',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'unbound-name',
+    note: 'an expression reading a name nothing binds fails as unboundName',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'readsNobody',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000052',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'unknown-entity',
+    note: 'a create of an entity the dataset has no type for fails as unknownEntity',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000053',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'outside-one-of',
+    note: 'a chosen entity its oneOf does not admit fails as outsideOneOf, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesChosen',
+    args: { kind: 'Status' },
+    invocationId: '00000000-0000-4000-8000-000000000054',
+    invokedAt: AT,
+    observe: [ITEMS, { entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'not-granted',
+    note: 'a chosen entity the host refuses this caller fails as notGranted, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'makesAny',
+    args: { kind: 'Status', fields: { name: 'Blocked', slug: 'blocked' } },
+    invocationId: '00000000-0000-4000-8000-000000000055',
+    invokedAt: AT,
+    deniedChosen: ['Status'],
+    observe: [ITEMS, { entity: 'Status', fields: ['name', 'slug'], relations: [] }],
+  },
+  {
+    id: 'forEach-no-key',
+    note: 'a forEach item with no id, no key and no key expression fails as forEachKey, and nothing lands',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: [{ title: 'one' }] },
+    invocationId: '00000000-0000-4000-8000-000000000056',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'not-a-list',
+    note: 'a forEach over something that is not a list fails as notAList',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'notesFor',
+    args: { items: 'one' },
+    invocationId: '00000000-0000-4000-8000-000000000057',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'call-depth',
+    note: 'calls nested seventeen deep fail as callDepth, and the record at the bottom does not land',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'deep0',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000058',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'malformed-limit',
+    note: 'a limit that is not a whole number fails as malformed',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'firstTags',
+    args: { n: 1.5 },
+    invocationId: '00000000-0000-4000-8000-000000000059',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'unknown-operation',
+    note: 'a call to an operation nobody registered fails as unknownOperation',
+    operations: OPERATIONS,
+    dataset: [],
+    operation: 'callsNowhere',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000060',
+    invokedAt: AT,
+    observe: [ITEMS],
+  },
+  {
+    id: 'version-mismatch',
+    note: 'an invocation for a version of the namespace other than the registered one fails as versionMismatch',
+    operations: OPERATIONS,
+    dataset: [TAG],
+    operation: 'retitle',
+    args: { id: 'urn:example:tag-garden' },
+    invocationId: '00000000-0000-4000-8000-000000000061',
+    invokedAt: AT,
+    version: '2',
+    observe: [ITEMS],
+  },
+];
+
+/** WE's own operations over WE's manifest: conformance for a host adopting WE's domain, not the format. */
+const CORE_CASES: OperationCase[] = [
   {
     id: 'core-upsert-signal',
     note: 'core.upsertSignal with no reaction yet makes one under the record, and answers with its id',
@@ -548,19 +1286,37 @@ const CASES: OperationCase[] = [
       {
         entity: 'Involvement',
         id: 'urn:example:said-maybe',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:event'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:event' },
       },
       {
         entity: 'Involvement',
         id: 'urn:example:other-event',
-        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: ['urn:example:elsewhere'] },
+        fields: { agent: VECTOR_INVOKER, kind: 'maybe', node: 'urn:example:elsewhere' },
       },
     ],
     operation: 'respond',
     args: { node: 'urn:example:event', kind: 'going' },
     invocationId: '00000000-0000-4000-8000-000000000008',
     invokedAt: AT,
-    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: [] }],
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
+  },
+  {
+    id: 'core-set-involvement-to-one',
+    note: 'core.setInvolvement finds the pair on this record by its to-one, leaves the same pair on another record, and writes the new one’s node as one id',
+    operations: CORE_OPERATIONS,
+    dataset: [
+      { entity: 'InvolvementType', id: 'urn:example:assignee', fields: { name: 'Assignee', slug: 'assignee' } },
+      {
+        entity: 'Involvement',
+        id: 'urn:example:on-other-task',
+        fields: { agent: 'did:example:ana', kind: 'assignee', node: 'urn:example:other-task' },
+      },
+    ],
+    operation: 'setInvolvement',
+    args: { node: 'urn:example:task', agent: 'did:example:ana', kind: 'assignee', on: true },
+    invocationId: '00000000-0000-4000-8000-000000000013',
+    invokedAt: AT,
+    observe: [{ entity: 'Involvement', fields: ['agent', 'kind'], relations: ['node'] }],
   },
   {
     id: 'core-create-post-reply',
@@ -760,179 +1516,6 @@ const CASES: OperationCase[] = [
     invokedAt: AT,
     observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children'] }],
   },
-  /*
-    The runner's rules the cases above leave open: a read that must not move under the operation, a
-    walk down a relation, a NOT over a field a record lacks, the write check refusing, an id made
-    inside a call, a guarded create that does not run, a replay, and a write no operation may make.
-  */
-  {
-    id: 'expect-holds',
-    note: 'an expect find that reads the same at the end lets the operation land',
-    operations: OPERATIONS,
-    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
-    operation: 'expecting',
-    args: {},
-    invocationId: '00000000-0000-4000-8000-000000000030',
-    invokedAt: AT,
-    observe: [COLLECTIONS],
-  },
-  {
-    id: 'expect-changed',
-    note: 'a note committed by another writer after the expect find read fails the operation as expectChanged, and its tag does not land',
-    operations: OPERATIONS,
-    dataset: [{ entity: 'CollectionBlock', id: 'urn:example:note', fields: { kind: 'note', title: 'mine' } }],
-    operation: 'expecting',
-    args: {},
-    invocationId: '00000000-0000-4000-8000-000000000031',
-    invokedAt: AT,
-    concurrent: [
-      { entity: 'CollectionBlock', id: 'urn:example:their-note', fields: { kind: 'note', title: 'theirs' } },
-    ],
-    observe: [COLLECTIONS],
-  },
-  {
-    id: 'find-scope-levels',
-    note: 'a find walking two levels down a relation reaches the children and grandchildren, and stops there',
-    operations: OPERATIONS,
-    dataset: TREE,
-    operation: 'walkTwoDeep',
-    args: { root: 'urn:example:root' },
-    invocationId: '00000000-0000-4000-8000-000000000032',
-    invokedAt: AT,
-    observe: [],
-  },
-  {
-    id: 'find-scope-transitive',
-    note: 'a transitive find reaches everything under the record, however deep',
-    operations: OPERATIONS,
-    dataset: TREE,
-    operation: 'walkAll',
-    args: { root: 'urn:example:root' },
-    invocationId: '00000000-0000-4000-8000-000000000033',
-    invokedAt: AT,
-    observe: [],
-  },
-  {
-    id: 'not-absent',
-    note: 'NOT over a comparison matches a record with no value for the field, as well as one with another value',
-    operations: OPERATIONS,
-    dataset: [
-      { ...TAG, fields: { ...TAG.fields, title: 'Garden' } },
-      {
-        entity: 'CollectionBlock',
-        id: 'urn:example:tag-weeds',
-        fields: { kind: 'tag', slug: 'weeds', title: 'Weeds' },
-      },
-      { entity: 'CollectionBlock', id: 'urn:example:tag-bare', fields: { kind: 'tag', title: 'Bare' } },
-    ],
-    operation: 'otherTags',
-    args: {},
-    invocationId: '00000000-0000-4000-8000-000000000034',
-    invokedAt: AT,
-    observe: [],
-  },
-  {
-    id: 'refused-write',
-    note: 'a write the policy refuses fails the operation as refused, and the note made before it does not land',
-    operations: OPERATIONS,
-    dataset: [],
-    operation: 'noteThenTag',
-    args: {},
-    invocationId: '00000000-0000-4000-8000-000000000035',
-    invokedAt: AT,
-    observe: [COLLECTIONS, { entity: 'TagBlock', fields: ['name'], relations: [] }],
-  },
-  {
-    id: 'author-deletes-own',
-    note: 'a record the operation made is its invoker’s, so a policy letting only the author delete lets the operation delete it',
-    operations: OPERATIONS,
-    dataset: [],
-    operation: 'makeAndDrop',
-    args: {},
-    invocationId: '00000000-0000-4000-8000-000000000036',
-    invokedAt: AT,
-    observe: [COLLECTIONS],
-  },
-  {
-    id: 'call-derived-id',
-    note: 'a record made inside a call takes its id from the call’s path, and its author is the invoker',
-    operations: OPERATIONS,
-    dataset: [],
-    operation: 'noteThroughCall',
-    args: { title: 'called' },
-    invocationId: '00000000-0000-4000-8000-000000000037',
-    invokedAt: AT,
-    observe: [{ entity: 'CollectionBlock', fields: ['kind', 'title', 'author'], relations: [] }],
-  },
-  {
-    id: 'when-false-create',
-    note: 'a create whose when is false writes nothing, and the name it would have bound reads as no value',
-    operations: OPERATIONS,
-    dataset: [],
-    operation: 'maybeNote',
-    args: { make: false },
-    invocationId: '00000000-0000-4000-8000-000000000038',
-    invokedAt: AT,
-    observe: [COLLECTIONS],
-  },
-  {
-    id: 'forEach-replay',
-    note: 'create-and-link replayed onto a dataset holding its done column: the replay names the same id for that key, is refused as recordExists, and adds nothing',
-    operations: OPERATIONS,
-    dataset: [{ entity: 'CollectionBlock', id: DONE_COLUMN, fields: { kind: 'column', title: 'Done' } }],
-    operation: 'makeBoard',
-    args: { title: 'Plan', columns: [TODO, DONE] },
-    invocationId: '00000000-0000-4000-8000-000000000001',
-    invokedAt: AT,
-    observe: [COLLECTIONS],
-  },
-  {
-    id: 'create-onto-held-id',
-    note: 'a create whose derived id a record of another entity already holds is refused as recordExists',
-    operations: OPERATIONS,
-    dataset: [{ entity: 'TaskBlock', id: BOARD, fields: { title: 'Squatter', status: 'todo' } }],
-    operation: 'note',
-    args: { title: 'late' },
-    invocationId: '00000000-0000-4000-8000-000000000001',
-    invokedAt: AT,
-    observe: [COLLECTIONS, { entity: 'TaskBlock', fields: ['title'], relations: [] }],
-  },
-  {
-    id: 'protected-entity',
-    note: 'a write to an access-control entity, chosen at run time, fails as static protectedEntity, and the note made before it does not land',
-    operations: OPERATIONS,
-    dataset: [],
-    operation: 'writeChosen',
-    args: { entity: 'Policy' },
-    invocationId: '00000000-0000-4000-8000-000000000039',
-    invokedAt: AT,
-    observe: [COLLECTIONS, { entity: 'Policy', fields: [], relations: [] }],
-  },
-  {
-    id: 'relation-order',
-    // Written in the reverse of code-point order, four of them: a backend that loses the written
-    // order shows it, rather than happening to answer in it.
-    note: 'an ordered relation reads back in the order written, an unordered one compares as a set, and records list by id in code-point order',
-    operations: OPERATIONS,
-    dataset: [
-      { entity: 'CollectionBlock', id: 'urn:example:holder', fields: { kind: 'board' } },
-      { entity: 'CollectionBlock', id: 'urn:example:alpha', fields: { kind: 'card' } },
-      { entity: 'CollectionBlock', id: 'urn:example:Zed', fields: { kind: 'card' } },
-      { entity: 'CollectionBlock', id: 'urn:example:Yew', fields: { kind: 'card' } },
-      { entity: 'CollectionBlock', id: 'urn:example:Xi', fields: { kind: 'card' } },
-    ],
-    operation: 'linkFour',
-    args: {
-      holder: 'urn:example:holder',
-      first: 'urn:example:alpha',
-      second: 'urn:example:Zed',
-      third: 'urn:example:Yew',
-      fourth: 'urn:example:Xi',
-    },
-    invocationId: '00000000-0000-4000-8000-000000000040',
-    invokedAt: AT,
-    observe: [{ entity: 'CollectionBlock', fields: ['kind'], relations: ['children', 'mentions'] }],
-  },
 ];
 
 /** The suite's own operations a definition calls, by bare name, and their callees in turn. */
@@ -947,12 +1530,18 @@ function suiteCallees(name: string, into: Record<string, OperationDefinition>): 
  * Each case carries only the operation it runs, and the suite's operations that one calls, so its
  * vector reads on its own.
  */
-export const OPERATION_CASES: OperationCase[] = CASES.map((c) => {
+function trimmed(c: OperationCase): OperationCase {
   if (c.operations !== OPERATIONS) return { ...c, operations: { [c.operation]: c.operations[c.operation] } };
   const operations: Record<string, OperationDefinition> = {};
   suiteCallees(c.operation, operations);
   return { ...c, operations };
-});
+}
+
+/** The format's cases, over the neutral entities: what an operations-only host must pass. */
+export const OPERATION_CASES: OperationCase[] = CASES.map(trimmed);
+
+/** WE's own operations' cases, over WE's manifest: what a host adopting WE's domain must pass too. */
+export const CORE_OPERATION_CASES: OperationCase[] = CORE_CASES.map(trimmed);
 
 /** Code-point order, the one every language can reproduce; `localeCompare` is the reader's alphabet. */
 export function compareCodePoints(a: string, b: string): number {
@@ -1009,7 +1598,13 @@ function* bodiesOf(steps: unknown[] | undefined): Generator<[string, StepBody]> 
  * names in a step (its own operations' and the ones they call), every entity a relation of those
  * targets, and the access-control entities — each with only what changes what an operation does.
  */
-export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES): Record<string, VectorEntity> {
+/** Entities a case names so that the dataset has no type for them: never in the file's entities. */
+const UNDECLARED_ENTITIES = new Set(['Nowhere']);
+
+export function vectorEntities(
+  cases: readonly OperationCase[] = OPERATION_CASES,
+  schemas: Record<string, EntitySchema | VectorEntity> = FORMAT_ENTITIES,
+): Record<string, VectorEntity> {
   const named = new Set<string>(PROTECTED_ENTITIES);
   for (const c of cases) {
     for (const record of [...c.dataset, ...(c.concurrent ?? []), ...c.observe]) named.add(record.entity);
@@ -1022,8 +1617,9 @@ export function vectorEntities(cases: readonly OperationCase[] = OPERATION_CASES
   const out: Record<string, VectorEntity> = {};
   const add = (name: string) => {
     if (name in out) return;
-    const schema = CORE_MANIFEST.entities[name];
-    if (!schema) throw new Error(`A case names "${name}", which WE's core manifest does not declare`);
+    if (UNDECLARED_ENTITIES.has(name)) return;
+    const schema = schemas[name];
+    if (!schema) throw new Error(`A case names "${name}", which the suite's entities do not declare`);
     out[name] = neutralEntity(schema);
     for (const relation of Object.values(schema.relations)) if (relation.target) add(relation.target);
   };
@@ -1055,7 +1651,9 @@ function neutralEntity(schema: EntitySchema): VectorEntity {
 /** The access-control entities, as the file lists them. */
 export const VECTOR_PROTECTED_ENTITIES = [...PROTECTED_ENTITIES].sort(compareCodePoints);
 
-export const OPERATION_CONFORMANCE_CASES = OPERATION_CASES.map((c) => `operations.${c.id}` as const);
+export const OPERATION_CONFORMANCE_CASES = [...OPERATION_CASES, ...CORE_OPERATION_CASES].map(
+  (c) => `operations.${c.id}` as const,
+);
 export type OperationConformanceCase = `operations.${string}`;
 
 interface Model {
@@ -1064,7 +1662,11 @@ interface Model {
   setRelation(dataset: DatasetHandle, id: string, relation: string, ids: readonly string[]): Promise<void>;
 }
 
-const model = (entity: string) => getEntity(entity) as unknown as Model;
+const model = (entity: string, dataset: DatasetHandle) => {
+  const found = getEntityForDataset(entity, dataset);
+  if (!found) throw new Error(`The dataset has no type for "${entity}"`);
+  return found as unknown as Model;
+};
 
 /** Absent and empty read alike on every backend: the contract never stores ''. */
 const present = (value: unknown) => value !== undefined && value !== null && value !== '';
@@ -1085,10 +1687,10 @@ function swap<T>(value: T, from: string, to: string): T {
 }
 
 async function seed(dataset: DatasetHandle, records: readonly SeedRecord[]): Promise<void> {
-  for (const record of records) await model(record.entity).create(dataset, record.fields, { id: record.id });
+  for (const record of records) await model(record.entity, dataset).create(dataset, record.fields, { id: record.id });
   for (const record of records)
     for (const [relation, ids] of Object.entries(record.relations ?? {}))
-      await model(record.entity).setRelation(dataset, record.id, relation, ids);
+      await model(record.entity, dataset).setRelation(dataset, record.id, relation, ids);
 }
 
 /**
@@ -1103,14 +1705,21 @@ async function observe(
 ): Promise<Record<string, ObservedRecord[]>> {
   const records: Record<string, ObservedRecord[]> = {};
   for (const { entity, fields, relations } of observations) {
+    const toOne = (relation: string) => entities[entity]?.relations[relation]?.cardinality === 'one';
     // A row carries its relations as target ids without an include, and an include would ask the
-    // backend to hydrate records the relation may not hold (`WeNode.mentions` holds agents' DIDs).
-    const rows = await model(entity).findAll(dataset, {});
+    // backend to hydrate records the relation may not hold (`WeNode.mentions` holds agents' DIDs). A
+    // to-one is read as it stands on the row, the one id, so a backend holding it any other way
+    // differs from the file.
+    const rows = await model(entity, dataset).findAll(dataset, {});
     records[entity] = rows
       .map((row) => {
         const out: ObservedRecord = { id: row.id as string };
         for (const field of fields) if (present(row[field])) out[field] = row[field];
         for (const relation of relations) {
+          if (toOne(relation)) {
+            if (present(row[relation])) out[relation] = row[relation];
+            continue;
+          }
           const ids = idsIn(row[relation]);
           if (!ids.length) continue;
           out[relation] = entities[entity]?.relations[relation]?.ordered ? ids : [...ids].sort(compareCodePoints);
@@ -1156,7 +1765,7 @@ function interleave(dataset: DatasetHandle, vector: VectorInput, records: readon
   );
   const entity = finds[0]?.[1].entity;
   if (typeof entity !== 'string') throw new Error(`${vector.id} has concurrent records but no expect find`);
-  const Model = model(entity) as unknown as Record<string, unknown>;
+  const Model = model(entity, dataset) as unknown as Record<string, unknown>;
   const own = Object.getOwnPropertyDescriptor(Model, 'findAll');
   const read = Model.findAll as (...args: unknown[]) => Promise<unknown>;
   let landed = false;
@@ -1187,7 +1796,9 @@ export async function runVector(
   opts: { registerCalls?: boolean } = {},
 ): Promise<Pick<OperationVector, 'outcome' | 'records'>> {
   const agent = subject.agent;
-  const inbound = <T>(value: T) => swap(value, vector.invoker, agent);
+  // The file's invoker wrote the seeds and is the runner's agent; a case may be invoked by another.
+  const inbound = <T>(value: T) => swap(value, VECTOR_INVOKER, agent);
+  const invoker = vector.invoker === VECTOR_INVOKER ? agent : vector.invoker;
   await seed(subject.dataset, inbound(vector.dataset));
 
   if (opts.registerCalls) {
@@ -1201,6 +1812,7 @@ export async function runVector(
   }
   registerOperations(VECTOR_NAMESPACE, vector.manifest.operations, {
     entities: context.entities,
+    version: vector.manifest.version,
   });
   const undo = interleave(subject.dataset, vector, inbound(vector.concurrent ?? []));
   registerEntityWriteCheck(policyCheck(context.policy, agent));
@@ -1208,11 +1820,15 @@ export async function runVector(
   try {
     const result = await runOperation(`${VECTOR_NAMESPACE}.${vector.operation}`, inbound(vector.args), {
       dataset: subject.dataset,
-      invoker: agent,
+      invoker,
       invocationId: vector.invocationId,
       invokedAt: vector.invokedAt,
+      // The case's, never the host's: a dataset in a vector has the identity domain the file gives it.
+      domain: vector.domain ?? null,
+      ...(vector.version ? { version: vector.version } : {}),
+      ...(vector.deniedChosen ? { admitChosen: (entity: string) => !vector.deniedChosen!.includes(entity) } : {}),
     });
-    outcome = { result: result === undefined ? null : swap(result, agent, vector.invoker) };
+    outcome = { result: result === undefined ? null : swap(result, agent, VECTOR_INVOKER) };
   } catch (error) {
     if (!isOperationError(error)) throw error;
     outcome = { error: { class: error.class, code: error.code } };
@@ -1222,7 +1838,7 @@ export async function runVector(
     unregisterOperations(VECTOR_NAMESPACE);
   }
   const records = await observe(subject.dataset, vector.observe, context.entities);
-  return { outcome, records: swap(records, agent, vector.invoker) };
+  return { outcome, records: swap(records, agent, VECTOR_INVOKER) };
 }
 
 /** A case as its vector states it, before it is run. */
@@ -1235,10 +1851,13 @@ export function vectorInput(c: OperationCase): VectorInput {
     dataset: c.dataset,
     operation: c.operation,
     args: c.args,
-    invoker: VECTOR_INVOKER,
+    invoker: c.invoker ?? VECTOR_INVOKER,
     invocationId: c.invocationId,
     invokedAt: c.invokedAt,
     ...(c.concurrent ? { concurrent: c.concurrent } : {}),
+    ...(c.domain ? { domain: c.domain } : {}),
+    ...(c.version ? { version: c.version } : {}),
+    ...(c.deniedChosen ? { deniedChosen: c.deniedChosen } : {}),
     observe: c.observe,
   };
 }
@@ -1248,52 +1867,118 @@ export function vectorOf(c: OperationCase, produced: Pick<OperationVector, 'outc
   return { ...vectorInput(c), ...produced };
 }
 
-/** The file's shared sections, as the cases written here need them. */
-export function vectorContext(): Omit<OperationVectorFile, 'cases'> {
+/**
+ * One file of operation vectors: its cases, the schemas their entities are drawn from, and the policy
+ * they run under.
+ *
+ * Two files, because the halves differ in what every case shares: the format's cases run over a few
+ * neutral entities under a policy naming them, and WE's own operations over WE's manifest under one
+ * naming WE's. An operations-only host loads the first and never the second.
+ */
+export interface OperationVectorSuite {
+  /** `format` for the format's own rules; `we-core` for WE's core operations. */
+  profile: 'format' | 'we-core';
+  file: URL;
+  cases: readonly OperationCase[];
+  schemas: Record<string, EntitySchema | VectorEntity>;
+  policy: VectorPolicy;
+}
+
+export const FORMAT_VECTOR_SUITE: OperationVectorSuite = {
+  profile: 'format',
+  file: new URL('../vectors/operations/operations.json', import.meta.url),
+  cases: OPERATION_CASES,
+  schemas: FORMAT_ENTITIES,
+  policy: VECTOR_POLICY,
+};
+
+export const CORE_VECTOR_SUITE: OperationVectorSuite = {
+  profile: 'we-core',
+  file: new URL('../vectors/operations/we-core/operations.json', import.meta.url),
+  cases: CORE_OPERATION_CASES,
+  schemas: CORE_MANIFEST.entities,
+  policy: CORE_VECTOR_POLICY,
+};
+
+export const OPERATION_VECTOR_SUITES = [FORMAT_VECTOR_SUITE, CORE_VECTOR_SUITE] as const;
+
+/** A file's shared sections, as the cases written here need them. */
+export function vectorContext(suite: OperationVectorSuite = FORMAT_VECTOR_SUITE): Omit<OperationVectorFile, 'cases'> {
   return {
     version: 2,
-    entities: vectorEntities(),
+    entities: vectorEntities(suite.cases, suite.schemas),
     protectedEntities: VECTOR_PROTECTED_ENTITIES,
-    policy: VECTOR_POLICY,
+    policy: suite.policy,
   };
 }
 
-export const OPERATION_VECTORS_FILE = new URL('../vectors/operations/operations.json', import.meta.url);
+export const OPERATION_VECTORS_FILE = FORMAT_VECTOR_SUITE.file;
 
-/** The recorded vectors, as committed. */
-export function readOperationVectors(): OperationVectorFile {
-  return JSON.parse(readFileSync(OPERATION_VECTORS_FILE, 'utf8')) as OperationVectorFile;
+/** The recorded vectors of one file, as committed: the format's unless another is named. */
+export function readOperationVectors(suite: OperationVectorSuite = FORMAT_VECTOR_SUITE): OperationVectorFile {
+  return JSON.parse(readFileSync(suite.file, 'utf8')) as OperationVectorFile;
+}
+
+/** Entity names this file has declared on a backend, so a later subject declares them again on its own. */
+const declaredForVectors = new Set<string>();
+
+/**
+ * Give the subject's dataset every entity the file names that the backend does not already have,
+ * the way a module's entities are installed. A WE backend already has the access-control entities
+ * and WE's own; the format's neutral ones it lacks, and gets here.
+ */
+async function installVectorEntities(subject: ConformanceSubject, entities: Record<string, VectorEntity>) {
+  const missing = Object.fromEntries(
+    Object.entries(entities).filter(
+      ([name]) => declaredForVectors.has(name) || !getEntityForDataset(name, subject.dataset),
+    ),
+  );
+  if (!Object.keys(missing).length) return;
+  for (const name of Object.keys(missing)) declaredForVectors.add(name);
+  const payloads = subject.ports.schemas.declareInDataset(
+    subject.dataset,
+    { version: '1', entities: missing },
+    { moduleId: VECTOR_NAMESPACE },
+  );
+  await subject.ports.schemas.installModules(subject.dataset, Object.values(payloads));
 }
 
 export function describeOperations(name: string, harness: ConformanceHarness, timeout: number): void {
+  for (const suite of OPERATION_VECTOR_SUITES) describeSuite(name, suite, harness, timeout);
+
   describe(`backend conformance: ${name} — declared operations`, () => {
-    let subject: ConformanceSubject;
-
-    beforeEach(async () => {
-      subject = await harness.setup();
-      return () => harness.teardown?.(subject);
-    }, timeout);
-
-    const file = readOperationVectors();
-    const recorded = new Map(file.cases.map((vector) => [vector.id, vector]));
-
-    it('has a recorded vector for every case, and no vector without one', () => {
-      expect([...recorded.keys()].sort()).toEqual(OPERATION_CASES.map((c) => c.id).sort());
-    });
-
-    it('carries the entities, the protected entities and the policy the cases run under', () => {
-      const { cases: _cases, ...shared } = file;
-      expect(shared).toEqual(vectorContext());
-    });
-
     it('lists as known only operation cases it has', () => {
       // A misspelt name would otherwise leave its case running plain, and its reason unread.
       const listed = [...Object.keys(harness.knownGaps ?? {}), ...Object.keys(harness.knownIntermittent ?? {})];
       const known = new Set<string>(OPERATION_CONFORMANCE_CASES);
       expect(listed.filter((id) => id.startsWith('operations.') && !known.has(id))).toEqual([]);
     });
+  });
+}
 
-    for (const c of OPERATION_CASES) {
+function describeSuite(name: string, suite: OperationVectorSuite, harness: ConformanceHarness, timeout: number) {
+  describe(`backend conformance: ${name} — declared operations (${suite.profile})`, () => {
+    let subject: ConformanceSubject;
+    const file = readOperationVectors(suite);
+
+    beforeEach(async () => {
+      subject = await harness.setup();
+      await installVectorEntities(subject, file.entities);
+      return () => harness.teardown?.(subject);
+    }, timeout);
+
+    const recorded = new Map(file.cases.map((vector) => [vector.id, vector]));
+
+    it('has a recorded vector for every case, and no vector without one', () => {
+      expect([...recorded.keys()].sort()).toEqual(suite.cases.map((c) => c.id).sort());
+    });
+
+    it('carries the entities, the protected entities and the policy the cases run under', () => {
+      const { cases: _cases, ...shared } = file;
+      expect(shared).toEqual(vectorContext(suite));
+    });
+
+    for (const c of suite.cases) {
       const id: OperationConformanceCase = `operations.${c.id}`;
       const body = async () => {
         const vector = recorded.get(c.id);

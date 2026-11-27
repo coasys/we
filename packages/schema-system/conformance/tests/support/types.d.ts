@@ -3,12 +3,13 @@
 import '../../../../app-shell/node_modules/vite/client.d.ts';
 import 'solid-js';
 
-// The probe components draw these two elements; see renderRecorder.tsx.
+// The probe components and panel bodies draw these elements; see renderRecorder.tsx.
 declare module 'solid-js' {
   namespace JSX {
     interface IntrinsicElements {
       'x-probe': { 'attr:data-type': string; ref?: unknown; children?: JSX.Element };
       'x-probe-slot': { 'attr:data-name': string; children?: JSX.Element };
+      'x-probe-panel': { 'attr:data-id': string; children?: JSX.Element };
     }
   }
 }

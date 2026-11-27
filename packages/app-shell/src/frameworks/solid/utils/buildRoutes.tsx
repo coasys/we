@@ -87,41 +87,49 @@ export function buildRoutes(
           stores,
           registry,
           context: routeContext(baseDepth),
-          // Inject outlet + keepAlive children into the { type: '$routes' } slot
-          children: (
-            <>
-              {/* Always-mounted keepAlive routes — hidden when not active */}
-              <For each={childKeepAliveRoutes}>
-                {(kaRoute) => {
-                  const kaPath = fullPath + kaRoute.path;
-                  const kaDepth = kaPath.split('/').filter(Boolean).length;
-                  const kaContent = RenderSchema({
-                    node: kaRoute,
-                    stores,
-                    registry,
-                    context: routeContext(kaDepth),
-                  });
-                  // Active when the URL segment at childDepth-1 matches this route's path segment
-                  const segmentIndex = childDepth - 1;
-                  const routeSegment = kaRoute.path.replace(/^\//, '');
-                  const isActive = () => stores.routeStore.segments()[segmentIndex] === routeSegment;
-                  return (
-                    <div
-                      style={{
-                        display: isActive() ? 'contents' : 'none',
-                        width: '100%',
-                        height: '100%',
-                      }}
-                    >
-                      {kaContent}
-                    </div>
-                  );
-                }}
-              </For>
-              {/* Normal outlet — non-keepAlive routes render here */}
-              {props.children}
-            </>
-          ),
+          /*
+            Inject outlet + keepAlive children into the { type: '$routes' } slot.
+
+            A getter, so they are built where the outlet is drawn — inside this route's pass, which
+            is what lets the routes nested here see this route's local state. Built here as an
+            argument, they were made before the pass began and saw only the scope around it.
+          */
+          get children() {
+            return (
+              <>
+                {/* Always-mounted keepAlive routes — hidden when not active */}
+                <For each={childKeepAliveRoutes}>
+                  {(kaRoute) => {
+                    const kaPath = fullPath + kaRoute.path;
+                    const kaDepth = kaPath.split('/').filter(Boolean).length;
+                    const kaContent = RenderSchema({
+                      node: kaRoute,
+                      stores,
+                      registry,
+                      context: routeContext(kaDepth),
+                    });
+                    // Active when the URL segment at childDepth-1 matches this route's path segment
+                    const segmentIndex = childDepth - 1;
+                    const routeSegment = kaRoute.path.replace(/^\//, '');
+                    const isActive = () => stores.routeStore.segments()[segmentIndex] === routeSegment;
+                    return (
+                      <div
+                        style={{
+                          display: isActive() ? 'contents' : 'none',
+                          width: '100%',
+                          height: '100%',
+                        }}
+                      >
+                        {kaContent}
+                      </div>
+                    );
+                  }}
+                </For>
+                {/* Normal outlet — non-keepAlive routes render here */}
+                {props.children}
+              </>
+            );
+          },
         });
         return parentStack.reduceRight<JSX.Element>((child, meta) => {
           return RenderSchema({

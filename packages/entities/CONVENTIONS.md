@@ -168,7 +168,7 @@ it marks it, in the same write, and the run's `kind` says what kind of writing i
   records it made (`recordCount`), a per-kind `detail`, and, where the writer keeps it, the exchange
   (`prompt`, `output`). What it was about holds it in its `runs`.
 - **`generatedBy`**, on every `WeNode`, is the run that wrote the record. A writer sets it in the
-  create itself (a to-one, as the single-entry list `[runId]`), so the record is never seen
+  create itself (a to-one, as the run's id), so the record is never seen
   unmarked. The author stays the person: `author` is who it was made for, `generatedBy` that a model
   did the writing.
 - **`Amendment`** is a run's change to a record that already existed, one per property, with the

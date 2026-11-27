@@ -33,8 +33,14 @@ and draws the missing marker until something defines it
 > template there is, and renaming it would be a migration of every one of them for no change in
 > meaning. The operations spec, which is about data rather than UI, names no WE vocabulary at all.
 
-> **Planned.** The core catalog as a document of its own, with its own semantic version and a
-> machine-readable listing a validator reads, in place of the implementation files below.
+The core catalog's machine-readable listing is begun in
+[`catalog/`](../../../packages/schema-system/conformance/catalog), beside the vectors: today it holds
+[`node-props.json`](../../../packages/schema-system/conformance/catalog/node-props.json), which props
+of which component hold a node ([Node props](nodes.md#node-props)), generated from the components'
+declarations.
+
+> **Planned.** The rest of the core catalog the same way, as a document of its own with its own
+> semantic version, in place of the implementation files below.
 
 ---
 
@@ -44,7 +50,8 @@ and each component's `.types.ts` in [`4-components`](../../../packages/design-sy
 the primitives' Custom Elements Manifest (controls and primitives);
 [`design-utils`](../../../packages/design-system/utils/src/index.ts) (design-system props);
 [`1-tokens`](../../../packages/design-system/1-tokens/src/) (tokens and roles);
-[`presets.ts`](../../../packages/design-system/2-themes/src/presets.ts) (`ThemeOverrides`).
+[`presets.ts`](../../../packages/design-system/2-themes/src/presets.ts) (`ThemeOverrides`);
+[`node-props.json`](../../../packages/schema-system/conformance/catalog/node-props.json) (node props).
 
 ## Extension catalogs
 
@@ -101,3 +108,12 @@ Beside them are the host values every host provides by name (`me`, the person vi
 records (`record.*`), specified with the format itself. A member a host offers outside every profile
 is [host-only](../profiles/README.md#we-host-only): a template naming one depends on that host, and a
 validator says so.
+
+---
+
+Implemented by: [`profiles.ts`](../../../packages/schema-system/shared/src/profiles/profiles.ts),
+[`semanticValidation.ts`](../../../packages/schema-system/shared/src/semanticValidation.ts)
+(`withHostOnlyReport`).
+Pinned by: the profile vectors (`navigation.*`, `view-state.*` and the rest, in
+[`profiles.json`](../../../packages/schema-system/conformance/vectors/profiles.json)),
+[`profilesCoverage.test.ts`](../../../packages/schema-system/conformance/tests/profilesCoverage.test.ts).

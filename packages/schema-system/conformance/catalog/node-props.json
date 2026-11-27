@@ -1,0 +1,6 @@
+{
+  "catalog": "core",
+  "version": 1,
+  "note": "The props each component declares as holding a node, by component (nodes.md, \"Node props\"). Generated from each component’s declaration; do not edit.",
+  "nodeProps": { "FlipCard": ["front", "back"], "GraphView": ["emptyAction"] }
+}

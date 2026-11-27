@@ -25,8 +25,7 @@ import { manifestEntries, trace, unionByFanOut } from '@we/backend-shared';
 import { BlockRenderer } from '@we/block-solid';
 import { Column, Row } from '@we/components/solid';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { placementPosition, placementStyle } from '@we/graph-expanders';
-import type { GraphNode, GraphValue, WatchQuery } from '@we/graph-protocol';
+import type { GraphNode, WatchQuery } from '@we/graph-protocol';
 import { parseAddress } from '@we/graph-protocol';
 import { GraphView, type GraphViewProps } from '@we/graph-solid';
 import type { RenderProps } from '@we/schema-solid';
@@ -38,6 +37,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { toEntityShape } from '../../../shared/graphEntityShape';
 import { type GraphScope, inboundAsWhere } from '../../../shared/graphScope';
 import { followRead, idsOf, readKey, readThroughWatch, wholeAnswer } from '../../../shared/graphWatch';
+import { withPredictedReads } from '../../../shared/predictedBindings';
 import { pretendPeopleAvailable } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
@@ -253,7 +253,6 @@ function RecordCard(props: { node: GraphNode }) {
 
 export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
   const datasetStore = useStore('datasetStore');
-  const recordStore = useStore('recordStore');
   const shellStore = useStore('shellStore');
   const sessionStore = useStore('sessionStore');
   const profileStore = useStore('profileStore');
@@ -267,15 +266,17 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
    * from the session store either way.
    */
   const bindings = createMemo(() =>
-    sessionStore.backendPorts()?.dataBindings({
-      currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
-      currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
-      profiles: profileStore.profiles,
-      // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
-      profileFor: profileStore.profileFor,
-      fetchProfile: profileStore.fetchProfile,
-      ephemeral: sessionStore.ephemeralPort,
-    }),
+    withPredictedReads(
+      sessionStore.backendPorts()?.dataBindings({
+        currentDataset: () => datasetStore.currentDataset()?.handle ?? null,
+        currentDatasetEntities: () => datasetStore.currentDatasetEntities(),
+        profiles: profileStore.profiles,
+        // Per-DID, so a `$agent` row depends on its own agent rather than on the whole cache.
+        profileFor: profileStore.profileFor,
+        fetchProfile: profileStore.fetchProfile,
+        ephemeral: sessionStore.ephemeralPort,
+      }),
+    ),
   );
 
   /**
@@ -553,42 +554,6 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      * this component, so they all get it.
      */
     obscured: () => shellStore.coveredInset(),
-
-    /**
-     * What the board has just written and not yet seen come back.
-     *
-     * Named through `placementStyle`, the board seed's own mapping, so an optimistic field and a
-     * seeded one are the same field — two copies of that naming would drift, and the copy that fell
-     * behind would write a key nothing reads, leaving the card unchanged until the round trip landed
-     * with no sign of why.
-     */
-    pendingData: () => {
-      const pending = recordStore.pendingCardStyle();
-      const out: Record<string, Record<string, GraphValue>> = {};
-      // Style and coordinate both: an undone move is a placement write like any other, and the
-      // `manual` layout reads a card's position off the same data bag its colour comes from.
-      for (const [nodeId, patch] of Object.entries(pending)) {
-        out[nodeId] = { ...placementStyle(patch), ...placementPosition(patch) };
-      }
-      return out;
-    },
-
-    /*
-      The graph has caught up on these, so the store can stop standing in for them.
-
-      Reported from the drawn node rather than judged here, and the difference is visible: a read
-      landing is not the same moment as a card being redrawn from it — there is the rest of a seed
-      in between — so clearing where the rows arrive put the old value back for that whole window.
-    */
-    confirmPending: (recordIds) => recordStore.confirmPending(recordIds),
-
-    /*
-      Connections the store has written and not yet seen come back — a line just drawn, one just deleted,
-      an end just moved — and the graph's report of what it is drawing from its own data, which is how the
-      store knows when to stop. The same round trip as `pendingData` and `confirmPending`, for lines.
-    */
-    pendingConnections: () => recordStore.pendingConnections(),
-    observeConnections: (connections) => recordStore.observeConnections(connections),
 
     /**
      * Tell the graph when the answer to one of its reads changes here.

@@ -316,7 +316,7 @@ Pattern — live wired SignalControl (one hoisted query, reused by the projectio
                     "signalType": { "$": "sig" },
                     "signals": { "$": "filter(item.signals, { signalTypeId: sig.id })" },
                     "myDid": { "$": "me.did" },
-                    "onSignal": { "$invoke": "spaceStore.upsertSignal", "args": [{ "$": "item.id" }, { "$": "sig.id" }, { "$": "arg" }] }
+                    "onSignal": { "$if": { "condition": { "$": "arg == null" }, "then": { "$invoke": "ops.core.withdrawSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id }" }] }, "else": { "$invoke": "ops.core.upsertSignal", "args": [{ "$": "{ node: item.id, signalType: sig.id, value: arg }" }] } } }
                   }
                 }
               ]

@@ -1,9 +1,9 @@
 import type { JSX } from 'solid-js';
 
 export interface FlipCardProps {
-  /** Rendered into the front face — pass schema content via the `slots.front` field */
+  /** Rendered into the front face. A node prop: a template writes a node here and it arrives drawn. */
   front?: JSX.Element;
-  /** Rendered into the back face — pass schema content via the `slots.back` field */
+  /** Rendered into the back face. A node prop, as `front` is. */
   back?: JSX.Element;
   /** Card width — defaults to '100%' */
   width?: string;

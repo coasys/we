@@ -54,6 +54,14 @@ export interface RenderCase {
   storage?: Record<string, string>;
   /** Profiles the host knows, by DID, for `$agent`. */
   identities?: Record<string, Record<string, unknown>>;
+  /**
+   * The capability groups the template is granted. Set, the template is drawn through the host's
+   * real bag — ungranted members absent, unasked writes refused, destructive actions confirmed —
+   * and every expect entry lists the `confirmations` the host asked for.
+   */
+  grants?: string[];
+  /** The person's answer to every confirmation the host asks. Default: declined. */
+  confirm?: boolean;
   start?: string;
   steps?: RenderStep[];
 }
@@ -1221,4 +1229,161 @@ export const RENDER_CASES: RenderCase[] = [
       ],
     },
   ),
+
+  /* ── node props a component declares ───────────────────────────────────────────────────── */
+  C(
+    'render.node.component-node-prop',
+    "a component's declared node props are drawn as nodes and handed over drawn; its other props stay data",
+    {
+      type: 'FlipCard',
+      props: {
+        width: '200px',
+        front: { type: 'Card', children: [text('front face')] },
+        back: text('back face'),
+        items: [{ type: 'Row', children: ['data'] }],
+      },
+    },
+  ),
+  C(
+    'render.node.component-node-prop-scope',
+    'a node in a declared node prop reads the scope of the node holding it, and follows it',
+    {
+      type: 'FlipCard',
+      $localState: { side: { type: 'string', initial: 'one' } },
+      props: {
+        front: {
+          type: 'Column',
+          children: [text({ $: '`${local.side} ${app.title}`' }), button('flip', { $setLocal: 'side', value: 'two' })],
+        },
+      },
+    },
+    {
+      data: { app: { title: 'Card' } },
+      steps: [
+        { op: 'click', target: 'flip' },
+        { op: 'data', store: 'app', member: 'title', value: 'Board' },
+      ],
+    },
+  ),
+
+  /* ── one scope across passes: routes and panels ────────────────────────────────────────── */
+  C(
+    'render.routes.root-local',
+    "a route body reads and writes the template root's $localState, and the root follows",
+    {
+      type: 'Column',
+      $localState: { count: { type: 'number', initial: 1 } },
+      children: [text({ $: "'root ' + local.count" }), { type: '$routes' }],
+      routes: [
+        {
+          path: '/',
+          type: 'Column',
+          children: [text({ $: "'route ' + local.count" }), button('more', { $setLocal: 'count', value: 2 })],
+        },
+      ],
+    },
+    { steps: [{ op: 'click', target: 'more' }] },
+  ),
+  C(
+    'render.routes.nested-local',
+    'a nested route sees the locals of the layout route that lists it, and of the root, the nearer shadowing',
+    {
+      type: 'Column',
+      $localState: { a: { type: 'string', initial: 'root a' }, b: { type: 'string', initial: 'root b' } },
+      children: [{ type: '$routes' }],
+      routes: [
+        {
+          path: '/board',
+          type: 'Column',
+          $localState: { b: { type: 'string', initial: 'board b' } },
+          children: [{ type: '$routes' }],
+          routes: [{ path: '/', type: 'Row', children: [text({ $: '`${local.a} / ${local.b}`' })] }],
+        },
+      ],
+    },
+    { start: '/board' },
+  ),
+  C(
+    'render.routes.outlet-scope-not-lexical',
+    'a route does not see locals declared between the root and its outlet: scope follows where a route is declared',
+    {
+      type: 'Column',
+      children: [
+        {
+          type: 'Column',
+          $localState: { near: { type: 'string', initial: 'near the outlet' } },
+          children: [{ type: '$routes' }],
+        },
+      ],
+      routes: [{ path: '/', type: 'Column', children: [text({ $: "local.near ?? 'not in scope'" })] }],
+    },
+  ),
+  C('render.routes.ref', "a $ref in a route body draws the root's shape", {
+    type: 'Column',
+    $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+    children: [{ type: '$ref', props: { def: 'd1' } }, { type: '$routes' }],
+    routes: [{ path: '/', type: 'Column', children: [{ type: '$ref', props: { def: 'd1' } }] }],
+  }),
+  C('render.routes.ref-missing', 'a $ref in a route body naming no shape draws the missing marker there', {
+    type: 'Column',
+    $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+    children: [{ type: '$routes' }],
+    routes: [{ path: '/', type: 'Column', children: [{ type: '$ref', props: { def: 'nope' } }] }],
+  }),
+  C(
+    'render.panels.root-scope',
+    "a panel body, drawn apart from the root, reads the root's locals and shapes, and writes its locals",
+    {
+      type: 'Column',
+      meta: {
+        name: 'Panels',
+        panels: [
+          {
+            id: 'side',
+            node: {
+              type: 'Column',
+              children: [
+                text({ $: "'panel ' + local.count + ' in ' + panel.id" }),
+                { type: '$ref', props: { def: 'd1' } },
+                button('bump', { $setLocal: 'count', value: 5 }),
+              ],
+            },
+          },
+        ],
+      },
+      $defs: { d1: { type: 'Card', children: [text('Shared')] } },
+      $localState: { count: { type: 'number', initial: 1 } },
+      children: [text({ $: "'root ' + local.count" })],
+    } as SchemaNode,
+    { steps: [{ op: 'click', target: 'bump' }] },
+  ),
+
+  /* ── elements and URLs: the rest of the refusals ──────────────────────────────────────── */
+  C('render.safety.url-schemes', 'vbscript: and a data: URL that is not media are refused; a data: image stays', {
+    type: 'Column',
+    children: [
+      { type: 'a', props: { href: 'VBScript:msgbox(1)' }, children: ['vbscript'] },
+      { type: 'a', props: { href: 'data:text/html,<script>alert(1)</script>' }, children: ['data html'] },
+      { type: 'img', props: { src: 'data:image/png;base64,iVBORw0KGgo=', alt: 'kept' } },
+      { type: 'form', props: { action: 'javascript:alert(1)' }, children: ['form'] },
+    ],
+  }),
+  C(
+    'render.safety.inline-handler-text',
+    'an on… prop holding text on a native element is refused: it would be a script',
+    {
+      type: 'Column',
+      children: [{ type: 'div', props: { onclick: 'alert(1)', title: 'kept' }, children: ['x'] }],
+    },
+  ),
+  C('render.safety.native-tags-more', 'style, link, object and embed mount nothing either', {
+    type: 'Column',
+    children: [
+      { type: 'style', children: ['body { display: none }'] },
+      { type: 'link', props: { rel: 'stylesheet', href: 'https://example.org/x.css' } },
+      { type: 'object', props: { data: 'https://example.org/' } },
+      { type: 'embed', props: { src: 'https://example.org/' } },
+      text('after'),
+    ],
+  }),
 ];

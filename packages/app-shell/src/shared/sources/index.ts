@@ -27,7 +27,7 @@ import { involvement } from './involvement';
 import { involvementMenu } from './involvementMenu';
 import { reactors } from './reactors';
 import { requirementLabel } from './requirementLabel';
-import { reactions, signalTally } from './signalTally';
+import { signalTally } from './signalTally';
 import { signalTypesByUse } from './signalTypesByUse';
 import { treeSpine, treeSpines } from './treeSpines';
 import { voices, voicesParam } from './voices';
@@ -121,14 +121,6 @@ export const hostSources: readonly HostSource[] = [
     doc: "What a record's reactions say, as one number. With `type`, the number THAT type is read as — a toggle counts, a vote nets out, a rating averages, and a community's own `aggregate` wins unless the mode cannot express it. Without a type, how many people reacted at all: records, never values, since a total summing likes and stars and downvotes is not a number. Retired types still count — somebody reacted, and a total that fell when a vocabulary was tidied would be reporting the tidying. Options: signals (the record's `signals`, hydrated), type (a SignalType row).",
     example: 'signalTally({ signals: row.signals, type: sig })',
     fn: signalTally,
-  },
-  {
-    name: 'reactions',
-    params: ['options'],
-    doc: "A record's reactions with this agent's own newest answer in place, whether or not it has been read back yet. Every reaction surface draws through it: a press writes a record and the subscription answers about a second later, so without it the glyph stays unfilled and the count stays put and the press reads as having failed. The LIST rather than the count, because the tally, the mark and the control all read it — overlay the count alone and the heart sits unfilled beside a number that moved. Options: signals (the record's `signals`, hydrated), record (its id), type (the SignalType's id), me (me.did).",
-    example:
-      'reactions({ signals: filter(row.signals, { signalTypeId: sig.id }), record: row.id, type: sig.id, me: me.did })',
-    fn: reactions,
   },
   {
     name: 'reactors',

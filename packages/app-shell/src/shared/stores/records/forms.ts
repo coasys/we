@@ -14,10 +14,11 @@
  * written until the form saves, as one declared operation, inline records included.
  */
 import { namePropertyOf } from '@we/backend-shared';
-import { compressImageToFileData, dataURIToFileData, inlineRecordId, runOperation } from '@we/entities';
+import { compressImageToFileData, dataURIToFileData, inlineRecordId } from '@we/entities';
 import type { Accessor } from '@we/reactivity';
 
 import { distinctSignal } from '../../distinctSignal';
+import { invokeOperation } from '../../invokeOperation';
 import { imagePropertyOf } from '../../shapes/creatableKinds';
 import {
   asEntityName,
@@ -45,7 +46,7 @@ import type { RecordKinds } from './kinds';
 
 export interface RecordFormsDeps extends RecordContext {
   kinds: Pick<RecordKinds, 'creatableEntities' | 'schemaFor' | 'entityClass' | 'relationTarget'>;
-  connections: Pick<RecordConnections, 'withHold' | 'connect' | 'keyFor'>;
+  connections: Pick<RecordConnections, 'connect' | 'keyFor'>;
   canvas: Pick<RecordCanvas, 'writePlacement'>;
   /** Where content made on `canvas` lives — see `RecordStore.provideContentHomes`. */
   contentHome: (canvas?: string) => string | undefined;
@@ -453,19 +454,17 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
     const dataset = datasetStore.currentDataset();
     if (!dataset || !link?.sourceId || !link?.targetId) return '';
     try {
-      // Drawn from the moment of the gesture rather than a round trip later — see `holdConnection`.
-      const id = await connections.withHold({ kind: 'added', source: link.sourceId, target: link.targetId }, async () =>
-        connections.connect(
-          dataset.handle,
-          { source: link.sourceId, sourceType: link.sourceType, target: link.targetId, targetType: link.targetType },
-          {
-            key: await connections.keyFor(
-              dataset.handle,
-              { id: link.sourceId, type: link.sourceType },
-              { id: link.targetId, type: link.targetType },
-            ),
-          },
-        ),
+      // Drawn from the moment of the gesture, as every declared operation is — see `connections`.
+      const id = await connections.connect(
+        dataset.handle,
+        { source: link.sourceId, sourceType: link.sourceType, target: link.targetId, targetType: link.targetType },
+        {
+          key: await connections.keyFor(
+            dataset.handle,
+            { id: link.sourceId, type: link.sourceType },
+            { id: link.targetId, type: link.targetType },
+          ),
+        },
       );
       setLastCreatedId(id);
       return id;
@@ -572,7 +571,7 @@ export function createRecordForms(deps: RecordFormsDeps): RecordForms {
       const invoker = session.me()?.did;
       if (!invoker) throw new Error('Sign in to make this.');
       const run = (name: string, args: Record<string, unknown>) =>
-        runOperation(name, args, { dataset: dataset.handle, invoker, invocationId });
+        invokeOperation(name, args, { dataset: dataset.handle, invoker, invocationId });
       const createdId = link
         ? await run('core.connectRecords', {
             source: link.sourceId,

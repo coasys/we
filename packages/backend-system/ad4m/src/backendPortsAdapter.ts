@@ -66,6 +66,7 @@ import {
   SPACE_MODELS,
 } from './sdnaEntities';
 import { installStagedRecords } from './stagedRecords';
+import { installToOneValues } from './toOneValues';
 import { runAd4mTransaction } from './transactions';
 import { createAd4mTranscriptionPort } from './transcriptionAdapter';
 import { createAd4mWorkflowPort } from './workflowPort';
@@ -204,6 +205,9 @@ export function createAd4mBackendPorts(
   // And the host's write check, asked before every create, edit, delete and relation write any model
   // makes — the one place none of them can go around. See `writeChecks.ts`.
   installWriteChecks(Ad4mModel);
+  // And a to-one relation held as the one id it reads back as, from the moment it is written.
+  // Outside the write check, so the check sees the id. See `toOneValues.ts`.
+  installToOneValues(Ad4mModel);
   // And containment: AD4M stores it as `has_child`, so a `parent` scope that names the neutral key
   // is translated before any model sees it. See `containment.ts`.
   installContainmentPredicate(Ad4mModel);

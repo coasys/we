@@ -5,7 +5,7 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { Space, TaskState } from '@we/entities';
+import { clearPredictions, Space, TaskState } from '@we/entities';
 import type { Setter } from '@we/reactivity';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -19,6 +19,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+    // What one test predicted is drawn for a while after it lands; the next test's dataset has the same id.
+    clearPredictions();
   });
 
   interface Built {
@@ -91,13 +93,11 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await flush();
   }
 
-  it('reads the space’s states, one per slug, ordered by what each counts as', async () => {
+  it('reads the space’s states, ordered by what each counts as', async () => {
     const built = await build();
     const handle = (await built.h.datasets.get('ds-a')).handle;
     await TaskState.create(handle, { name: 'Done', slug: 'done', semantic: 'done' });
     await TaskState.create(handle, { name: 'To do', slug: 'todo', semantic: 'open' });
-    // A second record with a slug the space already has is the same state, and the earlier one wins.
-    await TaskState.create(handle, { name: 'Later todo', slug: 'todo', semantic: 'open' });
     await enter(built, 'ds-a');
     const { members } = built.states;
     expect(members.taskStatesLoaded()).toBe(true);

@@ -20,17 +20,20 @@ export {
   operationWrites,
 } from './catalog';
 export { type EffectOptions, effectSummary, type OperationEffects, type OperationEffectVerb } from './effects';
-export { callSegment, deriveRecordId, keySegment } from './ids';
+export { callSegment, deriveIdentityId, deriveRecordId, domainSegment, identityText, keySegment } from './ids';
+export { identityIdOf, settledIdentityDomain } from './identity';
 export {
   categoryMembers,
   getOperation,
+  identityOf,
   listNamespaces,
   listOperations,
   operationsVersion,
   registerOperations,
   unregisterOperations,
 } from './registry';
-export { runOperation, type RunOperationOptions } from './run';
+export { type OperationView, runOperation, type RunOperationOptions, serialKey } from './run';
+export { onSpeculationMiss, type SpeculationMiss, speculateOperation, type Speculation } from './speculate';
 export {
   callsOf,
   type OperationIssue,

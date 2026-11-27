@@ -2038,27 +2038,25 @@ const canvas: SchemaNode = {
         ],
       },
     },
-  },
-  /*
-    The way in, under the canvas's own sentence.
+    /*
+      The way in, under the canvas's own sentence.
 
-    This is the landing route, so it is the screen on which "there is no call yet" is most often
-    read — and until now the only door out of it was a button in the corner and a panel somebody can
-    close. The other two routes put one under their gate; the canvas could not, because its
-    placeholder is drawn by `GraphView` from a string rather than by a node this template owns.
+      This is the landing route, so it is the screen on which "there is no call yet" is most often
+      read — and until now the only door out of it was a button in the corner and a panel somebody can
+      close. The other two routes put one under their gate; the canvas could not, because its
+      placeholder is drawn by `GraphView` from a string rather than by a node this template owns.
 
-    A slot is how a node hands a component something rendered: the renderer resolves it and spreads
-    it onto the component's props, so the button lands *inside* the graph's own centred box. Which is
-    the point — it stays under the sentence at every size, through every panel opening and closing,
-    with nothing here positioning anything. A button floated over the canvas would have to be lined
-    up against a box it cannot measure, and would be the second thing over the canvas besides.
+      `emptyAction` is a node prop — the graph declares it as taking an element — so the renderer draws
+      the node and hands it over drawn, and the button lands *inside* the graph's own centred box. Which is
+      the point — it stays under the sentence at every size, through every panel opening and closing,
+      with nothing here positioning anything. A button floated over the canvas would have to be lined
+      up against a box it cannot measure, and would be the second thing over the canvas besides.
 
-    Gated, because that box answers two questions. `empty` says one sentence when there is no call
-    and another when a call has produced nothing yet, and only the first is an invitation to start
-    one — offering a new call to somebody already reading one is answering a question they did not
-    ask. The same condition the other two routes gate their gates on, so all three agree.
-  */
-  slots: {
+      Gated, because that box answers two questions. `empty` says one sentence when there is no call
+      and another when a call has produced nothing yet, and only the first is an invitation to start
+      one — offering a new call to somebody already reading one is answering a question they did not
+      ask. The same condition the other two routes gate their gates on, so all three agree.
+    */
     emptyAction: {
       type: '$if',
       props: { condition: { $: `(${SPACE_CANVAS_EXPR}) && !(${CALL_EXPR})` }, then: startCallButton('md') },
@@ -2534,7 +2532,7 @@ const ANSWERS = `spaceStore.offeredInvolvementTypes.filter(k, k.reflexive && ('E
  * Answering an invitation, and who else has.
  *
  * One button per answer, the chosen one filled; pressing it again takes the answer back, which is
- * the first thing anybody tries. Only ever this agent's own answer — `respondTo` writes nobody
+ * the first thing anybody tries. Only ever this agent's own answer — `core.respond` writes nobody
  * else's — and one per event, so pressing Maybe after Going replaces it.
  *
  * The roster is who said they are coming, and a count of who might. Not `participants`, which is a
@@ -2560,8 +2558,10 @@ const rsvp: SchemaNode = {
                 size: 'xs',
                 variant: { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? 'soft' : 'ghost'` },
                 onClick: {
-                  $invoke: 'spaceStore.respondTo',
-                  args: [{ $: 'event.id' }, { $: `${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug` }],
+                  $invoke: 'ops.core.respond',
+                  args: [
+                    { $: `{ node: event.id, kind: ${ON_EVENTS}.answers[event.id] == answer.slug ? '' : answer.slug }` },
+                  ],
                 },
               },
               children: [

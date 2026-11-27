@@ -6,10 +6,11 @@
  * expressions that validated and computed the wrong thing. The rules moved into a host function so
  * that the fragment could go back to being arrangement; the tests moved with them, and gained types.
  */
+import { applyPredictions, type PredictedWrite, readShapeOf } from '@we/entities';
 import { STATE_FILLS, STATE_ICONS } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
-import { arrangedBoard, NOBODY_ROW } from '../src/shared/sources/arrangedBoard';
+import { arrangedBoard, type ArrangedBoardOptions, NOBODY_ROW } from '../src/shared/sources/arrangedBoard';
 
 const SPACE = 'space-1';
 
@@ -307,8 +308,8 @@ describe('what the pickers offer', () => {
 /**
  * A drag that has been made and not yet come back.
  *
- * The overlay is handed in as two lookups and applied to the *inputs*, so what these check is that
- * every answer follows — not just the column the card landed in, but the one it left, the counts,
+ * The drop is in the board's inputs — the host lays the predicted writes over the rows — so what these
+ * check is that every answer follows — not just the column the card landed in, but the one it left, the counts,
  * Unplaced, and whether the card is offered as available work. Patching the answers instead is how
  * a heading ends up disagreeing with the cards beneath it.
  */
@@ -316,30 +317,65 @@ describe('while a drag is in flight', () => {
   const todoCol: Col = { id: 'c1', slug: 'todo', arranges: ['t1'] };
   const doingCol: Col = { id: 'c2', slug: 'doing', arranges: ['t2'] };
 
-  /** What the store holds after a drop: the target's new order, and the card's new state. */
-  const pending = (order: Record<string, string[]>, status: Record<string, string> = {}) => ({
-    order: (recordId: string, relation: string) => order[`${recordId}.${relation}`],
-    status: (recordId: string) => status[recordId],
-  });
+  /*
+    What a drop is drawn as before it lands: the target's new order and the card's new state, as the
+    host lays an invoked operation's predicted writes over the rows the board is given.
+  */
+  const predicted = (
+    options: ArrangedBoardOptions,
+    order: Record<string, string[]>,
+    status: Record<string, string> = {},
+  ): ArrangedBoardOptions => {
+    const writes: PredictedWrite[] = [
+      ...Object.entries(order).map(([key, targets]): PredictedWrite => {
+        const [id, relation] = key.split('.');
+        return { kind: 'set', entity: 'CollectionBlock', id, relation, targets };
+      }),
+      ...Object.entries(status).map(([id, value]): PredictedWrite => ({
+        kind: 'edit',
+        entity: 'TaskBlock',
+        id,
+        fields: { status: value },
+      })),
+    ];
+    const over = <T>(rows: T[]) =>
+      applyPredictions(rows, readShapeOf(null, {}), [{ invocationId: 'drop', writes, landed: false }]);
+    return {
+      ...options,
+      ...(options.board ? { board: over([options.board])[0] } : {}),
+      ...(options.columns ? { columns: over(options.columns) } : {}),
+      ...(options.records ? { records: over(options.records) } : {}),
+    };
+  };
 
   it('draws the card in the column it was dropped into, before anything is stored', () => {
-    const view = arrangedBoard({
-      ...gathering([todoCol, doingCol]),
-      records: [todo, doing],
-      states,
-      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...gathering([todoCol, doingCol]),
+          records: [todo, doing],
+          states,
+        },
+        { 'c2.arranges': ['t1', 't2'] },
+        { t1: 'doing' },
+      ),
+    );
 
     expect(view.contents.c2.arranged.map((r) => r.id)).toEqual(['t1', 't2']);
   });
 
   it('takes it out of the column it left, so it is never drawn twice', () => {
-    const view = arrangedBoard({
-      ...gathering([todoCol, doingCol]),
-      records: [todo, doing],
-      states,
-      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...gathering([todoCol, doingCol]),
+          records: [todo, doing],
+          states,
+        },
+        { 'c2.arranges': ['t1', 't2'] },
+        { t1: 'doing' },
+      ),
+    );
 
     // `c1` still *holds* t1 — its own write has not come back either — but the card now reads as
     // `doing`, so the stale-hint rule drops it from a column bound to `todo`. That is the existing
@@ -349,12 +385,17 @@ describe('while a drag is in flight', () => {
   });
 
   it('counts the heading the same way it draws the cards', () => {
-    const view = arrangedBoard({
-      ...gathering([todoCol, doingCol]),
-      records: [todo, doing],
-      states,
-      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...gathering([todoCol, doingCol]),
+          records: [todo, doing],
+          states,
+        },
+        { 'c2.arranges': ['t1', 't2'] },
+        { t1: 'doing' },
+      ),
+    );
 
     expect(view.contents.c2.count).toBe(2);
   });
@@ -362,12 +403,16 @@ describe('while a drag is in flight', () => {
   it('reorders within one column without touching anything else', () => {
     const two: Col = { id: 'c1', slug: 'todo', arranges: ['t1', 't5'] };
     const alsoTodo = { id: 't5', title: 'Five', status: 'todo' };
-    const view = arrangedBoard({
-      ...gathering([two]),
-      records: [todo, alsoTodo],
-      states,
-      pending: pending({ 'c1.arranges': ['t5', 't1'] }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...gathering([two]),
+          records: [todo, alsoTodo],
+          states,
+        },
+        { 'c1.arranges': ['t5', 't1'] },
+      ),
+    );
 
     expect(view.contents.c1.arranged.map((r) => r.id)).toEqual(['t5', 't1']);
     expect(view.contents.c1.count).toBe(2);
@@ -381,24 +426,33 @@ describe('while a drag is in flight', () => {
       the stale-hint rule throws it out of c2 for having the wrong state, and c1 has already let it
       go, so the card is drawn in neither column and appears under Unplaced. Worse than the flash.
     */
-    const view = arrangedBoard({
-      ...gathering([todoCol, doingCol]),
-      records: [todo, doing],
-      states,
-      pending: pending({ 'c2.arranges': ['t1', 't2'] }, { t1: 'doing' }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...gathering([todoCol, doingCol]),
+          records: [todo, doing],
+          states,
+        },
+        { 'c2.arranges': ['t1', 't2'] },
+        { t1: 'doing' },
+      ),
+    );
 
     expect(view.unplaced).toEqual([]);
     expect(view.contents.c2.arranged.map((r) => r.id)).toContain('t1');
   });
 
   it('reads the board’s own column order optimistically too', () => {
-    const view = arrangedBoard({
-      ...board([todoCol, doingCol]),
-      records: [],
-      states,
-      pending: pending({ 'b1.children': ['c2', 'c1'] }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...board([todoCol, doingCol]),
+          records: [],
+          states,
+        },
+        { 'b1.children': ['c2', 'c1'] },
+      ),
+    );
 
     expect(view.columns.map((c) => c.id)).toEqual(['c2', 'c1']);
   });
@@ -441,23 +495,31 @@ describe('while a drag is in flight', () => {
   it('keeps a dragged-in card out of the "bring in existing work" picker', () => {
     // `available` is what the board holds nowhere. A card the board is about to hold is not that,
     // and offering it would let somebody add the card they are in the middle of moving.
-    const view = arrangedBoard({
-      ...curated([todoCol], []),
-      records: [todo, doing],
-      states,
-      pending: pending({ 'c1.arranges': ['t1', 't2'] }),
-    });
+    const view = arrangedBoard(
+      predicted(
+        {
+          ...curated([todoCol], []),
+          records: [todo, doing],
+          states,
+        },
+        { 'c1.arranges': ['t1', 't2'] },
+      ),
+    );
 
     expect(view.available.map((r) => r.id)).not.toContain('t2');
   });
 
-  it('behaves exactly as before when nothing is pending', () => {
-    const withOverlay = arrangedBoard({
-      ...gathering([todoCol, doingCol]),
-      records: [todo, doing],
-      states,
-      pending: pending({}),
-    });
+  it('behaves exactly as before when nothing is predicted', () => {
+    const withOverlay = arrangedBoard(
+      predicted(
+        {
+          ...gathering([todoCol, doingCol]),
+          records: [todo, doing],
+          states,
+        },
+        {},
+      ),
+    );
     const without = arrangedBoard({ ...gathering([todoCol, doingCol]), records: [todo, doing], states });
 
     expect(withOverlay.contents.c1.arranged).toEqual(without.contents.c1.arranged);
@@ -577,10 +639,19 @@ describe('a board read by who is on the work', () => {
   });
 
   it('counts an assignment somebody has just made, before the data carries it back', () => {
+    // The host lays the predicted create over the Involvement query the board is handed.
+    const made: PredictedWrite = {
+      kind: 'create',
+      entity: 'Involvement',
+      id: 'v-new',
+      fields: { node: 't3', agent: BEN, kind: 'assignee' },
+    };
     const view = arrangedBoard({
       ...base,
       people: [BEN],
-      pendingInvolvements: [{ node: 't3', agent: BEN, kind: 'assignee', on: true }],
+      involvements: applyPredictions(base.involvements ?? [], readShapeOf(['Involvement'], {}), [
+        { invocationId: 'assign', writes: [made], landed: false },
+      ]),
     });
     expect(view.dimmed).not.toContain('t3');
   });

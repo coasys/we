@@ -23,13 +23,22 @@ export type StaticErrorCode =
   | 'unboundName'
   | 'unknownEntity'
   | 'outsideOneOf'
+  | 'notGranted'
   | 'protectedEntity'
   | 'forEachKey'
   | 'notAList'
   | 'callDepth';
 
 export type PreconditionErrorCode =
-  'notFound' | 'ambiguous' | 'alreadyLinked' | 'notLinked' | 'recordExists' | 'expectChanged' | 'refused';
+  | 'notFound'
+  | 'ambiguous'
+  | 'alreadyLinked'
+  | 'notLinked'
+  | 'notOwn'
+  | 'recordExists'
+  | 'expectChanged'
+  | 'refused'
+  | 'spaceNotReady';
 
 export interface OperationErrorInit {
   class: OperationErrorClass;
@@ -38,6 +47,11 @@ export interface OperationErrorInit {
   step?: string;
   /** Why the space's policy refused a write, for a `refused` error: a caller may treat a policy it could not read apart from one that said no. */
   refusal?: Refusal;
+  /**
+   * The error is one of the operation's own `errors`, raised by a `check`, and its message is the
+   * declaration's: words written for the person who asked, which a host may show them as they are.
+   */
+  declared?: boolean;
 }
 
 export class OperationError extends Error {
@@ -45,6 +59,7 @@ export class OperationError extends Error {
   readonly code: string;
   readonly step?: string;
   readonly refusal?: Refusal;
+  readonly declared?: boolean;
 
   constructor(init: OperationErrorInit) {
     super(init.message);
@@ -53,6 +68,7 @@ export class OperationError extends Error {
     this.code = init.code;
     if (init.step !== undefined) this.step = init.step;
     if (init.refusal !== undefined) this.refusal = init.refusal;
+    if (init.declared) this.declared = true;
   }
 }
 
@@ -66,3 +82,19 @@ export const staticError = (code: StaticErrorCode, message: string, step?: strin
 
 export const preconditionError = (code: string, message: string, step?: string) =>
   new OperationError({ class: 'precondition', code, message, step });
+
+/** A `check` that failed: one of the operation's own errors, in its own words. */
+export const declaredError = (code: string, message: string, step?: string) =>
+  new OperationError({ class: 'precondition', code, message, step, declared: true });
+
+/**
+ * An identity-keyed create in a dataset whose identity domain has not arrived: a space joined before
+ * its own record synced. Deriving without the domain would name another record than every member
+ * who holds it names, so nothing is derived; running it again once the record is here succeeds.
+ */
+export const spaceNotReadyError = (step?: string) =>
+  preconditionError(
+    'spaceNotReady',
+    'The dataset names itself by a record not held yet, so an identity id cannot be derived',
+    step,
+  );

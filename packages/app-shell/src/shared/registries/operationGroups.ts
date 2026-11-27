@@ -8,6 +8,10 @@
  * make those writes one at a time, and a new operation is classified by what it does rather than by
  * a hand-written entry that could say otherwise.
  *
+ * An entity the operation chooses when it is called (`oneOf` with a category) is judged per call,
+ * from the entity actually passed: the runner asks the host before the step writes it, and the host
+ * answers from the same table and the caller's grants.
+ *
  * An entity not in the table is content: what a community writes and reads in its space, which is
  * what a space's template exists to do. A community's own record types are content by this rule
  * with nothing to register.
@@ -37,20 +41,10 @@ export const ENTITY_GROUPS: Readonly<Record<string, CapabilityGroup>> = {
   Theme: 'library',
 };
 
-/**
- * The categories an operation's `oneOf` may name. A block is what somebody composes into a post, so
- * writing any block type is content, whichever module brought it.
- *
- * `any` record type is the widest group a space's template holds. It may reach the space's
- * vocabulary and settings — a generic form edits whatever record is in front of it — so it is
- * classed as though it does; never the chrome tier's groups, which hold the agent's own records and
- * library rather than anything in the space. The entities that decide who may write what are
- * outside it altogether: the runner refuses them whatever an operation names.
- */
-export const CATEGORY_GROUPS: Readonly<Record<OperationCategory, CapabilityGroup>> = {
-  blockable: 'content',
-  any: 'space-settings',
-};
+/** The group a write of one entity needs: its entry in the table, or content when it has none. */
+export function entityGroup(entity: string): CapabilityGroup {
+  return ENTITY_GROUPS[entity] ?? 'content';
+}
 
 /**
  * Narrowest first. The space tier's groups before the chrome tier's, so an operation reaching
@@ -59,20 +53,37 @@ export const CATEGORY_GROUPS: Readonly<Record<OperationCategory, CapabilityGroup
 const WIDTH: readonly CapabilityGroup[] = ['content', 'signals', 'space-settings', 'agent', 'library'];
 
 export interface OperationSurface {
+  /** The widest group the entities it names reach: what holding the operation at all needs. */
   group: CapabilityGroup;
+  /**
+   * The categories it writes an entity of, chosen when it is called. Not part of `group`: which
+   * entity a call writes is known only when it runs, so the host judges each one then, by
+   * {@link entityGroup}, against the caller's grants. A generic delete is content when it deletes a
+   * post and space settings when it deletes a task state, as the same two writes made one at a time
+   * would be.
+   */
+  chosen: OperationCategory[];
   destructive: boolean;
 }
 
-/** The group an operation's writes need, and whether it is destructive, from its effect summary. */
+/** The group an operation's named writes need, what it chooses at call time, and whether it is destructive. */
 export function operationSurface(effects: OperationEffects): OperationSurface {
   let widest = 0;
-  for (const entity of Object.keys(effects.entities)) {
-    const group = ENTITY_GROUPS[entity] ?? 'content';
-    widest = Math.max(widest, WIDTH.indexOf(group));
-  }
-  for (const category of Object.keys(effects.categories) as OperationCategory[])
-    widest = Math.max(widest, WIDTH.indexOf(CATEGORY_GROUPS[category]));
-  return { group: WIDTH[widest], destructive: effects.destructive };
+  for (const entity of Object.keys(effects.entities)) widest = Math.max(widest, WIDTH.indexOf(entityGroup(entity)));
+  return {
+    group: WIDTH[widest],
+    chosen: (Object.keys(effects.categories) as OperationCategory[]).sort(),
+    destructive: effects.destructive,
+  };
+}
+
+/**
+ * Whether a caller holding `granted` may write `entity` through an operation that chose it at call
+ * time: the host's half of the per-call judgement the runner asks for. An access-control entity is
+ * refused by the runner before this is asked, whatever the grants.
+ */
+export function admitsChosen(granted: ReadonlySet<CapabilityGroup>, entity: string): boolean {
+  return granted.has(entityGroup(entity));
 }
 
 /**

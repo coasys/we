@@ -384,7 +384,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     */
       await model('Placement').create(
         handle,
-        { nodeType: 'TaskBlock', x: 400, y: 400, node: ['n1'] },
+        { nodeType: 'TaskBlock', x: 400, y: 400, node: 'n1' },
         { id: 'peer-row', parent: { id: CANVAS, relation: 'children', entity: 'CollectionBlock' } },
       );
       await store.undoCanvas(CANVAS);

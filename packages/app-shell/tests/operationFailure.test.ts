@@ -24,13 +24,19 @@ describe('saying why an operation did nothing', () => {
     expect(operationFailureMessage(unreadable, 'Could not add that')).toBeNull();
   });
 
-  it('says a precondition the operation names in its own words', () => {
+  it('says an error the operation declares in its own words', () => {
     const taken = new OperationError({
       class: 'precondition',
       code: 'slugTaken',
       message: 'This space already has one called that.',
+      declared: true,
     });
     expect(operationFailureMessage(taken, 'Could not add that')).toBe('This space already has one called that.');
+  });
+
+  it('says a precondition the runner raised in the host’s words, since its message is for the call’s author', () => {
+    const missing = new OperationError({ class: 'precondition', code: 'notFound', message: 'No Signal matched' });
+    expect(operationFailureMessage(missing, 'Could not add that')).toBe('Could not add that');
   });
 
   it('says anything else in the host’s words, never the call’s', () => {
