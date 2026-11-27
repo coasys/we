@@ -13,6 +13,8 @@ const NO_EXISTS =
 const NO_ANCHORED_TEXT = 'the executor has no `startsWith` or `endsWith`; a query using one is refused';
 const NUMBER_BOUNDS_ONLY =
   'the executor holds a range bound as a number, so a text bound is refused rather than misread';
+const PROJECTION_WHERE =
+  "a projection's or a count's `where` compiles equality only, and anything more is dropped so every member is listed or counted; the adapter refuses it (ad4m-issue:projection-where-operators)";
 const ONE_SORT_KEY = "the executor's sort pushdown takes one key, so a query ordered by two is refused";
 
 export const REFUSED_QUERY_VECTORS: Record<string, string> = {
@@ -26,6 +28,8 @@ export const REFUSED_QUERY_VECTORS: Record<string, string> = {
   'query.core.where-absent-explicitly': NO_EXISTS,
   'query.core.where-cleared-exists-false': NO_EXISTS,
   'query.core.order-several-keys': ONE_SORT_KEY,
+  'query.core.projection-list': PROJECTION_WHERE,
+  'query.aggregates.count-where': PROJECTION_WHERE,
   'query.core.projection-select':
     "a projection's records cannot be narrowed to a field list, so a projection with a select is refused rather than answered with every field",
   'query.traversal.scope-without-anchor':

@@ -41,6 +41,7 @@ import type {
   DatasetHandle,
   EntityClass as RendererEntityClass,
   EphemeralPort,
+  Filter,
   QueryAdapter,
   QueryIR,
   QueryOptions,
@@ -421,6 +422,39 @@ function projectionSelects(include: QueryIR['include'], path: string): string[] 
 }
 
 /**
+ * Whether a projection's or a count's `where` is one the executor compiles: equality on fields, one
+ * value or a list of them, ANDed by naming several fields once each.
+ */
+function equalityOnly(filter: Filter): boolean {
+  if ('field' in filter) return filter.op === 'eq' || filter.op === 'in';
+  if (!('and' in filter)) return false;
+  const fields = filter.and.map((part) => ('field' in part ? part.field : undefined));
+  return filter.and.every(equalityOnly) && new Set(fields).size === fields.length;
+}
+
+/**
+ * Where a projection's or a count's `where` asks for more than equality, at any depth.
+ *
+ * Workaround for ad4m-issue:projection-where-operators. The executor compiles a projection's
+ * `where` (the list form and `count: true` alike) from bare values, lists and `eq` only. A range,
+ * `not`, `contains`, a relation quantifier or `OR`/`AND`/`NOT` is dropped without an error, so the
+ * projection lists or counts every member. The query is refused instead; delete this once the
+ * executor compiles a projection's `where` with the grammar a top-level one has, or refuses it.
+ */
+function projectionWheres(ir: Pick<QueryIR, 'include' | 'aggregate'>, path: string): string[] {
+  const found: string[] = [];
+  (ir.aggregate ?? []).forEach((aggregate, i) => {
+    if (aggregate.filter && !equalityOnly(aggregate.filter)) found.push(`${path}aggregate.${i}.filter`);
+  });
+  for (const [key, spec] of Object.entries(ir.include ?? {})) {
+    if (spec === true) continue;
+    if (spec.over && spec.filter && !equalityOnly(spec.filter)) found.push(`${path}include.${key}.filter`);
+    found.push(...projectionWheres(spec, `${path}include.${key}.`));
+  }
+  return found;
+}
+
+/**
  * Build the AD4M {@link QueryAdapter}. A factory (not a singleton) because `lower` needs the current
  * perspective's model manifest to resolve a `scope` drill-down — so `getEntities` returns the SHACL model
  * entries (including synced ones, e.g. Flux's) at call time.
@@ -464,6 +498,14 @@ export function createAd4mQueryAdapter(getEntities: () => EntityManifestEntry[])
           path,
           disposition: 'unsupported',
           note: "a projection's records cannot be narrowed to a field list; sent, the select would be dropped",
+        });
+      }
+      for (const path of projectionWheres(ir, '')) {
+        gaps.push({
+          feature: 'projection:where',
+          path,
+          disposition: 'unsupported',
+          note: "a projection's or a count's `where` compiles equality only; sent, a range, `not`, `contains` or a combinator would be dropped",
         });
       }
       return { runnable: base.runnable && !gaps.some((g) => g.disposition === 'unsupported'), gaps };

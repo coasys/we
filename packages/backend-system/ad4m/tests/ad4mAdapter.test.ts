@@ -5,7 +5,7 @@
 
 import type { EntityManifestEntry } from '@we/backend-ad4m';
 import { ad4mCapabilities, createAd4mQueryAdapter } from '@we/backend-ad4m';
-import { CONTAINMENT_PREDICATE, type IncludeMap, type QueryIR, type Scope } from '@we/backend-shared';
+import { CONTAINMENT_PREDICATE, type Filter, type IncludeMap, type QueryIR, type Scope } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
 // A minimal perspective manifest: Conversation has a `subgroupEntities` relation bound to a predicate.
@@ -107,6 +107,50 @@ describe('adapter.plan — AD4M conditional degradations', () => {
       expect(plan.runnable).toBe(false);
     }
     expect(adapter.plan(base({ include: { children: { select: ['body'] } } })).gaps).toEqual([]);
+  });
+
+  it("a projection's or a count's where beyond equality, at any depth → refused, not sent with it dropped", () => {
+    const beyond: Filter[] = [
+      { field: 'stars', op: 'gt', value: 3 },
+      { field: 'stars', op: 'ne', value: 1 },
+      { field: 'body', op: 'contains', value: 'x' },
+      {
+        or: [
+          { field: 'stars', op: 'eq', value: 1 },
+          { field: 'stars', op: 'eq', value: 5 },
+        ],
+      },
+      { not: { field: 'stars', op: 'eq', value: 1 } },
+      { rel: 'author', op: 'some', where: { field: 'name', op: 'eq', value: 'a' } },
+    ];
+    for (const filter of beyond) {
+      const shapes: Partial<QueryIR>[] = [
+        { include: { $good: { over: 'replies', filter } } },
+        { aggregate: [{ as: '$good', over: 'replies', fn: 'count', filter }] },
+        { include: { children: { aggregate: [{ as: '$good', over: 'replies', fn: 'count', filter }] } } },
+      ];
+      for (const shape of shapes) {
+        const plan = adapter.plan(base(shape));
+        expect(
+          plan.gaps.map((g) => g.feature),
+          JSON.stringify(shape),
+        ).toContain('projection:where');
+        expect(plan.runnable).toBe(false);
+      }
+    }
+    // Equality, a list, and several fields named once each compile.
+    const equality: Filter = {
+      and: [
+        { field: 'kind', op: 'eq', value: 'reply' },
+        { field: 'author', op: 'in', value: ['a', 'b'] },
+      ],
+    };
+    expect(adapter.plan(base({ include: { $mine: { over: 'replies', filter: equality } } })).gaps).toEqual([]);
+    expect(
+      adapter.plan(base({ aggregate: [{ as: '$n', over: 'replies', fn: 'count', filter: equality }] })).gaps,
+    ).toEqual([]);
+    // A sub-query include is not a projection: its where is the top-level grammar.
+    expect(adapter.plan(base({ include: { children: { filter: beyond[0] } } })).gaps).toEqual([]);
   });
 
   it('no sort → no degradation gaps even under OR', () => {
