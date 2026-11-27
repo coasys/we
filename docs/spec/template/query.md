@@ -161,6 +161,10 @@ always comes. A field left out reads as no value. Without `select` a row carries
 The anchors are not in the result. A walked result is **flat**: a row says it was reached, never
 from where; a template that draws the tree includes the inverse relation and rebuilds it.
 
+`order` sorts the whole flat result, whatever depth each row was reached at, and `limit` keeps the
+first rows of that order. A host MUST NOT answer a walk level by level, each level in `order`, when
+an `order` is given. Without one, the rows' order is not specified.
+
 Which records a bounded walk keeps when it must drop some is not specified in this version, beyond
 `order` deciding among siblings where one is given.
 
