@@ -1,7 +1,7 @@
 import type { CapabilityProfile } from './types';
 
 /**
- * The five capability profiles: the host state and actions a template may rely on beyond records,
+ * The capability profiles: the host state and actions a template may rely on beyond records,
  * `$query` and declared operations, as named, versioned member lists.
  *
  * ## What is in a profile, and what is not
@@ -182,17 +182,8 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     version: '1.0.0',
     title: 'View state',
     description:
-      'What the person is looking at that is not the address and is never stored in a space: the panels a template declared and how they are arranged, the theme on screen, and named clocks.',
+      'What the person is looking at that is not the address and is never stored in a space: the panels a template declared, which of them are open and with what, scrolling to something, the theme on screen, and named clocks. Every host that draws a template has these, a phone and a page rendered once included.',
     members: [
-      {
-        path: 'shellStore.layoutDirty',
-        kind: 'state',
-        group: 'view-state',
-        shape: 'boolean',
-        description:
-          'One of the template’s declared panels has been moved, resized or closed — what a "reset layout" control is gated on. False for a template declaring no panels.',
-        events: ['panels'],
-      },
       {
         path: 'shellStore.panelInstances',
         kind: 'state',
@@ -203,30 +194,24 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         events: ['panels'],
       },
       {
-        path: 'shellStore.collapsedLanes',
-        kind: 'state',
-        group: 'view-state',
-        shape: 'string[]',
-        description: 'The lanes of the template on screen the person has folded away, by name.',
-        events: ['panels'],
-      },
-      {
         path: 'shellStore.openTemplatePanel',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'panelId', type: 'string' }],
-        description: 'Puts back a declared panel that was closed.',
+        description:
+          'Puts back a declared panel that was closed. Not an instance of its own, so `panelInstances` does not change; where the host provides layout, the arrangement does (its `layout` event).',
         ambient: true,
-        events: ['panels'],
+        events: [],
       },
       {
         path: 'shellStore.closeTemplatePanel',
         kind: 'action',
         group: 'view-state',
         args: [{ name: 'panelId', type: 'string' }],
-        description: 'Closes a panel the template declared, by its id.',
+        description:
+          'Closes a panel the template declared, by its id. Not an instance, so `panelInstances` does not change; where the host provides layout, the arrangement does (its `layout` event).',
         ambient: true,
-        events: ['panels'],
+        events: [],
       },
       {
         path: 'shellStore.openPanel',
@@ -248,37 +233,6 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         group: 'view-state',
         args: [{ name: 'instanceId', type: 'string' }],
         description: 'Closes an instance `openPanel` opened.',
-        ambient: true,
-        events: ['panels'],
-      },
-      {
-        path: 'shellStore.resetTemplateLayout',
-        kind: 'action',
-        group: 'view-state',
-        args: [],
-        description:
-          'Puts every declared panel back as the template declared it, reopening the closed ones and unfolding every lane.',
-        ambient: true,
-        events: ['panels'],
-      },
-      {
-        path: 'shellStore.toggleLane',
-        kind: 'action',
-        group: 'view-state',
-        args: [{ name: 'lane', type: 'string' }],
-        description: 'Folds a lane away, or brings it back. Its contents stay mounted while folded.',
-        ambient: true,
-        events: ['panels'],
-      },
-      {
-        path: 'shellStore.setLaneCollapsed',
-        kind: 'action',
-        group: 'view-state',
-        args: [
-          { name: 'lane', type: 'string' },
-          { name: 'collapsed', type: 'boolean' },
-        ],
-        description: 'Folds a lane away or brings it back, as said rather than flipped.',
         ambient: true,
         events: ['panels'],
       },
@@ -404,8 +358,8 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
     events: [
       {
         name: 'panels',
-        changes: ['shellStore.layoutDirty', 'shellStore.panelInstances', 'shellStore.collapsedLanes'],
-        description: 'A declared panel opened, closed, moved or resized, or a lane folded or unfolded.',
+        changes: ['shellStore.panelInstances'],
+        description: 'A panel instance opened or closed.',
       },
       {
         name: 'theme',
@@ -417,6 +371,71 @@ export const CAPABILITY_PROFILES: readonly CapabilityProfile[] = [
         changes: ['clockStore.clocks'],
         description:
           'A clock moved, started, stopped or was reconfigured. A playing clock changes on every frame it moves.',
+      },
+    ],
+  },
+  {
+    id: 'layout',
+    version: '1.0.0',
+    title: 'Layout',
+    description:
+      'How the panels a template declared are arranged on a screen that docks them in lanes: which lanes are folded away, whether the person has moved anything from where the template put it, and putting it all back. A host that draws panels one at a time, or not at all, leaves this profile out and still provides view-state.',
+    members: [
+      {
+        path: 'shellStore.layoutDirty',
+        kind: 'state',
+        group: 'view-state',
+        shape: 'boolean',
+        description:
+          'One of the template’s declared panels has been moved, resized or closed, or a lane folded — what a "reset layout" control is gated on. False for a template declaring no panels.',
+        events: ['layout'],
+      },
+      {
+        path: 'shellStore.collapsedLanes',
+        kind: 'state',
+        group: 'view-state',
+        shape: 'string[]',
+        description: 'The lanes of the template on screen the person has folded away, by name.',
+        events: ['layout'],
+      },
+      {
+        path: 'shellStore.toggleLane',
+        kind: 'action',
+        group: 'view-state',
+        args: [{ name: 'lane', type: 'string' }],
+        description: 'Folds a lane away, or brings it back. Its contents stay mounted while folded.',
+        ambient: true,
+        events: ['layout'],
+      },
+      {
+        path: 'shellStore.setLaneCollapsed',
+        kind: 'action',
+        group: 'view-state',
+        args: [
+          { name: 'lane', type: 'string' },
+          { name: 'collapsed', type: 'boolean' },
+        ],
+        description: 'Folds a lane away or brings it back, as said rather than flipped.',
+        ambient: true,
+        events: ['layout'],
+      },
+      {
+        path: 'shellStore.resetTemplateLayout',
+        kind: 'action',
+        group: 'view-state',
+        args: [],
+        description:
+          'Puts every declared panel back as the template declared it, reopening the closed ones and unfolding every lane.',
+        ambient: true,
+        events: ['layout'],
+      },
+    ],
+    events: [
+      {
+        name: 'layout',
+        changes: ['shellStore.layoutDirty', 'shellStore.collapsedLanes'],
+        description:
+          'A declared panel moved, resized, closed or was put back, or a lane folded or unfolded. Closing or reopening a declared panel through view-state is one of these too.',
       },
     ],
   },
