@@ -67,6 +67,12 @@ protocol.registerSchemesAsPrivileged([{ scheme: IDENTITY_SCHEME, privileges: { s
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+/*
+  The acceptance world's driver (`harness.js`): only in a run that is not packaged and names a
+  harness link. A package does not hold the file (`electron-builder.config.js`) and never looks for it.
+*/
+const harness = !app.isPackaged && process.env.COASYS_HARNESS_URL ? await import('./harness.js') : null;
+
 let mainWindow;
 let ad4mPort = null;
 let ad4mToken = null;
@@ -337,7 +343,14 @@ async function startExecutorOnce({ samePort }) {
     // process dies. Its output is still captured: Holochain and language output reach stdout.
     executorProcess = spawn(
       executorPath,
-      executorArgs({ port: ad4mPort, dataPath: ad4mDataPath, configFile, logDir: join(ad4mDataPath, 'logs') }),
+      executorArgs({
+        port: ad4mPort,
+        dataPath: ad4mDataPath,
+        configFile,
+        logDir: join(ad4mDataPath, 'logs'),
+        // The acceptance world runs without Holochain unless it asks; `undefined` keeps the default.
+        holochain: harness?.holochainArgs(),
+      }),
       {
         detached: true, // Create a new process group so we can kill the entire tree
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -523,6 +536,14 @@ async function stopCustody() {
 
 const identity = createIdentity({ custody, openWindow: openIdentityWindow });
 
+// Before any IPC handler is registered: the harness keeps which window invoked which channel.
+harness?.startHarness({
+  app,
+  ipcMain,
+  windows: () => ({ main: mainWindow, identity: identity.window() }),
+  custodyState: () => identity.publicState(),
+});
+
 /**
  * The identity window's session: in memory, its own, so it shares no storage, cookies or
  * permissions with the app. Its page is served on its own scheme from the built bundle, never from
@@ -616,7 +637,25 @@ function startAppServer() {
       res.sendFile('index.html', { root: launcherDir });
     });
 
-    launcherApp.listen(9080, () => {
+    /*
+      Express 5 hands a bind error to this callback instead of raising it. Ignored, the app would
+      log that it listens, then load `http://localhost:9080` from whoever holds the port — another
+      WE's renderer, served as this app's own. So a taken port ends the app, with the reason.
+
+      `app.quit()`, not `app.exit()`: this callback runs after `startExecutor` may already have
+      spawned the detached executor and the custody sidecar, and only `quit` fires `before-quit`,
+      which stops them. `exit` would leave both running with no app.
+    */
+    launcherApp.listen(9080, (error) => {
+      if (error) {
+        console.error('[main] The WE launcher could not listen on port 9080:', error.message);
+        dialog.showErrorBox(
+          'The app could not start',
+          `Port 9080 is taken by another program, and the app serves its interface there.\n\n${error.message}\n\nStop the other program (another WE?) and start the app again.`,
+        );
+        app.quit();
+        return;
+      }
       console.log('   ✓ WE launcher listening on port 9080\n');
     });
   } else {

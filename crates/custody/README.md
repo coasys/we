@@ -61,6 +61,13 @@ step can wait for minutes while `cancel` and `publicState` are answered. When st
 step is cancelled and the process exits 0, so it never outlives its host; a bad configuration exits 2.
 Log lines go to stderr and carry no secret.
 
+**The acceptance world's sidecar.** Built with the cargo feature `harness`
+(`cargo build --release --locked --bin we-custody --features harness`), the sidecar keeps custody
+items in memory unless `COASYS_HARNESS_VAULT=os`, as the Tauri app's harness build does, so a run of
+`tests/acceptance/` leaves nothing in a keyring. A build without the feature does not read the
+variable (`src/sidecar.rs`, `Vault`, and its test). `scripts/build-custody.mjs`, which builds the
+sidecar the Electron app ships, never turns it on.
+
 **What is wiped, and what is not.** The master key, the seed and the words are held in `Secret`s and
 `Zeroizing` buffers inside this crate, wiped when the step that made them ends. A word or a passphrase
 the person types is copied before it gets here — by the window, the host's IPC, the JSON line and
@@ -132,6 +139,7 @@ incept only; the master key stays where it rests.
 ```sh
 cd crates/custody
 cargo test                       # vault, sealing, screens, the sidecar, command table, the executor boundary
+cargo test --features harness    # the same, with the acceptance world's vault switch
 ```
 
 It builds against the ad4m commit WE pins, by git (`Cargo.toml`; `tests/boundary.rs` fails if that

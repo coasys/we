@@ -181,6 +181,24 @@ describe('executorArgs', () => {
     expect(flag('--config')).toBe('/d/a b/c.json');
     expect(flag('--log-dir')).toBe('/d/a b/logs');
     expect(flag('--custody-channel')).toBe('true');
+    expect(flag('--connect-holochain')).toBe('true');
+    expect(args).not.toContain('--run-holochain');
+  });
+
+  // The acceptance world's build runs no Holochain unless it asks (`harness.holochainArgs`).
+  it('takes the Holochain arguments it is given in place of its own', () => {
+    const withHarness = executorArgs({
+      port: 12001,
+      dataPath: '/d',
+      configFile: '/d/c.json',
+      logDir: '/d/logs',
+      holochain: ['--run-holochain', 'false', '--connect-holochain', 'false'],
+    });
+    const flag = (name) => withHarness[withHarness.indexOf(name) + 1];
+    expect(flag('--run-holochain')).toBe('false');
+    expect(flag('--connect-holochain')).toBe('false');
+    expect(withHarness.filter((a) => a === '--connect-holochain')).toHaveLength(1);
+    expect(flag('--watch-stdin')).toBe('true');
   });
 });
 
