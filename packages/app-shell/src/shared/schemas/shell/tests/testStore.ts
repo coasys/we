@@ -57,7 +57,7 @@ interface TestModelClass {
 
 export function createTestStore(
   { signal, effect }: Pick<ReactivityPort, 'signal' | 'effect'>,
-  testPerspective: Accessor<{ handle: unknown } | null>,
+  testDataset: Accessor<{ handle: unknown } | null>,
   schemas: () => SchemaPort | null,
 ) {
   // Declared lazily: the schemas port only exists once the backend connects, and every action
@@ -141,7 +141,7 @@ export function createTestStore(
   let createdCount = 0;
 
   async function createTestItem() {
-    const p = perspective();
+    const p = dataset();
     const m = ensureEntities();
     if (!p || !m) return;
     createdCount++;
@@ -157,7 +157,7 @@ export function createTestStore(
   }
 
   async function deleteTestItem(id: string) {
-    const p = perspective();
+    const p = dataset();
     const m = ensureEntities();
     if (!p || !m || !id) return;
     try {
@@ -170,7 +170,7 @@ export function createTestStore(
   // Force a known, deterministic dataset for the query test page:
   //   Alpha (2 children, 1 mine) · Beta (0 children) · Gamma (1 child, mine)
   async function seedQueryData() {
-    const p = perspective();
+    const p = dataset();
     const m = ensureEntities();
     if (!p || !m) return;
     const { TestItem, TestChild } = m;
@@ -193,7 +193,7 @@ export function createTestStore(
   }
 
   // ---- The test dataset (lazy init for $query testing) ----
-  const [perspective, setPerspective] = signal<unknown>(null);
+  const [dataset, setDataset] = signal<unknown>(null);
 
   const seedItems = [
     { name: 'Alpha', status: 'active', category: 'A' },
@@ -202,7 +202,7 @@ export function createTestStore(
   ];
 
   effect(() => {
-    const ref = testPerspective();
+    const ref = testDataset();
     const m = ensureEntities();
     if (!ref || !m) return;
     const { TestItem, TestChild } = m;
@@ -223,9 +223,9 @@ export function createTestStore(
           }
         }
 
-        setPerspective(p);
+        setDataset(p);
       } catch (err) {
-        console.error('TestStore: failed to init perspective', err);
+        console.error('TestStore: failed to open its dataset', err);
       }
     })();
   });
@@ -265,7 +265,7 @@ export function createTestStore(
     queryOwner,
 
     // The test dataset
-    perspective,
+    dataset,
   };
 }
 

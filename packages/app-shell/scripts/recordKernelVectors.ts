@@ -9,8 +9,12 @@
  */
 import { writeFileSync } from 'node:fs';
 
+import { DEFAULT_APP_FRAME, setGeometryFrame } from '../src/shared/dockGeometry';
 import { arrangeBoard, type BoardArrangementInput } from '../src/shared/kernels/boardArrangement';
+import { connectionKey } from '../src/shared/kernels/connectionKey';
+import * as dockLayout from '../src/shared/kernels/dockLayout';
 import { isUnder, rowFor, type RowInput, seatInRow } from '../src/shared/kernels/treeRanks';
+import { dockLayoutCases } from './dockLayoutCases';
 
 const out = (name: string) => new URL(`../src/shared/kernels/vectors/${name}.json`, import.meta.url);
 const asJson = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown;
@@ -149,6 +153,31 @@ const underCases: { name: string; input: { candidate: string; card: string; pare
   { name: 'isUnder: a loop ends the walk', input: { candidate: 'a', card: 'z', parentOf: { a: 'b', b: 'a' } } },
 ];
 
+// ── Connection keys ───────────────────────────────────────────────────────────
+
+const keyCases: { name: string; input: { source: string; target: string; label?: unknown } }[] = [
+  { name: 'two titles and a label', input: { source: 'Launch', target: 'Guide', label: 'depends on' } },
+  { name: 'every part trimmed', input: { source: ' Launch ', target: 'Guide  ', label: '  depends on ' } },
+  { name: 'no label leaves no colon', input: { source: 'Launch', target: 'Guide' } },
+  { name: 'an empty label is no label', input: { source: 'Launch', target: 'Guide', label: '' } },
+  { name: 'a blank label is no label', input: { source: 'Launch', target: 'Guide', label: '   ' } },
+  { name: 'a label that is not text is no label', input: { source: 'Launch', target: 'Guide', label: 3 } },
+  { name: 'an end with no title falls back to its id', input: { source: 'task-1', target: 'Guide', label: 'blocks' } },
+  { name: 'a colon inside a title is kept', input: { source: 'Phase: one', target: 'Guide', label: 'part of' } },
+];
+
+writeFileSync(
+  out('connectionKey'),
+  `${JSON.stringify(
+    keyCases.map((c) => ({
+      name: c.name,
+      input: c.input,
+      output: connectionKey(c.input.source, c.input.target, c.input.label),
+    })),
+    null,
+    2,
+  )}\n`,
+);
 writeFileSync(
   out('boardArrangement'),
   `${JSON.stringify(
@@ -179,4 +208,19 @@ writeFileSync(
     2,
   )}\n`,
 );
+// ── Dock layout ───────────────────────────────────────────────────────────────
+
+const kernel = dockLayout as unknown as Record<string, (...args: unknown[]) => unknown>;
+const dockVectors = dockLayoutCases().map((c) => {
+  // Each case asks under its own frame, and the next one starts from the default again.
+  setGeometryFrame(c.frame ?? DEFAULT_APP_FRAME);
+  const args = c.args.map((arg, index) => (c.absent?.includes(index) ? undefined : arg));
+  const answer = kernel[c.fn](...args);
+  setGeometryFrame(DEFAULT_APP_FRAME);
+  // JSON has no undefined: an answer of nothing is recorded as null.
+  return { ...c, output: answer === undefined ? null : asJson(answer) };
+});
+// One vector per line, so a diff names the vectors that changed; formatted, the file is four times the size.
+writeFileSync(out('dockLayout'), `[\n${dockVectors.map((vector) => JSON.stringify(vector)).join(',\n')}\n]\n`);
+
 console.log('kernel vectors recorded');

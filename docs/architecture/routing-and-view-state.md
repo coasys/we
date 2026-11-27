@@ -93,7 +93,8 @@ tier 3. No one → tier 4.
 
 **The host owns `/space/:spaceId`. A template owns everything below it.**
 
-The URL is what answers "which space am I in" — `SpaceStore`'s dataset effect
+The URL is what answers "which space am I in" — the space store's route effect
+(`shared/stores/space/navigation.ts`)
 reads `segments[0] === 'space'` and does nothing otherwise — so a template
 mounted anywhere else has no space at all, whatever its content assumes. That is
 a property of the prefix, not of routing your own screens, so the host supplies

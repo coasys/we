@@ -146,8 +146,8 @@ function cardFor(item: DragItem, deps: RecordGhostDeps): SchemaNode {
     ...(preview.content && {
       content: {
         type: 'BlockRenderer',
-        // `perspective` explicitly: there is no BlockHostProvider above a ghost to take it from.
-        props: { editorState: preview.content, perspective: deps.dataset() },
+        // `dataset` explicitly: there is no BlockHostProvider above a ghost to take it from.
+        props: { editorState: preview.content, dataset: deps.dataset() },
       },
     }),
     ...(preview.date && { date: preview.date }),

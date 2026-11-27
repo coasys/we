@@ -280,12 +280,12 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
-    "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
+    "Find or ask" scopes its chat to the member's *local* dataset id. `Space.uuid` is the
     creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
-    a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
+    a dataset this device does not hold, so a chat pinned to it ran against nobody's graph (and
     on the gate, hid itself for every member but the creator). Evaluated as the renderer does.
   */
-  it('asks the space chat against the local perspective, never the synced Space.uuid', () => {
+  it('asks the space chat against the local dataset, never the synced Space.uuid', () => {
     const input = findNode(
       treeSection,
       (n) => (n.props as { placeholder?: unknown } | undefined)?.placeholder === 'Find or ask',
@@ -301,8 +301,8 @@ describe('the Coasys cartridge', () => {
       root: (name) => ({
         bound: true,
         value: {
-          // A joined space: the local perspective id is not the uuid the creator's record synced in.
-          datasetStore: { currentDataset: { id: 'local-perspective-uuid', sharedId: 'we://shared-cid' } },
+          // A joined space: the local dataset id is not the uuid the creator's record synced in.
+          datasetStore: { currentDataset: { id: 'local-dataset-uuid', sharedId: 'we://shared-cid' } },
           spaceStore: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
           local: { findQuery: 'what is growing?' },
         }[name],
@@ -313,7 +313,7 @@ describe('the Coasys cartridge', () => {
           ?.impl(args, { context: {}, stores: {} }),
     });
     expect(asked).toEqual({
-      perspectiveUuid: 'local-perspective-uuid',
+      datasetId: 'local-dataset-uuid',
       spaceName: 'Garden club',
       draft: 'what is growing?',
     });

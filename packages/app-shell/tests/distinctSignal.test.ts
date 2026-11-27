@@ -7,7 +7,7 @@ import { createTestReactivity } from '@we/reactivity/testing';
 import { solidReactivity } from '@we/reactivity-solid';
 import { describe, expect, it } from 'vitest';
 
-import { distinctSignal } from '../src/shared/distinctSignal';
+import { distinctSignal, updatingSignal } from '../src/shared/distinctSignal';
 
 const reactivityPorts: [string, () => ReactivityPort][] = [
   ['Solid', () => solidReactivity],
@@ -43,6 +43,33 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     set({ id: 'a', at: 2 });
     set({ id: 'b', at: 3 });
     expect(seen).toEqual(['a@1', 'b@3']);
+    dispose();
+  });
+
+  it('changes from what it holds, untracked, and a change handing it back wakes nothing', () => {
+    const reactivity = makePort();
+    const seen: string[][] = [];
+    let update!: (change: (held: string[]) => string[]) => void;
+    let runs = 0;
+    let poke!: (n: number) => void;
+    const dispose = reactivity.root(() => {
+      const [read, , change] = updatingSignal<string[]>(reactivity, []);
+      update = change;
+      reactivity.effect(() => void seen.push(read()));
+      // Updating inside an effect must not make it depend on what it updates.
+      const [trigger, setTrigger] = reactivity.signal(0);
+      poke = setTrigger;
+      reactivity.effect(() => {
+        trigger();
+        runs++;
+        change((held) => (held.includes('x') ? held : [...held, 'x']));
+      });
+    });
+    poke(1);
+    update((held) => held);
+    update((held) => [...held, 'y']);
+    expect(seen).toEqual([[], ['x'], ['x', 'y']]);
+    expect(runs).toBe(2);
     dispose();
   });
 });

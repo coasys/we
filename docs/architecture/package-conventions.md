@@ -267,16 +267,14 @@ are in that package's README.
 Two places promise to be free of Solid, and `pnpm check:neutral-stores` (in CI beside the other
 checks) holds them to it:
 
-- **`packages/app-shell/src/shared/`**, where stores move once they are written against the port.
-  Any import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
+- **`packages/app-shell/src/shared/`**, where every store and the modules they use live. Any
+  import of `solid-js` (`solid-js/store` and `solid-js/web` included), app-shell's `@solid/*`
   alias, a relative path into `frameworks/solid/`, or a workspace package that depends on solid-js
-  fails. The files there that still import Solid are listed in
-  `scripts/neutral-stores-allowlist.txt`, which **may only shrink**: a listed file that stops
-  importing Solid fails the check until its line is deleted, so the list is always exactly what is
-  left to convert.
+  fails. Nothing is let through: what a store needs from Solid is a binding, and a binding goes in
+  `frameworks/solid/`.
 - **A package marked `"we": { "neutral": true }`** in its package.json — the contract packages a
   host on another framework installs (`@we/reactivity`, `@we/backend-shared`, `@we/schema-shared`,
-  `@we/module-shared`, …). Its `src/` is held to the same import rule with no allowlist, and it may
+  `@we/module-shared`, …). Its `src/` is held to the same import rule, and it may
   not depend on solid-js, nor on a workspace package that does. Mark a new contract package neutral
   when you add it.
 
@@ -288,8 +286,24 @@ the first, and the shape the rest copy:
 - `BootController` is the composition point. It builds every store once, in dependency order,
   passing `solidReactivity` and the stores already built; a store needing a later one is lent it
   through a method afterwards (`provideSpaceLookup`), never by reordering.
-- Components reach the result through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`),
-  the only Solid piece. A second framework writes its own hook over the same composed instances.
+- The composed set is typed twice, both in `shared/stores/`: `StoreRegistry` (`storeRegistry.ts`),
+  what components ask of by name, and `Stores` (`storeBag.ts`), the bag a template renders against.
+  Components reach the registry through `useStore('xStore')` (`frameworks/solid/stores/useStore.ts`).
+  That directory holds only Solid's binding: the hook and its context, Solid's live template document
+  (`liveTemplate.ts`, the nested store a template edit patches), and the app's one copy of each
+  piece of host state made over Solid's port (`hostState.ts`). A second framework writes those
+  three over the same composed instances.
+- A store with several jobs is one factory per job, composed back into one store. `SpaceStore`,
+  `ShellStore` and `RecordStore` are each an interface and a composition in `shared/stores/`, with
+  their parts in `stores/space/`, `stores/shell/` and `stores/records/`. A part is a factory
+  (`createSpaceRoles(deps)`, `createShellDocks(deps)`, `createRecordCanvas(deps)`) returning the store
+  members it owns, typed as a `Pick` of the store's interface, and what later parts read; the
+  composition builds them in order and spreads their members, so a template still reads one
+  namespace (`spaceStore.x`) and the template surface and profiles do not change when a job moves.
+  A part reaches a later one only through a function it calls after the store is built, never
+  while it is being built, and each part has its own test under both ports. The parts sit in a
+  subdirectory so the AI-context extractor, which reads `stores/*.ts` for store interfaces, never
+  takes one for a store.
 - Its tests are plain `.ts` store tests, `describe.each` over `solidReactivity` and
   `createTestReactivity()`, each store built inside `port.root` and disposed after. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
@@ -303,6 +317,28 @@ the first, and the shape the rest copy:
   rows by `id` (`keepRows` in `@we/schema-solid`), so a row whose fields change keeps its mount; a
   store does not reconcile a list to keep its rows. A lookup that must wake only the readers of one
   key is a signal per key (`app-shell/src/shared/keyedSignals.ts`), not a nested store.
+
+### Kernels
+
+A **kernel** here is a pure algorithm a host needs to agree on with every other host: data in, data
+out, no store, no backend, no framework. Each one has recorded vectors beside it, so a second host
+(another framework, or another language) either reimplements it and replays the vectors, or runs
+the same code compiled to WASM. Sharing one implementation is fine for these because they are pure;
+what must stay separately implementable is the spec and anything stateful. (Not the same thing as a
+module's capability kernels in `@we/module-shared`, which are ports a module is handed.)
+
+| Kernel            | Where                                                  | What it answers                                                                                                       | Vectors                                  |
+| ----------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Board arrangement | `app-shell/src/shared/kernels/boardArrangement.ts`     | which cards each column of a board shows, in what order, and what is left over                                        | `kernels/vectors/boardArrangement.json`  |
+| Tree ranks        | `app-shell/src/shared/kernels/treeRanks.ts`            | where a card sits in a tree read as arranged (`seatInRow`), and whether a drop would put it inside itself (`isUnder`) | `kernels/vectors/treeRanks.json`         |
+| Connection key    | `app-shell/src/shared/kernels/connectionKey.ts`        | the key a drawn connection is deduplicated by, which an interpretation pass matches                                   | `kernels/vectors/connectionKey.json`     |
+| Dock layout       | `app-shell/src/shared/kernels/dockLayout.ts`           | the 69 functions of `dockGeometry.ts` that place every panel, lane and drop slot                                      | `kernels/vectors/dockLayout.json` (642)  |
+| Block flattening  | `flattenBlocks` in `@we/block-shared` (`src/kernels/`) | a composed document as the ordered rows a post is written as, each keyed to its parent                                | `src/kernels/vectors/flattenBlocks.json` |
+
+The vectors are recorded from the code (`pnpm --filter @we/app-shell record:kernels`,
+`pnpm --filter @we/block-shared record:kernels`) and a test replays each file, so changing a kernel's
+answer means re-recording and the diff shows every answer that moved. Add a kernel when a second host
+would otherwise have to read our source to draw the same thing.
 
 A Pattern B package with a neutral core and a Solid binding says which exports are which with
 `"we": { "neutralExports": [".", …] }` — `@we/design-utils` lists `.`, and `@we/components` its

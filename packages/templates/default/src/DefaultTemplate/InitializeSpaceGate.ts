@@ -1,7 +1,7 @@
 import type { SchemaNode } from '@we/schema-shared';
 import { field, gatePrompt } from '@we/template-kit';
 
-// Shown when a joined perspective has some other app's SDNA installed (e.g. a Flux
+// Shown when a joined dataset has some other app's SDNA installed (e.g. a Flux
 // Community) but not WE's Space model — offers to add WE's space features in place,
 // prefilled from that foreign app's own data where recognized (spaceStore.foreignSpacePrefill).
 export const initializeSpaceGate: SchemaNode = gatePrompt({

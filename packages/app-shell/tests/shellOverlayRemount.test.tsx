@@ -17,11 +17,12 @@ import { createSignal, Show } from 'solid-js';
 import { describe, expect, it } from 'vitest';
 
 import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
 import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 /**
  * Mount the overlay under a key we control, standing in for the main Router's `routeKey`.
@@ -36,7 +37,7 @@ function mountOverlay() {
   const [routeKey, setRouteKey] = createSignal(1);
 
   render(() => {
-    shell = createShellStore();
+    shell = createShellStore({ reactivity: solidReactivity, host: shellHost });
     return (
       <StoreRegistryContext.Provider value={{ shellStore: shell }}>
         {/* The key is taken as an argument, mirroring `TemplateProvider`'s `{(_key) => …}`. A child

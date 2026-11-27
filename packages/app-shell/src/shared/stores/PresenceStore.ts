@@ -2,7 +2,7 @@
  * PresenceStore — live presence for the spaces that need it.
  *
  * The store over the neutral presence core in `@we/backend-shared`. It owns three things the
- * core deliberately does not: **when** to start and stop (following the current perspective), **what**
+ * core deliberately does not: **when** to start and stop (following the current dataset), **what**
  * to publish as this agent's focus (following the route), and the **join** from a bare `agentId` to a
  * displayable profile.
  *
@@ -11,7 +11,7 @@
  * Composed alongside the other stores in `BootController`, not inside a view. Flux creates a signalling
  * service per community view and tears it down on unmount, so leaving the view loses every peer with
  * no path back except remounting. Here the store outlives navigation and simply re-scopes when the
- * perspective changes.
+ * dataset changes.
  *
  * ## Scope: the space on screen, plus anywhere something live is happening
  *
@@ -211,13 +211,13 @@ export function createPresenceStore({
   });
 
   // Taken from the store rather than constructed here: one shared port for the whole app, so its
-  // per-perspective scope refcounting actually works and the call module later joins the same scope
-  // instead of registering a second executor signal handler.
+  // per-dataset scope refcounting actually works and the call module later joins the same scope
+  // instead of registering a second signal handler with the backend.
   const ephemeralPort = session.ephemeralPort;
 
   /**
-   * The space, by its **global** uri. Never `perspective.uuid`: AD4M perspective uuids are local
-   * per-agent, so the same neighbourhood has a different one on every peer — broadcasting it produces
+   * The space, by its **global** uri. Never the dataset's own id: a backend may give the same shared
+   * dataset a different local id on every peer — broadcasting it produces
    * a focus nobody else can interpret. Fails silently across peers while looking fine locally.
    */
   const datasetUri = memo(() => datasetStore.currentDatasetUri());
@@ -261,7 +261,7 @@ export function createPresenceStore({
 
   function openLease(uri: string, handle: DatasetProxy, did: string): void {
     const scope = ephemeralPort(handle);
-    if (!scope) return; // personal space — no neighbourhood, no presence
+    if (!scope) return; // personal space — not shared, so no presence
 
     // Only the focused tab publishes; every tab still subscribes, so each one's UI stays live.
     // Gating here rather than inside the driver keeps the neutral core unaware of browser tabs.
@@ -404,7 +404,7 @@ export function createPresenceStore({
     for (const uri of [...leases.keys()]) closeLease(uri);
   });
 
-  /** A transport exists for the space on screen. False in a personal space, which has no neighbourhood. */
+  /** A transport exists for the space on screen. False in a personal space, which is not shared. */
   const available = memo(() => {
     const uri = datasetUri();
     return !!uri && uri in peersByUri();
@@ -463,7 +463,7 @@ export function createPresenceStore({
     });
   });
 
-  // Ask AD4M for any peer whose profile we have not cached. The effect re-runs as peers arrive, and
+  // Ask the backend for any peer whose profile we have not cached. The effect re-runs as peers arrive, and
   // `fetchAgent` already deduplicates in-flight requests, so this is safe to call repeatedly.
   effect(() => {
     const cached = profileStore.profiles();

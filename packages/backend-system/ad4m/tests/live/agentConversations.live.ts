@@ -73,7 +73,7 @@ describe('agent conversations, live', () => {
   });
 
   it('creates a session scoped to one perspective with the space’s grants', async () => {
-    const ref = await conversations.create({ title: 'space chat', scope: { perspectiveUuid: space.uuid } });
+    const ref = await conversations.create({ title: 'space chat', scope: { datasetId: space.uuid } });
     made.push(ref.id);
 
     const session = await client.ai.session(ref.id);
@@ -94,7 +94,7 @@ describe('agent conversations, live', () => {
     const scoped = list.find((s) => s.title === 'space chat');
     const global = list.find((s) => s.title === 'global chat');
     expect(global?.scope).toBeUndefined();
-    expect(scoped?.scope?.perspectiveUuid).toBe(space.uuid);
+    expect(scoped?.scope?.datasetId).toBe(space.uuid);
     // Sorted by latest update, newest first.
     for (let i = 1; i < list.length; i++) {
       const prev = list[i - 1].updatedAt ?? list[i - 1].createdAt;
@@ -174,7 +174,7 @@ describe('agent conversations, live', () => {
     });
 
     it('runs a turn in the scoped chat: a step shows, the reply lands whole', async () => {
-      const ref = await conversations.create({ title: 'scoped turn', scope: { perspectiveUuid: space.uuid } });
+      const ref = await conversations.create({ title: 'scoped turn', scope: { datasetId: space.uuid } });
       made.push(ref.id);
       const batches: AgentConversationMessage[][] = [];
       const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
@@ -210,7 +210,7 @@ describe('agent conversations, live', () => {
           new Link({ source: 'ad4m://me', predicate: `ad4m://shot-${i}`, target: `literal:string:item ${i}` }),
         );
       }
-      const ref = await conversations.create({ title: 'describe the space', scope: { perspectiveUuid: space.uuid } });
+      const ref = await conversations.create({ title: 'describe the space', scope: { datasetId: space.uuid } });
       made.push(ref.id);
       const batches: AgentConversationMessage[][] = [];
       const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
@@ -240,7 +240,7 @@ describe('agent conversations, live', () => {
       being ignored. `add_link` then proves the mark lands where a real write happened.
     */
     it('marks the write a turn made, and leaves the read turn unmarked', async () => {
-      const ref = await conversations.create({ title: 'write mark', scope: { perspectiveUuid: space.uuid } });
+      const ref = await conversations.create({ title: 'write mark', scope: { datasetId: space.uuid } });
       made.push(ref.id);
       const batches: AgentConversationMessage[][] = [];
       const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
@@ -290,7 +290,7 @@ describe('agent conversations, live', () => {
         own, so the model correctly reports one. The refusal needs a tool call aimed at the uuid.
       */
       const other = await client.perspective.add(`we-chat-live-other-${Date.now()}`);
-      const ref = await conversations.create({ title: 'refusal', scope: { perspectiveUuid: space.uuid } });
+      const ref = await conversations.create({ title: 'refusal', scope: { datasetId: space.uuid } });
       made.push(ref.id);
       const batches: AgentConversationMessage[][] = [];
       const unfollow = conversations.follow(ref, (rows) => batches.push(rows));

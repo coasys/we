@@ -53,7 +53,7 @@ export function entityListOf(value: unknown): string[] | null {
  * The models this space's new collections start with: its own list where it has one, else the
  * floor — narrowed to what is actually extractable here.
  *
- * Narrowing matters beyond tidiness: a pass whose perspective has no shape for a listed model fails
+ * Narrowing matters beyond tidiness: a pass whose dataset has no shape for a listed model fails
  * `assertShapesInstalled` and takes the whole pass down, so a list naming a model since deleted, or
  * one whose `extractable` was withdrawn in a release, has to narrow quietly rather than break
  * extraction. Order follows `candidates` so a list reads the same way every time rather than in

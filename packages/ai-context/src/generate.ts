@@ -276,10 +276,7 @@ async function main() {
 
   // Names come from the source, meaning comes from the fragment. See `extractors/appShell.ts`.
   contextData.storeEntries = mergeStoreEntries(
-    extractStores([
-      resolve(repoRoot, 'packages/app-shell/src/shared/stores'),
-      resolve(repoRoot, 'packages/app-shell/src/frameworks/solid/stores'),
-    ]),
+    extractStores([resolve(repoRoot, 'packages/app-shell/src/shared/stores')]),
     storeEntries,
     extractWiringMembers(resolve(repoRoot, 'packages/app-shell/src/shared/registries/templateSurface.ts')),
   );

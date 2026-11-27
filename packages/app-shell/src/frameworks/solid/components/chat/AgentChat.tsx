@@ -5,7 +5,7 @@
  *
  * What it is opened with arrives as `inputs` — the panel instance's for a declared panel, the
  * sheet's on a phone:
- * - `perspectiveUuid` + `spaceName`: the space chat, scoped to that one perspective. Its badge
+ * - `datasetId` + `spaceName`: the space chat, scoped to that one dataset. Its badge
  *   says "this space only" and a switch offers the global chat.
  * - `prefill`: words in the composer — what a template's ask fills and a person's Send sends.
  * - `nonce`: the one-time key for a question `openChat` is holding — the chat asks it, once.
@@ -121,10 +121,10 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   let disposed = false;
   let sending = false;
 
-  const spaceChat = () => props.inputs?.perspectiveUuid;
+  const spaceChat = () => props.inputs?.datasetId;
 
   /*
-    A chat's scope is the member's *local* perspective id — for a joined space not the `Space.uuid`
+    A chat's scope is the member's *local* dataset id — for a joined space not the `Space.uuid`
     synced from its creator. Resolving a name goes through the dataset that id is and `isSpaceSelf`,
     the same self-record match the space list uses.
   */
@@ -134,7 +134,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     return { space, ds };
   };
 
-  /** The space a perspective uuid names, where this device holds it — for badges and step names. */
+  /** The space a dataset id names, where this device holds it — for badges and step names. */
   const spaceName = (uuid: string): string => {
     const { space, ds } = spaceForLocalId(uuid);
     return space?.name || ds?.name || props.inputs?.spaceName || '';
@@ -168,7 +168,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   }
 
   function openConversation(summary: AgentConversationSummary) {
-    setActive({ ref: summary.ref, title: summary.title, scope: summary.scope?.perspectiveUuid });
+    setActive({ ref: summary.ref, title: summary.title, scope: summary.scope?.datasetId });
     setMessages([]);
     setSendFailed(null);
     follow(summary.ref);
@@ -195,7 +195,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     try {
       const ref = await conversations.create({
         title: text.trim().slice(0, 60),
-        ...(uuid ? { scope: { perspectiveUuid: uuid } } : {}),
+        ...(uuid ? { scope: { datasetId: uuid } } : {}),
       });
       // A late answer to a closed chat: the session exists, but nobody is listening — starting one
       // now would leak the subscription, so it is left for the list to find.
@@ -293,7 +293,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   createEffect(() => {
     const inputs = props.inputs ?? {};
     const pending = inputs.nonce ? chat.takePending(inputs.nonce) : undefined;
-    if (pending) void ask(pending.text, pending.perspectiveUuid ?? inputs.perspectiveUuid);
+    if (pending) void ask(pending.text, pending.datasetId ?? inputs.datasetId);
   });
 
   /*
@@ -302,13 +302,13 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     turn it left, not the list. `inputs` is fixed for a mounted chat — read once, at mount.
   */
   {
-    const remembered = chat.rememberedConversation(untrack(() => props.inputs?.perspectiveUuid ?? 'global'));
+    const remembered = chat.rememberedConversation(untrack(() => props.inputs?.datasetId ?? 'global'));
     if (remembered) {
       setActive(remembered);
       follow(remembered.ref);
     }
   }
-  createEffect(() => chat.rememberConversation(props.inputs?.perspectiveUuid ?? 'global', active()));
+  createEffect(() => chat.rememberConversation(props.inputs?.datasetId ?? 'global', active()));
 
   createEffect(() => {
     port();
@@ -322,7 +322,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const lastAskText = createMemo(() => lastAsk(messages()));
 
   /**
-   * The perspective the open conversation is pinned to — from the session's own scope once one is
+   * The dataset the open conversation is pinned to — from the session's own scope once one is
    * open, from what this chat was opened with before. An unscoped session inside the space chat is
    * global, so it must not inherit the space's wording.
    */
@@ -423,13 +423,11 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
                       {summary.title || 'Chat'}
                     </we-text>
                     <Row ay="center" gap="100">
-                      <Show when={summary.scope?.perspectiveUuid}>
+                      <Show when={summary.scope?.datasetId}>
                         <we-icon name="lock" size="xxs" color="accent-text" />
                       </Show>
                       <we-text variant="footnote" color="text-faint" truncate>
-                        {summary.scope?.perspectiveUuid
-                          ? spaceName(summary.scope.perspectiveUuid) || 'A space'
-                          : 'Global'}
+                        {summary.scope?.datasetId ? spaceName(summary.scope.datasetId) || 'A space' : 'Global'}
                         {` · ${ago(summary.updatedAt ?? summary.createdAt)}`}
                       </we-text>
                     </Row>

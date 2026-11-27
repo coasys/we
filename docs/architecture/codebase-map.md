@@ -69,6 +69,15 @@ Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) sit above the ports a
 state to schemas. The renderer, the design system and the module contract never import
 `@coasys/*`.
 
+The stores are in `app-shell/src/shared/stores/`, every one written against the reactivity port, and
+`BootController` composes them once, each given the stores it reads. The three largest are an
+interface and a composition over parts, one per job (`stores/space/`, `stores/shell/`,
+`stores/records/`), so a template still reads `spaceStore.x`. Components reach them with
+`useStore` (`frameworks/solid/stores/`, the only Solid piece). The pure algorithms a second host has
+to agree with — board arrangement, tree ranks, connection keys, the dock layout, block flattening —
+are kernels with recorded vectors (`app-shell/src/shared/kernels/`, `flattenBlocks` in
+`@we/block-shared`); "Kernels" in `package-conventions.md` lists them.
+
 > **To expand:** exact connection/bootstrap flow, personal vs shared perspective lifecycle, how
 > `switchPerspective` registers SHACL models as dynamic classes, and the sync/conflict model.
 

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { routeWrite } from '../src/shared/edgeRoute';
+import { rerouteWrite, routeWrite } from '../src/shared/edgeRoute';
 
 const BENT = [{ along: 0.5, across: 0.2 }];
 
@@ -78,5 +78,24 @@ describe('clearing a side', () => {
 
     expect(write.action).toBe('replace');
     expect(write).not.toHaveProperty('fields.sourceAnchor');
+  });
+});
+
+describe('rerouteWrite', () => {
+  it('makes a route only for a bend, and makes nothing for a straight line nobody had bent', () => {
+    expect(rerouteWrite(undefined, BENT)).toEqual({ action: 'create', fields: { points: BENT } });
+    expect(rerouteWrite(undefined, [])).toEqual({ action: 'none' });
+  });
+
+  it('deletes a straightened route with no anchors left, and keeps one still pinned', () => {
+    expect(rerouteWrite({ points: BENT }, [])).toEqual({ action: 'delete' });
+    expect(rerouteWrite({ sourceAnchor: 'n', points: BENT }, [])).toEqual({ action: 'update', fields: { points: '' } });
+  });
+
+  it('writes the whole list over the old one', () => {
+    expect(rerouteWrite({ points: BENT }, [{ t: 0.2, d: 4 }])).toEqual({
+      action: 'update',
+      fields: { points: [{ t: 0.2, d: 4 }] },
+    });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * The expander contract — the graph system's primary extension point.
  *
- * "Show the whole perspective", "map these query results", "open this collection's children", "zoom a
+ * "Show the whole dataset", "map these query results", "open this collection's children", "zoom a
  * model out into its properties", "explore spaces and neighbourhoods" are not five features. They are
  * one: a lazily-explored frontier, where each *kind* of node knows what is adjacent to it. An
  * expander answers that question for the kinds it claims, and the core does the rest — dedup,

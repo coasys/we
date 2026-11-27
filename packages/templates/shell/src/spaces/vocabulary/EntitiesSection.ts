@@ -551,7 +551,7 @@ const relationshipRow: SchemaNode = {
                 size: 'sm',
                 width: '260px',
                 searchable: true,
-                // "Links to", because that is literally what it is here — a perspective is made
+                // "Links to", because that is literally what it is here — a dataset is made
                 // of links. No persistent label: the arrow icon beside the picker carries the
                 // direction once a target is chosen.
                 placeholder: 'Links to…',

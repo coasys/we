@@ -278,7 +278,7 @@ export interface ShapeStore {
    * is wiring, not template API.
    */
   addRecordTypes: (bundleId: string, types: readonly BundleRecordType[], datasetId?: string) => Promise<string[]>;
-  /** Delete a shape record. Its SDNA and data remain in the space (uninstall semantics are deliberate). */
+  /** Delete a shape record. Its installed shape and data remain in the space (uninstall semantics are deliberate). */
   deleteShape: (shapeRecordId: string) => Promise<void>;
 
   // Actions — hints

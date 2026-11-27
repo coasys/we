@@ -202,7 +202,7 @@ interface MemberSpec {
    *
    * A `draft` it carries becomes `prefill` — words in the composer, at every tier: a question a
    * template supplies is something a person reads and presses Send on, never something that sends
-   * itself. And below `space-admin`, the `perspectiveUuid` it names is replaced by the space on
+   * itself. And below `space-admin`, the `datasetId` it names is replaced by the space on
    * screen — the same pin `arity` puts on a trailing `spaceUuid`, for the same sentence: a space
    * template may ask about the space it is in, and may not choose another's chat or the global one.
    */
@@ -473,7 +473,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     /*
       The agent's own root dataset. Chrome tier, because settings genuinely needs it — the datasets
       list marks which row is your root by comparing ids — and a space's template has no reason to
-      hold a handle to your private perspective.
+      hold a handle to your private dataset.
     */
     rootDataset: state('agent'),
     /*
@@ -1700,7 +1700,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     isNarrow: state('view-state'),
     /*
       The rewrite `chatRequest` names: a template's `draft` fills the composer rather than sending
-      — only a person's Send sends a question — and its `perspectiveUuid` is the space on screen
+      — only a person's Send sends a question — and its `datasetId` is the space on screen
       unless the bag may name spaces. See {@link MemberSpec.chatRequest}.
     */
     openChat: { ...action('view-state'), chatRequest: true },
@@ -2013,7 +2013,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
       /*
         A chat-open request from a template: its question fills the composer rather than sending —
         `prefill` is what the store passes on — and its space is the one on screen, unless the bag
-        may name spaces. Below `space-admin` an absent dataset leaves `perspectiveUuid` present and
+        may name spaces. Below `space-admin` an absent dataset leaves `datasetId` present and
         undefined, which `openChat` reads as "not known yet" and opens nothing — never the global
         chat. See {@link MemberSpec.chatRequest}.
       */
@@ -2025,7 +2025,7 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
           const { draft, ...rest } = (args[0] ?? {}) as Record<string, unknown>;
           const request: Record<string, unknown> = { ...rest };
           if (typeof draft === 'string' && draft) request.prefill = draft;
-          if (!mayNameASpace) request.perspectiveUuid = datasetStore?.currentDataset?.()?.id;
+          if (!mayNameASpace) request.datasetId = datasetStore?.currentDataset?.()?.id;
           return bound(request);
         };
       }

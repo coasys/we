@@ -65,7 +65,7 @@ function clamp(raw: number): number {
 
 export type PretendPeople = ReturnType<typeof createPretendPeople>;
 
-/** One app's pretend people, loaded from the device. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** One app's pretend people, loaded from the device. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createPretendPeople({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
   const [state, setState] = signal<Stored>(load());
 

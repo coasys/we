@@ -7,6 +7,6 @@
  * about the build.
  *
  * The only dependency is `@we/schema-shared`, for the `TemplateSchema` type. Nothing here knows what
- * holds the data, which framework renders it, or what a perspective is.
+ * holds the data, which framework renders it, or what a dataset is.
  */
 export { defaultTemplate } from './DefaultTemplate';

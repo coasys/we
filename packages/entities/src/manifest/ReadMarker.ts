@@ -11,7 +11,7 @@ import type { CoreEntityDef } from './defs';
  * to exist first.
  *
  * **Held in the root dataset, never in the space** — the `SpacePreference` rule, and for the same
- * reason. Written into the shared perspective, my read position would sync to every member of the
+ * reason. Written into the shared dataset, my read position would sync to every member of the
  * community, which is both a privacy leak and wrong: read state is per-agent by definition, and two
  * members of a channel have different ones.
  *

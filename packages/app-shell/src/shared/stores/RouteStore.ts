@@ -65,7 +65,7 @@ export interface RouteStore {
   /**
    * Go to `to`. `query` is the page's query values, written for it: a record id goes here, as
    * `navigate('./board', { query: { id: board.id } })`, never pasted into `to`. A record id is a URI
-   * — `ad4m://obj/x` — so as a path segment it is several, and the route that expected one never
+   * — `scheme://obj/x` — so as a path segment it is several, and the route that expected one never
    * matches; pasted into a query by hand, an id holding `&`, `#`, `+` or `%` reads back as
    * something else. Written here, it reads back exactly. The rest of `options` goes to the router
    * (`replace`, `state`).
@@ -142,7 +142,7 @@ function paramText(value: unknown): string {
  * Query values as a query string, without its `?`. Empty values are left out.
  *
  * `:` and `/` left as they are. Both are legal in a query, and a record id is a URI, so encoding
- * them turned `?call=ad4m://obj/x` into `?call=ad4m%3A%2F%2Fobj%2Fx` — the same call written two
+ * them turned `?call=scheme://obj/x` into `?call=scheme%3A%2F%2Fobj%2Fx` — the same call written two
  * ways, depending on whether a link or `setParam` wrote it. Every reader decodes either form alike.
  */
 export function queryString(values: URLSearchParams | Record<string, unknown>): string {

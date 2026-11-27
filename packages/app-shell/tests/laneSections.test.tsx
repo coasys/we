@@ -4,19 +4,21 @@
  * real shell store and dock registry.
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { dockRegistry, registerHostDockStore, unregisterHostDockStore } from '../src/shared/registries/dockRegistry';
 import { slotRegistry } from '../src/shared/registries/slotRegistry';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 /** A host panel — settings, say — whose open state is its own, with a close the lane's header calls. */
 const [hostOpen, setHostOpen] = createSignal(false);
@@ -46,7 +48,7 @@ afterEach(() => {
 function mountLane(frame?: 'window' | 'flush' | 'none') {
   let store!: ShellStore;
   const { container } = render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     // Wrapped as the app wraps chrome's stores, so the frames read values rather than accessors.
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return (

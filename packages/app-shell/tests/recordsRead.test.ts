@@ -37,7 +37,7 @@ function foreignModel(rows: Record<string, unknown>[], dispose?: () => void): En
 }
 
 afterEach(() => {
-  // `registerDynamicEntities` replaces the perspective's map, which is also how one is cleared.
+  // `registerDynamicEntities` replaces the dataset's map, which is also how one is cleared.
   registerDynamicEntities(UUID, {});
   unregisterEntity('GlobalThing');
 });

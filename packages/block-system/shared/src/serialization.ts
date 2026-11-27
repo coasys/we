@@ -20,6 +20,7 @@ import {
   toPortableText,
   walkBlocks,
 } from './content';
+import { type BlockNode, flattenBlocks } from './kernels/flattenBlocks';
 import { marksField, marksOf, mentionChanges, mentionedDids } from './marks';
 import type { CollectionMode } from './modes';
 import { isReconcilable } from './modes';
@@ -69,7 +70,7 @@ const TEXT_TYPE = 'block';
 /**
  * How deep a walk of the `children` relation will go.
  *
- * `children` is a multi-writer link set in a shared perspective: no writer reads the current set
+ * `children` is a multi-writer link set in a shared dataset: no writer reads the current set
  * before appending, which is what makes concurrent additions safe, and is also why nothing can stop
  * two agents between them producing a cycle. Neither of them did anything wrong; the graph is
  * simply not guaranteed to be a tree, and code that assumed it was recursed forever. Deleting a
@@ -344,7 +345,7 @@ function normalizeInput(input: ContentInput): { blocks: ContentBlock[]; base?: s
  * a different name would produce a different address than the original, orphaning the old one for
  * no reason.
  */
-async function preUploadFileAssets(perspective: BlockDataset, blocks: ContentBlock[]): Promise<ContentBlock[]> {
+async function preUploadFileAssets(dataset: BlockDataset, blocks: ContentBlock[]): Promise<ContentBlock[]> {
   const fileStore = getFileStore();
   const out: ContentBlock[] = [];
   for (const block of blocks) {
@@ -361,11 +362,11 @@ async function preUploadFileAssets(perspective: BlockDataset, blocks: ContentBlo
           : typeof value === 'string' && value.startsWith('data:')
             ? dataURIToFileData(value, assetNames?.[propName] ?? propName)
             : undefined;
-        if (fileData) fields[propName] = await fileStore.store(perspective, fileData);
+        if (fileData) fields[propName] = await fileStore.store(dataset, fileData);
       }
     }
     if (isCollectionBlock(patched)) {
-      patched.content = await preUploadFileAssets(perspective, patched.content ?? []);
+      patched.content = await preUploadFileAssets(dataset, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -378,7 +379,7 @@ async function preUploadFileAssets(perspective: BlockDataset, blocks: ContentBlo
  * CIDs (e.g. "QmLang://QmHash") are replaced with renderable data URIs.
  */
 export async function resolveExpressionAddresses(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   blocks: readonly ContentBlock[],
 ): Promise<ContentBlock[]> {
   const fileStore = getFileStore();
@@ -394,7 +395,7 @@ export async function resolveExpressionAddresses(
         // is also what skips inline data URIs from a backend that stores nothing out-of-band.
         if (typeof val === 'string' && val.includes('://')) {
           try {
-            const data = await fileStore.fetch(perspective, val);
+            const data = await fileStore.fetch(dataset, val);
             if (data) {
               fields[propName] = `data:${data.file_type};base64,${data.data_base64}`;
               // Carry the original upload name forward — preUploadFileAssets needs it to reuse this
@@ -413,7 +414,7 @@ export async function resolveExpressionAddresses(
       }
     }
     if (isCollectionBlock(patched)) {
-      patched.content = await resolveExpressionAddresses(perspective, patched.content ?? []);
+      patched.content = await resolveExpressionAddresses(dataset, patched.content ?? []);
     }
     out.push(patched);
   }
@@ -438,7 +439,7 @@ export async function resolveExpressionAddresses(
  * and for a key the composition does not hold.
  */
 export async function copyableContent(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   editorState: unknown,
   only?: string,
 ): Promise<ContentBlock[] | null> {
@@ -446,7 +447,7 @@ export async function copyableContent(
   if (!decoded) return null;
   const blocks = only ? findByKey(decoded, only) : decoded;
   if (!blocks) return null;
-  return withoutKeys(await resolveExpressionAddresses(perspective, blocks));
+  return withoutKeys(await resolveExpressionAddresses(dataset, blocks));
 }
 
 function findByKey(blocks: readonly ContentBlock[], key: string): ContentBlock[] | null {
@@ -525,13 +526,13 @@ async function writeCompositionState(
  * speed, shows it empty. Answers whether there was a composition to write.
  */
 export async function refreshComposition(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   rootUri: string,
   options: { batchId?: string } = {},
 ): Promise<boolean> {
-  const resolved = await resolveBlockInstance(perspective, rootUri);
+  const resolved = await resolveBlockInstance(dataset, rootUri);
   if (!resolved) return false;
-  const blocks = await childrenToBlocks(perspective, resolved.model);
+  const blocks = await childrenToBlocks(dataset, resolved.model);
   await writeCompositionState(resolved.model, blocks, options.batchId);
   return true;
 }
@@ -603,6 +604,18 @@ interface PlannedBlock {
   parent?: string;
 }
 
+/** The block at `path` — positions from the top down, through each collection's content — or undefined. */
+function blockAt(blocks: readonly ContentBlock[], path: readonly number[]): ContentBlock | undefined {
+  let level: readonly ContentBlock[] | undefined = blocks;
+  let found: ContentBlock | undefined;
+  for (const index of path) {
+    found = level?.[index];
+    if (!found) return undefined;
+    level = isCollectionBlock(found) ? (found.content ?? []) : undefined;
+  }
+  return found;
+}
+
 /**
  * A composer's document as `core.createPost`'s args: what the host works out before the operation
  * runs, because it needs a file store and the block registry, which an operation has neither of.
@@ -618,43 +631,44 @@ interface PlannedBlock {
  * it later.
  */
 export async function planPost(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   input: ContentInput,
   options: PlanPostOptions = {},
 ): Promise<{ invocationId: string; args: Record<string, unknown> }> {
   const { kind, mode = kind ? 'document' : undefined, fields, container, respondsTo, generatedBy, within } = options;
   const invocationId = options.invocationId ?? crypto.randomUUID();
   const { blocks } = normalizeInput(input);
-  const uploaded = await preUploadFileAssets(perspective, blocks);
+  const uploaded = await preUploadFileAssets(dataset, blocks);
 
-  const planned: PlannedBlock[] = [];
-  const plan = async (
-    authored: readonly ContentBlock[],
-    stored: readonly ContentBlock[],
-    parent: string | undefined,
-    path: string,
-  ) => {
-    for (let i = 0; i < authored.length; i++) {
-      const block = authored[i];
+  /*
+    The tree as the registry reads it, flattened by the kernel; each block then takes the id its key
+    plans, stamped on the block handed in and on its uploaded copy alike.
+  */
+  const toNodes = (authored: readonly ContentBlock[]): BlockNode[] =>
+    authored.map((block) => {
       const registration = getBlockRegistration(isTextBlock(block) ? TEXT_TYPE : block._type);
-      if (!registration) continue;
-      const key = path ? `${path}.${i}` : String(i);
-      const id = await postBlockId(invocationId, key, within);
-      block._key = id;
-      if (stored[i]) stored[i]._key = id;
-      planned.push({
-        key,
+      if (!registration) return { fields: {} };
+      return {
         entity: registration.entity,
         fields: modelData(registration.entity, block),
-        ...(parent ? { parent } : {}),
-      });
-      if (isCollectionBlock(block)) {
-        const inner = stored[i];
-        await plan(block.content ?? [], inner && isCollectionBlock(inner) ? (inner.content ?? []) : [], id, key);
-      }
-    }
-  };
-  await plan(blocks, uploaded, undefined, '');
+        ...(isCollectionBlock(block) ? { content: toNodes(block.content ?? []) } : {}),
+      };
+    });
+  const flat = flattenBlocks(toNodes(blocks));
+  const ids = new Map<string, string>();
+  for (const block of flat) ids.set(block.key, await postBlockId(invocationId, block.key, within));
+  const planned: PlannedBlock[] = flat.map((block) => {
+    const id = ids.get(block.key)!;
+    blockAt(blocks, block.path)!._key = id;
+    const stored = blockAt(uploaded, block.path);
+    if (stored) stored._key = id;
+    return {
+      key: block.key,
+      entity: block.entity,
+      fields: block.fields,
+      ...(block.parentKey !== undefined ? { parent: ids.get(block.parentKey)! } : {}),
+    };
+  });
 
   const rootFields = new Set(propertyNames('CollectionBlock'));
   const root: Record<string, unknown> = {
@@ -664,7 +678,7 @@ export async function planPost(
     editorState: asFileField(encodeEditorState(uploaded)),
     textContent: extractTextContent(uploaded),
   };
-  const thread = respondsTo ? await threadSubject(perspective, respondsTo) : null;
+  const thread = respondsTo ? await threadSubject(dataset, respondsTo) : null;
   return {
     invocationId,
     args: {
@@ -685,13 +699,13 @@ export async function planPost(
  * nothing of the post has landed.
  */
 export async function writePost(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   input: ContentInput,
   options: WritePostOptions,
 ): Promise<string> {
   const { invoker, ...rest } = options;
-  const { invocationId, args } = await planPost(perspective, input, rest);
-  return (await runOperation('core.createPost', args, { dataset: perspective, invoker, invocationId })) as string;
+  const { invocationId, args } = await planPost(dataset, input, rest);
+  return (await runOperation('core.createPost', args, { dataset, invoker, invocationId })) as string;
 }
 
 /**
@@ -706,7 +720,7 @@ export async function writePost(
  * Mentions are not written: they hang off a post, and there is none.
  */
 export async function createBlock(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   block: ContentBlock,
   options: { anchor?: BlockAnchor; batchId?: string } = {},
 ): Promise<{ id: string; entity: string } | undefined> {
@@ -714,14 +728,14 @@ export async function createBlock(
   if (!registration) return undefined;
 
   return runEntityTransaction(
-    perspective,
+    dataset,
     async (tx) => {
-      const model = (await registration.model.create(perspective, modelData(registration.entity, block), {
+      const model = (await registration.model.create(dataset, modelData(registration.entity, block), {
         batchId: tx.batchId,
         ...(options.anchor && { parent: options.anchor }),
       })) as BlockRecord;
       if (isCollectionBlock(block)) {
-        for (const child of block.content ?? []) await persistBlock(perspective, tx.batchId, child, undefined, model);
+        for (const child of block.content ?? []) await persistBlock(dataset, tx.batchId, child, undefined, model);
       }
       return { id: model.id, entity: registration.entity };
     },
@@ -734,7 +748,7 @@ export async function createBlock(
  * stamp its id onto the block — both the author's copy and the uploaded one, which share a shape.
  */
 async function persistBlock(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   batchId: string | undefined,
   block: ContentBlock,
   uploaded: ContentBlock | undefined,
@@ -744,7 +758,7 @@ async function persistBlock(
   if (!registration) return undefined;
 
   const data = modelData(registration.entity, block);
-  const model = (await registration.model.create(perspective, data, { batchId })) as BlockRecord;
+  const model = (await registration.model.create(dataset, data, { batchId })) as BlockRecord;
   block._key = model.id;
   if (uploaded) uploaded._key = model.id;
   if (hasChildrenRelation(parent)) await parent.addChildren(model.id, batchId);
@@ -753,7 +767,7 @@ async function persistBlock(
     const children = block.content ?? [];
     const uploadedChildren = uploaded && isCollectionBlock(uploaded) ? (uploaded.content ?? []) : [];
     for (let i = 0; i < children.length; i++) {
-      await persistBlock(perspective, batchId, children[i], uploadedChildren[i], model);
+      await persistBlock(dataset, batchId, children[i], uploadedChildren[i], model);
     }
   }
   return model;
@@ -770,11 +784,11 @@ async function persistBlock(
  * instance, in one call.
  */
 async function resolveBlockInstance(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   uri: string,
 ): Promise<{ model: BlockRecord; entity: string } | undefined> {
   for (const registration of getRegisteredBlockEntities()) {
-    const block = await registration.model.findOne(perspective, { where: { id: uri } });
+    const block = await registration.model.findOne(dataset, { where: { id: uri } });
     if (block) return { model: block as BlockRecord, entity: registration.entity };
   }
   return undefined;
@@ -786,21 +800,21 @@ async function resolveBlockInstance(
  * The read path the blob is a cache *of* — used when a root has no blob (a call, a notes
  * collection), when its blob is behind its models, or when a caller already holds the root.
  */
-export async function loadBlocks(perspective: BlockDataset, rootUri: string): Promise<ContentBlock[] | undefined> {
-  const resolved = await resolveBlockInstance(perspective, rootUri);
+export async function loadBlocks(dataset: BlockDataset, rootUri: string): Promise<ContentBlock[] | undefined> {
+  const resolved = await resolveBlockInstance(dataset, rootUri);
   if (!resolved) return undefined;
-  return childrenToBlocks(perspective, resolved.model);
+  return childrenToBlocks(dataset, resolved.model);
 }
 
 /** The blocks of a hydrated collection's children, recursing into nested collections. */
-export async function childrenToBlocks(perspective: BlockDataset, collection: RecordInstance): Promise<ContentBlock[]> {
+export async function childrenToBlocks(dataset: BlockDataset, collection: RecordInstance): Promise<ContentBlock[]> {
   if (!hasChildren(collection)) return [];
   const blocks: ContentBlock[] = [];
   for (const childUri of collection.children) {
-    const resolved = await resolveBlockInstance(perspective, childUri);
+    const resolved = await resolveBlockInstance(dataset, childUri);
     if (!resolved) continue;
     const block = recordToBlock(resolved.model, resolved.entity);
-    if (isCollectionBlock(block)) block.content = await childrenToBlocks(perspective, resolved.model);
+    if (isCollectionBlock(block)) block.content = await childrenToBlocks(dataset, resolved.model);
     blocks.push(block);
   }
   return blocks;
@@ -820,7 +834,7 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  * A reply is a composition hanging off `we://response` rather than `we://child`, which is what
  * makes threads fractal — the two relations say different things, and keeping them apart is the
  * whole design (see `commentThread`). This walk followed only `children`, so deleting a post left
- * every reply to it in the perspective: reachable by nothing, rendered by nothing, and counted by
+ * every reply to it in the dataset: reachable by nothing, rendered by nothing, and counted by
  * `count(post.responses)` on a post that no longer exists.
  *
  * That was survivable while a thread was one level a person had to open a modal to write into. It
@@ -836,21 +850,21 @@ export async function childrenToBlocks(perspective: BlockDataset, collection: Re
  * it lives in a room of its own. Deleting the post it was about does not delete that conversation;
  * it stays where it lives, about something that is gone.
  */
-export async function deleteBlocks(perspective: BlockDataset, rootUri: string): Promise<void> {
-  await runEntityTransaction(perspective, async (tx) => {
+export async function deleteBlocks(dataset: BlockDataset, rootUri: string): Promise<void> {
+  await runEntityTransaction(dataset, async (tx) => {
     const seen = new Set<string>();
     async function deleteNode(uri: string, depth: number): Promise<void> {
       // See `MAX_BLOCK_DEPTH`: `children` is a multi-writer link set, so a cycle in it is something
       // two agents can produce without either doing anything wrong.
       if (seen.has(uri) || depth > MAX_BLOCK_DEPTH) return;
       seen.add(uri);
-      const resolved = await resolveBlockInstance(perspective, uri);
+      const resolved = await resolveBlockInstance(dataset, uri);
       if (!resolved) return;
       if (hasChildren(resolved.model)) {
         for (const childUri of resolved.model.children) await deleteNode(childUri, depth + 1);
       }
       for (const replyUri of responsesOf(resolved.model)) {
-        const response = await resolveBlockInstance(perspective, replyUri);
+        const response = await resolveBlockInstance(dataset, replyUri);
         if ((response?.model as { mode?: unknown } | undefined)?.mode === 'feed') continue;
         await deleteNode(replyUri, depth + 1);
       }
@@ -870,13 +884,13 @@ type Resolved = { model: BlockRecord; entity: string };
  * keeping what the author never saw (another agent's additions) without resolving each instance's
  * model class twice.
  */
-async function collectDescendants(perspective: BlockDataset, childUris: string[]): Promise<Map<string, Resolved>> {
+async function collectDescendants(dataset: BlockDataset, childUris: string[]): Promise<Map<string, Resolved>> {
   const result = new Map<string, Resolved>();
   async function walk(uri: string, depth: number): Promise<void> {
     // `result` doubles as the visited set — a block reachable by two paths is the same block, and
     // resolving it twice would be wasted work even without the cycle. See `MAX_BLOCK_DEPTH`.
     if (result.has(uri) || depth > MAX_BLOCK_DEPTH) return;
-    const resolved = await resolveBlockInstance(perspective, uri);
+    const resolved = await resolveBlockInstance(dataset, uri);
     if (!resolved) return;
     result.set(uri, resolved);
     if (hasChildren(resolved.model)) for (const childUri of resolved.model.children) await walk(childUri, depth + 1);
@@ -920,7 +934,7 @@ async function collectDescendants(perspective: BlockDataset, childUris: string[]
  * is silent and destroys other people's content.
  */
 export async function reconcileBlocks(
-  perspective: BlockDataset,
+  dataset: BlockDataset,
   existingRoot: BlockWithChildren,
   input: ContentInput,
 ): Promise<RecordInstance> {
@@ -937,11 +951,11 @@ export async function reconcileBlocks(
 
   const { blocks: authored, base: baseKeys } = normalizeInput(input);
 
-  return runEntityTransaction(perspective, async (tx) => {
-    const existing = await collectDescendants(perspective, existingRoot.children);
+  return runEntityTransaction(dataset, async (tx) => {
+    const existing = await collectDescendants(dataset, existingRoot.children);
     const base = new Set(baseKeys ?? [...existing.keys()]);
     const claimed = new Set<string>();
-    const uploaded = await preUploadFileAssets(perspective, authored);
+    const uploaded = await preUploadFileAssets(dataset, authored);
 
     /** The blob's view of a parent's final children: the author's blocks, then anything kept. */
     const finalBlocks = new Map<RecordInstance, ContentBlock[]>();
@@ -973,7 +987,7 @@ export async function reconcileBlocks(
       const resolved = existing.get(id);
       if (!resolved) return undefined;
       const block = recordToBlock(resolved.model, resolved.entity);
-      if (isCollectionBlock(block)) block.content = await childrenToBlocks(perspective, resolved.model);
+      if (isCollectionBlock(block)) block.content = await childrenToBlocks(dataset, resolved.model);
       return block;
     }
 
@@ -1028,7 +1042,7 @@ export async function reconcileBlocks(
         }
       }
       if (!model) {
-        model = await registration.model.create(perspective, data, { batchId: tx.batchId });
+        model = await registration.model.create(dataset, data, { batchId: tx.batchId });
       }
       block._key = model.id;
       if (uploaded) uploaded._key = model.id;

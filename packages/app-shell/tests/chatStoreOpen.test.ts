@@ -1,7 +1,7 @@
 /*
  * A space's ask opens that space's chat or nothing — never the global chat.
  *
- * "Find or ask" passes the space's local perspective id. Before the space's dataset has loaded that
+ * "Find or ask" passes the space's local dataset id. Before the space's dataset has loaded that
  * id is undefined, and a store that read "no id" as "global" would answer a question about one
  * space with a chat that reaches every space.
  *
@@ -50,26 +50,26 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
   });
 
   describe('opening a chat', () => {
-    it('opens nothing for a space ask whose perspective is not known yet', () => {
+    it('opens nothing for a space ask whose dataset is not known yet', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       const store = withStore();
-      store.openChat({ perspectiveUuid: undefined, spaceName: 'Garden', draft: 'what is here?' });
-      store.openChat({ perspectiveUuid: '', spaceName: 'Garden', draft: 'what is here?' });
+      store.openChat({ datasetId: undefined, spaceName: 'Garden', draft: 'what is here?' });
+      store.openChat({ datasetId: '', spaceName: 'Garden', draft: 'what is here?' });
       expect(openPanel).not.toHaveBeenCalled();
       expect(store.sheet()).toBeNull();
     });
 
-    it('opens the space chat for a space ask with its perspective', () => {
+    it('opens the space chat for a space ask with its dataset', () => {
       const store = withStore();
-      store.openChat({ perspectiveUuid: '61d5c775-9cdf-4cbe-aa23-19ed212b108b', spaceName: 'Garden' });
+      store.openChat({ datasetId: '61d5c775-9cdf-4cbe-aa23-19ed212b108b', spaceName: 'Garden' });
       expect(openPanel).toHaveBeenCalledWith(
         'chat-space',
-        expect.objectContaining({ perspectiveUuid: '61d5c775-9cdf-4cbe-aa23-19ed212b108b' }),
+        expect.objectContaining({ datasetId: '61d5c775-9cdf-4cbe-aa23-19ed212b108b' }),
         expect.objectContaining({ key: '61d5c775-9cdf-4cbe-aa23-19ed212b108b' }),
       );
     });
 
-    it('opens the global chat when no perspective was named at all', () => {
+    it('opens the global chat when no dataset was named at all', () => {
       const store = withStore();
       store.openChat();
       expect(openPanel).toHaveBeenCalledWith(
@@ -81,7 +81,7 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
 
     it('travels a question as a nonce, never as inputs — spent once, gone after', () => {
       const store = withStore();
-      store.openChat({ perspectiveUuid: 'uuid-9', draft: 'what is here?' });
+      store.openChat({ datasetId: 'uuid-9', draft: 'what is here?' });
 
       // What the panel is told: the nonce, and nothing a reader could send itself.
       const inputs = openPanel.mock.calls[0][1] as Record<string, unknown>;
@@ -91,7 +91,7 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
       expect(nonce).toBeTruthy();
 
       // The question waits in the store, bound to the scope it was asked in — spent once.
-      expect(store.takePending(nonce)).toEqual({ text: 'what is here?', perspectiveUuid: 'uuid-9' });
+      expect(store.takePending(nonce)).toEqual({ text: 'what is here?', datasetId: 'uuid-9' });
       expect(store.takePending(nonce)).toBeUndefined();
     });
 
@@ -139,7 +139,7 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
       store.openChat({ draft: 'b’s question' });
       const bNonce = (openPanel.mock.calls.at(-1)![1] as Record<string, unknown>).nonce as string;
       expect(store.rememberedConversation('global')).toEqual({ ref: { id: 'conv-b' }, title: 'B’s chat' });
-      expect(store.takePending(bNonce)).toEqual({ text: 'b’s question', perspectiveUuid: undefined });
+      expect(store.takePending(bNonce)).toEqual({ text: 'b’s question', datasetId: undefined });
 
       // Nor does A's state come back if A signs in again — it was dropped, not hidden.
       setDid('did:test:agent-a');
@@ -163,9 +163,9 @@ describe.each(ports)('the chat store, under %s', (_name, makePort) => {
       window.dispatchEvent(new Event('resize'));
       expect(narrow.length).toBe(seen);
 
-      store.openChat({ perspectiveUuid: 'uuid-9', spaceName: 'Garden', prefill: 'about' });
+      store.openChat({ datasetId: 'uuid-9', spaceName: 'Garden', prefill: 'about' });
       expect(openPanel).not.toHaveBeenCalled();
-      expect(store.sheet()).toEqual({ perspectiveUuid: 'uuid-9', spaceName: 'Garden', prefill: 'about' });
+      expect(store.sheet()).toEqual({ datasetId: 'uuid-9', spaceName: 'Garden', prefill: 'about' });
       store.closeSheet();
       expect(store.sheet()).toBeNull();
     });

@@ -46,7 +46,7 @@ import { Ad4mModel, Flag, HasOne, Model, Property } from '@coasys/ad4m';
  *
  * The node is a record, so it is a relation: the graph sees an edge, and `include` can follow it.
  *
- * The agent is a DID, which is not a record of anything — there is no agent entity in a perspective
+ * The agent is a DID, which is not a record of anything — there is no agent entity in a dataset
  * to point at, which is why `participants` and `mentions` had to opt out of polymorphic reads. As a
  * string it is also the one thing here a backend can compare natively, so "everything I am on" is
  * `where: { agent: me.did }` rather than a scan.

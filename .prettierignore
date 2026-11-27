@@ -26,6 +26,10 @@ packages/ai-context/src/schemaContext.ts
 # Map data shipped as-is: minified on purpose, and formatting it would multiply its size.
 packages/module-system/globe/layers/assets/*.geojson
 
+# The dock layout's recorded vectors, one per line so a diff names the vectors that changed — formatted,
+# the file is four times the size. Written by `pnpm --filter @we/app-shell record:kernels`.
+packages/app-shell/src/shared/kernels/vectors/dockLayout.json
+
 # The capability profiles' listing, printed by @we/schema-shared's build from the definitions.
 docs/spec/profiles/members.md
 docs/spec/profiles/profiles.json

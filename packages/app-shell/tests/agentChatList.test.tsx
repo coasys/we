@@ -7,7 +7,8 @@ import type { AgentConversationsPort } from '@we/backend-shared';
 import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 const follow = vi.fn((_ref: unknown, _cb: (next: never[]) => void) => () => {});
 const conversations = {

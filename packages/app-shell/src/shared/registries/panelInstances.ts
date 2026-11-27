@@ -28,7 +28,7 @@ export interface PanelInstance {
 
 export type PanelInstances = ReturnType<typeof createPanelInstances>;
 
-/** One app's panel instances. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** One app's panel instances. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createPanelInstances({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
   const [instances, setInstances] = signal<Record<string, PanelInstance>>({});
   return {

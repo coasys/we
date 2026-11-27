@@ -17,7 +17,7 @@
  *   9. Rendering        — children tokens, WC reactive props, composition, fragments
  *  10. Theming          — parametric overrides, named themes
  *
- * Data source: testStore (SolidJS signals + lazy AD4M perspective)
+ * Data source: testStore (signals on the reactivity port + a dataset opened on first use)
  */
 
 import type { RouteSchema, SchemaNode, SchemaProp, TemplateSchema } from '@we/schema-shared';
@@ -140,7 +140,7 @@ function queryModePanel(mode: string, description: string, queryConfig: Record<s
               items: {
                 $query: {
                   entity: 'TestItem',
-                  dataset: 'testStore.perspective',
+                  dataset: 'testStore.dataset',
                   subscribe: false,
                   ...queryConfig,
                 },
@@ -559,7 +559,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
   {
     type: '$if',
     props: {
-      condition: { $: 'testStore.perspective' },
+      condition: { $: 'testStore.dataset' },
       then: {
         type: 'Column',
         props: { gap: '200', ax: 'start' },
@@ -567,7 +567,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
           {
             type: '$each',
             props: {
-              items: { $query: { entity: 'TestItem', dataset: 'testStore.perspective', subscribe: false } },
+              items: { $query: { entity: 'TestItem', dataset: 'testStore.dataset', subscribe: false } },
               as: 'q',
             },
             children: [
@@ -592,7 +592,7 @@ const queryOneShotTest = section('$query (one-shot)', 'FindAll $query without su
           {
             type: 'we-text',
             props: { color: 'warning-text' },
-            children: ['Waiting for AD4M perspective...'],
+            children: ['Waiting for the test dataset...'],
           },
         ],
       },
@@ -604,7 +604,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
   {
     type: 'we-text',
     props: { color: 'text-faint' },
-    children: ['Subscribes to TestItem models in we-test perspective (requires AD4M):'],
+    children: ['Subscribes to TestItem records in the we-test dataset (needs a backend):'],
   },
   {
     type: 'we-text',
@@ -614,7 +614,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
   {
     type: '$if',
     props: {
-      condition: { $: 'testStore.perspective' },
+      condition: { $: 'testStore.dataset' },
       then: {
         type: 'Column',
         props: { gap: '300', ax: 'start' },
@@ -638,7 +638,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
           {
             type: '$each',
             props: {
-              items: { $query: { entity: 'TestItem', dataset: 'testStore.perspective', subscribe: true } },
+              items: { $query: { entity: 'TestItem', dataset: 'testStore.dataset', subscribe: true } },
               as: 'q',
             },
             children: [
@@ -669,7 +669,7 @@ const querySubscriptionTest = section('$query (subscription)', 'FindAll $query w
         props: { gap: '200', p: '200', bg: 'warning-soft', r: '300', ay: 'center' },
         children: [
           { type: 'we-icon', props: { name: 'clock', color: 'warning-text' } },
-          { type: 'we-text', props: { color: 'warning-text' }, children: ['Waiting for AD4M perspective...'] },
+          { type: 'we-text', props: { color: 'warning-text' }, children: ['Waiting for the test dataset...'] },
         ],
       },
     },
@@ -685,7 +685,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
   {
     type: '$if',
     props: {
-      condition: { $: 'testStore.perspective' },
+      condition: { $: 'testStore.dataset' },
       then: {
         type: 'Column',
         props: { gap: '300' },
@@ -718,7 +718,7 @@ const queryFilteringTest = section('$query (filtering)', 'Query with where, orde
           {
             type: 'we-text',
             props: { color: 'warning-text' },
-            children: ['Waiting for AD4M perspective...'],
+            children: ['Waiting for the test dataset...'],
           },
         ],
       },

@@ -9,8 +9,9 @@ import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 import { type ChatInputs, type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 
@@ -34,7 +35,7 @@ const stores = {
   sessionStore: {
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
   },
-  // The joined-space shape: the member's local perspective id `uuid-9`, the shared address its
+  // The joined-space shape: the member's local dataset id `uuid-9`, the shared address its
   // Space record answers under — `isSpaceSelf` pairs the two.
   datasetStore: { datasets: () => [{ id: 'uuid-9', sharedId: 'we://garden' }] },
   spaceStore: { mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] },
@@ -81,7 +82,7 @@ describe('the refusal card', () => {
   it('says the boundary in plain words and keeps the raw error under Details', async () => {
     const { container } = openedChat({
       draft: 'write to the other space',
-      perspectiveUuid: 'uuid-9',
+      datasetId: 'uuid-9',
       spaceName: 'Garden club',
     });
     await vi.waitFor(() => expect(followed).toBeDefined());
@@ -120,7 +121,7 @@ describe('the refusal card', () => {
   it('puts the marker and the label in the one summary line', async () => {
     const { container } = openedChat({
       draft: 'write to the other space',
-      perspectiveUuid: 'uuid-9',
+      datasetId: 'uuid-9',
       spaceName: 'Garden club',
     });
     await vi.waitFor(() => expect(followed).toBeDefined());
@@ -223,7 +224,7 @@ describe('the refusal card', () => {
     ] as never);
     const { container } = render(() => (
       <ChatStores>
-        <AgentChat inputs={{ perspectiveUuid: 'uuid-9', spaceName: 'Garden club' }} />
+        <AgentChat inputs={{ datasetId: 'uuid-9', spaceName: 'Garden club' }} />
       </ChatStores>
     ));
 

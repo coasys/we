@@ -28,12 +28,12 @@ import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templa
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { createShellRouteStore } from '@shared/stores/ShellRouteStore';
+import type { Stores } from '@shared/stores/storeBag';
 import { THEME_SCOPE_ATTRIBUTE } from '@shared/stores/ThemeStore';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
 import { firstScreen } from '@solid/firstScreen';
 import { ShellRouterRoot } from '@solid/layouts/ShellRouterRoot';
 import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
-import type { Stores } from '@solid/types';
 import { MemoryRouter, Route, useLocation, useNavigate } from '@solidjs/router';
 import { Column } from '@we/components/solid';
 import { panelResizing } from '@we/editor/runtime';
@@ -54,7 +54,7 @@ import { createSurface, RenderSchema } from '@we/schema-solid';
 import type { ParentProps } from 'solid-js';
 import { createEffect, createMemo, onCleanup, Show, untrack } from 'solid-js';
 
-import { appFrame } from '../hostState';
+import { appFrame } from '../stores/hostState';
 import { buildRoutes, RouteSurface } from '../utils/buildRoutes';
 import { createLiveSchema } from '../utils/liveSchema';
 import { resolveShellView, type ShellViewEntry } from './shellViews';

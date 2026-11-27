@@ -21,3 +21,17 @@ export function distinctSignal<T>(
     },
   ];
 }
+
+/**
+ * A {@link distinctSignal} that can also be changed from what it holds: `update(change)` hands the
+ * held value to `change` and writes what comes back — Solid's updater setter, which the port's setter
+ * is not (it stores a function as the value). The held value is read untracked, so an effect updating
+ * it does not come to depend on it, and a change that hands back what it was given writes nothing.
+ */
+export function updatingSignal<T>(
+  reactivity: Pick<ReactivityPort, 'signal' | 'untrack'>,
+  initial: T,
+): [Accessor<T>, (next: T) => void, (change: (held: T) => T) => void] {
+  const [read, write] = distinctSignal(reactivity, initial);
+  return [read, write, (change) => write(change(reactivity.untrack(read)))];
+}

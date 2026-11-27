@@ -3,7 +3,7 @@
  *
  * One entry point for "open the chat": the shell rail's sparkle asks with no scope (the global
  * chat, which reaches everything the app's token does) and a space's "Find or ask" asks with that
- * space's perspective (the space chat, whose tools may only act there).
+ * space's dataset (the space chat, whose tools may only act there).
  *
  * ## Where a chat opens is a viewport question, not two features
  *
@@ -34,10 +34,10 @@ import { APP_PANEL_SCOPE } from '../panelScope';
 /** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
   /**
-   * The perspective the chat is scoped to — set by a space's ask, absent for the global chat.
-   * A scoped chat's tools may only act in that one perspective.
+   * The dataset the chat is scoped to — set by a space's ask, absent for the global chat.
+   * A scoped chat's tools may only act in that one dataset.
    */
-  perspectiveUuid?: string;
+  datasetId?: string;
   /** The space's own name, for the badge the scoped chat wears. */
   spaceName?: string;
   /**
@@ -60,7 +60,7 @@ export interface ChatOpen {
  * sends nothing.
  */
 export interface ChatInputs {
-  perspectiveUuid?: string;
+  datasetId?: string;
   spaceName?: string;
   /** Words in the composer, not sent — see {@link ChatOpen.prefill}. */
   prefill?: string;
@@ -75,13 +75,13 @@ export interface ChatInputs {
 export interface PendingQuestion {
   text: string;
   /** The scope it was asked in — bound at issue, so a stolen nonce cannot redirect it. */
-  perspectiveUuid?: string;
+  datasetId?: string;
 }
 
 export interface ChatStore {
   /**
-   * Open a chat. No `perspectiveUuid` is the global chat; with one, the chat scoped to that
-   * perspective. `draft` asks once the chat is up; `prefill` only fills its composer.
+   * Open a chat. No `datasetId` is the global chat; with one, the chat scoped to that
+   * dataset. `draft` asks once the chat is up; `prefill` only fills its composer.
    */
   openChat: (input?: ChatOpen) => void;
   /**
@@ -118,12 +118,12 @@ export interface ChatStore {
 
 /** The panel the request lands in, on a window with room for panels. */
 function panelFor(input: ChatOpen): string {
-  return input.perspectiveUuid ? 'chat-space' : 'chat-global';
+  return input.datasetId ? 'chat-space' : 'chat-global';
 }
 
 /** One window per place a chat is about: the global chat, or the space's own. */
 function keyFor(input: ChatOpen): string {
-  return input.perspectiveUuid ?? 'global';
+  return input.datasetId ?? 'global';
 }
 
 /** What the chat store asks of the shell store: a panel opened, under a key and a scope. */
@@ -203,16 +203,16 @@ export function createChatStore({
   const store: ChatStore = {
     openChat: (input = {}) => {
       /*
-        A space's ask that names its perspective but carries no id (the space's local perspective
-        not loaded yet) is not a request for the global chat: opening one would answer a question
+        A space's ask that names its dataset but carries no id (the space's local dataset not
+        loaded yet) is not a request for the global chat: opening one would answer a question
         about one space with a chat that reaches all of them.
       */
-      if ('perspectiveUuid' in input && !input.perspectiveUuid) {
-        console.warn('ChatStore: a space chat was asked for before its perspective was known; not opened');
+      if ('datasetId' in input && !input.datasetId) {
+        console.warn('ChatStore: a space chat was asked for before its dataset was known; not opened');
         return;
       }
       const inputs: ChatInputs = {};
-      if (input.perspectiveUuid) inputs.perspectiveUuid = input.perspectiveUuid;
+      if (input.datasetId) inputs.datasetId = input.datasetId;
       if (input.spaceName) inputs.spaceName = input.spaceName;
       if (input.prefill) inputs.prefill = input.prefill;
       /*
@@ -222,7 +222,7 @@ export function createChatStore({
       */
       if (typeof input.draft === 'string' && input.draft.trim()) {
         const nonce = crypto.randomUUID();
-        pendingFor(agentDid()).set(nonce, { text: input.draft, perspectiveUuid: input.perspectiveUuid });
+        pendingFor(agentDid()).set(nonce, { text: input.draft, datasetId: input.datasetId });
         inputs.nonce = nonce;
       }
       if (isNarrow()) {

@@ -243,20 +243,20 @@ modifying the global registry:
 
 Persistence lives in `@we/block-shared/src/serialization.ts`.
 
-**Save:** `writePost(perspective, document, { invoker, … })` uploads any `FileData` assets
+**Save:** `writePost(dataset, document, { invoker, … })` uploads any `FileData` assets
 (replacing them with file-storage addresses in the blob), plans each block's id, encodes the
 Portable Text blob, the `textContent` search index and the mentions, and runs `core.createPost`,
 which creates one model per block linked via `children` and the root holding them, in one
 operation. `planPost` is the first half alone, for an operation that calls `core.createPost`
 (`core.composeCard`).
 
-**Edit:** `reconcileBlocks(perspective, root, document)` updates blocks whose `_key` survived,
+**Edit:** `reconcileBlocks(dataset, root, document)` updates blocks whose `_key` survived,
 creates the rest, and computes removals **against `document.base`** — the keys the author loaded —
 so a block another agent added meanwhile is kept and re-linked rather than deleted. It refuses any
 collection whose `mode` is not `document` (see `modes.ts`).
 
 **Load:** `decodeEditorState(blob)` accepts the current blob, a document or bare blocks;
-`loadBlocks(perspective, rootId)` rebuilds the composition from the models when there is no blob, or
+`loadBlocks(dataset, rootId)` rebuilds the composition from the models when there is no blob, or
 the blob is behind.
 
 The composer's `onSave` hands over a `ContentDocument` — `{ _type: 'document', blocks, base }` —

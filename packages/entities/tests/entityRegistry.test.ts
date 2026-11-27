@@ -3,8 +3,8 @@
  *
  * Its own doc comments describe two failure modes worth pinning: the
  * globalThis keying that makes split-bundle registries impossible, and the
- * `uuid`-not-`id` rule for perspective handles (a PerspectiveProxy carries an
- * unrelated subscription `id` that must not win).
+ * `uuid`-not-`id` rule for dataset handles (a handle may carry an unrelated
+ * subscription `id` that must not win).
  */
 import { describe, expect, it } from 'vitest';
 
@@ -50,7 +50,7 @@ describe('getEntityForDataset', () => {
     unregisterEntity('Post');
   });
 
-  it('falls back to the per-perspective registry for external models', () => {
+  it('falls back to the per-dataset registry for external models', () => {
     registerDynamicEntities('uuid-2', { Channel: Synth });
     expect(getEntityForDataset('Channel', { uuid: 'uuid-2' })).toBe(Synth);
     expect(getEntityForDataset('Channel', { uuid: 'other-uuid' })).toBeUndefined();

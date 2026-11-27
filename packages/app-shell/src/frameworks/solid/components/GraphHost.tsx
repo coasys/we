@@ -41,8 +41,8 @@ import { followRead, idsOf, readKey, readThroughWatch, wholeAnswer } from '../..
 import { pretendPeopleAvailable } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
-import { actAs, actingAs, pretendPeople, pretendSettings, setPretendCount } from '../hostState';
 import { chromeComponentRegistry } from '../registries/componentRegistry';
+import { actAs, actingAs, pretendPeople, pretendSettings, setPretendCount } from '../stores/hostState';
 import { useStore } from '../stores/useStore';
 import { nodeControls } from './graphControls';
 import { liveSurfaceMarks, liveSurfaceRegion, registerLiveCanvas } from './LiveView';
@@ -317,7 +317,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     const bound = bindings();
     if (!bound) return undefined;
     // Dataset-scoped resolution first: a foreign shape only exists as a class synthesised for the
-    // perspective it came from, so a name-only lookup would miss exactly the models a knowledge map
+    // dataset it came from, so a name-only lookup would miss exactly the models a knowledge map
     // is most likely to be built on.
     const handle =
       dataset && dataset !== datasetStore.currentDataset()?.id

@@ -34,6 +34,7 @@ export {
   toPortableText,
   walkBlocks,
 } from './content';
+export { type BlockNode, type FlatBlock, flattenBlocks } from './kernels/flattenBlocks';
 export type { Decorator, LinkMark, MentionMark, NodeLinkMark, StandoffMark } from './marks';
 export {
   cpLength,

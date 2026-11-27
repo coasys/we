@@ -219,9 +219,9 @@ const zActionToken = z
     onFinally: z.array(lazyToken).optional(),
   })
   .strict();
-// Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the perspective/store handle).
-// `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No AD4M
-// vocab (`model`/`perspective`) — templates author neutral.
+// Neutral authoring DSL — `entity` (the entity to query) + `dataset` (the store path to its handle).
+// `where`/`order`/`include`/`limit` are the concise DSL; the compiler maps them to the IR. No
+// backend's own vocabulary (`model`, or its word for a dataset) — templates author neutral.
 const zQuery = z.object({
   // A name, a list of names (one query over all of them), or an expression answering with either.
   entity: z.union([z.string().min(1), z.array(z.string().min(1)), z.record(z.string(), z.unknown())]),

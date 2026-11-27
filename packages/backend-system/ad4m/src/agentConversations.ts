@@ -223,7 +223,7 @@ export function scopeOf(
     if (uuid === undefined) uuid = resource.pointers[0];
     else if (uuid !== resource.pointers[0]) return undefined;
   }
-  return uuid ? { perspectiveUuid: uuid } : undefined;
+  return uuid ? { datasetId: uuid } : undefined;
 }
 
 /** Run a call to the executor, answering a node without `ai.session*` as `AgentUnavailableError`. */
@@ -258,7 +258,7 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
 
   const conversations: AgentConversationsPort = {
     async create({ title, model, scope }) {
-      const uuid = scope?.perspectiveUuid;
+      const uuid = scope?.datasetId;
       /*
         Refuse an unusable scope outright. A `'*'` sent on would be granted verbatim — a chat asked
         for one space becoming a chat over all of them — and an empty or wrongly-shaped value is

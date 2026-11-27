@@ -1274,7 +1274,7 @@ describe('weighSignals', () => {
 
   it('gives one person one voice, however many records they hold', () => {
     /*
-      A shared perspective is last-write-wins and writable by every member, so one agent can end up
+      A shared dataset is last-write-wins and writable by every member, so one agent can end up
       holding two reactions of a kind on one record — two devices, or a write either side of a
       partition. Counting both lets a card gain weight from somebody having been offline.
     */

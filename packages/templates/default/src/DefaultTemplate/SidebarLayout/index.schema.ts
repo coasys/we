@@ -10,7 +10,7 @@ export const sidebarLayout: TemplateSchema = {
   schemaVersion: 1,
   meta: {
     name: 'Default',
-    description: 'Welcome screen with perspectives and spaces overview',
+    description: 'Welcome screen with datasets and spaces overview',
     icon: 'layout',
   },
   type: 'Row',

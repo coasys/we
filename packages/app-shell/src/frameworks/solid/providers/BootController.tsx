@@ -28,10 +28,13 @@ import { createIdentityStore } from '@shared/stores/IdentityStore';
 import { createInterpretationStore } from '@shared/stores/InterpretationStore';
 import { createPresenceStore } from '@shared/stores/PresenceStore';
 import { createProfileStore } from '@shared/stores/ProfileStore';
+import { createRecordStore } from '@shared/stores/RecordStore';
 import { createRouteStore } from '@shared/stores/RouteStore';
 import { createRuntimeStore } from '@shared/stores/RuntimeStore';
 import { createSessionStore } from '@shared/stores/SessionStore';
 import { createShapeStore } from '@shared/stores/ShapeStore';
+import { createShellStore } from '@shared/stores/ShellStore';
+import { createSpaceStore } from '@shared/stores/SpaceStore';
 import { createTemplateStore } from '@shared/stores/TemplateStore';
 import { createThemeStore } from '@shared/stores/ThemeStore';
 import { createWorkflowStore } from '@shared/stores/WorkflowStore';
@@ -40,14 +43,13 @@ import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { ParentProps } from 'solid-js';
 
+import type { StoreRegistry } from '../../../shared/stores/storeRegistry';
 import { credential } from '../credential';
 import { firstScreen } from '../firstScreen';
-import { solidLiveTemplates } from '../liveTemplate';
 import { startAppBridge } from '../services/appBridge';
-import { createRecordStore } from '../stores/RecordStore';
-import { createShellStore } from '../stores/ShellStore';
-import { createSpaceStore } from '../stores/SpaceStore';
-import { type StoreRegistry, StoreRegistryContext } from '../stores/useStore';
+import { shellHost, spaceHost } from '../stores/hostState';
+import { solidLiveTemplates } from '../stores/liveTemplate';
+import { StoreRegistryContext } from '../stores/useStore';
 import { EditorHostAdapter } from './EditorHostAdapter';
 import { useBackend, usePlatform } from './PlatformProvider';
 
@@ -59,7 +61,7 @@ export function BootController(props: ParentProps) {
   const routeStore = createRouteStore({ reactivity: solidReactivity });
   // Depends on nothing: the app's clocks are one registry, read by templates, modules and the globe.
   const clockStore = createClockStore({ reactivity: solidReactivity });
-  const shellStore = createShellStore({ platform });
+  const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
   // It routes a chat open to a panel (or the sheet on a narrow window) and needs nothing else.
   const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
   // Before the session: accounts are directories on disk, readable with no executor running. The
@@ -118,7 +120,13 @@ export function BootController(props: ParentProps) {
     datasetStore,
   });
   // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+  const recordStore = createRecordStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    sessionStore,
+    datasetStore,
+    shapeStore,
+  });
   const profileStore = createProfileStore({
     reactivity: solidReactivity,
     firstScreen,
@@ -158,6 +166,10 @@ export function BootController(props: ParentProps) {
   });
   const appStore = createAppStore({ reactivity: solidReactivity });
   const spaceStore = createSpaceStore({
+    reactivity: solidReactivity,
+    toasts: toastService,
+    firstScreen,
+    host: spaceHost,
     sessionStore,
     datasetStore,
     shapeStore,

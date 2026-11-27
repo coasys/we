@@ -51,7 +51,7 @@ const SESSION_TIMEOUT_MESSAGE =
 
 /** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
  * (`did` is template-facing vocabulary: `$me.did`). */
-export type SessionIdentity = AgentIdentity & { did?: string; perspective?: unknown };
+export type SessionIdentity = AgentIdentity & { did?: string };
 
 export interface SessionStore {
   // State

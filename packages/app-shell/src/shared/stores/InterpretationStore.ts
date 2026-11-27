@@ -279,7 +279,7 @@ export function createInterpretationStore({
       // briefly offering one that turns out to be missing, which the call path now reports properly.
       .catch(() => {});
 
-    // No neighbourhood — a personal space has no peers to hear from. The local stream below still
+    // Not shared — a personal space has no peers to hear from. The local stream below still
     // runs, so a solo user watching their own extraction is unaffected.
     const scope = ports.ephemeral?.(handle) ?? null;
     const channel = scope?.channel(INTERPRETATION_ACTIVITY_CHANNEL) ?? null;

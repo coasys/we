@@ -312,7 +312,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * The transport scope this call holds, so leaving can give it back.
    *
    * `EphemeralScope` is refcounted, and every join acquired one and never disposed it. Ten joins
-   * left ten refs outstanding, so the backend's signal handler for that perspective was never
+   * left ten refs outstanding, so the backend's signal handler for that dataset was never
    * removed for the life of the app. `PresenceStore` has always done this correctly; this is the
    * same discipline.
    */
@@ -2038,9 +2038,9 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /*
     Deleting the call's space ends the call.
 
-    Nothing did. `removeDataset` tore the perspective down and left this store holding the
+    Nothing did. `removeDataset` tore the dataset down and left this store holding the
     `getUserMedia` tracks, every `RTCPeerConnection` in the mesh and a presence lease still
-    heartbeating into a perspective that no longer existed — a call whose space had been deleted
+    heartbeating into a dataset that no longer existed — a call whose space had been deleted
     carried on, with a camera light and no way back to what it was about.
 
     Subscribed rather than derived, because the absence a removal leaves is indistinguishable from

@@ -15,7 +15,7 @@ export type EntityClass = { new (...args: any[]): unknown } & Record<string, any
  * `/classes` (the AD4M implementations, which a backend adapter *registers*). A bundler that
  * emits those entries without sharing chunks gives each its own module scope, and the two halves
  * then talk to different maps: everything registers successfully, every lookup fails, and the
- * symptom ("Model X is not available in this perspective") points at data rather than at
+ * symptom ("Model X is not available in this dataset") points at data rather than at
  * bundling. Keying the state globally makes the failure impossible instead of merely unlikely.
  */
 const REGISTRY_KEY = Symbol.for('we.models.registry');
@@ -36,7 +36,7 @@ export function registerEntity(name: string, modelClass: EntityClass): void {
 /**
  * Remove a globally registered model — a feature module being unregistered.
  *
- * Note this only detaches the *class*; any SDNA already installed in a perspective, and any data
+ * Note this only detaches the *class*; any SDNA already installed in a dataset, and any data
  * written through it, remain. Removing those is a separate decision (uninstall semantics) that has to
  * be made deliberately rather than as a side effect of disabling a module.
  */
@@ -54,55 +54,54 @@ export function getRegisteredEntityNames(): string[] {
   return Object.keys(entityRegistry);
 }
 
-// ─── Per-perspective registry (synthesised classes, scoped by UUID) ───────────
+// ─── Per-dataset registry (synthesised classes, scoped by UUID) ───────────
 
-const perspectiveEntityRegistry: Map<string, Record<string, EntityClass>> = (globalRegistries[
-  REGISTRY_BY_DATASET_KEY
-] ??= new Map<string, Record<string, EntityClass>>());
+const entitiesByDataset: Map<string, Record<string, EntityClass>> = (globalRegistries[REGISTRY_BY_DATASET_KEY] ??=
+  new Map<string, Record<string, EntityClass>>());
 
-/** Register a batch of synthesised Ad4mModel classes for a specific perspective UUID. */
-export function registerDynamicEntities(perspectiveUuid: string, models: Record<string, EntityClass>): void {
-  perspectiveEntityRegistry.set(perspectiveUuid, models);
+/** Register a batch of synthesised Ad4mModel classes for a specific dataset id. */
+export function registerDynamicEntities(datasetId: string, models: Record<string, EntityClass>): void {
+  entitiesByDataset.set(datasetId, models);
 }
 
 /**
- * Add classes to a perspective's dynamic registry without dropping what is already there.
+ * Add classes to a dataset's dynamic registry without dropping what is already there.
  *
- * `registerDynamicEntities` *replaces* the perspective's map — correct for the foreign-schema sweep
+ * `registerDynamicEntities` *replaces* the dataset's map — correct for the foreign-schema sweep
  * that owns it, and wrong for a second contributor: space-shape classes registered after the sweep
  * would otherwise erase every foreign class (or be erased by the next sweep, depending on order).
  * The given classes win name collisions within the dynamic map; native classes still win over both
  * in `getEntityForDataset`, so a space shape can never shadow core vocabulary.
  */
-export function mergeDynamicEntities(perspectiveUuid: string, models: Record<string, EntityClass>): void {
-  const existing = perspectiveEntityRegistry.get(perspectiveUuid) ?? {};
-  perspectiveEntityRegistry.set(perspectiveUuid, { ...existing, ...models });
+export function mergeDynamicEntities(datasetId: string, models: Record<string, EntityClass>): void {
+  const existing = entitiesByDataset.get(datasetId) ?? {};
+  entitiesByDataset.set(datasetId, { ...existing, ...models });
 }
 
 /**
  * UUID-aware model lookup.
- * Prefers globally registered (WE-native) classes over per-perspective
+ * Prefers globally registered (WE-native) classes over per-dataset
  * synthesised classes, because native classes carry full decorator metadata
  * (transform functions etc.) that SHACL-synthesised classes can never have.
- * Falls back to the per-perspective registry for genuinely external models
+ * Falls back to the per-dataset registry for genuinely external models
  * (e.g. Flux models not known to WE at compile time).
  * Returns `undefined` (rather than throwing) so callers can fall back gracefully.
  */
 /**
- * `dataset` is the renderer's opaque dataset handle — for this backend, a `PerspectiveProxy`.
- * Deriving the registry key from it is deliberately the host's job: the renderer never inspects a
- * handle, so only here is the concrete type known. Note `uuid` must be read rather than `id`, since
- * a `PerspectiveProxy` also carries an unrelated `id` (a subscription id) that must not win.
+ * `dataset` is the renderer's opaque dataset handle. Deriving the registry key from it is
+ * deliberately the host's job: the renderer never inspects a handle, so only here is its shape
+ * read. Note `uuid` must be read rather than `id`, since a handle may also carry an unrelated `id`
+ * (a subscription id) that must not win.
  */
 export function getEntityForDataset(name: string, dataset?: unknown): EntityClass | undefined {
   // Prefer globally registered native class first
   const global = entityRegistry[name];
   if (global) return global;
 
-  // Fall back to per-perspective synthesised class (external models)
-  const perspectiveUuid = (dataset as { uuid?: string } | undefined)?.uuid;
-  if (perspectiveUuid) {
-    return perspectiveEntityRegistry.get(perspectiveUuid)?.[name];
+  // Fall back to per-dataset synthesised class (external models)
+  const datasetId = (dataset as { uuid?: string } | undefined)?.uuid;
+  if (datasetId) {
+    return entitiesByDataset.get(datasetId)?.[name];
   }
   return undefined;
 }
@@ -158,8 +157,8 @@ export function getEntityNameByTargetClass(targetClass: string, dataset?: unknow
   for (const [name, model] of Object.entries(entityRegistry)) {
     if (targetClassOf(model) === targetClass) return name;
   }
-  const perspectiveUuid = (dataset as { uuid?: string } | undefined)?.uuid;
-  const dynamic = perspectiveUuid ? perspectiveEntityRegistry.get(perspectiveUuid) : undefined;
+  const datasetId = (dataset as { uuid?: string } | undefined)?.uuid;
+  const dynamic = datasetId ? entitiesByDataset.get(datasetId) : undefined;
   for (const [name, model] of Object.entries(dynamic ?? {})) {
     // A foreign class registered under a name before WE's own class of that name was (a module
     // registered after the dataset opened) does not take the name from it.

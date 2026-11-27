@@ -18,9 +18,10 @@ import { solidReactivity } from '@we/reactivity-solid';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { ShellRouterRoot } from '../src/frameworks/solid/layouts/ShellRouterRoot';
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import type { RouteStore } from '../src/shared/stores/RouteStore';
 import { createShellRouteStore } from '../src/shared/stores/ShellRouteStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 /** A stand-in for the store above the overlay, mutable so a test can steer it. */
 const shellMock = {

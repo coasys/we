@@ -19,14 +19,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { coasysApp } from '../../templates/cartridges/src/coasys/app';
 import { PanelHost, PanelSlot } from '../src/frameworks/solid/components/PanelHost';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { type StoreRegistry, StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
+import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { activePanels } from '../src/shared/panelScope';
 import { provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, SPACE_TIER } from '../src/shared/registries/templateSurface';
 import { createChatStore } from '../src/shared/stores/ChatStore';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 let agentChatMounts = 0;
 
@@ -86,7 +88,7 @@ function mount() {
   /** The space tier's bag — what a synced template's calls go through. */
   let bag!: { shellStore: ShellStore };
   const { container } = render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     store.provideAgentDid(() => 'did:test:me');
     bag = buildTemplateBag({ shellStore: store } as never, { grants: SPACE_TIER });
     // `TemplatePanelBody` renders with the interface's own grants — this bag, in the test.
@@ -125,7 +127,7 @@ describe("a template's openPanel aimed at the app's chat panels", () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const id = bag.shellStore.openPanel('chat-space', {
-      perspectiveUuid: 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2',
+      datasetId: 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2',
       prefill: 'x',
     });
 

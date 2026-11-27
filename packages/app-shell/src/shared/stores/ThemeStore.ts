@@ -311,7 +311,7 @@ export interface ThemeStore {
     slug?: string;
     screenshots: File[];
   }) => Promise<boolean>;
-  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  publishToSpace: (datasetId: string, spaceName: string) => Promise<boolean>;
   loadInstalledThemes: () => Promise<void>;
   refreshSpaceThemes: () => Promise<void>;
   /**
@@ -446,7 +446,7 @@ function cssNamespace(theme: ThemeData): string {
  * The one door a theme's CSS gets through, and so the one place it is filtered.
  *
  * Sanitising here rather than at install is deliberate. Themes arrive by more routes than the
- * install dialog: they sync in through a shared perspective, so a peer can write a `Theme` model
+ * install dialog: they sync in through a shared dataset, so a peer can write a `Theme` model
  * straight into a space and every member wears it without anybody clicking anything. Install is one
  * door; injection is the choke point.
  *
@@ -862,13 +862,13 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   const themeRecordMap = new Map<string, NewRecord<Theme>>();
 
   async function loadSpaceThemes() {
-    const perspective = datasetStore.currentDataset()?.handle;
-    if (!perspective) {
+    const handle = datasetStore.currentDataset()?.handle;
+    if (!handle) {
       setSpaceThemes([]);
       return;
     }
     try {
-      const models = await Theme.findAll(perspective);
+      const models = await Theme.findAll(handle);
       for (const model of models) themeRecordMap.set(model.id, model);
       setSpaceThemes(models.map(modelToThemeData));
     } catch (e) {
@@ -877,13 +877,13 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   }
 
   async function loadInstalledThemes() {
-    const perspective = datasetStore.rootDataset()?.handle;
+    const handle = datasetStore.rootDataset()?.handle;
     // Deliberately does *not* open the gate below: with no root dataset there is nothing to load
     // yet, and saying "loaded" here would let a custom theme's id be guessed at before its record
     // has had any chance to arrive.
-    if (!perspective) return;
+    if (!handle) return;
     try {
-      const models = await Theme.findAll(perspective);
+      const models = await Theme.findAll(handle);
       for (const model of models) themeRecordMap.set(model.id, model);
       setInstalledThemes(models.map(modelToThemeData));
       setThemesLoaded(true);
@@ -913,12 +913,12 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     }
   }
 
-  // Load installed themes when root perspective is ready
+  // Load installed themes when the root dataset is ready
   effect(() => {
     if (datasetStore.rootDataset()) void loadInstalledThemes();
   });
 
-  // Load space themes when the current space perspective changes
+  // Load space themes when the space on screen changes
   effect(() => {
     if (datasetStore.currentDataset()) void loadSpaceThemes();
     else setSpaceThemes([]);
@@ -1422,10 +1422,9 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     destination: 'personal' | 'space' = 'personal',
   ): Promise<boolean> {
     const source = sourceId ? allThemes().find((t) => t.id === sourceId) : null;
-    const perspective =
-      destination === 'space' ? datasetStore.currentDataset()?.handle : datasetStore.rootDataset()?.handle;
-    if (!perspective) {
-      toasts.error(`Cannot save theme: no ${destination} perspective available`);
+    const handle = destination === 'space' ? datasetStore.currentDataset()?.handle : datasetStore.rootDataset()?.handle;
+    if (!handle) {
+      toasts.error(`Cannot save theme: no ${destination} dataset available`);
       return false;
     }
     try {
@@ -1442,7 +1441,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       const overridesJson = initialOverrides ? JSON.stringify(initialOverrides) : null;
 
       const slug = name.toLowerCase().replace(/\s+/g, '-');
-      const model = await Theme.create(perspective, {
+      const model = await Theme.create(handle, {
         name,
         icon,
         slug,
@@ -1516,8 +1515,8 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
     commitSnapshot();
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return null;
+    const handle = datasetStore.rootDataset()?.handle;
+    if (!handle) return null;
 
     try {
       const existing = themeRecordMap.get(editing.id);
@@ -1570,12 +1569,12 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   async function saveEditingThemeAs(name: string, icon: string): Promise<ThemeData | null> {
     const editing = editingTheme();
     if (!editing) return null;
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return null;
+    const handle = datasetStore.rootDataset()?.handle;
+    if (!handle) return null;
 
     try {
       const slug = name.toLowerCase().replace(/\s+/g, '-');
-      const model = await Theme.create(perspective, {
+      const model = await Theme.create(handle, {
         name,
         icon,
         slug,
@@ -1676,11 +1675,11 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       Already installed under this slug: updated in place.
 
       Constrained to models that are actually *installed*, which means the ones living in the root
-      perspective. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
+      dataset. `themeRecordMap` is also filled by `loadSpaceThemes`, from every space visited
       this session and never pruned, so an unconstrained slug match could bind the record to a theme
       belonging to a *space* — and `save()` would then publish marketplace content into that space,
       for every member, while the toast said "updated" and the installed list showed nothing new.
-      Slugs are not unique across perspectives and were never meant to be.
+      Slugs are not unique across datasets and were never meant to be.
     */
     const installedIds = new Set(installedThemes().map((theme) => theme.id));
     const existing = [...themeRecordMap.values()].find((model) => installedIds.has(model.id) && model.slug === slug);
@@ -1727,8 +1726,8 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   const installFromMarketplace = (listingId: string) => flow.install(listingId, 'personal');
 
   async function writeLibraryTheme(theme: BundleTheme): Promise<string> {
-    const rootPerspective = datasetStore.rootDataset()?.handle;
-    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const library = datasetStore.rootDataset()?.handle;
+    if (!library) throw new Error('Your library is not available yet');
     const overrides = asFileField(
       encodeToFileData(JSON.stringify(theme.overrides), 'overrides.json', 'application/json'),
     );
@@ -1751,7 +1750,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
       setVisibleThemeIds(new Set([...untrack(visibleThemeIds), existing.id]));
       return existing.id;
     }
-    const model = await Theme.create(rootPerspective, {
+    const model = await Theme.create(library, {
       name: theme.name,
       icon: theme.icon ?? 'palette',
       slug: theme.id,
@@ -1821,7 +1820,7 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
    * on the same page, meaning two different things. Nobody chose that; the space-scoped half was
    * simply missing, so the page reached for the account-scoped one.
    *
-   * It matters beyond the inconsistency: writing to your root perspective is an act on your account,
+   * It matters beyond the inconsistency: writing to your root dataset is an act on your account,
    * which is why `installFromMarketplace` sits at the chrome tier. A community template can offer
    * "give this space a theme" and cannot offer "put this in your library".
    */

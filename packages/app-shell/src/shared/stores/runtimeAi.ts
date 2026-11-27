@@ -173,7 +173,7 @@ export function createRuntimeAi(deps: RuntimeAiDeps): RuntimeAi {
    * Whether the models can be *changed*, not merely listed.
    *
    * Split from `canManageAi` because a guest on a hosted node is granted `AI READ` and refused
-   * `UPDATE`/`DELETE` — AD4M's own boundary, not ours. Read and write used to be one flag, so the
+   * `UPDATE`/`DELETE` — the backend's own boundary, not ours. Read and write used to be one flag, so the
    * whole section vanished on a node that was perfectly happy to answer what models it runs.
    */
   const canConfigureAi = memo(() => !!modelAdmin()?.add);

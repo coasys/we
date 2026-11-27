@@ -1,0 +1,73 @@
+[
+  {
+    "name": "two titles and a label",
+    "input": {
+      "source": "Launch",
+      "target": "Guide",
+      "label": "depends on"
+    },
+    "output": "Launch → Guide: depends on"
+  },
+  {
+    "name": "every part trimmed",
+    "input": {
+      "source": " Launch ",
+      "target": "Guide  ",
+      "label": "  depends on "
+    },
+    "output": "Launch → Guide: depends on"
+  },
+  {
+    "name": "no label leaves no colon",
+    "input": {
+      "source": "Launch",
+      "target": "Guide"
+    },
+    "output": "Launch → Guide"
+  },
+  {
+    "name": "an empty label is no label",
+    "input": {
+      "source": "Launch",
+      "target": "Guide",
+      "label": ""
+    },
+    "output": "Launch → Guide"
+  },
+  {
+    "name": "a blank label is no label",
+    "input": {
+      "source": "Launch",
+      "target": "Guide",
+      "label": "   "
+    },
+    "output": "Launch → Guide"
+  },
+  {
+    "name": "a label that is not text is no label",
+    "input": {
+      "source": "Launch",
+      "target": "Guide",
+      "label": 3
+    },
+    "output": "Launch → Guide"
+  },
+  {
+    "name": "an end with no title falls back to its id",
+    "input": {
+      "source": "task-1",
+      "target": "Guide",
+      "label": "blocks"
+    },
+    "output": "task-1 → Guide: blocks"
+  },
+  {
+    "name": "a colon inside a title is kept",
+    "input": {
+      "source": "Phase: one",
+      "target": "Guide",
+      "label": "part of"
+    },
+    "output": "Phase: one → Guide: part of"
+  }
+]

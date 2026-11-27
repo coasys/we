@@ -39,6 +39,8 @@ function backend(list: DatasetRef[]) {
   const state = { list, failGet: false, gates: new Map<string, Promise<void>>() };
   let handlers: DatasetChangeHandlers | null = null;
   const lifecycle = {
+    // This backend's own spelling of a shared dataset's address.
+    sharedIdOf: (uri: string) => uri.replace('test://', ''),
     list: async () => state.list.map((d) => ({ ...d })),
     // A fresh object each time, as the real adapter builds one per call.
     async get(id: string) {
@@ -104,6 +106,22 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   });
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
+  });
+
+  it('asks the backend which shared ids the seed’s addresses name', () => {
+    provideSeed({
+      name: 'test',
+      modules: [],
+      globalSpaceUrl: 'test://global',
+      marketplaceUrl: 'test://market',
+    } as never);
+    try {
+      const store = mount(backend([]));
+      expect(store.globalSpaceId()).toBe('global');
+      expect(store.marketplaceId()).toBe('market');
+    } finally {
+      provideSeed({ name: 'test', modules: [] } as never);
+    }
   });
 
   it('publishes the list, and says it has answered even when it could not be read', async () => {

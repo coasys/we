@@ -103,7 +103,7 @@ registerBlock({
 });
 registerBlock({ nodeTypes: ['image'], model: FakeImage as unknown as BlockEntityStatic, entity: 'ImageBlock' });
 
-const perspective = {};
+const dataset = {};
 const fileData = { data_base64: 'QUJD', name: 'image-block', file_type: 'image/png' };
 
 beforeEach(() => {
@@ -119,8 +119,8 @@ const blobOf = (root: Record<string, unknown>) =>
 
 /** A post holding one picture, as reading one back hands it to an edit. */
 async function storedImagePost(): Promise<{ root: FakeCollection; image: FakeImage }> {
-  const root = (await FakeCollection.create(perspective, { mode: 'document' })) as FakeCollection;
-  const image = (await FakeImage.create(perspective, { src: fileData })) as FakeImage;
+  const root = (await FakeCollection.create(dataset, { mode: 'document' })) as FakeCollection;
+  const image = (await FakeImage.create(dataset, { src: fileData })) as FakeImage;
   await root.addChildren(image.id);
   return { root, image };
 }
@@ -128,7 +128,7 @@ async function storedImagePost(): Promise<{ root: FakeCollection; image: FakeIma
 describe('file-backed fields', () => {
   it('hands the model the file data and the blob the address', async () => {
     const blocks: ContentBlock[] = [{ _type: 'image', src: fileData, altText: 'a' }];
-    const { args } = await planPost(perspective, blocks, { kind: 'post' });
+    const { args } = await planPost(dataset, blocks, { kind: 'post' });
     const [image] = args.blocks as { key: string; fields: Record<string, unknown> }[];
 
     expect(image.fields.src).toEqual(fileData); // the payload — the model layer creates the expression
@@ -146,13 +146,13 @@ describe('file-backed fields', () => {
     stored.length = 0;
 
     // The composer loads through resolveExpressionAddresses, which stamps the original name.
-    const loaded = await resolveExpressionAddresses(perspective, [
+    const loaded = await resolveExpressionAddresses(dataset, [
       { _type: 'image', _key: image.id, src: 'qm://image-block@4' },
     ]);
     expect((loaded[0] as { src?: string }).src).toBe('data:image/png;base64,QUJD');
     expect((loaded[0] as { __assetNames?: Record<string, string> }).__assetNames).toEqual({ src: 'image-block' });
 
-    await reconcileBlocks(perspective, root as never, { _type: 'document', base: [image.id], blocks: loaded });
+    await reconcileBlocks(dataset, root as never, { _type: 'document', base: [image.id], blocks: loaded });
 
     // Untouched: the model still holds what it read, nothing was written to it.
     expect(image.src).toBe('data:image/png;base64,QUJD');
@@ -164,7 +164,7 @@ describe('file-backed fields', () => {
     const { root, image } = await storedImagePost();
     const replacement = { data_base64: 'WFla', name: 'image-block', file_type: 'image/png' };
 
-    await reconcileBlocks(perspective, root as never, {
+    await reconcileBlocks(dataset, root as never, {
       _type: 'document',
       base: [image.id],
       blocks: [{ _type: 'image', _key: image.id, src: replacement }],

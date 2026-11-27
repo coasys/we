@@ -65,7 +65,7 @@ export class Relationship extends WeNode {
    *
    * Written by the model for what it extracts, because machine-authored instances go through
    * `create_subject` server-side and never pass WE's own write path — the hint spells the format.
-   * Written by WE for what people draw, in the same format (`connectionKey` in `RecordStore`),
+   * Written by WE for what people draw, in the same format (the `connectionKey` kernel in the app shell),
    * and that is not optional: the executor shows a model only the instances whose identity is
    * set, so a connection drawn by hand without one was invisible to the pass meant to extend the
    * structure it was part of.

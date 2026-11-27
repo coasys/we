@@ -84,6 +84,7 @@ export function createInMemoryLifecycle(initial: InMemoryDatasetSeed[] = []): In
   const emit = (fn: (h: DatasetChangeHandlers) => void) => subscribers.forEach(fn);
 
   return {
+    sharedIdOf: (uri) => uri.replace('inmemory://', ''),
     list() {
       return Promise.resolve([...datasets.values()].map(toRef));
     },

@@ -145,7 +145,7 @@ export function parseGuestLink(href: string): GuestJoinTarget | null {
     decodes to one. So a link could put arbitrary text — a second path segment, a query string, a
     fragment — into a route the app then navigates to.
 
-    A space is named by a perspective uuid or a neighbourhood CID, both of which are
+    A space is named by a dataset id or a neighbourhood CID, both of which are
     `[A-Za-z0-9._-]`, and the length bound is far past either. Nothing legitimate is refused by this
     and nothing else gets through it.
   */

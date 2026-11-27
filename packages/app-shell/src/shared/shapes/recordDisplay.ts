@@ -335,3 +335,21 @@ export function displayFor(source: DisplaySource): RecordDisplay {
     fields,
   };
 }
+
+/**
+ * A value from a control bound to one field, as the edit writes it — or undefined for nothing to write.
+ *
+ * A picker's `{ detail }` is unwrapped, and the value coerced by the kind the display gives the field,
+ * since a number input hands back a string and a switch a boolean. An empty number is nothing to write,
+ * as is one that will not parse. An object (a component's event detail, say) is kept as JSON rather
+ * than stored as "[object Object]", and any other scalar as its text.
+ */
+export function fieldEditValue(kind: DisplayKind | undefined, value: unknown): unknown {
+  const raw = value !== null && typeof value === 'object' && 'detail' in value ? value.detail : value;
+  let next: unknown = raw;
+  if (kind === 'number') next = raw === '' || raw === null || raw === undefined ? undefined : Number(raw);
+  else if (kind === 'boolean') next = Boolean(raw);
+  else if (raw !== null && typeof raw === 'object') next = JSON.stringify(raw);
+  else if (typeof raw === 'number' || typeof raw === 'boolean' || typeof raw === 'bigint') next = String(raw);
+  return typeof next === 'number' && Number.isNaN(next) ? undefined : next;
+}

@@ -40,7 +40,7 @@ const STATUS = 'status';
 
 export type BoardOptimism = ReturnType<typeof createBoardOptimism>;
 
-/** The holds over one app's boards. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** The holds over one app's boards. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createBoardOptimism(signal: ReactivityPort['signal']) {
   const optimism = createOptimism<string[]>(signal, { same: sameOrder });
 

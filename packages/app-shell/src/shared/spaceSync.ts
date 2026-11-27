@@ -22,7 +22,7 @@ export interface LocationData {
 export interface SpaceSyncOptions {
   /**
    * Location data to use instead of reading from space.location.
-   * Pass null to explicitly remove the location from the target perspective.
+   * Pass null to explicitly remove the location from the target dataset.
    * Pass undefined (or omit) to fall back to reading from space.location.
    */
   locationData?: LocationData | null;
@@ -43,7 +43,7 @@ export interface SpaceSyncOptions {
  * Pass options.locationData when the Space was just created and its `.location`
  * relation isn't hydrated yet. Pass options.avatarData / coverImageData when
  * syncing after an image update so the raw FileData is written through the
- * target perspective's own expression pipeline.
+ * target dataset's own expression pipeline.
  */
 export async function syncSpaceToParent(
   space: Space,
@@ -133,23 +133,23 @@ export async function removeSpaceFromParent(spaceUuid: string, targetP: DatasetP
 /**
  * A `where` clause that finds the `Space` entity representing `p` itself.
  *
- * `Space.uuid` is set once by the creator to their own local perspective uuid and
+ * `Space.uuid` is set once by the creator to their own local dataset id and
  * synced verbatim — a joiner's own `p.uuid` never matches it. For shared
- * perspectives, match on `Space.url` (the neighbourhood CID) instead, which is
+ * datasets, match on `Space.url` (the neighbourhood CID) instead, which is
  * identical for every agent regardless of who created the space. This also
- * disambiguates perspectives that hold more than one `Space` entity (e.g. the
+ * disambiguates datasets that hold more than one `Space` entity (e.g. the
  * global discovery space, which additionally holds a synced copy of every
  * "listed" community's own Space record) — only the self record's `url` equals
- * this perspective's own CID.
+ * this dataset's own CID.
  *
- * Personal (unshared) perspectives have no CID and only ever contain their own
+ * Personal (unshared) datasets have no CID and only ever contain their own
  * creator's Space entity, so `uuid` matching is safe there.
  */
 export function spaceSelfWhere(ds: { id: string; sharedId?: string }): { url: string } | { uuid: string } {
   return ds.sharedId ? { url: ds.sharedId } : { uuid: ds.id };
 }
 
-/** Companion predicate for matching an already-fetched Space against a perspective — see spaceSelfWhere. */
+/** Companion predicate for matching an already-fetched Space against a dataset — see spaceSelfWhere. */
 export function isSpaceSelf(space: Pick<Space, 'uuid' | 'url'>, ds: { id: string; sharedId?: string }): boolean {
   return ds.sharedId ? space.url === ds.sharedId : space.uuid === ds.id;
 }

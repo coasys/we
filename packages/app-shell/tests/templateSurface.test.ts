@@ -31,10 +31,10 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 /*
-  Both homes a store has: the neutral ones in `shared/stores/`, and those not converted yet in the
-  Solid half. Reading only the second made every store that moved drop out of these checks unnoticed.
+  Every store lives in `shared/stores/`, on the reactivity port; the Solid half keeps only the hook
+  that reaches them. Read as a list so a second home for stores is one entry here.
 */
-const storeDirs = [join(here, '../src/shared/stores'), join(here, '../src/frameworks/solid/stores')];
+const storeDirs = [join(here, '../src/shared/stores')];
 
 /** Members declared on each `export interface …Store`, read from the source. */
 function declaredMembers(): Map<string, string[]> {
@@ -173,7 +173,7 @@ describe('what the space tier can reach', () => {
 
   it('keeps the agent root dataset for chrome, and away from a space', () => {
     /*
-      A handle to the agent's own perspective is what a `$query`'s `dataset` resolves against, and
+      A handle to the agent's own dataset is what a `$query`'s `dataset` resolves against, and
       `AgentSettings` — which lives there — carries the Claude API key. So a space's template must
       not hold one.
 
@@ -527,16 +527,16 @@ describe('a template cannot send a chat question or pick its scope', () => {
 
   it('pins the chat to the space on screen — another uuid, or none, cannot widen it', () => {
     const { bag, openChat } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
-    asked(() => bag.chatStore.openChat({ perspectiveUuid: 'uuid-other' }));
-    expect(openChat).toHaveBeenCalledWith({ perspectiveUuid: 'uuid-here' });
+    asked(() => bag.chatStore.openChat({ datasetId: 'uuid-other' }));
+    expect(openChat).toHaveBeenCalledWith({ datasetId: 'uuid-here' });
 
     // No dataset loaded yet: the uuid arrives present-but-empty — openChat opens nothing,
     // never the global chat.
     const { bag: bag2, openChat: open2 } = chatBag({ grants: SPACE_TIER, dataset: null, gesture: 'enforce' });
-    asked(() => bag2.chatStore.openChat({ perspectiveUuid: 'uuid-other' }));
+    asked(() => bag2.chatStore.openChat({ datasetId: 'uuid-other' }));
     const request2 = open2.mock.calls[0][0] as Record<string, unknown>;
-    expect('perspectiveUuid' in request2).toBe(true);
-    expect(request2.perspectiveUuid).toBeUndefined();
+    expect('datasetId' in request2).toBe(true);
+    expect(request2.datasetId).toBeUndefined();
   });
 
   it('still asks the gesture first — no press, no call at all', () => {
@@ -550,10 +550,10 @@ describe('a template cannot send a chat question or pick its scope', () => {
     const { bag, openChat } = chatBag({ grants: CHROME_TIER, dataset: null });
     bag.chatStore.openChat({ draft: 'host asks' });
     // Chrome is schema too: its question also fills the composer — only app code sends. Its
-    // perspective, though, is its own to name (unpinned).
+    // dataset, though, is its own to name (unpinned).
     const request = openChat.mock.calls[0][0] as Record<string, unknown>;
     expect(request.prefill).toBe('host asks');
-    expect('perspectiveUuid' in request).toBe(false);
+    expect('datasetId' in request).toBe(false);
   });
 
   it('cannot write into another scope or claim a person asked — openPanel options are struck', () => {

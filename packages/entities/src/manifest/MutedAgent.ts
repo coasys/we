@@ -10,7 +10,7 @@ import type { CoreEntityDef } from './defs';
  * retrofitting it across shipped fragments is exactly the drift the kit exists to prevent.
  *
  * **Held in the root dataset, never in a space** — the `SpacePreference` rule. Written into a
- * shared perspective it would tell the whole community, including the muted agent, who has muted
+ * shared dataset it would tell the whole community, including the muted agent, who has muted
  * whom. That is worse than not having the feature: it converts a quiet act of self-protection into
  * a public one, and gives the person being avoided a notification about it.
  *

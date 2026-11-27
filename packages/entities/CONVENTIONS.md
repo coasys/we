@@ -110,7 +110,7 @@ referenced by `Space.location`, `TaskBlock` renders standalone on a task board â
 records that also happen to be composable. The flag adds a capability; it takes nothing away.
 
 `Space` is the canonical borderline case: one _could_ be created from a document, but doing so has
-infrastructure consequences (registering SDNA, creating a perspective, optionally publishing a
+infrastructure consequences (registering SDNA, creating a dataset, optionally publishing a
 neighbourhood) that inline authoring cannot carry. So it is not blockable.
 
 ### The other half of blockness
@@ -359,7 +359,7 @@ export const CORE_OPERATIONS: Record<string, OperationDefinition> = {
 3. Ask the blockable question above. If yes: `blockable: true` **and** a `version: number` property.
    `validateManifest` fails the build if you set one without the other.
 4. Export from `src/manifest/index.ts` and, if consumers need a proxy, from `src/index.ts`.
-5. Register the entity in any perspective that needs it (e.g. in `AdamStore.createSpace` or `initSystemPerspectives`).
+5. Register the entity in any dataset that needs it (e.g. where a space is created, or where the system datasets are opened).
 6. Regenerate: `pnpm --filter @we/entities build && pnpm --filter @we/entities generate:manifest`.
 
 ### The generated manifest

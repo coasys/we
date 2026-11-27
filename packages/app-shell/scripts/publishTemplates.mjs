@@ -5,7 +5,7 @@
  *
  * Templates in this repo are validated: they are `.schema.ts`, typechecked, and walked by
  * `pnpm --filter @we/schema-shared validate`, so a renamed prop or a deleted component breaks the
- * build. A template in the marketplace is a `Template.schema` **string** in a perspective, checked
+ * build. A template in the marketplace is a `Template.schema` **string** in a dataset, checked
  * by nothing — so the moment the two are maintained separately, the published copy starts rotting
  * and nobody finds out until someone installs it.
  *

@@ -55,7 +55,7 @@ export interface TemplatePort {
   updateTemplate: (next: TemplateSchema) => void;
   switchTemplate: (id: string) => void;
   persistCurrentTemplate: () => Promise<unknown>;
-  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  publishToSpace: (datasetId: string, spaceName: string) => Promise<boolean>;
   operationLoading: () => string | null;
   installFromMarketplace: (templateId: string) => Promise<void>;
   deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
@@ -112,7 +112,7 @@ export interface ThemePort {
   /** The person's display needs (`DisplayPreferences` in @we/themes), applied over any theme. */
   displayPreferences: () => DisplayPreferences;
   setDisplayPreference: <K extends keyof DisplayPreferences>(key: K, value: DisplayPreferences[K] | null) => unknown;
-  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  publishToSpace: (datasetId: string, spaceName: string) => Promise<boolean>;
   publishToMarketplace: (options: PublishOptions) => Promise<unknown>;
 }
 
@@ -211,7 +211,7 @@ export interface EditorAssistantStatus {
 /** Who the user is, and which dataset the editor is working against. */
 export interface EditorIdentityPort {
   me: () => { did?: string } | undefined;
-  currentPerspective: () => unknown;
+  currentDataset: () => unknown;
   orderedSidebarItems: () => { uuid: string; name: string; avatar?: string; spaceId: string }[];
   marketplaceJoined: () => boolean;
   spaceDefaultTemplateId: () => string;

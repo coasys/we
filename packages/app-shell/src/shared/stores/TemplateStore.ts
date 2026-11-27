@@ -260,7 +260,7 @@ export interface TemplateStore {
     destination?: 'root' | 'space',
     options?: { activate?: boolean; rename?: boolean },
   ) => Promise<boolean>;
-  publishToSpace: (perspectiveUuid: string, spaceName: string) => Promise<boolean>;
+  publishToSpace: (datasetId: string, spaceName: string) => Promise<boolean>;
   deleteMarketplaceTemplate: (templateId: string) => Promise<void>;
   publishToMarketplace: (options: {
     name: string;
@@ -471,7 +471,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     return record;
   }
 
-  // Per-session cache of space templates keyed by perspective UUID.
+  // Per-session cache of space templates keyed by dataset id.
   // Populated on first visit; subsequent visits restore synchronously without a fetch.
   interface SpaceTemplateCacheEntry {
     schemas: TemplateSchema[];
@@ -819,13 +819,13 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
 
   const defaultTemplateId = () => datasetStore.agentSettings()?.defaultTemplateId || 'default';
 
-  /** Load saved templates from root perspective and merge with built-in */
+  /** Load saved templates from the root dataset and merge with built-in */
   async function loadSavedTemplates(): Promise<void> {
     try {
-      const perspective = datasetStore.rootDataset()?.handle;
-      if (!perspective) return;
+      const handle = datasetStore.rootDataset()?.handle;
+      if (!handle) return;
 
-      const allDbTemplates = await Template.findAll(perspective);
+      const allDbTemplates = await Template.findAll(handle);
 
       savedTemplateMap.clear();
       refusedRecords.clear();
@@ -965,7 +965,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
    */
   let spaceTemplateTurn = 0;
 
-  /** Load templates from a space perspective, merge into allTemplates, and populate the cache */
+  /** Load templates from a space's dataset, merge into allTemplates, and populate the cache */
   async function loadSpaceTemplates(dataset: AppDataset): Promise<void> {
     const turn = ++spaceTemplateTurn;
     clearSpaceTemplates();
@@ -994,7 +994,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   }
 
   /**
-   * Ensure space templates for a perspective are in allTemplates.
+   * Ensure space templates for a dataset are in allTemplates.
    * Cache hit: restores synchronously from session cache (no fetch).
    * Cache miss: full async load that also populates the cache.
    */
@@ -1024,7 +1024,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     await load;
   }
 
-  // Load saved templates when root perspective becomes available
+  // Load saved templates when the root dataset becomes available
   effect(() => {
     if (datasetStore.rootDataset()) {
       void untrack(loadSavedTemplates).finally(() => setLoading(false));
@@ -1039,7 +1039,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   const [appearance, setAppearance] = signal<SpaceAppearance | null>(null);
   const spaceLookup = () => appearance()?.spaces() ?? [];
 
-  function resolveSpaceFromPerspective(dataset: AppDataset) {
+  function resolveSpaceFor(dataset: AppDataset) {
     const allKnownSpaces = spaceLookup();
     return dataset.sharedId
       ? allKnownSpaces.find((s) => s.url === dataset.sharedId)
@@ -1072,13 +1072,13 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     reactivity,
     currentId: () => datasetStore.currentDataset()?.id ?? null,
     spaceOf: () => {
-      const perspective = datasetStore.currentDataset();
-      return perspective ? resolveSpaceFromPerspective(perspective) : undefined;
+      const dataset = datasetStore.currentDataset();
+      return dataset ? resolveSpaceFor(dataset) : undefined;
     },
     hasTemplate: (id) => allTemplates().some((t) => t.id === id),
     choose: async () => {
-      const perspective = datasetStore.currentDataset();
-      if (perspective) await chooseSpaceTemplate(perspective);
+      const dataset = datasetStore.currentDataset();
+      if (dataset) await chooseSpaceTemplate(dataset);
     },
     settle: setTemplateResolvedFor,
   });
@@ -1086,24 +1086,24 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   // On space switch: apply default template.
   // When navigateToSpace pre-loads templates, the cache is already populated and the
   // template switches synchronously here. For deep links / page refresh, takes the async path.
-  let lastSpacePerspectiveUuid: string | null = null;
+  let lastSpaceDatasetId: string | null = null;
   effect(() => {
-    const perspective = datasetStore.currentDataset();
-    if (!perspective) {
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) {
       clearSpaceTemplates();
-      lastSpacePerspectiveUuid = null;
+      lastSpaceDatasetId = null;
       return;
     }
-    if (perspective.id === lastSpacePerspectiveUuid) return;
-    lastSpacePerspectiveUuid = perspective.id;
+    if (dataset.id === lastSpaceDatasetId) return;
+    lastSpaceDatasetId = dataset.id;
     // Only arriving in a space asks again; what is read while answering is not something to follow.
-    untrack(() => arriveIn(perspective));
+    untrack(() => arriveIn(dataset));
   });
 
-  function arriveIn(perspective: AppDataset): void {
-    if (spaceTemplateCache.has(perspective.id)) {
+  function arriveIn(dataset: AppDataset): void {
+    if (spaceTemplateCache.has(dataset.id)) {
       // Templates were pre-loaded by navigateToSpace — apply synchronously
-      const cachedSpace = resolveSpaceFromPerspective(perspective);
+      const cachedSpace = resolveSpaceFor(dataset);
       const followed = followedTemplateId(cachedSpace?.defaultTemplateId, appSpaceTemplateId());
       if (followed) {
         const template =
@@ -1112,7 +1112,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         if (template) replaceTemplate(template);
         // Named and not loaded yet — the app's own template, early on a cold start. The follow below
         // puts it up when it arrives; until then the one on screen is not this space's.
-        else choosing.start(perspective.id);
+        else choosing.start(dataset.id);
       }
       /*
         Settled only once the space's own record is here. The cache says the templates were read,
@@ -1120,8 +1120,8 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         to the space, often before its record has synced, and settling then let the section guard
         rewrite a link into the space's own template before that template was known.
       */
-      if (cachedSpace) setTemplateResolvedFor(perspective.id);
-      else spaceRecord.wait(perspective.id);
+      if (cachedSpace) setTemplateResolvedFor(dataset.id);
+      else spaceRecord.wait(dataset.id);
     } else {
       /*
         The app's display policy decides this space's template whenever the agent follows the space,
@@ -1132,19 +1132,19 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
       const policy = appSpaceTemplateId();
       const early = policy ? allTemplates().find((t) => t.id === policy) : undefined;
       if (early) replaceTemplate(early);
-      else choosing.start(perspective.id);
+      else choosing.start(dataset.id);
       // Deep link or first boot — async path. Settled on every way out, a failure included: the
       // template on screen is then the answer, and anything waiting on one should stop waiting. Only
       // while still in that space: a slow answer for one already left must not overwrite the
       // answer for the space now open, which would leave it pending for good.
-      void applySpaceTemplate(perspective, undefined, { shownEarly: !!early }).finally(() => {
-        if (lastSpacePerspectiveUuid !== perspective.id) return;
+      void applySpaceTemplate(dataset, undefined, { shownEarly: !!early }).finally(() => {
+        if (lastSpaceDatasetId !== dataset.id) return;
         // Choosing is over, whatever it decided — including "leave what is there".
-        choosing.done(perspective.id);
+        choosing.done(dataset.id);
         // A space joined a moment ago may not have its own record yet, so nothing above could say
         // which template it shows. Not settled: see `spaceRecordWait.ts`.
-        if (!resolveSpaceFromPerspective(perspective)) spaceRecord.wait(perspective.id);
-        else setTemplateResolvedFor(perspective.id);
+        if (!resolveSpaceFor(dataset)) spaceRecord.wait(dataset.id);
+        else setTemplateResolvedFor(dataset.id);
       });
     }
   }
@@ -1164,15 +1164,15 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   */
   let followedDefault: { dataset: string; template: string } | null = null;
   effect(() => {
-    const perspective = datasetStore.currentDataset();
-    const named = perspective ? (resolveSpaceFromPerspective(perspective)?.defaultTemplateId ?? '') : '';
+    const dataset = datasetStore.currentDataset();
+    const named = dataset ? (resolveSpaceFor(dataset)?.defaultTemplateId ?? '') : '';
     const present = !named || allTemplates().some((t) => t.id === named);
-    const key = perspective ? { dataset: perspective.id, template: present ? named : '' } : null;
+    const key = dataset ? { dataset: dataset.id, template: present ? named : '' } : null;
     const previous = followedDefault;
     followedDefault = key;
-    if (!perspective || !key || previous?.dataset !== key.dataset || previous.template === key.template) return;
-    if (templateResolvedFor() !== perspective.id) return;
-    void untrack(() => chooseSpaceTemplate(perspective));
+    if (!dataset || !key || previous?.dataset !== key.dataset || previous.template === key.template) return;
+    if (templateResolvedFor() !== dataset.id) return;
+    void untrack(() => chooseSpaceTemplate(dataset));
   });
 
   /**
@@ -1188,23 +1188,23 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
    * separate pass to fail halfway through, and a record that never gets read never mattered.
    */
   async function migrateAndReadTemplateOverride(
-    rootPerspective: Parameters<typeof SpacePreference.findAll>[0],
-    perspective: AppDataset,
+    library: Parameters<typeof SpacePreference.findAll>[0],
+    dataset: AppDataset,
   ): Promise<string> {
-    const [preference] = await SpacePreference.findAll(rootPerspective, {
-      where: { spaceUuid: perspective.id },
+    const [preference] = await SpacePreference.findAll(library, {
+      where: { spaceUuid: dataset.id },
     }).catch(() => [] as SpacePreference[]);
     if (preference) return preference.templateId || FOLLOW_SPACE;
 
-    const spaceUrl = perspective.sharedId || perspective.id;
-    const [legacy] = await SpaceTemplatePreference.findAll(rootPerspective, { where: { spaceUrl } }).catch(
+    const spaceUrl = dataset.sharedId || dataset.id;
+    const [legacy] = await SpaceTemplatePreference.findAll(library, { where: { spaceUrl } }).catch(
       () => [] as SpaceTemplatePreference[],
     );
     if (!legacy) return FOLLOW_SPACE;
 
     const templateId = legacy.preference === 'user' ? AGENT_DEFAULT : FOLLOW_SPACE;
     try {
-      await SpacePreference.create(rootPerspective, { spaceUuid: perspective.id, templateId });
+      await SpacePreference.create(library, { spaceUuid: dataset.id, templateId });
       await legacy.delete();
     } catch (error) {
       // A failed migration must not stop the space opening — the value is still known here, and the
@@ -1215,13 +1215,13 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   }
 
   async function applySpaceTemplate(
-    perspective: AppDataset,
+    dataset: AppDataset,
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
     // preloadSpaceTemplates handles cache hit (sync restore) or miss (a fetch)
-    await preloadSpaceTemplates(perspective);
-    await chooseSpaceTemplate(perspective, fallback, options);
+    await preloadSpaceTemplates(dataset);
+    await chooseSpaceTemplate(dataset, fallback, options);
   }
 
   /*
@@ -1241,24 +1241,22 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
    * late path below can run it without restoring the cached template list over newer arrivals.
    */
   async function chooseSpaceTemplate(
-    perspective: AppDataset,
+    dataset: AppDataset,
     fallback?: string,
     options: { shownEarly?: boolean } = {},
   ): Promise<void> {
-    const still = chooseLatestFor(perspective.id).begin();
+    const still = chooseLatestFor(dataset.id).begin();
 
     // Read per-space preferences from we-root directly rather than through SpaceStore, which mounts
     // after this one — the same reason it lends `SpaceAppearance`.
-    const rootPerspective = datasetStore.rootDataset()?.handle;
-    const templateOverride = rootPerspective
-      ? await migrateAndReadTemplateOverride(rootPerspective, perspective)
-      : FOLLOW_SPACE;
+    const library = datasetStore.rootDataset()?.handle;
+    const templateOverride = library ? await migrateAndReadTemplateOverride(library, dataset) : FOLLOW_SPACE;
     if (!still()) return;
 
     // Use mySpaces cache for defaultTemplateId — avoids a redundant Space.findOne round-trip. Read
     // after the await: the record can have changed under the wait — a save rolled back republishes
     // the stored id — and this paints what it says now.
-    const cachedSpace = resolveSpaceFromPerspective(perspective);
+    const cachedSpace = resolveSpaceFor(dataset);
 
     // The override names *which* template this agent wants here, so it answers on its own —
     // including when the space set no default at all, which the community-default path cannot act
@@ -1266,7 +1264,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     if (templateOverride === AGENT_DEFAULT) {
       // "Leave it" means the agent's default, not the app's template shown while this was read.
       const own = options.shownEarly ? allTemplates().find((t) => t.id === defaultTemplateId()) : undefined;
-      if (own && datasetStore.currentDataset()?.id === perspective.id) replaceTemplate(own);
+      if (own && datasetStore.currentDataset()?.id === dataset.id) replaceTemplate(own);
       return;
     }
     const spaceTemplateId =
@@ -1281,7 +1279,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     if (!spaceTemplate) return;
 
     // Guard: if the user navigated away before the async work completed, skip
-    if (datasetStore.currentDataset()?.id !== perspective.id) return;
+    if (datasetStore.currentDataset()?.id !== dataset.id) return;
 
     replaceTemplate(spaceTemplate);
 
@@ -1303,10 +1301,10 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     const seen = policySeen;
     policySeen = { id: policy };
     if (!seen || seen.id === policy) return;
-    const perspective = untrack(datasetStore.currentDataset);
+    const dataset = untrack(datasetStore.currentDataset);
     // A space with no template of its own falls back to the agent's default, so leaving an app
     // that showed it its own way does not leave that app's template on screen.
-    if (perspective) void untrack(() => applySpaceTemplate(perspective, defaultTemplateId()));
+    if (dataset) void untrack(() => applySpaceTemplate(dataset, defaultTemplateId()));
   });
 
   /** The template a space's override names for this agent, `''` when it names none. */
@@ -1629,8 +1627,8 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
 
   /** Write an already-inspected marketplace template into the agent's own library. */
   async function writeLibraryTemplates(templates: TemplateSchema[], origin: string): Promise<void> {
-    const rootPerspective = datasetStore.rootDataset()?.handle;
-    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const library = datasetStore.rootDataset()?.handle;
+    if (!library) throw new Error('Your library is not available yet');
     for (const template of templates) {
       const id = template.id;
       if (!id) continue;
@@ -1644,7 +1642,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         await existing.save();
         continue;
       }
-      const record = await createLibraryTemplate(rootPerspective, {
+      const record = await createLibraryTemplate(library, {
         name: template.meta.name,
         description: template.meta.description,
         icon: template.meta.icon,
@@ -1704,8 +1702,8 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
 
   /** Write a confirmed marketplace template into the agent's own library. */
   async function applyPersonalInstall(request: PendingInstall): Promise<void> {
-    const rootPerspective = datasetStore.rootDataset()?.handle;
-    if (!rootPerspective) throw new Error('Your library is not available yet');
+    const library = datasetStore.rootDataset()?.handle;
+    if (!library) throw new Error('Your library is not available yet');
     const templateId = reserveTemplateId(
       request.schema.id || request.name.toLowerCase().replace(/\s+/g, '-') || request.marketplaceId,
     );
@@ -1726,7 +1724,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
       await existingLocal.save();
       toasts.success(`"${schemaToInstall.meta.name}" updated to v${newVersion}`);
     } else {
-      const newTemplate = await createLibraryTemplate(rootPerspective, {
+      const newTemplate = await createLibraryTemplate(library, {
         name: schemaToInstall.meta.name,
         origin: 'marketplace',
         slug: templateId,
@@ -1893,11 +1891,11 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
     watchTemplates(dataset.handle, syncSpace);
   });
 
-  /** Re-fetch space templates for the current perspective — call after any mutation (delete, install) */
+  /** Re-fetch space templates for the dataset on screen — call after any mutation (delete, install) */
   async function refreshSpaceTemplates(): Promise<void> {
-    const perspective = datasetStore.currentDataset();
-    if (!perspective) return;
-    await loadSpaceTemplates(perspective);
+    const dataset = datasetStore.currentDataset();
+    if (!dataset) return;
+    await loadSpaceTemplates(dataset);
   }
 
   /** Write a confirmed marketplace template into the current space, for every member. */
@@ -2006,9 +2004,9 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   }
 
   async function saveTemplate(name: string): Promise<void> {
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) {
-      console.error('TemplateStore: No root perspective available');
+    const library = datasetStore.rootDataset()?.handle;
+    if (!library) {
+      console.error('TemplateStore: No root dataset available');
       return;
     }
 
@@ -2031,7 +2029,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         noteOwnWrite(existingTemplate);
         await existingTemplate.save();
       } else {
-        const newTemplate = await createLibraryTemplate(perspective, {
+        const newTemplate = await createLibraryTemplate(library, {
           name,
           origin: 'custom',
           slug: templateId,
@@ -2059,7 +2057,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   /**
    * Save a provided schema as a new (or updated) template, refresh the
    * templates list, and switch to it. Returns true on success.
-   * Pass destination='space' to save into the current space perspective instead of we-root.
+   * Pass destination='space' to save into the space on screen's dataset instead of we-root.
    */
   async function saveTemplateAs(
     schema: TemplateSchema,
@@ -2068,9 +2066,9 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
   ): Promise<boolean> {
     const isSpace = destination === 'space';
     const targetDs = isSpace ? datasetStore.currentDataset() : datasetStore.rootDataset();
-    const perspective = targetDs?.handle;
-    if (!perspective) {
-      toasts.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} perspective available`);
+    const handle = targetDs?.handle;
+    if (!handle) {
+      toasts.error(`Cannot save template: no ${isSpace ? 'space' : 'root'} dataset available`);
       return false;
     }
 
@@ -2122,9 +2120,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
           role: roleOf(schemaToSave),
         };
         // In the library, made and marked installed as one write, so it appears in the pickers.
-        const newTemplate = isSpace
-          ? await Template.create(perspective, data)
-          : await createLibraryTemplate(perspective, data);
+        const newTemplate = isSpace ? await Template.create(handle, data) : await createLibraryTemplate(handle, data);
         if (isSpace) noteOwnWrite(newTemplate);
         targetMap.set(templateId, newTemplate);
 
@@ -2201,8 +2197,8 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         : (savedTemplateMap.get(id) ?? spaceTemplateMap.get(id));
     if (!templateId || !recordOf(templateId)) return;
 
-    const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return;
+    const library = datasetStore.rootDataset()?.handle;
+    if (!library) return;
 
     const cloned = deepClone(template);
     delete cloned._fromSpace;
@@ -2222,7 +2218,7 @@ export function createTemplateStore(deps: TemplateStoreDeps): TemplateStore {
         sees the new version arrive with the old template behind it.
       */
       ownSaves.set(existing.id, String(existing.version));
-      const dataset = (fromSpace ? datasetStore.currentDataset() : datasetStore.rootDataset())?.handle ?? perspective;
+      const dataset = (fromSpace ? datasetStore.currentDataset() : datasetStore.rootDataset())?.handle ?? library;
       await runEntityTransaction(dataset, (tx) => existing.save(tx.batchId));
     } catch (error) {
       // Content-addressed store returns "Key already exists" when the blob

@@ -356,6 +356,7 @@ export function createAd4mDatasetLifecycle(
   }
 
   return {
+    sharedIdOf: (uri) => uri.replace(SCHEME, ''),
     async list(listOptions?: { fresh?: boolean }) {
       // Once the registry is known complete, it is the answer: `all()` builds a handle for every
       // perspective, and each one's subscriptions stay behind however quickly it is dropped.

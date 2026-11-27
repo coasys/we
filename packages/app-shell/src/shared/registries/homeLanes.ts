@@ -54,7 +54,7 @@ export const HOME_SECTION_ATTR = 'data-we-section';
 */
 export type LaneFrames = ReturnType<typeof createLaneFrames>;
 
-/** One app's lane frames. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** One app's lane frames. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createLaneFrames({ signal, untrack }: Pick<ReactivityPort, 'signal' | 'untrack'>) {
   const [frames, setFrames] = signal<Record<string, PanelFrame>>({});
   return {

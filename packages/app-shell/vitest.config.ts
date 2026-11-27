@@ -52,10 +52,40 @@ const SOLID_TESTS = [
   'tests/shapeStore.test.ts',
   'tests/distinctSignal.test.ts',
   'tests/shellRouterRoot.test.tsx',
-  'tests/shellPathMemory.test.tsx',
-  'tests/spaceSettingsTab.test.tsx',
+  'tests/shellPathMemory.test.ts',
+  'tests/spaceSettingsTab.test.ts',
+  // The shell store's parts, each under both ports.
+  'tests/shellViews.test.ts',
+  'tests/shellPrompts.test.ts',
+  'tests/shellArrangement.test.ts',
+  'tests/shellDocks.test.ts',
+  'tests/shellDockDrag.test.ts',
+  'tests/shellTemplatePanels.test.ts',
   'tests/templateDrafts.test.ts',
   'tests/editorStore.test.ts',
+  // The record store's canvas, tree and connection writes, each under both ports.
+  'tests/canvasHistory.test.ts',
+  'tests/treeUndo.test.ts',
+  'tests/treeRelation.test.ts',
+  'tests/recordKinds.test.ts',
+  'tests/recordConnections.test.ts',
+  'tests/recordCanvas.test.ts',
+  'tests/recordTree.test.ts',
+  'tests/recordForms.test.ts',
+  'tests/recordDrops.test.ts',
+  // The space store's parts, each under both ports.
+  'tests/spaceList.test.ts',
+  'tests/spaceNavigation.test.ts',
+  'tests/spaceWrites.test.ts',
+  'tests/spaceModules.test.ts',
+  'tests/spaceExtraction.test.ts',
+  'tests/spaceRolesPart.test.ts',
+  'tests/spaceTaskStates.test.ts',
+  'tests/spaceInvolvements.test.ts',
+  'tests/spaceUnread.test.ts',
+  'tests/spaceContent.test.ts',
+  'tests/spaceDetails.test.ts',
+  'tests/spaceStoreComposition.test.ts',
   // Draws an editor edit through the real renderer and counts which components mount again.
   'tests/editorRedraw.test.tsx',
   'tests/shellOverlayRemount.test.tsx',
@@ -84,7 +114,7 @@ const SOLID_TESTS = [
   'tests/threadDepth.test.tsx',
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
-  'tests/dockStowAndReveal.test.tsx',
+  'tests/dockStowAndReveal.test.ts',
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',
@@ -98,7 +128,7 @@ const SOLID_TESTS = [
   // Send-again, the Enter guards, draft restore, refresh clearing, and the remembered conversation
   // are all reads on the mounted chat — they need the browser build's event dispatch and effects.
   'tests/agentChatResend.test.tsx',
-  // A space's ask without its perspective id opens nothing, not the global chat.
+  // A space's ask without its dataset id opens nothing, not the global chat.
   'tests/chatStoreOpen.test.ts',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',

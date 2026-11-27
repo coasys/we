@@ -29,12 +29,12 @@
 import { schemaTestsTemplate } from '@shared/schemas/shell/SchemaTests.schema';
 import { schemaMutationActions } from '@shared/schemas/shell/tests/SchemaMutations.actions';
 import { createTestStore } from '@shared/schemas/shell/tests/testStore';
+import type { Stores } from '@shared/stores/storeBag';
 import { deepClone } from '@shared/utils';
-import type { Stores } from '@solid/types';
 import { toastService } from '@we/components/solid';
 import { solidReactivity } from '@we/reactivity-solid';
 
-import { solidLiveTemplates } from '../liveTemplate';
+import { solidLiveTemplates } from '../stores/liveTemplate';
 import type { ShellViewEntry } from './shellViews';
 
 /**

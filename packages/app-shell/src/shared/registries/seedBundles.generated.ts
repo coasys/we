@@ -1282,7 +1282,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'chatStore.openChat',
                                   args: [
                                     {
-                                      $: '{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
+                                      $: '{ datasetId: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
                                     },
                                   ],
                                 },

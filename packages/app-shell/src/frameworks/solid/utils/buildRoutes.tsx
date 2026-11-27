@@ -14,8 +14,8 @@
  * Stub <Route> components are emitted for keepAlive paths so the router matches
  * them without 404, while the real content lives in the persistent div.
  */
+import type { Stores } from '@shared/stores/storeBag';
 import { componentRegistry } from '@solid/registries/componentRegistry';
-import type { Stores } from '@solid/types';
 import { Navigate, Route } from '@solidjs/router';
 import type { RouteSchema } from '@we/schema-shared';
 import { type ComponentRegistry, RenderSchema } from '@we/schema-solid';

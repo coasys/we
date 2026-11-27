@@ -215,7 +215,7 @@ describe('scopeOf', () => {
         ],
         defaultPerspective: SPACE_A,
       } as never),
-    ).toEqual({ perspectiveUuid: SPACE_A });
+    ).toEqual({ datasetId: SPACE_A });
     expect(scopeOf({ capabilities: [], defaultPerspective: null } as never)).toBeUndefined();
   });
 
@@ -358,7 +358,7 @@ describe('the AD4M conversations port', () => {
   it('creates a space session pinned to its perspective, and defaults there', async () => {
     const ai = fakeAi();
     const port = createAd4mAgentConversations({ ai } as never);
-    await port.create({ title: 'Garden', scope: { perspectiveUuid: SPACE_A } });
+    await port.create({ title: 'Garden', scope: { datasetId: SPACE_A } });
     const input = ai.sessionCreate.mock.calls[0][0];
     expect(input.capabilities).toEqual([
       {
@@ -376,7 +376,7 @@ describe('the AD4M conversations port', () => {
     const ai = fakeAi();
     const port = createAd4mAgentConversations({ ai } as never);
     for (const bad of ['*', '', 'we://a1a2a3a4', 'uuid-9', 'a space']) {
-      await expect(port.create({ title: 'x', scope: { perspectiveUuid: bad } })).rejects.toThrow(
+      await expect(port.create({ title: 'x', scope: { datasetId: bad } })).rejects.toThrow(
         'a space chat needs a perspective uuid',
       );
     }
@@ -387,7 +387,7 @@ describe('the AD4M conversations port', () => {
     const port = createAd4mAgentConversations({ ai: fakeAi() } as never);
     const list = await port.list();
     expect(list.map((s) => s.ref.id)).toEqual(['space-1', 'global-1']); // newest first
-    expect(list[0].scope).toEqual({ perspectiveUuid: SPACE_A });
+    expect(list[0].scope).toEqual({ datasetId: SPACE_A });
     expect(list[1].scope).toBeUndefined();
   });
 

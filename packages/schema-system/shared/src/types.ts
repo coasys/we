@@ -583,7 +583,7 @@ export type QueryToken = {
      * Changing it re-asks the query, which is what tears the subscription down when a call ends.
      */
     subscribe?: SchemaProp;
-    /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.perspective'). */
+    /** Store path to the dataset handle (e.g. '$currentDataset', 'testStore.dataset'). */
     dataset?: string;
     /**
      * Run only while this expression is truthy. Until then the result is empty and `<name>Loaded`

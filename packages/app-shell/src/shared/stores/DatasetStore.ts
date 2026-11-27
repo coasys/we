@@ -1,8 +1,8 @@
 /**
  * DatasetStore — the agent's datasets: which exist, which is active, and what schema each holds.
  *
- * A dataset is the neutral term for a queryable data container — an AD4M perspective in this
- * backend (a repo/branch or database elsewhere). This store owns the dataset list and ordering,
+ * A dataset is the neutral term for a queryable data container — whatever the backend holds data
+ * in (a graph, a repo/branch, a database). This store owns the dataset list and ordering,
  * the active dataset (with its registered models and we-space status), the system datasets
  * (root/personal/test/global/marketplace), and the agent's root-dataset settings.
  *
@@ -368,18 +368,22 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
     return [...ordered, ...appended];
   });
 
-  // Seed URLs are backend-native deployment values (full URIs); correlating them with
-  // scheme-less shared ids is the one sanctioned strip in the shell, defined here once.
+  /*
+    Seed URLs are backend-native deployment values (full URIs). Which shared id one names is the
+    backend's to say — its spelling of a URI is its own — so the shell asks it rather than parsing.
+    Until a backend is reached the URL stands for itself.
+  */
   const globalSpaceConfigured = () => !!getSeed().globalSpaceUrl;
   const marketplaceConfigured = () => !!getSeed().marketplaceUrl;
+  const sharedIdOf = (url: string): string => session.lifecycle()?.sharedIdOf(url) ?? url;
   /** The scheme-less shared id for the global space, or null if unconfigured. */
   const globalSpaceId = (): string | null => {
     const url = getSeed().globalSpaceUrl;
-    return url ? url.replace('neighbourhood://', '') : null;
+    return url ? sharedIdOf(url) : null;
   };
   const marketplaceId = (): string | null => {
     const url = getSeed().marketplaceUrl;
-    return url ? url.replace('neighbourhood://', '') : null;
+    return url ? sharedIdOf(url) : null;
   };
   const marketplaceJoined = memo(() => {
     const id = marketplaceId();
@@ -420,8 +424,7 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
     lifecycle.subscribe({
       onAdded: (ref) => {
         if (datasets().some((d) => d.id === ref.id)) return;
-        // Backend bookkeeping datasets never arrive here — the adapter filters its own (see
-        // createAd4mDatasetLifecycle). What this store still filters is the HOST's convention:
+        // Backend bookkeeping datasets never arrive here — the adapter filters its own. What this store still filters is the HOST's convention:
         // the system datasets, excluded from the sidebar by `orderedDatasets`.
         // Re-check after the async gap: createSpace's eager update may have run while
         // the adapter resolved the handle, which would add a duplicate.
@@ -590,7 +593,7 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
    *
    * Published only once its schema is in, since the first thing a reader does is query it — a
    * template's `$query` on `personalDataset` runs the moment it is set, and a query ahead of the
-   * install fails with "No SHACL shape" rather than returning nothing.
+   * install fails for want of a shape rather than returning nothing.
    *
    * After the first screen (`shared/firstScreen.ts`), and not waited for by the boot: the space on
    * screen reads nothing here, and these schema reads go to the same backend as its Feed's first
@@ -650,7 +653,7 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
    * Nearly every persisted preference in the app goes through here — the default template and
    * theme, both sides of the Follow-system pair, the Claude API key, the dataset order, which
    * modules are installed. Most callers are `void`-ed, so nothing awaits the write. Without a
-   * rollback, a failed save would leave the app showing the new value and the perspective holding
+   * rollback, a failed save would leave the app showing the new value and the dataset holding
    * the old one until a reload.
    *
    * So: snapshot the fields being changed, apply, save, and put the snapshot back if the save
@@ -789,14 +792,14 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
       //
       // But the *install-triggering* condition below must stay "is ANYTHING at all
       // installed", not "is WE's Space specifically installed" — a dataset with
-      // its own established foreign SDNA (e.g. a Flux community, with Channel/Message/
+      // its own established foreign schema (e.g. a Flux community, with Channel/Message/
       // Community shapes but no Space shape) must NOT be auto-converted into a WE
       // space here. That's exactly what the "Initialize as WE space" gate (see
       // foreignSpacePrefill in SpaceStore) exists to ask the user about explicitly.
-      // Only a dataset with no SDNA of any kind — the genuine first-time join
+      // Only a dataset with no schema of any kind — the genuine first-time join
       // race (the dataset-added listener fires before joinSpace reaches the schema install)
       // — should hit the install path here. And only once it has synced: before that a
-      // just-joined dataset holds no SDNA whatever app made it, so a Flux community would
+      // just-joined dataset holds no schema whatever app made it, so a Flux community would
       // look empty too.
       const schemas = session.backendPorts()!.schemas;
       let weSpace = await schemas.hasCoreSchema(handle);
@@ -814,15 +817,15 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
         }
       } else {
         // An existing WE space skips the install above by design, so a module enabled after the
-        // space was created would find its shapes missing — a query failing with "No SHACL shape
-        // stored for class X" in a dataset that otherwise looks healthy. Module shapes therefore
+        // space was created would find its shapes missing — a query failing for want of a shape
+        // for class X in a dataset that otherwise looks healthy. Module shapes therefore
         // install on every switch; registration writes only what changed, so this writes nothing
         // in the common case.
         //
         // The same skip has a second cost, in two forms: a *property* added to one of WE's own
         // models, and a *model* added outright, both reach newly created spaces only — the first
-        // silently dropping writes, the second failing every query against the new entity with "No
-        // SHACL shape stored for class X". Refresh covers both, and writes only what changed.
+        // silently dropping writes, the second failing every query against the new entity for want
+        // of a shape for class X. Refresh covers both, and writes only what changed.
         //
         // Together rather than in turn: they register disjoint classes (a module's, WE's own), so
         // neither waits on the other.
@@ -856,7 +859,7 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
       */
       if (options?.stillWanted && !options.stillWanted()) return;
 
-      // SDNA is installed — switch immediately so WE templates render. WE model classes
+      // The schema is installed — switch immediately so WE templates render. WE model classes
       // are pre-registered at module load; foreign (non-WE) model resolution isn't needed
       // for the visible switch at all — it's only consumed below, in the background.
       // A new read starts below, so whatever was read before — even for this same space — is not it.
@@ -881,7 +884,7 @@ export function createDatasetStore(deps: DatasetStoreDeps): DatasetStore {
           const manifest = await schemas.foreignSchemas(handle);
           if (readIsLatest() && currentDataset()?.id === uuid)
             batch(() => {
-              // By name, so a list of them — another app's classes in Social DNA — is in order with no sort of its own.
+              // By name, so a list of them — another app's classes in its schema — is in order with no sort of its own.
               setCurrentDatasetEntities([...manifest].sort((a, b) => a.name.localeCompare(b.name)));
               setEntitiesReadFor(uuid);
             });

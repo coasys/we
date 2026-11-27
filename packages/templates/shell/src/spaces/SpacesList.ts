@@ -4,9 +4,9 @@ import { emptyNote } from '@we/template-kit';
 /**
  * One row per joined dataset, space or not — see `spaceStore.spaceList`.
  *
- * This replaces three sections ("All Perspectives", "Shared Spaces", "Personal Spaces"). Shared and
+ * This replaces three sections: every dataset, shared spaces and personal spaces. Shared and
  * personal were the same model differing by one field, so the split bought a second heading and a
- * second "none yet" empty state for what is one list; they are a badge now. "All Perspectives" was a
+ * second "none yet" empty state for what is one list; they are a badge now. The every-dataset section was a
  * different axis entirely — raw datasets with ids and destructive tools — and has moved to the
  * advanced section, keeping only the one thing it uniquely surfaced: a joined dataset that is not a
  * WE space, which now appears here in its own state rather than as an id in a diagnostics list.

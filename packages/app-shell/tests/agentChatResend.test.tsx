@@ -12,8 +12,9 @@ import { createSignal, type ParentProps, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { type StoreRegistry, StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
+import { StoreRegistryContext, useStore } from '../src/frameworks/solid/stores/useStore';
 import { type ChatInputs, type ChatStore, createChatStore } from '../src/shared/stores/ChatStore';
+import type { StoreRegistry } from '../src/shared/stores/storeRegistry';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 const [listAnswer, setListAnswer] = createSignal<Promise<unknown[]>>(Promise.resolve([]));
@@ -71,7 +72,7 @@ function ChatStores(props: ParentProps) {
 }
 
 /** The chat mounted over the real store, a conversation open in it. */
-async function openConversation(inputs: ChatInputs = { perspectiveUuid: 'uuid-9' }) {
+async function openConversation(inputs: ChatInputs = { datasetId: 'uuid-9' }) {
   const { container } = render(() => (
     <ChatStores>
       <AgentChat inputs={inputs} />
@@ -209,7 +210,7 @@ describe('a space switch and back', () => {
           return null;
         })()}
         <Show when={mounted()}>
-          <AgentChat inputs={{ perspectiveUuid: 'uuid-9' }} />
+          <AgentChat inputs={{ datasetId: 'uuid-9' }} />
         </Show>
       </ChatStores>
     ));

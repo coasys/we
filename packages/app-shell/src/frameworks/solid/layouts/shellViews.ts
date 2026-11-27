@@ -17,7 +17,7 @@
  */
 import { landingPageTemplate, marketplaceTemplate, profileTemplate, settingsTemplate } from '@shared/schemas';
 import type { RouteStore } from '@shared/stores/RouteStore';
-import type { Stores } from '@solid/types';
+import type { Stores } from '@shared/stores/storeBag';
 import type { TemplateSchema } from '@we/schema-shared';
 import { type Accessor, createResource } from 'solid-js';
 

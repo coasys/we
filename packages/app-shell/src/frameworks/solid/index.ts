@@ -15,8 +15,10 @@ export * from '../../shared/platform';
 export * from './providers/PlatformProvider';
 export type { WeSeedFile } from '../../types/seed';
 
-// Stores
-export * from './stores';
+// Stores: the neutral stores and their types, and Solid's way of reaching them
+export * from '../../shared/stores';
+export { useStore } from './stores/useStore';
+export { ShellRouterRoot } from './layouts/ShellRouterRoot';
 
 // Providers
 export { BootController } from './providers/BootController';
@@ -36,9 +38,6 @@ export { registerHostChromeReserve } from '../../shared/registries/dockRegistry'
 
 // Schemas
 export * from '../../shared/schemas';
-
-// Types
-export * from './types';
 
 // Utils
 export * from '../../shared/utils';

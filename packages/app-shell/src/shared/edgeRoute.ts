@@ -69,3 +69,22 @@ export function routeWrite(existing: StoredRoute | undefined, end: 'source' | 't
     fields: { ...(other ? { [otherField]: other } : {}), ...(bent(points) ? { points } : {}) },
   };
 }
+
+/**
+ * What writing a route's whole list of points comes to, for the route already stored for the
+ * connection on this canvas (or none).
+ *
+ * The whole list rather than the point that moved, because a route is one shape: written per point,
+ * two people bending the same line would each overwrite half of the other's and what came out would
+ * be neither of theirs. Last-write-wins on a shape is a shape somebody chose; last-write-wins on
+ * each point is a shape nobody did.
+ *
+ * An empty list is a straightened route, and a route with nothing left to say — no points and no
+ * anchors — is deleted, so the way back leaves nothing behind. A straightened route still pinned at
+ * an end keeps the record and clears its bends.
+ */
+export function rerouteWrite(existing: StoredRoute | undefined, points: readonly unknown[]): RouteWrite {
+  if (!existing) return points.length ? { action: 'create', fields: { points } } : { action: 'none' };
+  if (!points.length && !existing.sourceAnchor && !existing.targetAnchor) return { action: 'delete' };
+  return { action: 'update', fields: { points: points.length ? points : '' } };
+}

@@ -43,7 +43,7 @@ const parts = (k: string): [string, string] => k.split('\u0000') as [string, str
 
 export type SignalOptimism = ReturnType<typeof createSignalOptimism>;
 
-/** The holds over one app's reactions. The app keeps one (`frameworks/solid/hostState.ts`). */
+/** The holds over one app's reactions. The app keeps one (`frameworks/solid/stores/hostState.ts`). */
 export function createSignalOptimism(signal: ReactivityPort['signal']) {
   const optimism = createOptimism<number | null>(signal, { same: sameValue });
 

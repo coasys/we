@@ -27,11 +27,9 @@ import { createEffect, createRoot, untrack } from 'solid-js';
 
 import { credential } from '../../src/frameworks/solid/credential';
 import { firstScreen } from '../../src/frameworks/solid/firstScreen';
-import { solidLiveTemplates } from '../../src/frameworks/solid/liveTemplate';
 import { startBoot } from '../../src/frameworks/solid/providers/BootController';
-import { createRecordStore } from '../../src/frameworks/solid/stores/RecordStore';
-import { createShellStore } from '../../src/frameworks/solid/stores/ShellStore';
-import { createSpaceStore } from '../../src/frameworks/solid/stores/SpaceStore';
+import { shellHost, spaceHost } from '../../src/frameworks/solid/stores/hostState';
+import { solidLiveTemplates } from '../../src/frameworks/solid/stores/liveTemplate';
 import { clockRegistry } from '../../src/shared/clocks';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
@@ -43,10 +41,13 @@ import { createClockStore } from '../../src/shared/stores/ClockStore';
 import { createDatasetStore } from '../../src/shared/stores/DatasetStore';
 import { createPresenceStore } from '../../src/shared/stores/PresenceStore';
 import { createProfileStore } from '../../src/shared/stores/ProfileStore';
+import { createRecordStore } from '../../src/shared/stores/RecordStore';
 import { createRouteStore } from '../../src/shared/stores/RouteStore';
 import { createRuntimeStore } from '../../src/shared/stores/RuntimeStore';
 import { createSessionStore } from '../../src/shared/stores/SessionStore';
 import { createShapeStore } from '../../src/shared/stores/ShapeStore';
+import { createShellStore } from '../../src/shared/stores/ShellStore';
+import { createSpaceStore } from '../../src/shared/stores/SpaceStore';
 import { createTemplateStore } from '../../src/shared/stores/TemplateStore';
 import { createThemeStore } from '../../src/shared/stores/ThemeStore';
 
@@ -465,7 +466,7 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     window.addEventListener('popstate', report);
     report();
     const clockStore = createClockStore({ reactivity: solidReactivity });
-    const shellStore = createShellStore({ platform });
+    const shellStore = createShellStore({ reactivity: solidReactivity, platform, host: shellHost });
     const chatStore = createChatStore({ reactivity: solidReactivity, shellStore });
     const accountStore = createAccountStore({ reactivity: solidReactivity, platform });
     const sessionStore = createSessionStore({
@@ -497,7 +498,13 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
       sessionStore,
       datasetStore,
     });
-    const recordStore = createRecordStore({ sessionStore, datasetStore, shapeStore });
+    const recordStore = createRecordStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      sessionStore,
+      datasetStore,
+      shapeStore,
+    });
     const profileStore = createProfileStore({
       reactivity: solidReactivity,
       firstScreen,
@@ -524,6 +531,10 @@ function compose(ports: ReturnType<typeof createInMemoryBackendPorts>): { stores
     });
     const appStore = createAppStore({ reactivity: solidReactivity });
     const spaceStore = createSpaceStore({
+      reactivity: solidReactivity,
+      toasts: toastService,
+      firstScreen,
+      host: spaceHost,
       sessionStore,
       datasetStore,
       shapeStore,

@@ -3,18 +3,20 @@
  * shell store: kept per template, kept across a reload, part of a saved layout, and undone by a reset.
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { solidReactivity } from '@we/reactivity-solid';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
-import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { createShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { shellHost } from '../src/frameworks/solid/stores/hostState';
 import { StoreRegistryContext } from '../src/frameworks/solid/stores/useStore';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
+import type { ShellStore } from '../src/shared/stores/ShellStore';
+import { createShellStore } from '../src/shared/stores/ShellStore';
 
 function mountShellStore(): ShellStore {
   let store!: ShellStore;
   render(() => {
-    store = createShellStore();
+    store = createShellStore({ reactivity: solidReactivity, host: shellHost });
     return null;
   });
   return store;
@@ -108,7 +110,7 @@ describe('a home lane folding', () => {
   function mountLane() {
     let store!: ShellStore;
     const { container } = render(() => {
-      store = createShellStore();
+      store = createShellStore({ reactivity: solidReactivity, host: shellHost });
       return (
         <StoreRegistryContext.Provider value={{ shellStore: store }}>
           <PanelLane lane="side" width="280px" resize="end" />

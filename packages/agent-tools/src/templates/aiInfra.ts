@@ -167,7 +167,7 @@ export function requestMessage(request: string, currentSchema: unknown, extras: 
  */
 export function formatExternalManifestForPrompt(manifest: EntityManifestEntry[]): string {
   if (!manifest.length) return '';
-  const lines: string[] = ['## External Perspective Models', ''];
+  const lines: string[] = ['## External Dataset Models', ''];
   for (const entry of manifest) {
     lines.push(`### ${entry.name}`);
     // A HasMany relation is a collection of IRIs (type === 'uri' && isCollection).
