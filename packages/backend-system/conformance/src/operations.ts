@@ -153,6 +153,20 @@ const OPERATIONS: Record<string, OperationDefinition> = {
     ],
     returns: { $: 'note.id' },
   },
+  touchTags: {
+    description: 'Marks every tag as seen, one at a time, and answers with the tags it found.',
+    steps: [
+      { find: { as: 'tags', entity: 'CollectionBlock', where: { kind: 'tag' }, order: { slug: 'asc' } } },
+      {
+        forEach: {
+          in: { $: 'tags' },
+          as: 'tag',
+          steps: [{ update: { entity: 'CollectionBlock', id: { $: 'tag.id' }, fields: { title: 'seen' } } }],
+        },
+      },
+    ],
+    returns: { $: 'tags.map(t, t.id)' },
+  },
   adopt: {
     description: 'Puts a record under another, strictly: refused when it is there already.',
     params: { parent: { type: 'string', required: true }, child: { type: 'string', required: true } },
@@ -218,6 +232,17 @@ const CASES: OperationCase[] = [
     operation: 'ensureTag',
     args: { slug: 'weeds' },
     invocationId: '00000000-0000-4000-8000-000000000003',
+    invokedAt: AT,
+    observe: [COLLECTIONS],
+  },
+  {
+    id: 'found-carries-id',
+    note: 'a found record carries its id: a step reads it by name, and a forEach over found records keys by it',
+    operations: OPERATIONS,
+    dataset: [TAG, { entity: 'CollectionBlock', id: 'urn:example:tag-weeds', fields: { kind: 'tag', slug: 'weeds' } }],
+    operation: 'touchTags',
+    args: {},
+    invocationId: '00000000-0000-4000-8000-000000000024',
     invokedAt: AT,
     observe: [COLLECTIONS],
   },

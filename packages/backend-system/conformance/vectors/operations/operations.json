@@ -435,6 +435,107 @@
       }
     },
     {
+      "id": "found-carries-id",
+      "note": "a found record carries its id: a step reads it by name, and a forEach over found records keys by it",
+      "manifest": {
+        "version": "1",
+        "entities": {},
+        "operations": {
+          "touchTags": {
+            "description": "Marks every tag as seen, one at a time, and answers with the tags it found.",
+            "steps": [
+              {
+                "find": {
+                  "as": "tags",
+                  "entity": "CollectionBlock",
+                  "where": {
+                    "kind": "tag"
+                  },
+                  "order": {
+                    "slug": "asc"
+                  }
+                }
+              },
+              {
+                "forEach": {
+                  "in": {
+                    "$": "tags"
+                  },
+                  "as": "tag",
+                  "steps": [
+                    {
+                      "update": {
+                        "entity": "CollectionBlock",
+                        "id": {
+                          "$": "tag.id"
+                        },
+                        "fields": {
+                          "title": "seen"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            "returns": {
+              "$": "tags.map(t, t.id)"
+            }
+          }
+        }
+      },
+      "calls": {},
+      "dataset": [
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-garden",
+          "fields": {
+            "kind": "tag",
+            "slug": "garden"
+          }
+        },
+        {
+          "entity": "CollectionBlock",
+          "id": "urn:example:tag-weeds",
+          "fields": {
+            "kind": "tag",
+            "slug": "weeds"
+          }
+        }
+      ],
+      "operation": "touchTags",
+      "args": {},
+      "invoker": "did:example:invoker",
+      "invocationId": "00000000-0000-4000-8000-000000000024",
+      "invokedAt": "2026-11-24T00:00:00.000Z",
+      "observe": [
+        {
+          "entity": "CollectionBlock",
+          "fields": ["kind", "title", "slug"],
+          "relations": ["children"]
+        }
+      ],
+      "outcome": {
+        "result": ["urn:example:tag-garden", "urn:example:tag-weeds"]
+      },
+      "records": {
+        "CollectionBlock": [
+          {
+            "id": "urn:example:tag-garden",
+            "kind": "tag",
+            "title": "seen",
+            "slug": "garden"
+          },
+          {
+            "id": "urn:example:tag-weeds",
+            "kind": "tag",
+            "title": "seen",
+            "slug": "weeds"
+          }
+        ]
+      }
+    },
+    {
       "id": "rollback-on-check",
       "note": "a failed check fails the operation with its named error, and the record made before it does not land",
       "manifest": {
