@@ -303,10 +303,10 @@ export function manifestToEntries(manifest: EntityManifest, opts: CompileManifes
     if (!forward) return resolvePredicate(entityName, relName);
     if (forward.containment) return CONTAINMENT_PREDICATE;
     if (forward.predicate) return forward.predicate;
-    if (!forward.reverseOf) return resolvePredicate(spec.target!, spec.reverseOf!);
+    if (!forward.reverseOf) return resolvePredicate(spec.target, spec.reverseOf!);
     const own = `${entityName}.${relName}`;
     const other = `${spec.target}.${spec.reverseOf}`;
-    return own < other ? resolvePredicate(entityName, relName) : resolvePredicate(spec.target!, spec.reverseOf!);
+    return own < other ? resolvePredicate(entityName, relName) : resolvePredicate(spec.target, spec.reverseOf!);
   };
 
   return Object.keys(manifest.entities).map((name) => {
