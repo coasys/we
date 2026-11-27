@@ -15,7 +15,8 @@
  *   shuffle (or reversed, if asked), and never in the order they were woken: a shuffle that lands
  *   on that order is reversed instead. The seed comes from
  *   `WE_REACTIVITY_SEED` when it is set and is otherwise fixed, so a failure reproduces; the seed is
- *   `TEST_REACTIVITY_SEED`, and a test setup prints it beside a failure.
+ *   `TEST_REACTIVITY_SEED`, and a test setup prints it beside a failure. CI sets a new seed every
+ *   run (its run number), so the orderings explored grow with each run.
  * - **An equal write wakes what read it.** Whether it does is not promised, so a store that only
  *   settles because Solid skips an equal write keeps waking itself here, and is refused.
  *

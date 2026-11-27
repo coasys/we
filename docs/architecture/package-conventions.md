@@ -372,7 +372,8 @@ the first, and the shape the rest copy:
   does not promise — and a port over `@vue/reactivity` (`tests/support/vueReactivity.ts`), an engine
   nobody here wrote. Each store is built inside `port.root` and disposed after, given
   `createTestPlatform()`. A failure under the test port prints its seed; `WE_REACTIVITY_SEED=<n>`
-  runs that order again. They run in app-shell's `stores` test project: no DOM, the browser build of
+  runs that order again. The seed is fixed locally and new on every CI run (the workflow sets it from
+  the run number), so each run tries another ordering. They run in app-shell's `stores` test project: no DOM, the browser build of
   solid-js, so a store reaching past the platform port fails there rather than passing on jsdom's
   globals. A store test goes in jsdom's project only for a reason it names. What Solid gave
   for free and the port does not — a signal's `equals`, an updater setter — is written out in the
