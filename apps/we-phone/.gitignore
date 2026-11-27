@@ -1,0 +1,7 @@
+node_modules/
+# Assembled from apps/we-web/dist by scripts/assemble-web.mjs.
+/www/
+# The Rust library, built by scripts/build-android-rust.sh.
+/android/app/src/main/jniLibs/
+# The XCFramework, built by scripts/build-ios.sh.
+/ios-build/

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'"
+    />
+    <title>Coasys · pair with your desktop</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin: 0 0 12px;
+      }
+      label {
+        display: block;
+        font-size: 0.8rem;
+        margin: 10px 0 4px;
+        opacity: 0.8;
+      }
+      input,
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        font: inherit;
+        padding: 8px;
+      }
+      textarea {
+        min-height: 4em;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      button {
+        font: inherit;
+        padding: 10px 14px;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-all;
+        font-size: 0.75rem;
+        background: rgba(127, 127, 127, 0.12);
+        padding: 8px;
+        min-height: 6em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Pair with your desktop</h1>
+    <p>Scan the QR code the desktop shows, or paste what it prints after <code>pairing:</code>.</p>
+    <label for="pairing">Pairing (<code>{"url":…,"pin":…}</code>)</label>
+    <textarea id="pairing" autocomplete="off" spellcheck="false"></textarea>
+    <label for="url">URL</label>
+    <input id="url" placeholder="wss://192.168.1.20:8443" autocomplete="off" spellcheck="false" />
+    <label for="pin">Pin</label>
+    <input id="pin" placeholder="43 characters of base64url" autocomplete="off" spellcheck="false" />
+    <label for="token">Executor token (optional; spike only)</label>
+    <input id="token" autocomplete="off" spellcheck="false" />
+    <div class="row">
+      <button id="scan" type="button">Scan QR code</button>
+      <button id="test" type="button">Test: status + 200 round trips</button>
+      <button id="save" type="button">Save and open WE</button>
+      <button id="forget" type="button">Forget pairing</button>
+    </div>
+    <pre id="log" aria-live="polite"></pre>
+    <script type="module" src="./diag.ts"></script>
+  </body>
+</html>
