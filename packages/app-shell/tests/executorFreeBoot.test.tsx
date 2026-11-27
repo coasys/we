@@ -77,6 +77,18 @@ const gate = vi.hoisted(() => ({
   current: undefined as unknown as import('../src/shared/firstScreen').FirstScreen,
   reset: () => {},
 }));
+const lastAnswers = vi.hoisted(() => ({ cleared: [] as string[] }));
+vi.mock('@we/schema-solid', async (original) => {
+  const real = await original<typeof import('@we/schema-solid')>();
+  return {
+    ...real,
+    clearLastAnswersFor: (id: string) => {
+      lastAnswers.cleared.push(id);
+      real.clearLastAnswersFor(id);
+    },
+  };
+});
+
 vi.mock('../src/frameworks/solid/firstScreen', async () => {
   const { createFirstScreen } = await import('../src/shared/firstScreen');
   const { createSignal } = await import('solid-js');
@@ -3676,6 +3688,373 @@ describe('moving between spaces', () => {
     navigate.mockClear();
     await stores.spaces.navigateToSpace(a);
     expect(navigate).toHaveBeenCalledWith(`/space/${a}`);
+  }, 10000);
+});
+
+/*
+  A switch shows the space it already knows to be a WE space at once, without asking for the schema
+  marker again. The install of module and refreshed shapes runs behind the publish, once per space
+  per session.
+*/
+describe('switching to a space already known', () => {
+  type Step = 'core' | 'modules' | 'refresh';
+  const steps: Step[] = ['core', 'modules', 'refresh'];
+
+  /** Wraps the schema port: records which dataset each step was asked about, and lets a test hold, fail or add to one. */
+  function watchSchemas() {
+    const asked: Record<Step, string[]> = { core: [], modules: [], refresh: [] };
+    const hold: Partial<Record<Step, { dataset: string; until: Promise<void> }>> = {};
+    const control = { failRefresh: false, refreshWrites: [] as string[] };
+    onPorts = (ports) => {
+      const idOf = (dataset: unknown) => (dataset as { id: string }).id;
+      const { hasCoreSchema, installModules, refreshSpace } = ports.schemas;
+      const gated = async (step: Step, dataset: unknown) => {
+        asked[step].push(idOf(dataset));
+        const held = hold[step];
+        if (held && held.dataset === idOf(dataset)) await held.until;
+      };
+      ports.schemas.hasCoreSchema = async (dataset) => {
+        await gated('core', dataset);
+        return hasCoreSchema(dataset);
+      };
+      ports.schemas.installModules = async (dataset, modules) => {
+        await gated('modules', dataset);
+        return installModules(dataset, modules);
+      };
+      ports.schemas.refreshSpace = async (dataset) => {
+        await gated('refresh', dataset);
+        if (control.failRefresh) throw new Error('refresh failed');
+        return control.refreshWrites.length ? control.refreshWrites : refreshSpace(dataset);
+      };
+    };
+    const count = (step: Step, dataset: string) => asked[step].filter((id) => id === dataset).length;
+    const holdAll = (dataset: string) => {
+      let release!: () => void;
+      const until = new Promise<void>((resolve) => (release = resolve));
+      for (const step of steps) hold[step] = { dataset, until };
+      return () => {
+        release();
+        for (const step of steps) delete hold[step];
+      };
+    };
+    return { asked, hold, control, count, holdAll };
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  it('publishes a known space before the checks behind it have answered', async () => {
+    seededDatasets = [
+      { id: 'ds-a', name: 'A' },
+      { id: 'ds-b', name: 'B' },
+    ];
+    const watch = watchSchemas();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.datasets.switchDataset('ds-a');
+    await stores.datasets.switchDataset('ds-b');
+    await vi.waitFor(() => expect(watch.count('refresh', 'ds-a')).toBe(1));
+
+    const release = watch.holdAll('ds-a');
+    await stores.datasets.switchDataset('ds-a');
+    expect(stores.datasets.currentDataset()?.id).toBe('ds-a');
+    expect(stores.datasets.isWeSpace()).toBe(true);
+    // Neither check is asked again: the answer is known and the refresh has run.
+    await settle();
+    expect(watch.count('core', 'ds-a')).toBe(1);
+    expect(watch.count('refresh', 'ds-a')).toBe(1);
+    release();
+  }, 10000);
+
+  it('waits for the schema marker of a space it has no answer for', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const watch = watchSchemas();
+    const stores = mountShell();
+    await ready(stores);
+
+    const release = watch.holdAll('ds-a');
+    let published = false;
+    const switched = stores.datasets.switchDataset('ds-a').then(() => (published = true));
+    await settle();
+    expect(published).toBe(false);
+    expect(stores.datasets.currentDataset()?.id).not.toBe('ds-a');
+
+    release();
+    await switched;
+    expect(stores.datasets.currentDataset()?.id).toBe('ds-a');
+  }, 10000);
+
+  it('refreshes a space once per session, and again after a refresh that failed', async () => {
+    seededDatasets = [
+      { id: 'ds-a', name: 'A' },
+      { id: 'ds-b', name: 'B' },
+    ];
+    const watch = watchSchemas();
+    const stores = mountShell();
+    await ready(stores);
+
+    watch.control.failRefresh = true;
+    await stores.datasets.switchDataset('ds-a');
+    await vi.waitFor(() => expect(watch.count('refresh', 'ds-a')).toBe(1));
+    watch.control.failRefresh = false;
+
+    await stores.datasets.switchDataset('ds-b');
+    await stores.datasets.switchDataset('ds-a');
+    await vi.waitFor(() => expect(watch.count('refresh', 'ds-a')).toBe(2));
+
+    await stores.datasets.switchDataset('ds-b');
+    await stores.datasets.switchDataset('ds-a');
+    await settle();
+    expect(watch.count('refresh', 'ds-a')).toBe(2);
+    expect(watch.count('modules', 'ds-a')).toBe(2);
+  }, 10000);
+
+  it('moves the schema revision only when a refresh wrote shapes', async () => {
+    seededDatasets = [
+      { id: 'ds-a', name: 'A' },
+      { id: 'ds-b', name: 'B' },
+    ];
+    const watch = watchSchemas();
+    const stores = mountShell();
+    await ready(stores);
+
+    await stores.datasets.switchDataset('ds-a');
+    await vi.waitFor(() => expect(watch.count('refresh', 'ds-a')).toBe(1));
+    await settle();
+    expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
+
+    watch.control.refreshWrites = ['Task'];
+    await stores.datasets.switchDataset('ds-b');
+    await vi.waitFor(() => expect(stores.datasets.schemaRevision({ uuid: 'ds-b' })).toBe(1));
+    expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
+  }, 10000);
+});
+
+describe('the schema upkeep behind a switch', () => {
+  /** Holds the refresh of one space until the returned release; what it then writes is `writes`, or what it would have. */
+  function holdRefresh(dataset: string, writes: string[] = []) {
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    onPorts = (ports) => {
+      const { refreshSpace } = ports.schemas;
+      ports.schemas.refreshSpace = async (target) => {
+        if ((target as { id: string }).id === dataset) await until;
+        return writes.length ? writes : refreshSpace(target);
+      };
+    };
+    return release;
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+  it('holds a write to the space until the upkeep has settled, and does not hold a read', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a');
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('ds-a');
+    expect(stores.datasets.currentDataset()?.id).toBe('ds-a');
+    const handle = (await lifecycle.list()).find((d) => d.id === 'ds-a')!.handle as never;
+
+    // A read goes straight through.
+    await expect(CollectionBlock.findAll(handle, {})).resolves.toBeDefined();
+
+    let written = false;
+    const writing = CollectionBlock.create(handle, { kind: 'post', textContent: 'hi' } as never).then(() => {
+      written = true;
+    });
+    await settle();
+    expect(written).toBe(false);
+
+    release();
+    await writing;
+    expect(written).toBe(true);
+  }, 10000);
+
+  it('does not hold a write for ever when the upkeep fails', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    let fail!: () => void;
+    const until = new Promise<string[]>((_, reject) => (fail = () => reject(new Error('refresh failed'))));
+    until.catch(() => {});
+    onPorts = (ports) => {
+      ports.schemas.refreshSpace = async () => until;
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      await stores.datasets.switchDataset('ds-a');
+      const handle = (await lifecycle.list()).find((d) => d.id === 'ds-a')!.handle as never;
+      const writing = CollectionBlock.create(handle, { kind: 'post', textContent: 'hi' } as never);
+      fail();
+      await expect(writing).resolves.toBeDefined();
+    } finally {
+      errors.mockRestore();
+    }
+  }, 10000);
+
+  it('drops what an upkeep finds after the agent locked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a', ['Task']);
+    const stores = mountShell();
+    await ready(stores);
+    await stores.datasets.switchDataset('ds-a');
+
+    await stores.session.logout();
+    expect(stores.session.bootState()).toBe('login');
+    release();
+    await settle();
+    expect(stores.datasets.schemaRevision({ uuid: 'ds-a' })).toBe(0);
+  }, 10000);
+
+  it('holds a write started by an observer of the space as it is published', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const release = holdRefresh('ds-a');
+    const stores = mountShell();
+    await ready(stores);
+
+    let state: 'none' | 'pending' | 'ready' = 'none';
+    const dispose = createRoot((off) => {
+      createEffect(() => {
+        const current = stores.datasets.currentDataset();
+        if (current?.id !== 'ds-a') return;
+        state = 'pending';
+        void stores.datasets.schemaReady(current.handle).then(() => (state = 'ready'));
+      });
+      return off;
+    });
+    try {
+      await stores.datasets.switchDataset('ds-a');
+      await settle();
+      expect(state).toBe('pending');
+      release();
+      await vi.waitFor(() => expect(state).toBe('ready'));
+    } finally {
+      dispose();
+    }
+  }, 10000);
+
+  it('abandons a switch whose schema check was still out when the agent locked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    const refreshed: string[] = [];
+    onPorts = (ports) => {
+      const { hasCoreSchema, refreshSpace } = ports.schemas;
+      ports.schemas.hasCoreSchema = async (dataset) => {
+        await until;
+        return hasCoreSchema(dataset);
+      };
+      ports.schemas.refreshSpace = async (target) => {
+        refreshed.push((target as { id: string }).id);
+        return refreshSpace(target);
+      };
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    const switched = stores.datasets.switchDataset('ds-a');
+    await stores.session.logout();
+    expect(stores.session.bootState()).toBe('login');
+    release();
+    await switched;
+    await settle();
+    expect(stores.datasets.currentDataset()?.id).not.toBe('ds-a');
+    expect(refreshed).not.toContain('ds-a');
+  }, 10000);
+
+  it('reads the space record again once the upkeep has written the shapes its first read lacked', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    // Until armed the refresh fails, so the space is refreshed again the next time it is opened;
+    // armed, it is held and then writes a shape.
+    let armed = false;
+    let release!: () => void;
+    const until = new Promise<void>((resolve) => (release = resolve));
+    onPorts = (ports) => {
+      ports.schemas.refreshSpace = async () => {
+        if (!armed) throw new Error('refresh failed');
+        await until;
+        return ['Task'];
+      };
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace('Late', 'x', 'personal', 'hidden');
+    const late = (await lifecycle.list()).find((d) => d.name === 'Late')!.id;
+    await stores.datasets.switchDataset('ds-a');
+    // The first read of the space record fails, as it does on a space lacking a shape the upkeep installs.
+    const impl = getEntity('Space') as unknown as { query: (...a: unknown[]) => unknown };
+    const query = impl.query.bind(impl);
+    const asked = vi.spyOn(impl, 'query');
+    asked.mockImplementationOnce(
+      () =>
+        ({
+          first: Promise.reject(new Error('No SHACL shape stored')),
+          getSnapshot: () => ({ status: 'error', initial: false }),
+          subscribe: () => () => undefined,
+          dispose: () => undefined,
+        }) as never,
+    );
+    asked.mockImplementation(query as never);
+    armed = true;
+    try {
+      await stores.datasets.switchDataset(late);
+      await settle();
+      expect(stores.spaces.currentSpace()).toBeNull();
+
+      release();
+      await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe('Late'));
+    } finally {
+      asked.mockRestore();
+      errors.mockRestore();
+    }
+  }, 10000);
+
+  it('re-runs only the effects of the dataset whose shapes were written', async () => {
+    seededDatasets = [
+      { id: 'ds-a', name: 'A' },
+      { id: 'ds-b', name: 'B' },
+    ];
+    onPorts = (ports) => {
+      const { refreshSpace } = ports.schemas;
+      ports.schemas.refreshSpace = async (target) =>
+        (target as { id: string }).id === 'ds-b' ? ['Task'] : refreshSpace(target);
+    };
+    const stores = mountShell();
+    await ready(stores);
+
+    const runs = { a: 0, b: 0 };
+    const dispose = createRoot((off) => {
+      createEffect(() => {
+        stores.datasets.schemaRevision({ uuid: 'ds-a' });
+        runs.a++;
+      });
+      createEffect(() => {
+        stores.datasets.schemaRevision({ uuid: 'ds-b' });
+        runs.b++;
+      });
+      return off;
+    });
+    try {
+      await settle();
+      const before = { ...runs };
+      await stores.datasets.switchDataset('ds-b');
+      await vi.waitFor(() => expect(stores.datasets.schemaRevision({ uuid: 'ds-b' })).toBe(1));
+      await settle();
+      expect(runs.b).toBe(before.b + 1);
+      expect(runs.a).toBe(before.a);
+    } finally {
+      dispose();
+    }
+  }, 10000);
+
+  it('forgets the kept answers of a space that was removed', async () => {
+    seededDatasets = [{ id: 'ds-a', name: 'A' }];
+    const stores = mountShell();
+    await ready(stores);
+    lastAnswers.cleared.length = 0;
+    await stores.datasets.removeDataset('ds-a');
+    expect(lastAnswers.cleared).toContain('ds-a');
   }, 10000);
 });
 

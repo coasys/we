@@ -343,16 +343,20 @@ export async function installSpaceSdna(p: PerspectiveProxy, moduleEntities: read
  * package's dependency direction — everything else here is imported *by* the shell, not from it.
  * The caller already holds the registry, so passing `moduleRegistry.models()` costs nothing.
  */
-export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: readonly unknown[] = []): Promise<void> {
+export async function installModuleSdna(
+  p: PerspectiveProxy,
+  moduleEntities: readonly unknown[] = [],
+): Promise<string[]> {
   const byModule = new Map<string, (typeof Ad4mModel)[]>();
   for (const model of moduleEntities as (typeof Ad4mModel)[]) {
     const id = moduleOfModel(model) ?? model.name;
     byModule.set(id, [...(byModule.get(id) ?? []), model]);
   }
+  const written: string[] = [];
   const refused: { moduleId: string; reason: string }[] = [];
   for (const [moduleId, models] of byModule) {
     try {
-      await registerModels(p, models);
+      written.push(...(await registerModels(p, models)));
     } catch (error) {
       // A 400 is the executor's answer to the batch itself — the only failure that is certainly a
       // refusal. The reads before it fail 500-or-worse, and an unanswered call is 408 or 503.
@@ -361,6 +365,7 @@ export async function installModuleSdna(p: PerspectiveProxy, moduleEntities: rea
     }
   }
   if (refused.length) throw new ModuleSchemasRefused(refused);
+  return written;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted, setTestPeopleOn, testPeopleEnabled } from '@we/module-shared';
+import { clearLastAnswers } from '@we/schema-solid';
 import {
   Accessor,
   batch,
@@ -607,6 +608,9 @@ export function SessionStoreProvider(props: ParentProps) {
     } catch (err) {
       console.error('SessionStore: could not end the session cleanly', err);
     } finally {
+      // Rows the last agent's views showed are kept in memory for a quick return; the next agent
+      // signing in must not be shown them.
+      clearLastAnswers();
       setMe(undefined);
       setIdentityCapabilities(NO_IDENTITY_CAPABILITIES);
       settingUp = false;

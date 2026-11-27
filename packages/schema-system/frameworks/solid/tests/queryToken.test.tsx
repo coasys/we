@@ -691,6 +691,57 @@ describe('$query token', () => {
   });
 });
 
+describe('$single and the schema revision', () => {
+  it('re-asks under a newer revision, so it stays on the subscription a list node moved to', async () => {
+    const builders: MockBuilder[] = [];
+    const MockEntity = {
+      query: vi.fn(() => {
+        const builder = createMockBuilder();
+        builders.push(builder);
+        return builder;
+      }),
+      findAll: vi.fn(),
+    };
+    const [revision, setRevision] = createSignal(0);
+    const stores = {
+      $currentDataset: () => ({ uuid: 'p1' }),
+      $getEntity: () => MockEntity,
+      $schemaRevision: () => revision(),
+    };
+    const question = { entity: 'Post', subscribe: true };
+    const node: SchemaNode = {
+      type: 'Column',
+      children: [
+        { type: 'DataDisplay', props: { data: { $query: question } } },
+        {
+          type: '$single',
+          props: { item: { $query: question }, as: 'post' },
+          children: [{ type: 'DataDisplay', props: { data: { $: 'post.title' } } }],
+        },
+      ],
+    };
+    const registryWithColumn: ComponentRegistry = {
+      ...registry,
+      Column: (props: any) => <div>{props.children}</div>,
+    };
+
+    const { container } = render(() => (
+      <RenderSchema node={node} stores={asStores(stores)} registry={registryWithColumn} />
+    ));
+    await tick();
+    builders[0].push([{ id: 'p-1', title: 'Old' }]);
+    await tick();
+
+    setRevision(1);
+    await tick();
+    // The newest subscription, not the one the first revision opened and the list node let go of.
+    builders[builders.length - 1].push([{ id: 'p-1', title: 'New' }]);
+    await tick();
+    const shown = [...container.querySelectorAll('[data-testid="data"]')].map((el) => el.textContent);
+    expect(shown.filter((text) => text?.includes('New')).length).toBe(2);
+  });
+});
+
 describe('$queries reading each other', () => {
   /*
     A query's where or scope may read a sibling declared before it. The board reads its pool's anchor
