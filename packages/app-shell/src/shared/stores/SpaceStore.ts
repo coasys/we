@@ -631,6 +631,8 @@ export interface SpaceStoreDeps {
   firstScreen: Pick<FirstScreen, 'open' | 'whenOpen'>;
   sessionStore: SpaceSession;
   datasetStore: SpaceDatasets;
+  /** How the composition runs declared operations, and the predictions its reads hold. */
+  operations: SpaceContext['operations'];
   profileStore: SpaceDetailsDeps['profileStore'];
   recordStore: SpaceTaskStatesDeps['recordStore'] & SpaceContentDeps['recordStore'];
   routeStore: SpaceListDeps['routeStore'] & SpaceNavigationDeps['routeStore'];
@@ -683,7 +685,15 @@ export function createSpaceStore(deps: SpaceStoreDeps): SpaceStoreWithLends {
     templateStore,
     host,
   } = deps;
-  const ctx = createSpaceContext({ reactivity, platform, toasts, firstScreen, sessionStore: session, datasetStore });
+  const ctx = createSpaceContext({
+    reactivity,
+    platform,
+    toasts,
+    firstScreen,
+    sessionStore: session,
+    datasetStore,
+    operations: deps.operations,
+  });
 
   /*
     The parts are built in the order they read each other, each taking the narrowest slice of the

@@ -16,6 +16,7 @@ import { getEntity, runOperation } from '@we/entities';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type BoardDeps, createBoardActions } from '../src/shared/boards';
+import { testOperations } from './support/operations';
 
 const ME = 'did:test:me';
 const STATES = [
@@ -46,6 +47,7 @@ const SLUGS = STATES.map((state) => state.slug);
 
 const actions = (extra: Partial<BoardDeps> = {}) =>
   createBoardActions({
+    operations: testOperations,
     dataset: () => dataset,
     invoker: () => ME,
     offeredStates: () => STATES,

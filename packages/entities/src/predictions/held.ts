@@ -30,7 +30,9 @@ import { matchesWhere, RECORD_TYPE_KEY } from '@we/backend-shared';
 import { compareBy, type ReadShape, readShapeOf } from './overlay';
 import { datasetKey } from './registry';
 
-type Row = Record<string, unknown> & { id: string };
+/** A held row: a record with an id, its relations handed over as ids. */
+export type HeldRow = Record<string, unknown> & { id: string };
+type Row = HeldRow;
 
 /** One live read somebody is following, as far as answering from it needs. */
 export interface HeldRead {
@@ -43,15 +45,10 @@ export interface HeldRead {
   rows: () => readonly unknown[] | undefined;
 }
 
-const HELD_KEY = Symbol.for('we.entities.heldReads');
-// On the global object, as the prediction registry is, so two copies of this package share one.
-const held: Set<HeldRead> = ((globalThis as unknown as Record<symbol, Set<HeldRead>>)[HELD_KEY] ??= new Set());
-
-/** Say what a followed read holds, for as long as it is followed. Returns the remover. */
-export function holdRead(read: HeldRead): () => void {
-  held.add(read);
-  return () => void held.delete(read);
-}
+/*
+  The reads held are a composition's, kept in its predictions (`createPredictions` in `registry.ts`,
+  whose `hold` adds one): the functions below are handed them.
+*/
 
 const isRow = (value: unknown): value is Row =>
   value !== null && typeof value === 'object' && !Array.isArray(value) && typeof (value as Row).id === 'string';
@@ -184,7 +181,12 @@ const READ_KEYS = new Set(['where', 'order', 'limit', 'parent']);
  * all of the answer — see the file's note for when it is. The rows carry the pending predictions,
  * since every held read draws them.
  */
-export function heldAnswer(entity: string, dataset: unknown, query?: Record<string, unknown>): Row[] | undefined {
+export function heldAnswer(
+  held: ReadonlySet<HeldRead>,
+  entity: string,
+  dataset: unknown,
+  query?: Record<string, unknown>,
+): Row[] | undefined {
   if (!held.size) return undefined;
   const q = query ?? {};
   if (Object.keys(q).some((key) => !READ_KEYS.has(key))) return undefined;
@@ -247,7 +249,12 @@ export function heldAnswer(entity: string, dataset: unknown, query?: Record<stri
  * Every record of `entity` matching `where` that some held read carries — what is on screen, with no
  * claim that it is all there is. For drawing over what is shown (a preview), never for deciding a write.
  */
-export function heldRows(entity: string, dataset: unknown, where: Record<string, unknown> = {}): Row[] {
+export function heldRows(
+  held: ReadonlySet<HeldRead>,
+  entity: string,
+  dataset: unknown,
+  where: Record<string, unknown> = {},
+): Row[] {
   if (!held.size) return [];
   const key = datasetKey(dataset);
   const reads = [...held].filter((read) => read.dataset === key);

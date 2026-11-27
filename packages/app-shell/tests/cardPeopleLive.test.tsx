@@ -16,7 +16,7 @@ import {
   type QueryAdapter,
   type QueryIR,
 } from '@we/backend-shared';
-import { clearPredictions, predict, predictionLanded, withPredictions } from '@we/entities';
+import { withPredictions } from '@we/entities';
 import { RenderSchema, resetSubscriptionPool, subscriptionPoolConfig } from '@we/schema-solid';
 import { taskBoard } from '@we/template-kit';
 import { render } from 'solid-js/web';
@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { liveRows } from './liveRows';
 import { SEEDED_INVOLVEMENT_TYPES } from './seededVocabulary';
+import { testPredictions } from './support/operations';
 
 // jsdom has no constructable stylesheets, and the primitives adopt one as they connect.
 vi.hoisted(() => {
@@ -102,12 +103,12 @@ let presses = 0;
 function press(kind: string, on: boolean) {
   const invocation = `press-${++presses}`;
   const id = ROW_ID[kind];
-  predict(SPACE, invocation, [
+  testPredictions.predict(SPACE, invocation, [
     on
       ? { kind: 'create', entity: 'Involvement', id, fields: { agent: ME, kind, node: 't1' } }
       : { kind: 'delete', entity: 'Involvement', id },
   ]);
-  predictionLanded(invocation);
+  testPredictions.landed(invocation);
 }
 
 let dispose: (() => void) | undefined;
@@ -120,7 +121,7 @@ beforeEach(() => {
 afterEach(() => {
   dispose?.();
   dispose = undefined;
-  clearPredictions();
+  testPredictions.clear();
 });
 
 /** One board with one column and one task, wired the way `TemplateProvider` wires the host functions. */
@@ -141,9 +142,11 @@ async function mountBoard() {
   const stores = {
     // The reads as the host's bindings hand them over: with what is pending laid over them.
     $getEntity: (name: string) =>
-      withPredictions(name === 'Involvement' ? involvements.model : name === 'TaskBlock' ? tasks.model : boards, [
-        name,
-      ]),
+      withPredictions(
+        testPredictions,
+        name === 'Involvement' ? involvements.model : name === 'TaskBlock' ? tasks.model : boards,
+        [name],
+      ),
     $currentDataset: () => SPACE,
     $queryAdapter: passthroughAdapter,
     $me: { did: ME },

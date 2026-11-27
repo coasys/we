@@ -5,16 +5,13 @@
  */
 export { applyPredictions, predictionFingerprint, readShapeOf, type ReadShape } from './overlay';
 export { withPredictedPages, withPredictedRows, withPredictions } from './live';
-export { heldAnswer, type HeldRead, heldRows, holdRead } from './held';
+export { type HeldRead, type HeldRow } from './held';
 export {
-  anyPredictions,
-  clearPredictions,
+  bindPredictions,
+  boundPredictions,
+  createPredictions,
   datasetKey,
-  onPredictionsChange,
-  predict,
   type PredictedWrite,
   type Prediction,
-  predictionLanded,
-  predictionsFor,
-  withdrawPrediction,
+  type Predictions,
 } from './registry';

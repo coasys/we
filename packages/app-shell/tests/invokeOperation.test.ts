@@ -3,17 +3,10 @@
  * `serial` queue, and a failure said once.
  */
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import {
-  clearPredictions,
-  CollectionBlock,
-  getEntity,
-  predictionsFor,
-  registerTransactionRunner,
-  Signal,
-} from '@we/entities';
+import { CollectionBlock, getEntity, registerTransactionRunner, Signal } from '@we/entities';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { invokeOperation } from '../src/shared/invokeOperation';
+import { testOperations, testPredictions } from './support/operations';
 
 const ME = 'did:test:me';
 
@@ -35,7 +28,7 @@ beforeEach(async () => {
     kind: 'post',
   })) as Row;
 });
-afterEach(() => clearPredictions());
+afterEach(() => testPredictions.clear());
 
 const signalsOn = () =>
   (Signal as unknown as { findAll: (d: unknown, q: object) => Promise<Row[]> }).findAll(dataset, {
@@ -59,13 +52,13 @@ describe('invokeOperation', () => {
     let land!: () => void;
     const landed = new Promise<void>((resolve) => (land = resolve));
     registerTransactionRunner((ds, fn) => landed.then(() => runInMemoryTransaction(ds, fn)));
-    const pressed = invokeOperation(
+    const pressed = testOperations.invoke(
       'core.upsertSignal',
       { node: post.id, signalType: 'like', value: 1 },
       { dataset, invoker: ME },
     );
     // Before the real run has returned, the read already carries the reaction.
-    for (let i = 0; i < 50 && !predictionsFor(dataset).length; i++) await new Promise((r) => setTimeout(r, 1));
+    for (let i = 0; i < 50 && !testPredictions.for(dataset).length; i++) await new Promise((r) => setTimeout(r, 1));
     const drawn = live.getSnapshot().data?.results.map((r) => r.id);
     // Nothing is stored yet: the backend's own class reads only what is.
     const stored = getEntity('Signal') as unknown as { findAll: (d: unknown, q: object) => Promise<Row[]> };
@@ -81,8 +74,8 @@ describe('invokeOperation', () => {
 it('queues invocations with the same serial key, so a double press makes one reaction', async () => {
   const args = { node: post.id, signalType: 'like', value: 1 };
   await Promise.all([
-    invokeOperation('core.upsertSignal', args, { dataset, invoker: ME }),
-    invokeOperation('core.upsertSignal', { ...args, value: 2 }, { dataset, invoker: ME }),
+    testOperations.invoke('core.upsertSignal', args, { dataset, invoker: ME }),
+    testOperations.invoke('core.upsertSignal', { ...args, value: 2 }, { dataset, invoker: ME }),
   ]);
   const rows = await signalsOn();
   expect(rows.map((r) => r.value)).toEqual([2]);
@@ -91,20 +84,20 @@ it('queues invocations with the same serial key, so a double press makes one rea
 it('withdraws the prediction when the real run fails, and says a declared error once in its own words', async () => {
   const said: string[] = [];
   await expect(
-    invokeOperation(
+    testOperations.invoke(
       'core.setInvolvement',
       { node: post.id, agent: ME, kind: 'nope', on: true },
       { dataset, invoker: ME, notify: (m) => said.push(m) },
     ),
   ).rejects.toMatchObject({ code: 'unknownKind' });
   expect(said).toEqual(['That is not a kind of involvement this space has.']);
-  expect(predictionsFor(dataset)).toEqual([]);
+  expect(testPredictions.for(dataset)).toEqual([]);
 });
 
 it('says a failure the operation does not name in the caller’s words', async () => {
   const said: string[] = [];
   await expect(
-    invokeOperation(
+    testOperations.invoke(
       'core.moveCard',
       { to: 'nowhere', card: 'c' },
       { dataset, invoker: ME, notify: (m) => said.push(m), failure: 'Could not move that card' },

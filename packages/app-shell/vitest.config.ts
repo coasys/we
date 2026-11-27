@@ -32,6 +32,7 @@ const STORE_TESTS = [
   'tests/keyedSignals.test.ts',
   'tests/libraryFlow.test.ts',
   'tests/liveTemplate.test.ts',
+  'tests/operationsPerComposition.test.ts',
   'tests/profileIndex.test.ts',
   'tests/profileStore.test.ts',
   'tests/recordCanvas.test.ts',

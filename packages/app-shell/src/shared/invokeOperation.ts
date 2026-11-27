@@ -14,6 +14,10 @@
  * prediction; a speculation that fails draws nothing, so a write that will be refused is never shown
  * as having worked.
  *
+ * The queues, the speculations and the predictions are one composition's (`createOperations`, made
+ * once by `composeStores`), never the module's, so two compositions — two tests, or two hosts in one
+ * process — neither wait on each other nor draw each other's writes.
+ *
  * Speculations run one after another per dataset, so each reads the predictions of the ones before
  * it: a second press, made before the first has landed, is predicted from the first one's answer.
  * Their reads are answered from the rows the host's live reads hold where those are enough
@@ -34,14 +38,13 @@
  * `onError` or a store's own handling.
  */
 import {
+  createPredictions,
   datasetKey,
   onSpeculationMiss,
-  predict,
-  predictionLanded,
+  type Predictions,
   runOperation,
   serialKey,
   speculateOperation,
-  withdrawPrediction,
 } from '@we/entities';
 
 import { operationFailureMessage } from './operationFailure';
@@ -69,8 +72,6 @@ export interface InvokeOptions {
   before?: () => Promise<unknown>;
 }
 
-/** The tail of each queue, by dataset and key. */
-const queues = new Map<string, Promise<unknown>>();
 /*
   In a development build, and outside tests, a read a speculation sends past the rows on screen is
   logged the first time and at each doubling, per operation, entity and query, with the count. A
@@ -87,9 +88,6 @@ if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
   });
 }
 
-/** The tail of each dataset's speculations. */
-const speculations = new Map<unknown, Promise<unknown>>();
-
 /** `work`, once everything queued before it under `key` has finished, however that went. */
 function after<K, T>(tails: Map<K, Promise<unknown>>, key: K, work: () => Promise<T>): Promise<T> {
   const previous = tails.get(key) ?? Promise.resolve();
@@ -103,52 +101,73 @@ function after<K, T>(tails: Map<K, Promise<unknown>>, key: K, work: () => Promis
   return run;
 }
 
-/** Run a declared operation as the host runs every one — see the file's note. */
-export async function invokeOperation(
-  name: string,
-  args: Record<string, unknown> | undefined,
-  options: InvokeOptions,
-): Promise<unknown> {
-  const { dataset, invoker, admitChosen, notify, failure } = options;
-  const invocation = {
-    dataset,
-    invoker,
-    invocationId: options.invocationId ?? crypto.randomUUID(),
-    invokedAt: new Date().toISOString(),
-    ...(admitChosen ? { admitChosen } : {}),
-  };
-  let settled = false;
+/** How a composition runs declared operations, and the predictions they draw into. */
+export interface Operations {
+  /** Run a declared operation as the host runs every one — see the file's note. */
+  invoke(name: string, args: Record<string, unknown> | undefined, options: InvokeOptions): Promise<unknown>;
+  /** The predictions every invocation draws into, and every read of this composition draws from. */
+  predictions: Predictions;
+}
 
-  // Drawn as soon as it is predicted, which does not wait for any queue the real run joins.
-  void after(speculations, datasetKey(dataset), async () => {
+/**
+ * The operation runner for one composed store graph (`composeStores`), with its own queues and its
+ * own speculations, over the predictions it is given — the composition's. Two compositions never
+ * queue behind each other, and never draw each other's pending writes.
+ */
+export function createOperations(predictions: Predictions = createPredictions()): Operations {
+  /** The tail of each queue, by dataset and key. */
+  const queues = new Map<string, Promise<unknown>>();
+  /** The tail of each dataset's speculations. */
+  const speculations = new Map<unknown, Promise<unknown>>();
+
+  async function invoke(
+    name: string,
+    args: Record<string, unknown> | undefined,
+    options: InvokeOptions,
+  ): Promise<unknown> {
+    const { dataset, invoker, admitChosen, notify, failure } = options;
+    const invocation = {
+      dataset,
+      invoker,
+      invocationId: options.invocationId ?? crypto.randomUUID(),
+      invokedAt: new Date().toISOString(),
+      ...(admitChosen ? { admitChosen } : {}),
+    };
+    let settled = false;
+
+    // Drawn as soon as it is predicted, which does not wait for any queue the real run joins.
+    void after(speculations, datasetKey(dataset), async () => {
+      try {
+        const { writes } = await speculateOperation(name, args, { ...invocation, predictions });
+        if (!settled) predictions.predict(dataset, invocation.invocationId, writes);
+      } catch {
+        // A run that would fail draws nothing; the real run says why.
+      }
+    });
+
+    const real = async () => {
+      await options.before?.();
+      return runOperation(name, args, invocation);
+    };
+    const key = serialKey(name, args);
     try {
-      const { writes } = await speculateOperation(name, args, invocation);
-      if (!settled) predict(dataset, invocation.invocationId, writes);
-    } catch {
-      // A run that would fail draws nothing; the real run says why.
+      const result = await (key === undefined
+        ? real()
+        : after(queues, `${String(datasetKey(dataset))}\u0000${key}`, real));
+      settled = true;
+      predictions.landed(invocation.invocationId);
+      return result;
+    } catch (error) {
+      settled = true;
+      predictions.withdraw(invocation.invocationId);
+      const message = notify ? operationFailureMessage(error, failure) : null;
+      if (message) {
+        console.error(`${name} failed`, error);
+        notify!(message);
+      }
+      throw error;
     }
-  });
-
-  const real = async () => {
-    await options.before?.();
-    return runOperation(name, args, invocation);
-  };
-  const key = serialKey(name, args);
-  try {
-    const result = await (key === undefined
-      ? real()
-      : after(queues, `${String(datasetKey(dataset))}\u0000${key}`, real));
-    settled = true;
-    predictionLanded(invocation.invocationId);
-    return result;
-  } catch (error) {
-    settled = true;
-    withdrawPrediction(invocation.invocationId);
-    const message = notify ? operationFailureMessage(error, failure) : null;
-    if (message) {
-      console.error(`${name} failed`, error);
-      notify!(message);
-    }
-    throw error;
   }
+
+  return { invoke, predictions };
 }

@@ -14,6 +14,7 @@ import type { AppDataset } from '../../src/shared/stores/DatasetStore';
 import type { BootState } from '../../src/shared/stores/SessionStore';
 import { createSpaceContext, type SpaceContext, type SpaceDatasets } from '../../src/shared/stores/space/context';
 import type { ToastButton } from '../../src/shared/toasts';
+import { testOperations } from './operations';
 
 // The deployment the parts read their defaults from: none beyond what the code has.
 provideSeed({ name: 'test', modules: [] } as never);
@@ -132,6 +133,7 @@ export async function spaceHarness(reactivity: ReactivityPort, seeds: InMemoryDa
 
   const platform = createTestPlatform();
   const ctx = createSpaceContext({
+    operations: testOperations,
     reactivity,
     platform,
     toasts: { info: say('info'), success: say('success'), warning: say('warning'), error: say('error') },

@@ -13,7 +13,7 @@
  * find, so a peer's change in between is left alone.
  */
 import { type ContentInput, planPost } from '@we/block-shared';
-import { COMPOSE_CARD_POST, EdgeRoute, heldRows, Placement, predict, predictionLanded } from '@we/entities';
+import { COMPOSE_CARD_POST, EdgeRoute, Placement } from '@we/entities';
 import { PLACEMENT_UNSET, resolvePlacement } from '@we/graph-expanders';
 import { createHistory, type History } from '@we/history';
 
@@ -31,7 +31,6 @@ import {
 } from '../../canvas/placements';
 import { rerouteWrite, routeWrite } from '../../edgeRoute';
 import { heldFirst, heldRecord } from '../../heldFirst';
-import { invokeOperation } from '../../invokeOperation';
 import type { RecordStore } from '../RecordStore';
 import type { RecordConnections } from './connections';
 import { canvasChildren, entityNamed, type RecordContext, RELATIONSHIP } from './context';
@@ -102,7 +101,9 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
    */
   async function drawnPlacement(handle: unknown, canvas: string, nodeId: string) {
     const query = { parent: canvasChildren(canvas) };
-    const rows = await heldFirst('Placement', handle, query, () => Placement.findAll(handle, query));
+    const rows = await heldFirst(deps.operations.predictions, 'Placement', handle, query, () =>
+      Placement.findAll(handle, query),
+    );
     return drawnAmong(rows as unknown as PlacementRow[], nodeId);
   }
 
@@ -140,7 +141,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
         kind: 'card',
         within: COMPOSE_CARD_POST,
       });
-      await invokeOperation(
+      await deps.operations.invoke(
         'core.composeCard',
         {
           root: args.root,
@@ -444,8 +445,12 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
       const entity = event.recordType || RELATIONSHIP;
       const Model = entityNamed(entity);
       // As the canvas holds the line, so the end moves on the gesture rather than a round trip later.
-      const record = await heldRecord<Record<string, unknown>>(entity, dataset.handle, event.recordId, () =>
-        Model.findOne(dataset.handle, { where: { id: event.recordId } }),
+      const record = await heldRecord<Record<string, unknown>>(
+        deps.operations.predictions,
+        entity,
+        dataset.handle,
+        event.recordId,
+        () => Model.findOne(dataset.handle, { where: { id: event.recordId } }),
       );
       if (!record) return;
 
@@ -580,10 +585,10 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
     const dataset = datasetStore.currentDataset();
     if (scalar === undefined || !dataset) return;
     for (const nodeId of (Array.isArray(node) ? node : [node]).filter(Boolean)) {
-      const placements = heldRows('Placement', dataset.handle, { node: nodeId });
+      const placements = deps.operations.predictions.heldRows('Placement', dataset.handle, { node: nodeId });
       if (!placements.length) continue;
       const id = `preview\u0000${nodeId}\u0000${field}`;
-      predict(
+      deps.operations.predictions.predict(
         dataset.handle,
         id,
         placements.map((row) => ({
@@ -593,7 +598,7 @@ export function createRecordCanvas(deps: RecordCanvasDeps): RecordCanvas {
           fields: { [field]: scalar },
         })),
       );
-      predictionLanded(id);
+      deps.operations.predictions.landed(id);
     }
   }
 

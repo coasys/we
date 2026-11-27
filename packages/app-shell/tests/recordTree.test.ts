@@ -16,6 +16,7 @@ import { canvasChildren, operationRunner } from '../src/shared/stores/records/co
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
 import { createRecordTree, type RecordTree } from '../src/shared/stores/records/tree';
 import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'kind-1';
@@ -52,7 +53,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             currentDatasetEntities: () => [],
             datasets: () => [],
           } as never,
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         };
         const shapeStore = { spaceShapes: () => [] };
         const kinds = createRecordKinds({ ...context, shapeStore });

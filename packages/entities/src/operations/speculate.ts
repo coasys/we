@@ -20,10 +20,9 @@
  */
 import { checkEntityWrite, getEntityForDataset } from '../entityRegistry';
 import { CORE_MANIFEST } from '../manifest';
-import { heldAnswer } from '../predictions/held';
 import { withPredictedRows } from '../predictions/live';
 import { readShapeOf } from '../predictions/overlay';
-import type { PredictedWrite } from '../predictions/registry';
+import type { PredictedWrite, Predictions } from '../predictions/registry';
 import { type OperationView, runOperation, type RunOperationOptions } from './run';
 
 /** What a speculative run predicts. */
@@ -85,10 +84,15 @@ export function onSpeculationMiss(listener: ((miss: SpeculationMiss) => void) | 
 export async function speculateOperation(
   name: string,
   args: Record<string, unknown> | undefined,
-  options: RunOperationOptions & { invocationId: string; invokedAt: string },
+  options: RunOperationOptions & {
+    invocationId: string;
+    invokedAt: string;
+    /** The host's predictions: what it holds, and what it has already predicted, are read first. */
+    predictions: Predictions;
+  },
 ): Promise<Speculation> {
   const writes: PredictedWrite[] = [];
-  const { dataset, invoker } = options;
+  const { dataset, invoker, predictions } = options;
 
   /** A record as a step holds it: its fields, and a save and delete that record what they would do. */
   const instance = (entity: string, row: Row, made: boolean): Row => {
@@ -127,9 +131,10 @@ export async function speculateOperation(
   const statics = (entity: string, real: Reads) => {
     const findAll = async (ds: unknown, query?: Record<string, unknown>) => {
       // What the screen holds first, predictions in it already; the backend only for what it does not.
-      const held = heldAnswer(entity, ds, query);
+      const held = predictions.heldAnswer(entity, ds, query);
       if (!held) missed?.({ operation: name, entity, query });
-      const rows = held ?? withPredictedRows(await real.findAll(ds, query), ds, readShapeOf([entity], query));
+      const rows =
+        held ?? withPredictedRows(predictions, await real.findAll(ds, query), ds, readShapeOf([entity], query));
       return rows.map((row) => instance(entity, row, false));
     };
     const relation = async (kind: 'add' | 'remove', id: string, relation: string) =>

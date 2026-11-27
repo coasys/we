@@ -14,8 +14,7 @@ import {
   decodeFileAsString,
   FOLLOW_SPACE,
   modelToThemeData,
-  onPredictionsChange,
-  predictionsFor,
+  type Predictions,
   Theme,
 } from '@we/entities';
 import type { Accessor, ReactivityPort } from '@we/reactivity';
@@ -547,6 +546,8 @@ function populateMissingOverrides(
 /** What the theme store reads off the stores composed before it. */
 export interface ThemeStoreDeps {
   reactivity: ReactivityPort;
+  /** The composition's predictions, which say when a default theme is being set before it lands. */
+  predictions: Pick<Predictions, 'for' | 'onChange'>;
   platform: Pick<PlatformPort, 'storage' | 'sessionStorage' | 'matchMedia' | 'document' | 'images'>;
   toasts: Toasts;
   sessionStore: Pick<SessionStore, 'devTools' | 'me'>;
@@ -2022,11 +2023,11 @@ export function createThemeStore(deps: ThemeStoreDeps): ThemeStore {
   */
   const explained = new Set<string>();
   onCleanup(
-    onPredictionsChange(() => {
+    deps.predictions.onChange(() => {
       const ds = untrack(datasetStore.currentDataset);
       const record = ds ? untrack(() => appearance()?.spaceFor(ds.id)) : undefined;
       if (!ds || !record?.id) return;
-      const pending = predictionsFor(ds.handle);
+      const pending = deps.predictions.for(ds.handle);
       for (const id of explained) if (!pending.some((p) => p.invocationId === id)) explained.delete(id);
       for (const prediction of pending) {
         if (explained.has(prediction.invocationId)) continue;

@@ -8,14 +8,13 @@
  * a case can look at the screen while the write is still on its way — which is the only moment
  * drawing it before it lands is visible at all.
  */
-import { invokeOperation } from '@shared/invokeOperation';
 import { withPredictedReads } from '@shared/predictedBindings';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
 import { createSpaceList } from '@shared/stores/space/spaces';
 import { componentRegistry } from '@solid/registries/componentRegistry';
 import { createInMemoryBackendPorts, runInMemoryTransaction } from '@we/backend-inmemory';
-import { clearPredictions, getEntity, registerTransactionRunner, Space } from '@we/entities';
+import { getEntity, registerTransactionRunner, Space } from '@we/entities';
 import { solidReactivity } from '@we/reactivity-solid';
 import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
@@ -23,6 +22,7 @@ import { giveSignal } from '@we/template-kit';
 import { spaceSettingsPanel } from '@we/template-shell';
 import { render } from 'solid-js/web';
 
+import { testOperations, testPredictions } from '../support/operations';
 import { spaceHarness } from '../support/spaceParts';
 
 const ME = 'did:me';
@@ -148,7 +148,7 @@ async function mountDefaults(): Promise<ProbeIds> {
     ops: {
       run: (name: string, params?: Record<string, unknown>, options?: { space?: string }) =>
         h.datasets.get(options?.space ?? 'ds-a').then((target) =>
-          invokeOperation(name, params ?? {}, {
+          testOperations.invoke(name, params ?? {}, {
             dataset: target.handle,
             invoker: h.ctx.sessionStore.me()?.did ?? '',
           }),
@@ -202,7 +202,7 @@ async function mountDefaults(): Promise<ProbeIds> {
 /** Mount the probe's schema over a fresh in-memory dataset, real runs held. Resolves with the ids it seeded. */
 export async function operationsProbe(kind: 'reaction' | 'board' | 'defaults'): Promise<ProbeIds> {
   dispose?.();
-  clearPredictions();
+  testPredictions.clear();
   waiting = [];
   held = true;
   if (kind === 'defaults') return mountDefaults();
@@ -229,8 +229,9 @@ export async function operationsProbe(kind: 'reaction' | 'board' | 'defaults'): 
       fetchProfile: async () => undefined,
       ephemeral: ports.ephemeral,
     } as never),
+    testPredictions,
   );
-  invoke = (name, params) => invokeOperation(name, params, { dataset, invoker: ME });
+  invoke = (name, params) => testOperations.invoke(name, params, { dataset, invoker: ME });
   const stores = {
     ...bindings,
     $me: { did: ME },

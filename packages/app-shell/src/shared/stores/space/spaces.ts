@@ -20,9 +20,7 @@ import {
   type IdentityDomain,
   identityIdOf,
   LocationBlock,
-  onPredictionsChange,
   type PredictedWrite,
-  predictionsFor,
   registerIdentityDomain,
   Space,
 } from '@we/entities';
@@ -147,12 +145,12 @@ export function createSpaceList(deps: SpaceListDeps) {
   const fieldsOf = (edits: readonly Extract<PredictedWrite, { kind: 'edit' }>[]): Partial<Space> =>
     Object.assign({}, ...edits.map((edit) => edit.fields)) as Partial<Space>;
   onCleanup(
-    onPredictionsChange(() => {
+    deps.operations.predictions.onChange(() => {
       setPredictionTurn(untrack(predictionTurn) + 1);
       for (const space of untrack(heldSpaces)) {
         const ds = untrack(() => datasetOfSpace(space));
         if (!ds) continue;
-        for (const prediction of predictionsFor(ds.handle)) {
+        for (const prediction of deps.operations.predictions.for(ds.handle)) {
           if (!prediction.landed || adopted.has(prediction.invocationId)) continue;
           const edits = spaceEdits(prediction.writes, space.id);
           if (!edits.length) continue;
@@ -169,7 +167,8 @@ export function createSpaceList(deps: SpaceListDeps) {
     return heldSpaces().map((space) => {
       const ds = datasetOfSpace(space);
       if (!ds) return space;
-      const pending = predictionsFor(ds.handle)
+      const pending = deps.operations.predictions
+        .for(ds.handle)
         .filter((prediction) => !prediction.landed)
         .flatMap((prediction) => spaceEdits(prediction.writes, space.id));
       return pending.length ? withFields(space, fieldsOf(pending)) : space;

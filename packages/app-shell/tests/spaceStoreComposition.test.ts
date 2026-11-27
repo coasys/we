@@ -12,6 +12,7 @@ import type { SpaceAppearance } from '../src/shared/spaceAppearance';
 import { createSpaceStore, type SpaceStore, type SpaceStoreLends } from '../src/shared/stores/SpaceStore';
 import { createTaskWorkflowLive } from '../src/shared/taskWorkflowLive';
 import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 import { flush, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
@@ -46,6 +47,7 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
       go = setPath;
       const segments = () => path().split('/').filter(Boolean);
       ({ store, lends } = createSpaceStore({
+        operations: testOperations,
         reactivity,
         platform: h.platform,
         toasts: ctx.toasts,

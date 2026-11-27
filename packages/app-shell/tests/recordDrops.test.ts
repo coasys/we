@@ -16,6 +16,7 @@ import { canvasChildren, operationRunner } from '../src/shared/stores/records/co
 import { createRecordDrops, type RecordDrops } from '../src/shared/stores/records/drops';
 import { createRecordKinds } from '../src/shared/stores/records/kinds';
 import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 const CANVAS = 'canvas-1';
 type Row = Record<string, unknown> & { id: string };
@@ -50,7 +51,8 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
             currentDatasetEntities: () => [],
             datasets: () => [],
           } as never,
-          runOp: operationRunner(sessionStore),
+          operations: testOperations,
+          runOp: operationRunner(sessionStore, testOperations),
         };
         const kinds = createRecordKinds({ ...context, shapeStore: { spaceShapes: () => [] } });
         const connections = createRecordConnections({ ...context, kinds });

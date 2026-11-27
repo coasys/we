@@ -4,11 +4,10 @@
  * would fail.
  */
 import {
-  clearPredictions,
+  bindPredictions,
+  createPredictions,
   getEntity,
   onSpeculationMiss,
-  predict,
-  predictionLanded,
   runOperation,
   Signal as SignalProxy,
   speculateOperation,
@@ -35,6 +34,9 @@ const Signal = () => SignalProxy as unknown as Model;
 
 let dataset: unknown;
 let post: Row;
+// The host's predictions, bound to the entity stand-ins as a composition binds its own.
+const predictions = createPredictions();
+let unbind: () => void;
 
 beforeEach(async () => {
   const ports = createInMemoryBackendPorts(
@@ -43,10 +45,20 @@ beforeEach(async () => {
   );
   dataset = (await ports.lifecycle.get('ds-speculate'))!.handle;
   post = await Collection().create(dataset, { kind: 'post' });
+  unbind = bindPredictions(predictions);
 });
-afterEach(() => clearPredictions());
+afterEach(() => {
+  predictions.clear();
+  unbind();
+});
 
-const invocation = (id: string) => ({ dataset, invoker: ME, invocationId: id, invokedAt: '2026-11-26T10:00:00.000Z' });
+const invocation = (id: string) => ({
+  dataset,
+  invoker: ME,
+  invocationId: id,
+  invokedAt: '2026-11-26T10:00:00.000Z',
+  predictions,
+});
 const signalsOn = () => Signal().findAll(dataset, { parent: { id: post.id, relation: 'signals' } });
 
 describe('speculateOperation', () => {
@@ -79,7 +91,7 @@ describe('speculateOperation', () => {
       { node: post.id, signalType: 'like', value: 1 },
       invocation('inv-1'),
     );
-    predict(dataset, 'inv-1', first.writes);
+    predictions.predict(dataset, 'inv-1', first.writes);
     const second = await speculateOperation(
       'core.withdrawSignal',
       { node: post.id, signalType: 'like' },
@@ -93,11 +105,11 @@ describe('speculateOperation', () => {
     await live.first;
     const args = { node: post.id, signalType: 'like', value: 1 };
     const { writes } = await speculateOperation('core.upsertSignal', args, invocation('inv-1'));
-    predict(dataset, 'inv-1', writes);
+    predictions.predict(dataset, 'inv-1', writes);
     const id = (writes[0] as { id: string }).id;
     expect(live.getSnapshot().data?.results.map((r) => r.id)).toEqual([id]);
     await runOperation('core.upsertSignal', args, invocation('inv-1'));
-    predictionLanded('inv-1');
+    predictions.landed('inv-1');
     await new Promise((resolve) => setTimeout(resolve, 0));
     const [row] = live.getSnapshot().data?.results ?? [];
     expect(row).toMatchObject({ id, value: 1, author: ME });

@@ -77,9 +77,13 @@ post and is refused a task state (`notGranted`), and no space template reaches t
 records through it, whatever the operation names. A category never stands for the widest group it
 might reach, which would make a generic delete need settings permission to delete a post.
 
-Every one of those callers reaches the runner through the host's `invokeOperation`
-(`app-shell/src/shared/invokeOperation.ts`), which does three things for every operation, so no
-store wraps one to do them:
+Every one of those callers reaches the runner through the host's operation runner,
+`operations.invoke` (`createOperations` in `app-shell/src/shared/invokeOperation.ts`), which does
+three things for every operation, so no store wraps one to do them. There is one runner per composed
+store graph, made by `composeStores` with its own queues and its own predictions (`createPredictions`
+in `@we/entities`), and the stores, the renderer's bindings and the components that invoke an
+operation are handed it; the entity stand-ins draw the predictions of the composition bound to them.
+So two compositions in one process never wait on, or draw, each other's writes.
 
 - **It draws the writes before they land.** The operation is run once speculatively, over the
   dataset as the host sees it, recording its writes instead of making them; those writes are laid

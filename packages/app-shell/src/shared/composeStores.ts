@@ -22,6 +22,7 @@
  * already unlocked, and again after login().
  */
 import { trace } from '@we/backend-shared';
+import { bindPredictions, createPredictions } from '@we/entities';
 import type { ReactivityPort } from '@we/reactivity';
 
 import type { BackendConnector } from './backend/types';
@@ -29,6 +30,7 @@ import { createAppClocks, provideAppClocks } from './clocks';
 import type { Credential } from './credential';
 import type { FirstScreen } from './firstScreen';
 import { consumeGuestBootTarget } from './guestLink';
+import { createOperations } from './invokeOperation';
 import type { LiveTemplates } from './liveTemplate';
 import type { PlatformPort } from './platform/port';
 import type { PlatformAdapter } from './platform/types';
@@ -83,6 +85,16 @@ export interface StoreCompositionDeps {
 export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
   const { reactivity, platform, backend, toasts, firstScreen, credential, liveTemplates } = deps;
 
+  /*
+    Depends on nothing: this composition's declared-operation runner — its queues, its speculations
+    and the predictions they draw — so nothing pending in one composition is drawn, or waited on, in
+    another. The entity stand-ins draw these predictions for as long as the composition lasts.
+  */
+  const predictions = createPredictions();
+  const operations = createOperations(predictions);
+  reactivity.onCleanup(bindPredictions(predictions));
+  reactivity.onCleanup(() => predictions.clear());
+
   // Depends on nothing: the app's address, read by templates, the space store and presence.
   const routeStore = createRouteStore({ reactivity, platform });
   /*
@@ -122,7 +134,15 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
   // query the entities it registers.
   const shapeStore = createShapeStore({ reactivity, toasts, sessionStore, datasetStore });
   // It offers a form for every model this space carries, which is the list the rail assembles.
-  const recordStore = createRecordStore({ reactivity, toasts, sessionStore, datasetStore, shapeStore, platform });
+  const recordStore = createRecordStore({
+    reactivity,
+    toasts,
+    sessionStore,
+    datasetStore,
+    shapeStore,
+    platform,
+    operations,
+  });
   const profileStore = createProfileStore({
     reactivity,
     firstScreen,
@@ -133,7 +153,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     accountStore,
     platform,
   });
-  const themeStore = createThemeStore({ reactivity, platform, toasts, sessionStore, datasetStore });
+  const themeStore = createThemeStore({ reactivity, platform, toasts, sessionStore, datasetStore, predictions });
   const templateStore = createTemplateStore({
     reactivity,
     platform,
@@ -173,6 +193,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     host: deps.spaceHost,
     sessionStore,
     datasetStore,
+    operations,
     shapeStore,
     recordStore,
     profileStore,
@@ -246,6 +267,7 @@ export function composeStores(deps: StoreCompositionDeps): StoreRegistry {
     editTarget,
     identityStore,
     interpretationStore,
+    operations,
     presenceStore,
     profileStore,
     recordStore,

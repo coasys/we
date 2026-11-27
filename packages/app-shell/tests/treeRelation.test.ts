@@ -312,6 +312,7 @@ const shapeStub = { spaceShapes: () => [], interpretationCandidates: () => [] };
 import { createTestPlatform } from '../src/shared/platform/testPlatform';
 import { createRecordStore, type RecordStore } from '../src/shared/stores/RecordStore';
 import { reactivityPorts } from './support/engines';
+import { testOperations } from './support/operations';
 
 /*
   Run once under each engine (Solid, the test port, Vue). Each store is built in a root of its own
@@ -333,6 +334,7 @@ function mount(): RecordStore {
   disposers.push(
     reactivity.root(() => {
       store = createRecordStore({
+        operations: testOperations,
         reactivity,
         toasts,
         datasetStore: datasetStub as never,

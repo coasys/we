@@ -5,18 +5,19 @@
  *
  * Run once under each reactivity port, against the in-memory backend.
  */
-import { clearPredictions, CollectionBlock, Involvement, predict, predictionsFor, SignalType } from '@we/entities';
+import { CollectionBlock, Involvement, SignalType } from '@we/entities';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createSpaceInvolvements, type SpaceInvolvements } from '../src/shared/stores/space/involvements';
 import { reactivityPorts } from './support/engines';
+import { testPredictions } from './support/operations';
 import { flush, ME, type SpaceHarness, spaceHarness } from './support/spaceParts';
 
 describe.each(reactivityPorts)('under %s', (_name, makePort) => {
   const disposers: (() => void)[] = [];
   afterEach(() => {
     for (const dispose of disposers.splice(0)) dispose();
-    clearPredictions();
+    testPredictions.clear();
   });
 
   interface Built {
@@ -67,10 +68,10 @@ describe.each(reactivityPorts)('under %s', (_name, makePort) => {
     await flush();
     const resetsInA = orderResets.count;
     const handle = (await h.datasets.get('ds-a')).handle;
-    predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
+    testPredictions.predict(handle, 'press', [{ kind: 'delete', entity: 'Signal', id: 's1' }]);
     h.datasets.show('ds-b');
     await flush();
-    expect(predictionsFor(handle)).toEqual([]);
+    expect(testPredictions.for(handle)).toEqual([]);
     expect(orderResets.count).toBeGreaterThan(resetsInA);
     expect(involvements.members.involvementTypesLoaded()).toBe(true);
   });

@@ -1,7 +1,6 @@
 import { agentDataKernel, documentAccess } from '@shared/agentData';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
-import { invokeOperation } from '@shared/invokeOperation';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
 import { withPredictedReads } from '@shared/predictedBindings';
 import { findEntityRows, moduleQueryAsOrm, subscribeEntityRows } from '@shared/recordsRead';
@@ -83,6 +82,8 @@ export default function TemplateProvider() {
   const shapeStore = useStore('shapeStore');
   const recordStore = useStore('recordStore');
   const themeStore = useStore('themeStore');
+  // How this composition runs declared operations, and the predictions every read draws.
+  const operations = useStore('operations');
   const templateStore = useStore('templateStore');
   /** What the editor edits — the app is an edit surface only while it is the target. */
   const editTarget = useStore('editTarget');
@@ -156,7 +157,7 @@ export default function TemplateProvider() {
   /*
     Declared operations from a template: the dataset named the way `record.create` takes one (the
     space on screen when none is), the signed-in agent as invoker, and the bag's judgement of an
-    entity chosen at call time. Run as the host runs every operation (`invokeOperation`): drawn before
+    entity chosen at call time. Run as the host runs every operation (`operations.invoke`): drawn before
     it lands, queued by its `serial` key, and a failure said once, so a press that did nothing never
     does so silently; the error still reaches the template's onError.
   */
@@ -170,7 +171,7 @@ export default function TemplateProvider() {
       if (options?.space && !named) throw new Error('That space is not one you are in.');
       const dataset = named?.handle ?? resolveDataset(options?.dataset) ?? datasetStore.currentDataset()?.handle;
       if (!dataset) throw new Error('Open a space to do this.');
-      return invokeOperation(name, params, {
+      return operations.invoke(name, params, {
         dataset,
         invoker,
         notify: (message) => toastService.error(message),
@@ -334,7 +335,7 @@ export default function TemplateProvider() {
         run: (handle, name, args) => {
           const invoker = sessionStore.me()?.did;
           if (!invoker) throw new Error(`${name}: nobody is signed in`);
-          return invokeOperation(name, args, { dataset: handle, invoker });
+          return operations.invoke(name, args, { dataset: handle, invoker });
         },
         invoker: () => sessionStore.me()?.did,
       }),
@@ -397,7 +398,7 @@ export default function TemplateProvider() {
         if (!dataset) throw new Error(`${name}: no dataset to run it in`);
         const invoker = sessionStore.me()?.did;
         if (!invoker) throw new Error(`${name}: nobody is signed in`);
-        return invokeOperation(name, args, { dataset, invoker });
+        return operations.invoke(name, args, { dataset, invoker });
       },
 
       removeEntity: async (entity, id, options) => {
@@ -551,6 +552,7 @@ export default function TemplateProvider() {
         fetchProfile: profileStore.fetchProfile,
         ephemeral: sessionStore.ephemeralPort,
       }),
+      operations.predictions,
     ),
   );
   /*
