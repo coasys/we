@@ -47,8 +47,15 @@ composition root does.
 Things the port does **not** promise, which a store must not lean on: the order sibling effects run
 in; whether writing an equal value wakes anything; how many times an effect runs for one update; an
 effect's first run happening at any particular point before the end of its update. The test
-implementation differs from Solid on the last on purpose — it runs an effect created outside a batch
-straight away — so a store that only works because Solid deferred something fails its tests there.
+implementation takes the other side of each on purpose, so a store that only works because of what
+Solid happens to do fails its tests there:
+
+- it runs an effect created outside a batch straight away, where Solid defers it;
+- it runs the effects one update wakes in a seeded shuffle, never in the order they were woken
+  (`WE_REACTIVITY_SEED` sets the seed; a test setup calling `reportTestReactivitySeed()` prints it
+  beside a failure, so the order can be had again; `{ order: 'reverse' }` asks for last-woken-first);
+- an equal write wakes what read it, so an effect that settles only because Solid skips equal writes
+  is refused as waking itself.
 
 ## Implementations, and the suite they pass
 

@@ -8,6 +8,17 @@
  * away, where Solid holds it to the end of the root or update it was created in. A store that reads
  * something an effect has not set yet, because under Solid it always had, fails here.
  *
+ * It also leans the other way wherever the port leaves room, so that a store which only works because
+ * of an accident of Solid's fails here:
+ *
+ * - **Sibling effects run out of order.** The effects one update wakes run shuffled, by a seeded
+ *   shuffle (or reversed, if asked), and never in the order they were woken: a shuffle that lands
+ *   on that order is reversed instead. The seed comes from
+ *   `WE_REACTIVITY_SEED` when it is set and is otherwise fixed, so a failure reproduces; the seed is
+ *   `TEST_REACTIVITY_SEED`, and a test setup prints it beside a failure.
+ * - **An equal write wakes what read it.** Whether it does is not promised, so a store that only
+ *   settles because Solid skips an equal write keeps waking itself here, and is refused.
+ *
  * Push-pull, as most signal libraries are: a write marks what depends on it as possibly stale and
  * queues the effects among them, and a memo recomputes only when it is read and one of its sources
  * has actually changed. Versions say which: every source counts its changes, and a computation
@@ -43,13 +54,59 @@ interface MemoNode extends Computation, Source {
 /** More passes than any real update needs: past this, an effect is waking itself. */
 const RUNAWAY = 100_000;
 
+/** The seed used when `WE_REACTIVITY_SEED` is not set: any fixed number, so runs agree. */
+const DEFAULT_SEED = 20261127;
+
+function seedFromEnvironment(): number {
+  const raw = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
+    ?.WE_REACTIVITY_SEED;
+  const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_SEED;
+}
+
+/** The seed every test port shuffles from unless told otherwise. */
+export const TEST_REACTIVITY_SEED = seedFromEnvironment();
+
+let portsMade = 0;
+
+/** How many test ports have been made so far, so a test setup can tell whether a test used one. */
+export const testPortsMade = (): number => portsMade;
+
+export interface TestReactivityOptions {
+  /**
+   * The order sibling effects run in: `shuffle` (the default) by a seeded shuffle, `reverse` last
+   * woken first, `creation` first woken first — the one order a store must not need.
+   */
+  order?: 'shuffle' | 'reverse' | 'creation';
+  /** The shuffle's seed. Defaults to `TEST_REACTIVITY_SEED`. */
+  seed?: number;
+  /** Whether writing a value equal to the one held wakes its readers. Defaults to `true`. */
+  equalWritesWake?: boolean;
+}
+
+/** mulberry32: small, seeded, and the same sequence on every runtime. */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const isMemo = (source: Source): source is MemoNode => (source as Partial<MemoNode>).kind === 'memo';
 
 /**
  * A fresh, independent port. Each call is its own graph, so one test's leftovers cannot reach the
  * next.
  */
-export function createTestReactivity(): ReactivityPort {
+export function createTestReactivity(options: TestReactivityOptions = {}): ReactivityPort {
+  const order = options.order ?? 'shuffle';
+  const equalWritesWake = options.equalWritesWake ?? true;
+  const random = seeded(options.seed ?? TEST_REACTIVITY_SEED);
+  portsMade++;
   let listener: Computation | null = null;
   let owner: Owner | null = null;
   let batchDepth = 0;
@@ -127,18 +184,36 @@ export function createTestReactivity(): ReactivityPort {
     }
   }
 
+  /** The effects one pass runs, in the order this port runs siblings in. */
+  function arrange(effects: Computation[]): Computation[] {
+    if (order === 'reverse') return effects.reverse();
+    if (order === 'shuffle') {
+      const woken = [...effects];
+      for (let i = effects.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [effects[i], effects[j]] = [effects[j], effects[i]];
+      }
+      // A shuffle that lands back on the order they were woken in proves nothing: reverse that one.
+      if (effects.every((effect, i) => effect === woken[i])) effects.reverse();
+    }
+    return effects;
+  }
+
   function flush() {
     if (flushing) return;
     flushing = true;
-    let passes = 0;
+    let runs = 0;
     try {
+      // A pass is the effects woken so far, run as siblings; what they wake is the next pass.
       while (queue.size > 0) {
-        if (++passes > RUNAWAY) throw new Error('An effect keeps waking itself: it writes something it reads.');
-        const [effect] = queue;
-        queue.delete(effect);
-        if (effect.disposed) continue;
-        if (!effect.ran || changed(effect)) run(effect);
-        else effect.stale = false;
+        const pass = arrange([...queue]);
+        queue.clear();
+        for (const effect of pass) {
+          if (effect.disposed) continue;
+          if (++runs > RUNAWAY) throw new Error('An effect keeps waking itself: it writes something it reads.');
+          if (!effect.ran || changed(effect)) run(effect);
+          else effect.stale = false;
+        }
       }
     } finally {
       flushing = false;
@@ -161,7 +236,7 @@ export function createTestReactivity(): ReactivityPort {
         return node.value;
       };
       const write = (next: T) => {
-        if (Object.is(next, node.value)) return;
+        if (Object.is(next, node.value) && !equalWritesWake) return;
         node.value = next;
         node.version++;
         for (const observer of [...node.observers]) markStale(observer);

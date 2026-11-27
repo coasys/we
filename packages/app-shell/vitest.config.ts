@@ -221,6 +221,7 @@ export default defineConfig({
           alias,
           globals: true,
           include: ['tests/**/*.test.{ts,tsx}'],
+          setupFiles: ['./tests/reactivitySeed.ts'],
           exclude: ['**/node_modules/**', ...SOLID_TESTS, ...STORE_TESTS],
         },
       },
@@ -233,6 +234,7 @@ export default defineConfig({
           globals: true,
           environment: 'node',
           include: STORE_TESTS,
+          setupFiles: ['./tests/reactivitySeed.ts'],
           server: { deps: { inline: [/solid-js/] } },
         },
       },
@@ -250,7 +252,7 @@ export default defineConfig({
           environment: 'jsdom',
           // Observers jsdom lacks — see the file. Only this project needs them: it is the one that
           // renders components, and a component that measures itself reaches for them on mount.
-          setupFiles: ['./tests/jsdomGaps.ts'],
+          setupFiles: ['./tests/jsdomGaps.ts', './tests/reactivitySeed.ts'],
           include: SOLID_TESTS,
         },
       },
