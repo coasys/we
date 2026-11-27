@@ -133,6 +133,15 @@ sizes are WE's host's, which another host compares only if it uses the same size
 the style a component's props emit under a theme, and each prop's token and computed value from
 `tokens/<theme>.json`. Recorded in a browser; a host that provides the core catalog runs them.
 
+A token's computed colour, length or number is recorded with **every number in it rounded to four
+decimal places**, half away from zero on the decimal text, trailing zeros trimmed, `-0` written `0`, never in exponent form:
+`oklab(0.97725 0.0000485216 -0.00277974)` is recorded `oklab(0.9773 0 -0.0028)`, and `13.333333px`
+is `13.3333px`. A browser's sixth significant digit differs between versions, and four places is
+still well under any difference a viewer could see. A value kept as text (a shadow, a gradient, a
+font stack) is the theme's own spelling and is not rounded. An implementation rounds its own computed
+values the same way before comparing; where a value sits on a rounding boundary, the last place may
+differ by one.
+
 **host-functions.** `{ id, note, fn, options, result }`: WE's host functions, called with one
 options object. A host that provides WE's host catalog runs them; no other host has to.
 
