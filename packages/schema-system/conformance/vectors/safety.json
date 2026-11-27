@@ -19,7 +19,7 @@
             "type": "we-text",
             "children": [
               {
-                "$": "spaceStore.memberDids ?? 'absent'"
+                "$": "identity.memberDids ?? 'absent'"
               }
             ]
           },
@@ -79,7 +79,7 @@
             "props": {
               "data-case": "go",
               "onClick": {
-                "$invoke": "routeStore.navigate",
+                "$invoke": "navigation.navigate",
                 "args": ["~/"]
               }
             },
@@ -105,7 +105,7 @@
       },
       "grants": ["content"],
       "actions": {
-        "routeStore.navigate": {
+        "navigation.navigate": {
           "returns": null
         },
         "record.create": {
@@ -267,7 +267,7 @@
             "props": {
               "data-case": "go",
               "onClick": {
-                "$invoke": "routeStore.navigate",
+                "$invoke": "navigation.navigate",
                 "args": ["~/"],
                 "onSuccess": [
                   {
@@ -293,7 +293,7 @@
       },
       "grants": ["content"],
       "actions": {
-        "routeStore.navigate": {
+        "navigation.navigate": {
           "returns": "moved"
         }
       },
@@ -362,7 +362,7 @@
               "data-case": "img",
               "onLoad": [
                 {
-                  "$invoke": "routeStore.navigate",
+                  "$invoke": "navigation.navigate",
                   "args": ["~/loaded"]
                 },
                 {
@@ -381,7 +381,7 @@
       },
       "grants": ["content", "navigation"],
       "actions": {
-        "routeStore.navigate": {
+        "navigation.navigate": {
           "returns": null
         },
         "record.create": {
@@ -429,7 +429,7 @@
           ],
           "actions": [
             {
-              "call": "routeStore.navigate",
+              "call": "navigation.navigate",
               "args": ["~/loaded"]
             }
           ],

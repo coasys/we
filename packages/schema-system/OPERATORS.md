@@ -25,7 +25,7 @@ accreted, and it is now a language with a closed grammar and an open function li
 { "$": "<expression>" }
 ```
 
-**References** start from a store (`spaceStore.memberDids`, `modules.notes.open`), `local` (a
+**References** start from a store (`identity.memberDids`, `modules.notes.open`), `local` (a
 `$localState`/`$queries` field), a name bound by `$each`/`$single`/`$agent` (`post.title`; the
 default is `item`), `index`/`prev`, `me`/`currentDataset`, `surface`, or `event`/`arg`/`result`
 inside a handler. A plain string is always a literal. A store's actions are unreachable.

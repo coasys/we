@@ -24,13 +24,17 @@
               "name": "Open"
             }
           ],
-          "mutedDids": [],
           "offeredInvolvementTypes": [
             {
               "id": "it:1",
               "semantic": "assignee"
             }
-          ],
+          ]
+        },
+        "identity": {
+          "mutedDids": []
+        },
+        "spaceSettings": {
           "currentSpace": {
             "id": "sp:1",
             "name": "Coasys"
@@ -63,7 +67,7 @@
             }
           }
         },
-        "routeStore": {
+        "navigation": {
           "params": {
             "view": "canvas",
             "id": "we://a-call",
@@ -3097,11 +3101,11 @@
     {
       "id": "bundle.006",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })",
+      "source": "workflowStore.startable.filter(f, (navigation.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "workflowStore.startable.filter(f, (routeStore.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })"
+      "print": "workflowStore.startable.filter(f, (navigation.params.cardType in f.entities || !count(f.entities)) && !(workflowStore.recordWorkflows[row.id] ?? []).exists(c, c.workflow == f.name)).map(f, { id: f.name, label: f.label })"
     },
     {
       "id": "bundle.007",
@@ -3133,11 +3137,11 @@
     {
       "id": "bundle.010",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? (routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna) : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)",
+      "source": "((navigation.params.view == 'canvas') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna ? (navigation.params.dna == 'all' ? 'group|dna' : contains(navigation.params.dna, '|') ? (startsWith(navigation.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + navigation.params.dna : 'dnakind|' + navigation.params.dna) : navigation.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[navigation.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[navigation.params.cardType] + '|' + navigation.params.card : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' ? 'call|' + navigation.params.id : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? 'person|' + navigation.params.did : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' ? (workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows') : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') : 'channel|' + (navigation.params.channel ? navigation.params.channel : spaceStore.root)",
       "env": "stock",
       "core": false,
       "result": "dna|signal|sig:1",
-      "print": "(routeStore.params.view == 'canvas' || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna ? routeStore.params.dna == 'all' ? 'group|dna' : contains(routeStore.params.dna, '|') ? (startsWith(routeStore.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + routeStore.params.dna : 'dnakind|' + routeStore.params.dna : routeStore.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[routeStore.params.cardType] + '|' + routeStore.params.card : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' ? 'call|' + routeStore.params.id : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? 'person|' + routeStore.params.did : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' ? workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows' : (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') : 'channel|' + (routeStore.params.channel ? routeStore.params.channel : spaceStore.root)"
+      "print": "(navigation.params.view == 'canvas' || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'dna') && navigation.params.dna ? navigation.params.dna == 'all' ? 'group|dna' : contains(navigation.params.dna, '|') ? (startsWith(navigation.params.dna, 'policy|') ? 'dnaprop|' : 'dna|') + navigation.params.dna : 'dnakind|' + navigation.params.dna : navigation.params.card && { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[navigation.params.cardType] ? 'dna|' + { SignalType: 'signal', RelationshipType: 'connection', TaskState: 'state', InvolvementType: 'involvement', Topic: 'topic' }[navigation.params.cardType] + '|' + navigation.params.card : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' ? 'call|' + navigation.params.id : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? 'person|' + navigation.params.did : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' ? workflowStore.open ? 'workflow|' + workflowStore.open.name : 'group|workflows' : (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') in ['channels', 'calls', 'people'] ? 'group|' + (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') : 'channel|' + (navigation.params.channel ? navigation.params.channel : spaceStore.root)"
     },
     {
       "id": "bundle.011",
@@ -3151,11 +3155,11 @@
     {
       "id": "bundle.012",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'model'",
       "env": "stock",
       "core": false,
       "result": true,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'model'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'model'"
     },
     {
       "id": "bundle.013",
@@ -3186,20 +3190,20 @@
     {
       "id": "bundle.014",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "source": "!((((navigation.params.view == 'canvas') && navigation.params.dna) && split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1]) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+      "print": "!(navigation.params.view == 'canvas' && navigation.params.dna && split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1] || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') != '' || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') == '')"
     },
     {
       "id": "bundle.015",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "!((((routeStore.params.view == 'canvas') && routeStore.params.dna) && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') || (((routeStore.params.view == 'canvas') && routeStore.params.dna) && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "source": "!((((navigation.params.view == 'canvas') && navigation.params.dna) && (navigation.params.dna ? navigation.params.dna : 'all') != 'all') || (((navigation.params.view == 'canvas') && navigation.params.dna) && split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1]) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "!(routeStore.params.view == 'canvas' && routeStore.params.dna && (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' || routeStore.params.view == 'canvas' && routeStore.params.dna && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+      "print": "!(navigation.params.view == 'canvas' && navigation.params.dna && (navigation.params.dna ? navigation.params.dna : 'all') != 'all' || navigation.params.view == 'canvas' && navigation.params.dna && split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1] || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') != '' || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') == '')"
     },
     {
       "id": "bundle.016",
@@ -3218,110 +3222,110 @@
     {
       "id": "bundle.017",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
+      "source": "count(local.card) && (count(recordStore.displays[navigation.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "count(local.card) && (count(recordStore.displays[routeStore.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)"
+      "print": "count(local.card) && (count(recordStore.displays[navigation.params.cardType].fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']))) || first(local.card).editorState)"
     },
     {
       "id": "bundle.018",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "source": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+      "print": "local.display.fields.filter(f, f.role == 'detail' && f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
     {
       "id": "bundle.019",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "source": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+      "print": "local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
     {
       "id": "bundle.020",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
+      "source": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo))))))",
       "env": "stock",
       "core": false,
       "result": 0,
-      "print": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo))))))"
+      "print": "count(local.display.fields.filter(f, !(f.kind in ['relation', 'image', 'file', 'json']) && !row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo))))))"
     },
     {
       "id": "bundle.021",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "source": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+      "print": "reactors({ signals: filter(row.signals, { signalTypeId: sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
     {
       "id": "bundle.022",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "source": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+      "print": "reactors({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || replySig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
     {
       "id": "bundle.023",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "source": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+      "print": "reactors({ signals: filter(reply2.signals, { signalTypeId: reply2Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply2Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
     {
       "id": "bundle.024",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "source": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+      "print": "reactors({ signals: filter(reply3.signals, { signalTypeId: reply3Sig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || reply3Sig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
     {
       "id": "bundle.025",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
+      "source": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: spaceStore.mutedDids } }), profiles: profileStore.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
+      "print": "reactors({ signals: filter(focused.signals, { signalTypeId: focusedSig.id, author: { not: identity.mutedDids } }), profiles: identity.profiles, me: me.did }).total == 1 || focusedSig.id in local.expandedReactors || trim(local.reactorSearch) != ''"
     },
     {
       "id": "bundle.026",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
+      "source": "distinct(local.vocabOpen, (navigation.params.dna ? navigation.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0]]] : [], split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1] && split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] != 'policy' ? [split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1]] : [])",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]]] : [], split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] && split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] != 'policy' ? [split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]] : [])"
+      "print": "distinct(local.vocabOpen, (navigation.params.dna ? navigation.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0]]] : [], split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1] && split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] != 'policy' ? [split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1]] : [])"
     },
     {
       "id": "bundle.027",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
+      "source": "(split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'policy' ? split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0]].find(d, d.id == (split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
       "env": "stock",
       "core": false,
       "result": "Definition",
-      "print": "(split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy' ? split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0]].find(d, d.id == split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[1]).name) ?? 'Definition'"
+      "print": "(split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'policy' ? split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0]].find(d, d.id == split(navigation.params.dna ? navigation.params.dna : 'all', '|')[1]).name) ?? 'Definition'"
     },
     {
       "id": "bundle.028",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "!((!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) != '') || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((routeStore.params.view == 'canvas') && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '')) == ''))",
+      "source": "!((!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) != '') || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open)) || (!((navigation.params.view == 'canvas') && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : ({ calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '')) == ''))",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "!(!(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') != '' || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') || ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(routeStore.params.view == 'canvas' && routeStore.params.dna) && (((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'record' && routeStore.params.kind == 'call' ? routeStore.params.id : '') ? 'calls' : ((routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'person' ? routeStore.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[routeStore.templateSegments[0] ? routeStore.templateSegments[0] : ''] ?? '') == '')"
+      "print": "!(!(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') != '' || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') || ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') || (navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'workflows' && workflowStore.open) || !(navigation.params.view == 'canvas' && navigation.params.dna) && (((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'record' && navigation.params.kind == 'call' ? navigation.params.id : '') ? 'calls' : ((navigation.templateSegments[0] ? navigation.templateSegments[0] : '') == 'person' ? navigation.params.did : '') ? 'people' : { calls: 'calls', people: 'people', channels: 'channels', workflows: 'workflows' }[navigation.templateSegments[0] ? navigation.templateSegments[0] : ''] ?? '') == '')"
     },
     {
       "id": "bundle.029",
@@ -3425,65 +3429,65 @@
     {
       "id": "bundle.030",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'topic'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.topics) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'topic'",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.topics) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'topic'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.topics) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'topic'"
     },
     {
       "id": "bundle.031",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'signal'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.signalTypes) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'signal'",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'signal'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.signalTypes) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'signal'"
     },
     {
       "id": "bundle.032",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'state'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'state'",
       "env": "stock",
       "core": false,
       "result": true,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'state'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.taskStates) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'state'"
     },
     {
       "id": "bundle.033",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'connection'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'connection'",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'connection'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(local.relationshipTypes) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'connection'"
     },
     {
       "id": "bundle.034",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'policy'",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'policy'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.policy.sentences) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'policy'"
     },
     {
       "id": "bundle.035",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0) || split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'involvement'",
+      "source": "((navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0) || split((navigation.params.dna ? navigation.params.dna : 'all'), '|')[0] == 'involvement'",
       "env": "stock",
       "core": false,
       "result": false,
-      "print": "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0 || split(routeStore.params.dna ? routeStore.params.dna : 'all', '|')[0] == 'involvement'"
+      "print": "(navigation.params.dna ? navigation.params.dna : 'all') == 'all' && count(spaceStore.involvementTypes) > 0 || split(navigation.params.dna ? navigation.params.dna : 'all', '|')[0] == 'involvement'"
     },
     {
       "id": "bundle.036",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
+      "source": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
+      "print": "local.display.fields.filter(f, f.kind != 'relation' && row[f.name] && (f.name != 'assignee' || !count(spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)))))"
     },
     {
       "id": "bundle.037",
@@ -3524,11 +3528,11 @@
     {
       "id": "bundle.041",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))",
+      "source": "spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "spaceStore.offeredInvolvementTypes.filter(k, routeStore.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
+      "print": "spaceStore.offeredInvolvementTypes.filter(k, navigation.params.cardType in k.appliesTo || !count(k.appliesTo)).filter(k, count(involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id].people.filter(p, p.kind == k.slug)))"
     },
     {
       "id": "bundle.042",
@@ -3542,13 +3546,13 @@
     {
       "id": "bundle.043",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
+      "source": "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid })).name",
       "env": "stock",
       "core": false,
       "result": {
         "$undefined": true
       },
-      "print": "find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).mine ? find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).name + ' (you)' : find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid }).name"
+      "print": "find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid }).mine ? find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid }).name + ' (you)' : find(voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }), { did: voiceDid }).name"
     },
     {
       "id": "bundle.044",
@@ -3582,29 +3586,29 @@
     {
       "id": "bundle.047",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })",
+      "source": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: identity.mutedDids })",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: spaceStore.mutedDids })"
+      "print": "signalTypesByUse({ of: row.id, types: filter(local.signalTypes, { retired: { not: true } }), signals: row.signals, muted: identity.mutedDids })"
     },
     {
       "id": "bundle.048",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })",
+      "source": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), type: replySig })",
       "env": "stock",
       "core": false,
       "result": 0,
-      "print": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: spaceStore.mutedDids } }), type: replySig })"
+      "print": "signalTally({ signals: filter(reply.signals, { signalTypeId: replySig.id, author: { not: identity.mutedDids } }), type: replySig })"
     },
     {
       "id": "bundle.049",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })",
+      "source": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }) })",
       "env": "stock",
       "core": false,
       "result": "did:a=50",
-      "print": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })"
+      "print": "voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: identity.profiles, me: me.did }) })"
     },
     {
       "id": "bundle.050",
@@ -3618,11 +3622,11 @@
     {
       "id": "bundle.051",
       "note": "an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env",
-      "source": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })",
+      "source": "involvementMenu({ node: row.id, entity: navigation.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: identity.profiles, me: me.did, said: row.assignee })",
       "env": "stock",
       "core": false,
       "result": [],
-      "print": "involvementMenu({ node: row.id, entity: routeStore.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })"
+      "print": "involvementMenu({ node: row.id, entity: navigation.params.cardType, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: identity.profiles, me: me.did, said: row.assignee })"
     },
     {
       "id": "bundle.052",

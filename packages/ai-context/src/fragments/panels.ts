@@ -193,18 +193,18 @@ ordinary panel: it can be docked, folded, stacked, saved in a layout — and its
   outlet sets that lane's default. An app template sets its window edges' default with
   \`meta.edges\`: \`{ "right": { "frame": "flush" } }\` makes the panels pushing the content aside on
   the right part of the app, as a sidebar is; it does not reach a card floating over the content.
-- **A panel can be opened more than once.** \`shellStore.openPanel('inspector', { recordId: … })\`
+- **A panel can be opened more than once.** \`viewState.openPanel('inspector', { recordId: … })\`
   opens another instance of a panel the template supplies, with its own inputs — an inspector per
   record, side by side or as tabs. Inside the node, \`panel.inputs\` is what it was opened with and
   \`panel.id\` which instance it is (for the declared panel itself the inputs are empty). It starts
   where the declaration says, so with an \`order\` it joins that place as a tab; opening the same
-  inputs again brings that instance forward, and its close is \`shellStore.closePanel(panel.id)\`.
+  inputs again brings that instance forward, and its close is \`viewState.closePanel(panel.id)\`.
 - **Two sections with the same explicit \`order\` share one place, as tabs** — as panels in an edge's
   seat do. One shows, the one most recently opened or chosen, with a strip naming them all; \`tab\`
   orders the strip, else the order they are declared in. An inspector and the space's settings taking
   turns in one column is the case.
 - **A section the template draws can start closed.** \`open: false\` on a \`node\` entry leaves it closed
-  until \`shellStore.openTemplatePanel(id)\` opens it — an inspector, opened when something is chosen
+  until \`viewState.openTemplatePanel(id)\` opens it — an inspector, opened when something is chosen
   and closed again with \`closeTemplatePanel\`. With \`foldEmpty\`, its lane folds while it is closed.
 - **Reordering within a lane is arrangement, not editing.** Dragging one section above another
   rewrites \`order\` on the reader's placement; nothing touches the tree, and "Reset layout" restores
@@ -232,7 +232,7 @@ wants them arranged differently places the pieces rather than copying them:
 over a call somebody opened from a link rather than the one being recorded:
 
 \`\`\`json
-{ "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "routeStore.params.call" } } }
+{ "type": "$part", "props": { "id": "transcribe.transcriptFeed", "subject": { "$": "navigation.params.call" } } }
 \`\`\`
 
 Some parts draw one thing out of a list — a call tile draws one participant, a poll card one poll —

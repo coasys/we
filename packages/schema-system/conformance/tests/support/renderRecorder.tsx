@@ -39,6 +39,7 @@ import {
   buildTemplateBag,
   CAPABILITY_GROUPS,
   type CapabilityGroup,
+  profileHome,
 } from '../../../../app-shell/src/shared/registries/templateSurface.ts';
 import { type PassScope, RenderSchema } from '../../../frameworks/solid/src/index.ts';
 import type { RouteSchema, SchemaNode } from '../../../shared/src/index.ts';
@@ -220,8 +221,15 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
   // The actions, each recording its calls.
   let calls: RenderExpect['actions'] = [];
   const gatedStores: Record<string, Record<string, unknown>> = {};
+  /*
+    A case drawn through the host's bag hands it a profile member under the store that holds it, as
+    the host's own stores do, and the bag puts it under its namespace; one drawn without a bag reads
+    the namespace as written.
+  */
+  const throughBag = (path: string) => Boolean(c.grants) || Boolean(c.gated?.includes(path));
   for (const [path, outcome] of Object.entries(c.actions ?? {})) {
-    const [store, method] = path.split('.');
+    const [written, method] = path.split('.');
+    const store = (throughBag(path) && profileHome(written, method)) || written;
     const fn = (...args: unknown[]) => {
       calls.push({ call: path, args: args.map(encodeValue) });
       if ('reject' in outcome) return Promise.reject(new Error(outcome.reject));
@@ -251,15 +259,15 @@ export async function runRenderCase(c: RenderCase): Promise<RenderExpect[]> {
     },
   };
 
-  // The routes, under a memory router; `routeStore.params` is the router's.
+  // The routes, under a memory router; `navigation.params` is the router's.
   const template = resolveParts(structuredClone(c.template)) as SchemaNode;
   const { routes, ...root } = template as SchemaNode & { routes?: RouteSchema[] };
   let navigate: ((to: string) => void) | undefined;
   let routeParams: () => Record<string, string> = () => ({});
-  // A case drawn through the host's bag may hand the router actions of its own; its params stay the router's.
-  const routerActions = c.grants ? (stores.routeStore as Record<string, unknown> | undefined) : undefined;
-  stores.routeStore = {
-    ...routerActions,
+  // The router's params beside any actions the case hands it — under its store when a bag renames it.
+  const router = c.grants ? 'routeStore' : 'navigation';
+  stores[router] = {
+    ...(stores[router] as Record<string, unknown> | undefined),
     get params() {
       return routeParams();
     },

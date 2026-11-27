@@ -77,7 +77,7 @@ export const VALIDATE_CASES: ValidateCase[] = [
   C(
     'validate.structure.handler-in-children',
     'a handler in children is invalid',
-    template([{ $invoke: 'routeStore.navigate', args: ['~/'] }]),
+    template([{ $invoke: 'navigation.navigate', args: ['~/'] }]),
   ),
   C(
     'validate.structure.defs-not-root',

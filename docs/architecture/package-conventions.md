@@ -334,7 +334,8 @@ the first, and the shape the rest copy:
   (`createSpaceRoles(deps)`, `createShellDocks(deps)`, `createRecordCanvas(deps)`) returning the store
   members it owns, typed as a `Pick` of the store's interface, and what later parts read; the
   composition builds them in order and spreads their members, so a template still reads one
-  namespace (`spaceStore.x`) and the template surface and profiles do not change when a job moves.
+  namespace (`spaceStore.x`, or a profile's, `spaceSettings.x`) and the template surface and profiles
+  do not change when a job moves.
   A part takes the earlier parts it reads as narrow `Pick`s, never a closure over a later one. Where
   two parts genuinely need each other, the earlier one exposes a `provide*` call (a `hostSlot`, whose
   `need` throws naming what is missing) and the composition makes it right after building the later

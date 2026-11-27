@@ -39,6 +39,7 @@ import { createLaneFrames } from '../../src/shared/registries/homeLanes';
 import { moduleRegistry } from '../../src/shared/registries/moduleRegistry';
 import { createPanelInstances } from '../../src/shared/registries/panelInstances';
 import { setTemplatePanels } from '../../src/shared/registries/templatePanels';
+import { buildTemplateBag, SPACE_TIER } from '../../src/shared/registries/templateSurface';
 import { provideSeed } from '../../src/shared/seedRegistry';
 import { signalOrder } from '../../src/shared/signalOrder';
 import { createTaskWorkflowLive } from '../../src/shared/taskWorkflowLive';
@@ -268,66 +269,66 @@ const PROFILE_KEYS = [
  */
 function projected(path: string, value: unknown): unknown {
   switch (path) {
-    case 'presenceStore.peers':
-    case 'presenceStore.online':
-    case 'presenceStore.onlineHere':
+    case 'presence.peers':
+    case 'presence.online':
+    case 'presence.onlineHere':
       return (value as Record<string, unknown>[]).map((peer) => ({
         ...pick(peer, PEER_KEYS),
         focus: { path: (peer.focus as { path?: string } | undefined)?.path ?? '' },
       }));
-    case 'clockStore.clocks':
+    case 'viewState.clocks':
       return Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([name, view]) => [name, pick(view, CLOCK_KEYS)]),
       );
-    case 'spaceStore.viewNav':
+    case 'navigation.viewNav':
       // A section's label and icon are the host's names for it; what the profile fixes is which
       // sections there are, in which order, and where each goes.
       return (value as Record<string, unknown>[]).map((row) => pick(row, ['id', 'segment', 'path']));
-    case 'spaceStore.currentSpace': {
+    case 'spaceSettings.currentSpace': {
       if (!value) return null;
       const space = pick(value, SPACE_KEYS);
       // What the host stored for an image is its own encoding of it; that one is set is the fact.
       for (const field of ['avatar', 'coverImage']) if (space[field]) space[field] = IMAGE;
       return space;
     }
-    case 'spaceStore.mySpaces':
+    case 'navigation.mySpaces':
       return (value as Record<string, unknown>[])
         .map((space) => pick(space, ['id', 'name']))
         .sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1));
-    case 'profileStore.ownProfile':
+    case 'identity.ownProfile':
       return value ? pick(value, PROFILE_KEYS) : null;
-    case 'profileStore.profiles':
+    case 'identity.profiles':
       return (value as Record<string, unknown>[])
         .map((profile) => pick(profile, PROFILE_KEYS))
         .sort((a, b) => (String(a.did) < String(b.did) ? -1 : 1));
-    case 'spaceStore.myModuleSettings':
+    case 'spaceSettings.myModuleSettings':
       return (value as Record<string, unknown>[]).map((row) =>
         pick(row, ['group', 'key', 'type', 'value', 'source', 'set', 'locked', 'lockedBy']),
       );
-    case 'templateStore.switcherGroups':
+    case 'appearance.switcherGroups':
       // A group's label is the host's words for it; its rows the world did not make are the host's own.
       return (value as { items: Record<string, unknown>[] }[]).map((group) => ({
         items: group.items
           .filter((item) => named(switched(item.id)) !== HOST)
           .map((item) => ({ ...pick(item, ['name', 'icon', 'editable']), id: switched(item.id) })),
       }));
-    case 'templateStore.currentSwitcherId':
+    case 'appearance.currentSwitcherId':
       return named(switched(value));
-    case 'themeStore.currentThemeId':
+    case 'appearance.currentThemeId':
       return named(value);
-    case 'templateStore.templateOverrideOptions':
-    case 'themeStore.themeOverrideOptions':
+    case 'appearance.templateOverrideOptions':
+    case 'appearance.themeOverrideOptions':
       // The first two options are the host's: following the space and following one's own default.
       return (value as Record<string, unknown>[])
         .filter((option) => named(option.value) !== HOST)
         .map((option) => pick(option, ['label', 'value']));
-    case 'themeStore.builtInThemes':
-    case 'themeStore.installedThemes':
-    case 'themeStore.spaceThemes':
+    case 'appearance.builtInThemes':
+    case 'appearance.installedThemes':
+    case 'appearance.spaceThemes':
       return (value as Record<string, unknown>[])
         .filter((theme) => named(theme.id) !== HOST)
         .map((theme) => pick(theme, ['id', 'name']));
-    case 'shellStore.panelInstances':
+    case 'viewState.panelInstances':
       // An instance's id is the host's to mint; a case that needs one reads it (see `decodeArg`).
       return (value as Record<string, unknown>[]).map((instance) => pick(instance, ['panel', 'inputs', 'title']));
     default:
@@ -345,7 +346,7 @@ function decodeArg(host: Host, value: unknown): unknown {
     const [member, ...path] = (value as { $read: [string, ...(string | number)[]] }).$read;
     return path.reduce<unknown>(
       (at, key) => (at as Record<string | number, unknown> | undefined)?.[key],
-      host.untrack(() => read(host.stores, member)),
+      host.untrack(() => read(host.bag, member)),
     );
   }
   if (value && typeof value === 'object' && '$file' in value) {
@@ -359,15 +360,21 @@ function decodeArg(host: Host, value: unknown): unknown {
 
 type Stores = Record<string, Record<string, unknown>>;
 
-/** The composed stores, and the engine they run on. */
+/**
+ * The composed stores, the bag a space template renders against over them, and the engine they run
+ * on. Every profile member is read and called through the bag, under the name a template writes, so
+ * a vector pins what a template sees — a member the bag left out, or put under another name, fails
+ * as surely as one that behaves wrongly.
+ */
 interface Host {
   stores: Stores;
+  bag: Stores;
   untrack: ReactivityPort['untrack'];
 }
 
-function read(stores: Stores, path: string): unknown {
-  const [store, member] = path.split('.');
-  const value = stores[store]?.[member];
+function read(bag: Stores, path: string): unknown {
+  const [namespace, member] = path.split('.');
+  const value = bag[namespace]?.[member];
   if (value === undefined) throw new Error(`${path} is not a member this host provides`);
   return typeof value === 'function' ? (value as () => unknown)() : value;
 }
@@ -377,7 +384,7 @@ const snapshot = (host: Host, path: string): string =>
     plain(
       projected(
         path,
-        host.untrack(() => read(host.stores, path)),
+        host.untrack(() => read(host.bag, path)),
       ),
     ),
   );
@@ -519,6 +526,7 @@ function compose(
 ): { host: Host; dispose: () => void } {
   const { reactivity, platform } = env;
   let stores!: Stores;
+  let bag!: Stores;
   let stopListening = () => {};
   const disposeRoot = reactivity.root(() => {
     const backend = { initialize: () => Promise.resolve({ client: {}, ports }) } as never;
@@ -535,9 +543,11 @@ function compose(
     stopListening = platform.listen('popstate', report);
     report();
     stores = registry as unknown as Stores;
+    // No gesture gate: a case's action stands for the press that would have called it.
+    bag = buildTemplateBag(registry as unknown as Stores, { grants: SPACE_TIER }) as Stores;
   });
   return {
-    host: { stores, untrack: reactivity.untrack },
+    host: { stores, bag, untrack: reactivity.untrack },
     dispose: () => {
       stopListening();
       disposeRoot();
@@ -547,8 +557,8 @@ function compose(
 
 async function call(host: Host, { action, args }: ProfileCall): Promise<void> {
   if (!ACTION_SET.has(action)) throw new Error(`${action} is not an action of any profile`);
-  const [store, member] = action.split('.');
-  const fn = host.stores[store]?.[member];
+  const [namespace, member] = action.split('.');
+  const fn = host.bag[namespace]?.[member];
   if (typeof fn !== 'function') throw new Error(`${action} is not an action this host provides`);
   await (fn as (...a: unknown[]) => unknown)(...args.map((arg) => decodeArg(host, arg)));
 }
@@ -559,13 +569,11 @@ async function call(host: Host, { action, args }: ProfileCall): Promise<void> {
  * would read the roster at whatever moment the first beat happened to land.
  */
 async function peersArrived(host: Host, input: ProfileCaseInput): Promise<void> {
-  const here = (read(host.stores, 'spaceStore.spacePath') as string).split('/')[2];
+  const here = (read(host.bag, 'navigation.spacePath') as string).split('/')[2];
   const expected = (input.world.peers ?? []).filter((peer) => peer.focus.space === here).map((peer) => peer.did);
   const started = Date.now();
   while (Date.now() - started < 4000) {
-    const seen = (host.untrack(() => read(host.stores, 'presenceStore.peers')) as { did: string }[]).map(
-      (peer) => peer.did,
-    );
+    const seen = (host.untrack(() => read(host.bag, 'presence.peers')) as { did: string }[]).map((peer) => peer.did);
     if (expected.every((did) => seen.includes(did))) return;
     await tick(50);
   }
@@ -625,7 +633,7 @@ export async function runProfileCase(input: ProfileCaseInput, kit: ProfileHostKi
       for (const path of STATE_MEMBERS) {
         let last = snapshot(host, path);
         env.reactivity.effect(() => {
-          const now = JSON.stringify(plain(projected(path, read(host.stores, path))));
+          const now = JSON.stringify(plain(projected(path, read(host.bag, path))));
           if (now !== last) changed.add(path);
           last = now;
         });

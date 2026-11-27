@@ -116,7 +116,7 @@ exactly the operator-language pressure named under the falsifiers. The full poli
   input/      field · lineComposer
 
 @we/template-kit        (templates/kit)       — names WE's stores; re-exports all of the above
-  lists/      channelRail · collectionFeed · commentThread · mediaGrid   (spaceStore.mutedDids)
+  lists/      channelRail · collectionFeed · commentThread · mediaGrid   (identity.mutedDids)
   we/         agentByline · peopleRow · adminSection · installedList · marketplaceList
 ```
 
@@ -127,7 +127,7 @@ call module hand-copied `peopleTooltip` rather than take that edge, which is dup
 packaging rather than by design.
 
 That split is not decoration. **The WE tier's real dependency is the host's store surface, and
-`package.json` cannot express it** — a fragment naming `spaceStore.mutedDids` resolves to nothing on a
+`package.json` cannot express it** — a fragment naming `identity.mutedDids` resolves to nothing on a
 deployment without that store, silently. Keeping the tiers apart is how a consumer can tell which
 fragments will work for them, and it is the reason the store contract (below) matters.
 
@@ -140,7 +140,7 @@ rendering when that fragment changes. Hence a devDependency in a module, never a
 **Enforcement is a test, because it cannot be a manifest.** `kit.test.ts` reads every file in
 `@we/schema-kit`, comments stripped, and fails on a WE store name or `'$agent'`. The expansion walk beside
 it only covers fragments a fixture exists for — and the four collection fragments above, which all
-filter on `spaceStore.mutedDids`, were moved into the portable package during this split and caught
+filter on `identity.mutedDids`, were moved into the portable package during this split and caught
 by nothing until the source check existed.
 
 ### The ambient-scope contract

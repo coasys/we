@@ -109,7 +109,7 @@ change of the window's size, for a lane easing into or out of its strip, or for 
 for less motion.
 
 **Instances.** A panel an interface supplies can be opened more than once —
-`shellStore.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
+`viewState.openPanel(panel, inputs)` — each instance a panel of its own (`template:<panel>~<key>`),
 declared as the panel it is of, so it opens where that one would (a tab beside it, where the
 declaration names an `order`). Its node reads its inputs as `panel.inputs`. The same inputs open the
 same instance; instances are kept per agent and per interface. See `panelInstances.ts`.
@@ -297,7 +297,7 @@ gone with it (`carryPastTheGrip`).
 **A lane can be a sidebar.** `resize: 'end'` (or `'start'`) on the outlet puts a drag handle on that
 edge alone; the width somebody leaves it at is kept per agent and per template
 (`shellStore.laneWidth`), clamped to the outlet's `minWidth` and `maxWidth`, and its `width` is where
-it starts. `shellStore.toggleLane(name)` folds a lane away and back — its sections stay mounted and
+it starts. `layout.toggleLane(name)` folds a lane away and back — its sections stay mounted and
 hidden — and a space template may call it, since folding its own sidebar is its own view state. Both
 are part of a saved layout and undone by "Reset layout". Below `NARROW_VIEWPORT_PX` a kept width
 means nothing, so the lane takes its parent's width and the handle goes; how the page stacks there is

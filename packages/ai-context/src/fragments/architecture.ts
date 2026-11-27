@@ -218,7 +218,7 @@ chosen by the agent, never applied as a space's template, and only an app may pl
 marks where its sections go with \`{ path: '$views' }\` and the host expands that per space, from
 \`Space.enabledViews\` (the community's list, and its order) minus \`SpacePreference.hiddenViews\`
 (each agent's own). Do **not** hardcode a space's sections as routes, and do not write a nav strip
-from a literal array — read \`spaceStore.viewNav\`, which is the same resolved list the routes are
+from a literal array — read \`navigation.viewNav\`, which is the same resolved list the routes are
 built from. See docs/architecture/views.md.
 
 **Before adding a relation between two models, read docs/architecture/relations.md.** A connection

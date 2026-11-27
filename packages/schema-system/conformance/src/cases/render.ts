@@ -421,13 +421,13 @@ export const RENDER_CASES: RenderCase[] = [
   ),
   C(
     'render.routes.params',
-    "a route's `:param` is read through routeStore.params",
+    "a route's `:param` is read through navigation.params",
     {
       type: 'Column',
       children: [{ type: '$routes' }],
       routes: [
         { path: '/', type: 'Column', children: [text('list')] },
-        { path: '/post/:postId', type: 'Column', children: [text({ $: "'post ' + routeStore.params.postId" })] },
+        { path: '/post/:postId', type: 'Column', children: [text({ $: "'post ' + navigation.params.postId" })] },
       ],
     },
     { start: '/post/42', steps: [{ op: 'navigate', to: '/post/7' }] },
@@ -445,7 +445,7 @@ export const RENDER_CASES: RenderCase[] = [
           children: [text('board chrome'), { type: '$routes' }],
           routes: [
             { path: '/', type: 'Row', children: [text('columns')] },
-            { path: '/card/:cardId', type: 'Row', children: [text({ $: "'card ' + routeStore.params.cardId" })] },
+            { path: '/card/:cardId', type: 'Row', children: [text({ $: "'card ' + navigation.params.cardId" })] },
           ],
         },
       ],

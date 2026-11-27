@@ -46,10 +46,17 @@ descriptions in it are part of each member's meaning.
 
 A member has a **name**, a **kind**, a **capability group**, and either a **shape** or **arguments**.
 
-- **The name** is what a template writes: `<namespace>.<member>`, read as `{ "$": "routeStore.params.id" }`
-  or called as `{ "$invoke": "routeStore.navigate" }`. The namespace is a fixed part of the name and
-  says nothing about how the host holds the value; another host provides `routeStore.params` by that
-  name whatever it keeps behind it.
+- **The name** is what a template writes: the profile's **namespace** and the member, read as
+  `{ "$": "navigation.params.id" }` or called as `{ "$invoke": "navigation.navigate" }`. Each profile
+  has one namespace, the camelCase of its id where they differ: `navigation`, `viewState`, `layout`,
+  `presence`, `identity`, `spaceSettings`, `appearance`. A member's name is unique across the
+  profiles. The namespace says nothing about how the host holds the value; another host provides
+  `navigation.params` by that name whatever it keeps behind it.
+- A host MUST provide a profile member under its namespace and MUST NOT provide it under any other
+  name. A template that names one some other way — under a store its first host happened to keep it
+  in — names nothing, and a validator SHOULD say which name to write. So the first segment of a name
+  tells a reader whether it travels: a profile namespace does; any other host name is
+  [host-only](#we-host-only).
 - **State** is read in expressions. Its **shape** is written as a type expression (`string`,
   `string[]`, `Record<string, string>`, `{ id: string, … }[]`); a capitalised name such as `Space` is
   the record of that entity, with the fields its model declares. A host MUST answer a read with a
@@ -70,7 +77,7 @@ cause (for an action).
 
 - When an event happens, a host MUST make every member it names read its new value before anything
   drawn from them is drawn again. A template never sees half an event: after a navigation,
-  `routeStore.currentPath` and `routeStore.params` describe the same address.
+  `navigation.currentPath` and `navigation.params` describe the same address.
 - A state member changes only through an event that names it. An action changes only state its
   events name, and the events of other profiles its description names (showing a section changes
   the sections `navigation` lists).
@@ -117,7 +124,8 @@ A host shows it provides a profile by passing that profile's vectors ([Conforman
 ## WE-host-only
 
 A member a host offers templates outside every profile is **host-only**: it works on that host and
-nowhere else. WE's own host has many: its account and runtime settings, its library and editor, and
+nowhere else. WE writes each under the store that holds it (`spaceStore.policy`), so a store name
+in a template always means a host-only member. WE's own host has many: its account and runtime settings, its library and editor, and
 view models and writes that predate the neutral surfaces.
 
 A validator SHOULD report every host-only member a template uses, without refusing the template, and
@@ -195,7 +203,7 @@ Each case:
 Two kinds of argument are not plain JSON. `{ "$file": { "name", "type", "base64" } }` is a file the
 person chose, its bytes base64-encoded. `{ "$read": [member, key, …] }` is a value read from the
 host's own state at the moment of the call, following the keys into it: an argument only the host can
-know, such as the id it gave a panel instance it opened (`["shellStore.panelInstances", 0, "id"]`).
+know, such as the id it gave a panel instance it opened (`["viewState.panelInstances", 0, "id"]`).
 
 ### Running a vector
 
@@ -229,7 +237,7 @@ more:
 
 - An object's keys compare as a set. A key with no value is left out, and so are the backend's own
   write stamps (`createdAt`, `updatedAt`), which each backend makes its own.
-- A record or row compares by the fields its member's shape names: `presenceStore.*` rows by `did`,
+- A record or row compares by the fields its member's shape names: `presence.*` rows by `did`,
   `name`, `avatar`, `tone`, `activities`, `availability` and `focus.path`; a clock by everything its
   shape names but `atLabel`; a `viewNav` row by `id`, `segment` and `path`; `currentSpace` by `id`,
   `name`, `description`, `avatar`, `coverImage`, `defaultTemplateId`, `defaultThemeId`,
@@ -272,7 +280,7 @@ least one.
 
 - **The host's own templates and themes**, nor which of them is on screen when the world chose none
   (above).
-- **The sections outside a space.** No case reads `spaceStore.viewNav` with no space on screen.
+- **The sections outside a space.** No case reads `navigation.viewNav` with no space on screen.
 - **Going back from the first entry.** Back at the start of the session's history does nothing;
   the vectors start each case inside a history that already has entries.
 - **How a playing clock moves**, since time does not pass in a case.

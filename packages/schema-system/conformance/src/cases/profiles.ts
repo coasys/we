@@ -130,32 +130,28 @@ const COMMUNITY: ProfileWorld = {
   ],
 };
 
-const ADDRESS = ['routeStore.currentPath', 'routeStore.segments', 'routeStore.templateSegments', 'routeStore.params'];
-const SPACE = ['spaceStore.spacePath', 'spaceStore.viewNav'];
-const PANELS = ['shellStore.panelInstances'];
-const LAYOUT = ['shellStore.layoutDirty', 'shellStore.collapsedLanes'];
-const ROSTER = ['presenceStore.available', 'presenceStore.peers', 'presenceStore.online', 'presenceStore.onlineHere'];
+const ADDRESS = ['navigation.currentPath', 'navigation.segments', 'navigation.templateSegments', 'navigation.params'];
+const SPACE = ['navigation.spacePath', 'navigation.viewNav'];
+const PANELS = ['viewState.panelInstances'];
+const LAYOUT = ['layout.layoutDirty', 'layout.collapsedLanes'];
+const ROSTER = ['presence.available', 'presence.peers', 'presence.online', 'presence.onlineHere'];
 const SETTINGS = [
-  'spaceStore.currentSpace',
-  'spaceStore.canAdministerCurrentSpace',
-  'spaceStore.spaceDefaultTemplateId',
-  'spaceStore.spaceDefaultThemeId',
+  'spaceSettings.currentSpace',
+  'spaceSettings.canAdministerCurrentSpace',
+  'spaceSettings.spaceDefaultTemplateId',
+  'spaceSettings.spaceDefaultThemeId',
 ];
-const CLOCKS = ['clockStore.clocks'];
-const TEMPLATES = [
-  'templateStore.switcherGroups',
-  'templateStore.currentSwitcherId',
-  'templateStore.templateOverrideOptions',
-];
+const CLOCKS = ['viewState.clocks'];
+const TEMPLATES = ['appearance.switcherGroups', 'appearance.currentSwitcherId', 'appearance.templateOverrideOptions'];
 const THEMES = [
-  'themeStore.builtInThemes',
-  'themeStore.installedThemes',
-  'themeStore.spaceThemes',
-  'themeStore.themeOverrideOptions',
-  'themeStore.currentThemeId',
-  'themeStore.spaceThemePinned',
+  'appearance.builtInThemes',
+  'appearance.installedThemes',
+  'appearance.spaceThemes',
+  'appearance.themeOverrideOptions',
+  'appearance.currentThemeId',
+  'appearance.spaceThemePinned',
 ];
-const RANGE = { action: 'clockStore.configure', args: ['main', { from: 0, to: 60000 }] };
+const RANGE = { action: 'viewState.configure', args: ['main', { from: 0, to: 60000 }] };
 
 /** The worlds the cases start from, by name. */
 export const PROFILE_WORLDS: Record<string, ProfileWorld> = {
@@ -174,14 +170,14 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'navigation',
     note: 'The address read apart: its path, segments, the segments below the space, its query.',
     address: '/space/garden/cards?sort=new&id=urn:example:post',
-    observe: [...ADDRESS, ...SPACE, 'spaceStore.mySpaces'],
+    observe: [...ADDRESS, ...SPACE, 'navigation.mySpaces'],
   }),
   c({
     id: 'navigation.read-outside-a-space',
     profile: 'navigation',
     note: 'Outside a space the template segments are the whole path, and there is no space path.',
     address: '/settings',
-    observe: [...ADDRESS, 'spaceStore.spacePath'],
+    observe: [...ADDRESS, 'navigation.spacePath'],
   }),
   c({
     id: 'navigation.navigate-from-root',
@@ -189,7 +185,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: '"~/x" goes from the template’s root, the space it is mounted under.',
     address: '/space/garden/about',
     observe: ADDRESS,
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['~/cards'],
   }),
   c({
@@ -198,7 +194,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A record id goes in the query, written so it reads back exactly.',
     address: '/space/garden/about',
     observe: ADDRESS,
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['~/record/CollectionBlock', { query: { id: 'urn:example:post' } }],
   }),
   c({
@@ -207,7 +203,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: '"?q" is the page on screen with that query.',
     address: '/space/garden/cards',
     observe: ADDRESS,
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['?sort=old'],
   }),
   c({
@@ -216,7 +212,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: '".." from the root route stays at the root: a template cannot climb out of its space that way.',
     address: '/space/garden/cards',
     observe: ADDRESS,
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['..'],
   }),
   c({
@@ -225,7 +221,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'An absolute path leaves the template.',
     address: '/space/garden/cards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['/settings'],
   }),
   c({
@@ -234,7 +230,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Going to the page on screen changes nothing and says nothing.',
     address: '/space/garden/cards',
     observe: ADDRESS,
-    action: 'routeStore.navigate',
+    action: 'navigation.navigate',
     args: ['/space/garden/cards'],
   }),
   c({
@@ -243,7 +239,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'One query parameter written; the path is unchanged.',
     address: '/space/garden/cards?sort=new',
     observe: ADDRESS,
-    action: 'routeStore.setParam',
+    action: 'navigation.setParam',
     args: ['type', 'posts'],
   }),
   c({
@@ -252,7 +248,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'null removes the parameter.',
     address: '/space/garden/cards?sort=new&type=posts',
     observe: ADDRESS,
-    action: 'routeStore.setParam',
+    action: 'navigation.setParam',
     args: ['sort', null],
   }),
   c({
@@ -261,7 +257,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Writing the value a parameter already holds changes nothing and says nothing.',
     address: '/space/garden/cards?sort=new',
     observe: ADDRESS,
-    action: 'routeStore.setParam',
+    action: 'navigation.setParam',
     args: ['sort', 'new'],
   }),
   c({
@@ -269,9 +265,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'navigation',
     note: 'With push, the write is a history entry of its own: Back returns to the query before it.',
     address: '/space/garden/cards?type=posts',
-    setup: [{ action: 'routeStore.setParam', args: ['type', 'events', { push: true }] }],
+    setup: [{ action: 'navigation.setParam', args: ['type', 'events', { push: true }] }],
     observe: ADDRESS,
-    action: 'routeStore.back',
+    action: 'navigation.back',
     args: [],
   }),
   c({
@@ -281,7 +277,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden/cards',
     history: ['/space/garden/about?tab=people'],
     observe: [...ADDRESS, ...SPACE],
-    action: 'routeStore.back',
+    action: 'navigation.back',
     args: [],
   }),
   c({
@@ -290,7 +286,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Going to another space carries the section across when that space has it, and its sections follow.',
     address: '/space/garden/cards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'spaceStore.navigateToSpace',
+    action: 'navigation.navigateToSpace',
     args: ['orchard'],
   }),
   c({
@@ -299,7 +295,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A section the destination does not have is not carried: the space itself is opened.',
     address: '/space/garden/boards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'spaceStore.navigateToSpace',
+    action: 'navigation.navigateToSpace',
     args: ['orchard'],
   }),
   c({
@@ -308,7 +304,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A named section is always taken.',
     address: '/space/garden/cards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'spaceStore.navigateToSpace',
+    action: 'navigation.navigateToSpace',
     args: ['orchard', 'about'],
   }),
   c({
@@ -317,7 +313,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A record reference opens its space, and the record’s own page in it.',
     address: '/space/garden/cards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'spaceStore.openRecordRef',
+    action: 'navigation.openRecordRef',
     args: ['we:n:orchard/CollectionBlock/urn:example:post'],
   }),
   c({
@@ -326,7 +322,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A reference naming only a space opens the space.',
     address: '/space/garden/cards',
     observe: [...ADDRESS, ...SPACE],
-    action: 'spaceStore.openRecordRef',
+    action: 'navigation.openRecordRef',
     args: ['we:n:orchard'],
   }),
   c({
@@ -335,7 +331,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A reference naming a person goes nowhere.',
     address: '/space/garden/cards',
     observe: ADDRESS,
-    action: 'spaceStore.openRecordRef',
+    action: 'navigation.openRecordRef',
     args: [`we:agent/${ADA}`],
   }),
 
@@ -353,7 +349,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Closing a declared panel opens or closes no instance; the arrangement it changes is layout’s.',
     address: '/space/garden',
     observe: PANELS,
-    action: 'shellStore.closeTemplatePanel',
+    action: 'viewState.closeTemplatePanel',
     args: ['inspector'],
   }),
   c({
@@ -361,9 +357,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'Putting a closed declared panel back.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.closeTemplatePanel', args: ['inspector'] }],
+    setup: [{ action: 'viewState.closeTemplatePanel', args: ['inspector'] }],
     observe: PANELS,
-    action: 'shellStore.openTemplatePanel',
+    action: 'viewState.openTemplatePanel',
     args: ['inspector'],
   }),
   c({
@@ -372,7 +368,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Another instance of a declared panel, with what it was opened with.',
     address: '/space/garden',
     observe: PANELS,
-    action: 'shellStore.openPanel',
+    action: 'viewState.openPanel',
     args: ['inspector', { record: 'urn:example:post' }, { title: 'The post' }],
   }),
   c({
@@ -380,9 +376,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'The same inputs again bring the open instance forward rather than opening a second.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.openPanel', args: ['inspector', { record: 'urn:example:post' }] }],
+    setup: [{ action: 'viewState.openPanel', args: ['inspector', { record: 'urn:example:post' }] }],
     observe: PANELS,
-    action: 'shellStore.openPanel',
+    action: 'viewState.openPanel',
     args: ['inspector', { record: 'urn:example:post' }],
   }),
   c({
@@ -390,10 +386,10 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'Closing an instance by the id the host gave it, read from panelInstances.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.openPanel', args: ['inspector', { record: 'urn:example:post' }] }],
+    setup: [{ action: 'viewState.openPanel', args: ['inspector', { record: 'urn:example:post' }] }],
     observe: PANELS,
-    action: 'shellStore.closePanel',
-    args: [{ $read: ['shellStore.panelInstances', 0, 'id'] }],
+    action: 'viewState.closePanel',
+    args: [{ $read: ['viewState.panelInstances', 0, 'id'] }],
   }),
   c({
     id: 'view-state.scroll-to-id',
@@ -401,7 +397,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Scrolling is not state: nothing a profile reads changes.',
     address: '/space/garden',
     observe: PANELS,
-    action: 'shellStore.scrollToId',
+    action: 'viewState.scrollToId',
     args: ['urn:example:post'],
   }),
 
@@ -419,7 +415,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Closing a declared panel is a change to the arrangement the template declared.',
     address: '/space/garden',
     observe: LAYOUT,
-    action: 'shellStore.closeTemplatePanel',
+    action: 'viewState.closeTemplatePanel',
     args: ['inspector'],
   }),
   c({
@@ -427,9 +423,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'layout',
     note: 'Putting the only closed panel back leaves the arrangement as the template declared it.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.closeTemplatePanel', args: ['inspector'] }],
+    setup: [{ action: 'viewState.closeTemplatePanel', args: ['inspector'] }],
     observe: LAYOUT,
-    action: 'shellStore.openTemplatePanel',
+    action: 'viewState.openTemplatePanel',
     args: ['inspector'],
   }),
   c({
@@ -438,7 +434,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Folding a lane away.',
     address: '/space/garden',
     observe: LAYOUT,
-    action: 'shellStore.toggleLane',
+    action: 'layout.toggleLane',
     args: ['side'],
   }),
   c({
@@ -446,9 +442,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'layout',
     note: 'Toggling a folded lane brings it back.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.toggleLane', args: ['side'] }],
+    setup: [{ action: 'layout.toggleLane', args: ['side'] }],
     observe: LAYOUT,
-    action: 'shellStore.toggleLane',
+    action: 'layout.toggleLane',
     args: ['side'],
   }),
   c({
@@ -457,7 +453,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Folding a lane as said rather than flipped.',
     address: '/space/garden',
     observe: LAYOUT,
-    action: 'shellStore.setLaneCollapsed',
+    action: 'layout.setLaneCollapsed',
     args: ['side', true],
   }),
   c({
@@ -465,9 +461,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'layout',
     note: 'Saying a folded lane is folded changes nothing.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.setLaneCollapsed', args: ['side', true] }],
+    setup: [{ action: 'layout.setLaneCollapsed', args: ['side', true] }],
     observe: LAYOUT,
-    action: 'shellStore.setLaneCollapsed',
+    action: 'layout.setLaneCollapsed',
     args: ['side', true],
   }),
   c({
@@ -475,9 +471,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'layout',
     note: 'Unfolding a folded lane, as said.',
     address: '/space/garden',
-    setup: [{ action: 'shellStore.setLaneCollapsed', args: ['side', true] }],
+    setup: [{ action: 'layout.setLaneCollapsed', args: ['side', true] }],
     observe: LAYOUT,
-    action: 'shellStore.setLaneCollapsed',
+    action: 'layout.setLaneCollapsed',
     args: ['side', false],
   }),
   c({
@@ -486,11 +482,11 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Reset puts back every declared panel and unfolds every lane.',
     address: '/space/garden',
     setup: [
-      { action: 'shellStore.closeTemplatePanel', args: ['inspector'] },
-      { action: 'shellStore.setLaneCollapsed', args: ['side', true] },
+      { action: 'viewState.closeTemplatePanel', args: ['inspector'] },
+      { action: 'layout.setLaneCollapsed', args: ['side', true] },
     ],
     observe: [...LAYOUT, ...PANELS],
-    action: 'shellStore.resetTemplateLayout',
+    action: 'layout.resetTemplateLayout',
     args: [],
   }),
   c({
@@ -499,7 +495,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Resetting what nobody moved changes nothing.',
     address: '/space/garden',
     observe: LAYOUT,
-    action: 'shellStore.resetTemplateLayout',
+    action: 'layout.resetTemplateLayout',
     args: [],
   }),
 
@@ -510,7 +506,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'A clock named for the first time, given a range.',
     address: '/space/garden',
     observe: CLOCKS,
-    action: 'clockStore.configure',
+    action: 'viewState.configure',
     args: ['main', { from: '2026-01-01T00:00:00.000Z', to: '2026-01-02T00:00:00.000Z', speed: 2 }],
   }),
   c({
@@ -520,7 +516,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.play',
+    action: 'viewState.play',
     args: ['main'],
   }),
   c({
@@ -528,9 +524,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'With no range to cross, play does nothing.',
     address: '/space/garden',
-    setup: [{ action: 'clockStore.setLoop', args: ['main', false] }],
+    setup: [{ action: 'viewState.setLoop', args: ['main', false] }],
     observe: CLOCKS,
-    action: 'clockStore.play',
+    action: 'viewState.play',
     args: ['main'],
   }),
   c({
@@ -538,9 +534,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'Pausing stops the clock where it is.',
     address: '/space/garden',
-    setup: [RANGE, { action: 'clockStore.play', args: ['main'] }],
+    setup: [RANGE, { action: 'viewState.play', args: ['main'] }],
     observe: CLOCKS,
-    action: 'clockStore.pause',
+    action: 'viewState.pause',
     args: ['main'],
   }),
   c({
@@ -550,7 +546,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.toggle',
+    action: 'viewState.toggle',
     args: ['main'],
   }),
   c({
@@ -560,7 +556,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.seek',
+    action: 'viewState.seek',
     args: ['main', 90000],
   }),
   c({
@@ -568,9 +564,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'A moment may be given as an ISO date.',
     address: '/space/garden',
-    setup: [{ action: 'clockStore.configure', args: ['main', { from: '2026-01-01', to: '2026-12-31' }] }],
+    setup: [{ action: 'viewState.configure', args: ['main', { from: '2026-01-01', to: '2026-12-31' }] }],
     observe: CLOCKS,
-    action: 'clockStore.seek',
+    action: 'viewState.seek',
     args: ['main', '2026-06-01T12:00:00.000Z'],
   }),
   c({
@@ -578,9 +574,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'view-state',
     note: 'null shows everything again.',
     address: '/space/garden',
-    setup: [RANGE, { action: 'clockStore.seek', args: ['main', 30000] }],
+    setup: [RANGE, { action: 'viewState.seek', args: ['main', 30000] }],
     observe: CLOCKS,
-    action: 'clockStore.seek',
+    action: 'viewState.seek',
     args: ['main', null],
   }),
   c({
@@ -590,7 +586,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.seekProgress',
+    action: 'viewState.seekProgress',
     args: ['main', 0.25],
   }),
   c({
@@ -600,7 +596,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.setSpeed',
+    action: 'viewState.setSpeed',
     args: ['main', 4],
   }),
   c({
@@ -610,7 +606,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     address: '/space/garden',
     setup: [RANGE],
     observe: CLOCKS,
-    action: 'clockStore.setLoop',
+    action: 'viewState.setLoop',
     args: ['main', true],
   }),
 
@@ -635,7 +631,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'The status said with this person’s presence.',
     address: '/space/garden/cards',
     observe: ROSTER,
-    action: 'presenceStore.setAvailability',
+    action: 'presence.setAvailability',
     args: ['away'],
   }),
   c({
@@ -644,7 +640,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Invisible stops saying anything.',
     address: '/space/garden/cards',
     observe: ROSTER,
-    action: 'presenceStore.setAvailability',
+    action: 'presence.setAvailability',
     args: ['invisible'],
   }),
   c({
@@ -653,7 +649,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Saying what this person is doing.',
     address: '/space/garden/cards',
     observe: ROSTER,
-    action: 'presenceStore.setActivity',
+    action: 'presence.setActivity',
     args: [{ type: 'editing', id: 'urn:example:post' }],
   }),
   c({
@@ -661,11 +657,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'presence',
     note: 'An activity of the same type and id replaces the one said before.',
     address: '/space/garden/cards',
-    setup: [
-      { action: 'presenceStore.setActivity', args: [{ type: 'editing', id: 'urn:example:post', field: 'title' }] },
-    ],
+    setup: [{ action: 'presence.setActivity', args: [{ type: 'editing', id: 'urn:example:post', field: 'title' }] }],
     observe: ROSTER,
-    action: 'presenceStore.setActivity',
+    action: 'presence.setActivity',
     args: [{ type: 'editing', id: 'urn:example:post', field: 'body' }],
   }),
   c({
@@ -674,11 +668,11 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Withdrawing one activity by type and id.',
     address: '/space/garden/cards',
     setup: [
-      { action: 'presenceStore.setActivity', args: [{ type: 'editing', id: 'urn:example:post' }] },
-      { action: 'presenceStore.setActivity', args: [{ type: 'editing', id: 'urn:example:note' }] },
+      { action: 'presence.setActivity', args: [{ type: 'editing', id: 'urn:example:post' }] },
+      { action: 'presence.setActivity', args: [{ type: 'editing', id: 'urn:example:note' }] },
     ],
     observe: ROSTER,
-    action: 'presenceStore.clearActivity',
+    action: 'presence.clearActivity',
     args: ['editing', 'urn:example:post'],
   }),
   c({
@@ -687,11 +681,11 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'With no id, every activity of that type.',
     address: '/space/garden/cards',
     setup: [
-      { action: 'presenceStore.setActivity', args: [{ type: 'editing', id: 'urn:example:post' }] },
-      { action: 'presenceStore.setActivity', args: [{ type: 'editing', id: 'urn:example:note' }] },
+      { action: 'presence.setActivity', args: [{ type: 'editing', id: 'urn:example:post' }] },
+      { action: 'presence.setActivity', args: [{ type: 'editing', id: 'urn:example:note' }] },
     ],
     observe: ROSTER,
-    action: 'presenceStore.clearActivity',
+    action: 'presence.clearActivity',
     args: ['editing'],
   }),
   c({
@@ -699,8 +693,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'presence',
     note: 'Moving to another page changes who shares it.',
     address: '/space/garden/cards',
-    observe: ['presenceStore.onlineHere'],
-    action: 'routeStore.navigate',
+    observe: ['presence.onlineHere'],
+    action: 'navigation.navigate',
     args: ['~/about'],
   }),
 
@@ -711,12 +705,12 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Profiles as people published them, who is in the space, whom this person muted and what they read.',
     address: '/space/garden',
     observe: [
-      'profileStore.ownProfile',
-      'profileStore.ownProfileLoaded',
-      'profileStore.profiles',
-      'spaceStore.memberDids',
-      'spaceStore.mutedDids',
-      'spaceStore.readMarkers',
+      'identity.ownProfile',
+      'identity.ownProfileLoaded',
+      'identity.profiles',
+      'identity.memberDids',
+      'identity.mutedDids',
+      'identity.readMarkers',
     ],
   }),
   c({
@@ -725,15 +719,15 @@ export const PROFILE_CASES: ProfileCase[] = [
     note: 'Somebody who published no name is still named: the name is assembled and never empty.',
     world: 'unnamed',
     address: '/space/notebook',
-    observe: ['profileStore.ownProfile', 'profileStore.ownProfileLoaded', 'spaceStore.memberDids'],
+    observe: ['identity.ownProfile', 'identity.ownProfileLoaded', 'identity.memberDids'],
   }),
   c({
     id: 'identity.members-follow-the-space',
     profile: 'identity',
     note: 'Another space on screen, other members; the person’s own mutes and read markers go with them.',
     address: '/space/garden',
-    observe: ['spaceStore.memberDids', 'spaceStore.mutedDids', 'spaceStore.readMarkers'],
-    action: 'spaceStore.navigateToSpace',
+    observe: ['identity.memberDids', 'identity.mutedDids', 'identity.readMarkers'],
+    action: 'navigation.navigateToSpace',
     args: ['orchard'],
   }),
 
@@ -743,7 +737,7 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'The space on screen, whether this person may change it, its defaults and this person’s settings.',
     address: '/space/garden',
-    observe: [...SETTINGS, 'spaceStore.myModuleSettings'],
+    observe: [...SETTINGS, 'spaceSettings.myModuleSettings'],
   }),
   c({
     id: 'space-settings.read-outside-a-space',
@@ -757,8 +751,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'Making a chosen picture into what the record stores changes nothing: writing it is the space’s operation.',
     address: '/space/garden',
-    observe: ['spaceStore.currentSpace'],
-    action: 'spaceStore.prepareSpaceImage',
+    observe: ['spaceSettings.currentSpace'],
+    action: 'spaceSettings.prepareSpaceImage',
     args: [
       'avatar',
       {
@@ -775,8 +769,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'Hiding a section for this person only: the space keeps it, navigation drops it.',
     address: '/space/garden',
-    observe: ['spaceStore.currentSpace', 'spaceStore.viewNav'],
-    action: 'spaceStore.setViewVisible',
+    observe: ['spaceSettings.currentSpace', 'navigation.viewNav'],
+    action: 'spaceSettings.setViewVisible',
     args: ['cards', false],
   }),
   c({
@@ -784,9 +778,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'Showing a hidden section again.',
     address: '/space/garden',
-    setup: [{ action: 'spaceStore.setViewVisible', args: ['cards', false] }],
-    observe: ['spaceStore.viewNav'],
-    action: 'spaceStore.setViewVisible',
+    setup: [{ action: 'spaceSettings.setViewVisible', args: ['cards', false] }],
+    observe: ['navigation.viewNav'],
+    action: 'spaceSettings.setViewVisible',
     args: ['cards', true],
   }),
   c({
@@ -794,8 +788,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'Hiding a module for this person only.',
     address: '/space/garden',
-    observe: ['spaceStore.currentSpace', 'spaceStore.myModuleSettings'],
-    action: 'spaceStore.setModuleVisible',
+    observe: ['spaceSettings.currentSpace', 'spaceSettings.myModuleSettings'],
+    action: 'spaceSettings.setModuleVisible',
     args: ['reader', false],
   }),
   c({
@@ -803,8 +797,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'This person’s own value decides over the space’s.',
     address: '/space/garden',
-    observe: ['spaceStore.myModuleSettings'],
-    action: 'spaceStore.setMyModuleSetting',
+    observe: ['spaceSettings.myModuleSettings'],
+    action: 'spaceSettings.setMyModuleSetting',
     args: ['reader', 'density', 'tight'],
   }),
   c({
@@ -812,9 +806,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'space-settings',
     note: 'With no value, this person’s own is withdrawn and the next level decides again.',
     address: '/space/garden',
-    setup: [{ action: 'spaceStore.setMyModuleSetting', args: ['reader', 'compact', true] }],
-    observe: ['spaceStore.myModuleSettings'],
-    action: 'spaceStore.setMyModuleSetting',
+    setup: [{ action: 'spaceSettings.setMyModuleSetting', args: ['reader', 'compact', true] }],
+    observe: ['spaceSettings.myModuleSettings'],
+    action: 'spaceSettings.setMyModuleSetting',
     args: ['reader', 'compact'],
   }),
 
@@ -838,17 +832,17 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'Switching to the space’s own template, by its switcher row.',
     address: '/space/garden',
-    observe: ['templateStore.currentSwitcherId'],
-    action: 'templateStore.switchTemplate',
-    args: [{ $read: ['templateStore.switcherGroups', 0, 'items', 0, 'id'] }],
+    observe: ['appearance.currentSwitcherId'],
+    action: 'appearance.switchTemplate',
+    args: [{ $read: ['appearance.switcherGroups', 0, 'items', 0, 'id'] }],
   }),
   c({
     id: 'appearance.set-template-override',
     profile: 'appearance',
     note: 'Choosing to see the space’s own template here, over a default that names none, as this person alone.',
     address: '/space/garden',
-    observe: ['templateStore.currentSwitcherId', 'templateStore.templateOverrideOptions'],
-    action: 'templateStore.setSpaceTemplateOverride',
+    observe: ['appearance.currentSwitcherId', 'appearance.templateOverrideOptions'],
+    action: 'appearance.setSpaceTemplateOverride',
     args: ['plots'],
   }),
   c({
@@ -856,17 +850,17 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'The second option follows this person’s own default template here — the host’s, in this world — under which the space’s own theme shows.',
     address: '/space/garden',
-    observe: ['templateStore.currentSwitcherId', 'themeStore.currentThemeId'],
-    action: 'templateStore.setSpaceTemplateOverride',
-    args: [{ $read: ['templateStore.templateOverrideOptions', 1, 'value'] }],
+    observe: ['appearance.currentSwitcherId', 'appearance.currentThemeId'],
+    action: 'appearance.setSpaceTemplateOverride',
+    args: [{ $read: ['appearance.templateOverrideOptions', 1, 'value'] }],
   }),
   c({
     id: 'appearance.apply-theme',
     profile: 'appearance',
     note: 'A theme of this person’s own, chosen for the space on screen: shown, and a choice there is to undo.',
     address: '/space/garden',
-    observe: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
-    action: 'themeStore.applyTheme',
+    observe: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
+    action: 'appearance.applyTheme',
     args: [DUSK],
   }),
   c({
@@ -874,8 +868,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'Under a template that brings its own theme, choosing the space’s is a choice of its own, and one there is to undo.',
     address: '/space/garden',
-    observe: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
-    action: 'themeStore.applyTheme',
+    observe: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
+    action: 'appearance.applyTheme',
     args: [MOSS],
   }),
   c({
@@ -883,9 +877,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'Withdrawing the choice shows what showed before it.',
     address: '/space/garden',
-    setup: [{ action: 'themeStore.applyTheme', args: [DUSK] }],
-    observe: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
-    action: 'themeStore.clearSpaceThemePin',
+    setup: [{ action: 'appearance.applyTheme', args: [DUSK] }],
+    observe: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
+    action: 'appearance.clearSpaceThemePin',
     args: [],
   }),
   c({
@@ -893,8 +887,8 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'Choosing a theme for the space by its override option, as a picker does.',
     address: '/space/garden',
-    observe: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
-    action: 'themeStore.setSpaceThemeOverride',
+    observe: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
+    action: 'appearance.setSpaceThemeOverride',
     args: [DUSK],
   }),
   c({
@@ -902,9 +896,9 @@ export const PROFILE_CASES: ProfileCase[] = [
     profile: 'appearance',
     note: 'The second option follows this person’s own default theme here, whatever the space’s is: the host’s, in this world.',
     address: '/space/garden',
-    observe: ['themeStore.currentThemeId', 'themeStore.spaceThemePinned'],
-    action: 'themeStore.setSpaceThemeOverride',
-    args: [{ $read: ['themeStore.themeOverrideOptions', 1, 'value'] }],
+    observe: ['appearance.currentThemeId', 'appearance.spaceThemePinned'],
+    action: 'appearance.setSpaceThemeOverride',
+    args: [{ $read: ['appearance.themeOverrideOptions', 1, 'value'] }],
   }),
 ];
 

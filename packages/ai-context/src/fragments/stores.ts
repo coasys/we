@@ -5,7 +5,7 @@
  * `storeEntries` is the structured source of truth; the `stores` text is derived from it.
  */
 
-import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, PROFILE_MEMBERS } from '@we/schema-shared';
+import { CAPABILITY_PROFILES, HOST_ONLY_EQUIVALENTS, NEUTRAL_NAMESPACES, PROFILE_NAMESPACES } from '@we/schema-shared';
 
 import type { StoreEntry } from '../types.js';
 
@@ -847,6 +847,165 @@ export const storeEntries: StoreEntry[] = [
  * {@link actionsNeedingArgs}.
  */
 const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+  navigation: {
+    state: {
+      currentPath: 'string (the current route path)',
+      segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
+      templateSegments:
+        'string[] — the segments BELOW the space prefix, which is a template\'s own coordinate space. A template mounted at /space/<id> reading its own screens wants this: at /space/abc/canvas/notes it is ["canvas", "notes"], whatever prefix the host mounts the template under. Not for a record\'s id, which is a query value: navigation.params.id. Reading `segments` by index pins a template to the host\'s prefix and breaks when it moves.',
+      params:
+        "Record<string, string> — the URL's query parameters, reactive; read one as { $: 'navigation.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
+      mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
+      spacePath:
+        "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
+      viewNav:
+        '{ id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree',
+    },
+    actions: {
+      navigate:
+        "(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'navigation.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as navigation.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly",
+      setParam:
+        '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
+      back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
+      navigateToSpace:
+        '(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together',
+      openRecordRef:
+        "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
+    },
+  },
+  viewState: {
+    state: {
+      panelInstances:
+        '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
+      clocks:
+        "Record<name, { at, atIso, atLabel, ticks, from, fromIso, to, toIso, progress, playing, speed, loop, canPlay }> — the app's clocks by name. A clock is the moment something shows and the playback that moves it: a globe given `clock: \"events\"` follows the clock of that name, and every control reading or driving \"events\" moves it too. `at` is milliseconds since 1970, or null until somebody plays or seeks, which shows everything; `from`/`to` are the range, which the globe works out from its layers' data; `atIso` is ready for a we-timestamp, and `atLabel` is the moment already written as precisely as the range calls for (with the time across a day, the month alone across decades); `ticks` are marks along the range, { at, fraction, label }, on round moments at the scale it calls for — hours, days, months or years — to place at `fraction` of a scrubber's width; `progress` is 0–1 through the range, for a we-slider (max 1, step 0.001). Published about five times a second while playing. A name nothing has used yet reads as undefined, so guard a control on it: { $: 'viewState.clocks.events.canPlay' }",
+    },
+    actions: {
+      openTemplatePanel:
+        '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
+      closeTemplatePanel:
+        "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
+      openPanel:
+        '(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads',
+      closePanel:
+        '(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it',
+      scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
+      play: '(name: string): plays from the start, or from where it was paused; does nothing with no range to cross',
+      pause: '(name: string): stops where it is',
+      toggle: '(name: string): plays or pauses — what one button calls',
+      seek: '(name: string, at: number | string | null): shows that moment, in milliseconds or an ISO date; null shows everything again',
+      seekProgress:
+        "(name: string, fraction: number): shows the moment that far through the range, 0 to 1 — what a we-slider's onChange passes as event.detail",
+      setSpeed: '(name: string, speed: number): plays faster or slower — 2 is twice as fast. Default 1',
+      setLoop: '(name: string, loop: boolean): starts again at the end rather than stopping',
+      configure:
+        '(name: string, settings: { from?, to?, speed?, duration?, rate?, loop? }): several at once. `duration` is how long the whole range takes to play at speed 1 — seconds or a span ("45s", "2m"), default 30s; `rate` instead runs at a fixed pace (1 is real time, for a countdown); from/to fix the range rather than taking it from the data',
+    },
+  },
+  layout: {
+    state: {
+      layoutDirty:
+        'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
+      collapsedLanes:
+        'string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "\'tree\' in layout.collapsedLanes" }',
+    },
+    actions: {
+      toggleLane:
+        "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
+      setLaneCollapsed:
+        '(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped',
+      resetTemplateLayout:
+        '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
+    },
+  },
+  presence: {
+    state: {
+      available:
+        'boolean — a presence transport exists. False in a personal space, where there is nobody to be present to; gate presence UI on it rather than rendering an empty roster',
+      peers:
+        'PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness',
+      online: 'PresentAgent[] — peers in the current space who are not offline — the "who is here" list',
+      onlineHere: "PresentAgent[] — peers at this agent's exact route path, for a per-page presence strip",
+    },
+    actions: {
+      setAvailability:
+        "(availability: 'available' | 'busy' | 'away' | 'invisible'): sets the status published with your presence. 'invisible' stops publishing entirely rather than asking peers not to look",
+      setActivity:
+        '(activity: Activity): adds or replaces a published activity — a call, an edit, a work claim — keyed by its type and id',
+      clearActivity:
+        '(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type',
+    },
+  },
+  identity: {
+    state: {
+      ownProfile:
+        'AgentProfileSummary | undefined — reactive accessor for the current user\'s own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name',
+      ownProfileLoaded:
+        'boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded',
+      profiles:
+        'AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
+      memberDids:
+        'string[] — DIDs of all members in the current space (includes own DID). Their profiles are identity.profiles: the people of the space, drawn, are identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m) — bind it once where a list needs it, and look one person up by DID with find(identity.profiles, { did })',
+      mutedDids:
+        "string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in identity.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else",
+      readMarkers:
+        '{ nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(identity.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row',
+    },
+    actions: {},
+  },
+  spaceSettings: {
+    state: {
+      currentSpace:
+        "Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, taskWorkflowRule, autoInterpret, plus id/author/createdAt). taskWorkflowRule is '' | 'next' | 'next-and-back': how a task may move between the space's states — anywhere, on to the next only, or on and back one; anything but '' runs the states as a workflow, so say so beside a picker of states. autoInterpret says whether a NEW collection here starts out interpreted (a conversation keeps its own answer, autoInterpretFor). The records the space names as its landmarks (its canvas, its board) are SpaceLandmark records { name, node }: bind $queries { spaceLandmarks: { entity: 'SpaceLandmark' } } and read find(local.spaceLandmarks, { name: 'board' }).node, gating a 'no board yet' on local.spaceLandmarksLoaded",
+      canAdministerCurrentSpace:
+        'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
+      spaceDefaultTemplateId: "string — the current space's default template ID (empty string when no space is active)",
+      spaceDefaultThemeId:
+        "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
+      myModuleSettings:
+        'SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels',
+    },
+    actions: {
+      prepareSpaceImage:
+        '(field: "avatar" | "coverImage", image: File): makes a picture the person chose into what the space record stores for that field, sized for it, and answers with it. Stores nothing: write it with ops.core.setSpaceImage in onSuccess, reading { $: "result" } — spaceImageChange(field) from @we/template-kit is the whole handler for an EditableImage',
+      setViewVisible:
+        '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
+      setModuleVisible:
+        '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare \u2014 wrapping it in another token would evaluate at render time and send a constant',
+      setMyModuleSetting:
+        '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
+    },
+  },
+  appearance: {
+    state: {
+      switcherGroups:
+        'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
+      currentSwitcherId:
+        "string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect",
+      templateOverrideOptions:
+        '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
+      builtInThemes: 'array of ThemeData objects — built-in registry themes (origin: "built-in", always available)',
+      installedThemes:
+        'array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")',
+      spaceThemes: 'array of ThemeData objects — themes stored in the current space (origin: "custom")',
+      themeOverrideOptions:
+        '{ label, value }[] — options for the per-space theme override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every theme. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
+      currentThemeId: 'string — id of the currently active theme',
+      spaceThemePinned:
+        'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
+    },
+    actions: {
+      switchTemplate: '(newTemplateId: string): switches to another template',
+      setSpaceTemplateOverride:
+        "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all",
+      applyTheme:
+        '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see',
+      clearSpaceThemePin:
+        '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
+      setSpaceThemeOverride:
+        "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Three values: 'space-default' follows the space, 'agent-default' follows your own global default, or a concrete theme id pins that one. Private, and applied immediately when that space is the one on screen",
+    },
+  },
   chatStore: {
     state: {
       sheet:
@@ -1167,12 +1326,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   profileStore: {
     state: {
-      profiles:
-        'AgentProfileSummary[] — cache of all fetched profiles (did, firstName, lastName, handle, bio, avatar, coverImage, location)',
-      ownProfile:
-        'AgentProfileSummary | undefined — reactive accessor for the current user\'s own profile (derived from the cache). Note `name` is assembled for display and falls back to "Anonymous", so it is never empty — test firstName/lastName/handle to ask whether somebody has a name',
-      ownProfileLoaded:
-        'boolean — the own-profile fetch has answered. An empty profile is otherwise indistinguishable from an unfetched one, so anything asking "has this person set a name?" reads every boot frame as "no". Same reason as datasetStore.datasetsLoaded',
       needsName:
         'boolean — this agent has no name of any kind and has not waved the question away this session, as a settled fact (false until the app is ready and the profile fetch has answered). What the name prompt mounts on; also the right gate for any "finish setting up" nudge of your own',
       pendingAvatar:
@@ -1198,41 +1351,21 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   routeStore: {
     state: {
-      currentPath: 'string (the current route path)',
       page: 'string — the page on screen: currentPath, plus ?id=… when the query names the record the page is about. /board?id=a and /board?id=b are two pages where currentPath says only "a board". What presence compares to tell who is on the same page',
-      segments: 'string[] (currentPath split by "/", e.g. ["/foo/bar"] → ["foo", "bar"])',
-      templateSegments:
-        'string[] — the segments BELOW the space prefix, which is a template\'s own coordinate space. A template mounted at /space/<id> reading its own screens wants this: at /space/abc/canvas/notes it is ["canvas", "notes"], whatever prefix the host mounts the template under. Not for a record\'s id, which is a query value: routeStore.params.id. Reading `segments` by index pins a template to the host\'s prefix and breaks when it moves.',
-      params:
-        "Record<string, string> — the URL's query parameters, reactive; read one as { $: 'routeStore.params.<name>' }. Prefer $localState with syncParam for fields a view owns; read params directly only for parameters something else writes",
     },
     actions: {
-      navigate:
-        "(to: string, options?: { query? }): navigates to a route (a bare path restores that route's remembered query string). A path is relative to the route the node is in: '.' is that route itself (so a button navigating to '.' inside a route does nothing), '..' the route above, './x' a page below it. '~/x' is from the template's root, from anywhere — write it for home ('~/') and for links between a template's screens, since it means the same in a header and inside a page. '?q' is the page on screen with that query. An absolute path ('/settings') leaves the template. A relative href is resolved the same way. A record's id goes in `query`, never in the path: { $invoke: 'routeStore.navigate', args: ['~/board', { $: '{ query: { id: board.id } }' }] }, read back on that page as routeStore.params.id. An id is a URI, so in the path it is several segments and the route never matches; navigate writes it so it reads back exactly",
       resolve:
         '(to: string): the address a path leads to, resolved as navigate would, without going there. A relative href is rendered through it already, so a template rarely needs it',
-      setParam:
-        '(name: string, value: string | null, options?: { push?: boolean }): writes one query parameter (null removes); replaceState by default, push: true for changes that deserve a Back entry. Prefer $localState syncParam over calling this directly',
-      back: "(): goes back one entry, the browser's own way. Use it on a page reached from several places — a record page is opened from a list, from a search and from a link somebody sent, and only one of those has a parent worth guessing. Does nothing at the start of the session's history",
     },
   },
   themeStore: {
     state: {
-      themeOverrideOptions:
-        '{ label, value }[] — options for the per-space theme override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every theme. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
       spaceThemeHiddenBy:
         "string — what keeps this agent from seeing the space on screen's own theme: 'pin' (they chose a theme for this space), 'agent-default' (they chose to follow their own default here), 'template' (a template other than the space's default brings its own theme), or '' when nothing does. Show it beside the space's default-theme picker, so an administrator who sets one and sees nothing change knows why. clearSpaceThemePin undoes the first two",
-      spaceThemePinned:
-        'boolean — this agent has pinned a theme for the space on screen that differs from what would otherwise apply, so there is something for a reset to undo. False outside a space, and false for a pin that happens to name what the space resolves to anyway. Gate a "pinned here / reset" affordance on it rather than on the pin merely existing',
-      builtInThemes: 'array of ThemeData objects — built-in registry themes (origin: "built-in", always available)',
       automaticThemes:
         'array of ThemeData objects — modes that *resolve to* a theme rather than being one, currently just "Follow system". Listed separately because they carry no parameters: the id is answered at the point of use (by asking the OS) and resolves to one of the built-ins. Render them under their own heading, after the themes',
-      installedThemes:
-        'array of ThemeData objects — user-installed themes from the root dataset (origin: "custom" | "marketplace")',
-      spaceThemes: 'array of ThemeData objects — themes stored in the current space (origin: "custom")',
       allThemes:
         'array of ThemeData objects — union of builtInThemes + visible installedThemes + spaceThemes (hidden themes filtered out)',
-      currentThemeId: 'string — id of the currently active theme',
       themeFork:
         '{ source, name, icon } | null — the theme-naming dialog while it is open (see startThemeFork): the theme being forked, empty for a new one',
       currentTheme: 'ThemeData — the currently active theme object (id, name, icon, origin)',
@@ -1271,12 +1404,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "ThemeData | null — the theme the scoped template wrapper renders: the theme being edited if there is one, else the space's. Null in global mode, where the template inherits the document's theme",
     },
     actions: {
-      setSpaceThemeOverride:
-        "(themeId: string, spaceUuid?): sets the theme THIS AGENT sees in one space. Three values: 'space-default' follows the space, 'agent-default' follows your own global default, or a concrete theme id pins that one. Private, and applied immediately when that space is the one on screen",
-      applyTheme:
-        '(themeId: string): applies a theme where the agent is — pinned to the space on screen, or set as their global default when there is no space. What a theme picker in chrome should call: it persists, where setCurrentTheme only sets a signal that the next resolution overwrites. Which of the two it does is decided at click time, against state a schema cannot see',
-      clearSpaceThemePin:
-        '(): drops this agent\u2019s theme pin for the space on screen, returning it to whatever would otherwise apply. The way back out of applyTheme, so the picker need not spell the FOLLOW_SPACE sentinel as a literal. Pair with spaceThemePinned',
       setCurrentTheme: '(themeId: string): sets and persists the active theme',
       focusRole:
         '(role: string): asks the theme editor to reveal a role, kebab-case as a schema spells it. Pair with editorStore.openThemePanel so there is a panel to scroll',
@@ -1332,8 +1459,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   templateStore: {
     state: {
-      templateOverrideOptions:
-        '{ label, value }[] — options for the per-space template override picker: "Use the space\u2019s default" (space-default), "Use my default" (agent-default), then every template. Each of the first two names what it resolves to. Pre-built because a schema can map a store array into options but cannot prepend one, and without those entries overriding would be one-way',
       personalTemplates:
         "array of TemplateSchema objects — core templates plus user's installed custom templates (excludes space templates)",
       spaceTemplates: 'array of TemplateSchema objects — templates loaded from the current space',
@@ -1348,10 +1473,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'TemplateManagementItem[] — flat list of all templates with management metadata (id, name, icon, description, isBuiltIn, isInstalled, isDefault, fromApp). `fromApp` names the installed or built-in app a template came with, empty otherwise: such a template is removed with its app, never on its own',
       refusedTemplates:
         "RefusedTemplate[] — templates in this agent's library that no longer validate, so they cannot be loaded (id, name, icon, reason). `reason` is the validator's first complaint with where it is. Listed so they can be seen and deleted; they are in no other list. `id` is the record's own, for deleteRefusedTemplate",
-      switcherGroups:
-        'TemplateSwitcherGroup[] — pre-grouped flat items for the template switcher UI; each group has { label: string, items: { id, name, icon, editable }[] }. Groups: "Space templates", "My templates", "Built-in". Use filter(group.items, { name: { contains: local.search } }) for search since items have a flat name field. `editable` says whether editing THAT row would open a session that can be saved — gate a per-row edit control on it rather than on editorStore.isReadOnly, which answers for whichever template is currently rendered and so gives every row the same verdict.',
-      currentSwitcherId:
-        "string — the id the template switcher should show as selected. The switcher's own spelling of the current template: it differs from currentTemplate.id while a space override or a preview is in effect",
       loading: 'boolean — the template lists are still being read. Gate empty states on it',
       defaultTemplateId:
         "string — id of the agent's preferred default template, used where no space or override decides. Persisted to AgentSettings.defaultTemplateId",
@@ -1369,8 +1490,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "boolean — whether somebody else's change to the template on screen is put on screen as they save it. Off by default: it is offered instead, with a notice and an Update now button, so the page does not change under somebody mid-task. This agent's own changes (another device, an agent it asked) and changes to a template being edited here always apply",
     },
     actions: {
-      setSpaceTemplateOverride:
-        "(templateId: string, spaceUuid?): sets the template THIS AGENT sees in one space, overriding the community's default. Three values: 'space-default' follows the space, 'agent-default' follows your own global default (tracking later changes to it), or a concrete template id pins that one. Private, and applied immediately when that space is the one on screen. The sentinels are named values rather than '' because they are three distinct meanings, and only one of them is no value at all",
       setFollowTemplateUpdates:
         '(on: boolean): sets followTemplateUpdates, for this agent everywhere. Boolean, so a we-switch can pass `event.detail` bare',
       leaveSafeMode: '(): leaves safe mode and reloads with the templates and themes that were chosen',
@@ -1404,7 +1523,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(options: { name, description, icon?, themeId?, slug?, screenshots: File[] }): publishes the current template to the marketplace under those details. Resolves true on success',
       refreshSpaceTemplates:
         "(): re-reads the current space's templates. The list follows the space on its own; call this after a publish the subscription might have missed",
-      switchTemplate: '(newTemplateId: string): switches to another template',
       removeTemplate: '(): removes the current template',
       saveTemplate: '(name: string): saves the current template',
       installToSpace:
@@ -1413,21 +1531,14 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   spaceStore: {
     state: {
-      mySpaces: 'array of Space objects — every space the agent holds, across all joined datasets',
       spaceViews:
         "ResolvedView[] — this space's sections resolved: which view renders at which segment, in the space's order, each carrying its schema. The host builds the route tree from it; a nav strip reads viewNav, which is this without the payload",
       routableViews:
         'ResolvedView[] — every view that could render here, at its permanent segment — what routes are built from. Separate from spaceViews because it changes when a view is installed, not when a switch is flicked',
       enabledViewIds:
         "string[] — ids of the sections the community has turned on here. What a route body is gated on; not the nav list, which also drops this agent's hidden ones — hiding a section for yourself must not make its URL refuse you",
-      viewNav:
-        '{ id, segment, label, icon, path }[] — the sections as a nav strip reads them: enabled by the community, minus those this agent hid, in order. One source with the routes, so nav and routes cannot disagree',
-      mutedDids:
-        "string[] — DIDs this agent has muted, everywhere. Private, held in the root dataset. A feed filters on it before rendering: { $: '!(post.author in spaceStore.mutedDids)' }. Hides on this screen only — a neighbourhood is writable by every member, so nothing here removes anything for anyone else",
       mutedAgents:
         'MutedAgent[] — the full mute records (did, description), for a settings list that wants the note as well as the DID',
-      readMarkers:
-        '{ nodeId, lastReadAt }[] — when this agent last read each node. No row means never read, so everything is unread. Read with find(spaceStore.readMarkers, { nodeId: item.id }); a keyed map would not be indexable by a row',
       unreadNodeIds:
         "string[] — ids of the containers in this space holding something newer than this agent's marker for them, or never read. What an unread dot reads: { $: 'channel.id in spaceStore.unreadNodeIds' }. Ids rather than counts, since a count needs every child's timestamp",
       myMentions:
@@ -1441,16 +1552,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
       spaceModuleSettings:
         "SettingRow[] — what each capability that declares settings is set to FOR THIS COMMUNITY, as rows a screen renders directly: { group, groupLabel, key, label, description, type, options, value, source, set, locked, lockedBy }. `value` is already resolved across every level that had an opinion; `source` names the level that decided it ('default' when nobody did); `set` says whether THIS level holds an opinion, so a reset has something to undo; `locked` says a level that BINDS this one has forced it and the control must be disabled rather than springing back — a member's private refusal does not bind the community, so it never locks this list. Built from what modules declare, so a module that adds a setting gets a control with nothing to register",
-      myModuleSettings:
-        'SettingRow[] — the same rows, for what THIS AGENT has decided in THIS space. Private, held in the root dataset. The most specific of the four levels',
       agentModuleSettings:
         'SettingRow[] — the same rows, for what THIS AGENT has decided everywhere. Private. Render it in global settings, where the question is what you want in every space',
       interpretationTargets:
         'string[] — the models a NEW collection here starts out interpreting. The middle of three layers: shapeStore.interpretationCandidates says what COULD be interpreted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.interpretationFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops interpreting. Writing it is space-settings',
       personalSpaces: 'array of Space objects (local/personal spaces; all Space fields)',
       sharedSpaces: 'array of Space objects (shared/neighbourhood spaces; all Space fields)',
-      spacePath:
-        "string — the path a space's own pages hang off (`/space/<segment>`), empty outside a space. For a link that has to reach the space's own pages from any surface, the shell overlay included, whose '~/' is the overlay's own root: recordLink builds on it. Within a template, write '~/' instead. The segment is the neighbourhood CID for a shared space and the dataset id for a personal one — only the URL says which",
       routeSpaceUnjoined:
         'boolean — the current route points at a space this agent has not joined, as a settled fact. What a join gate should read: `currentDataset` being null is also true for the first frames of a refresh, so gating on that flashes a join prompt at someone already inside. False while the answer is still unknown',
       spaceList:
@@ -1464,13 +1571,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ spaceId, message } | null — the last join failure, ready to display. Carries the space so a gate can tell whether the failure is its own: compare joinError.spaceId against the route segment, or a bare message follows the user to the next unjoined space they open',
       orderedSidebarItems:
         'array of sidebar items in user-defined order (uuid, name, avatar, spaceId) — personal + shared spaces merged',
-      memberDids:
-        'string[] — DIDs of all members in the current space (includes own DID). Their profiles are profileStore.profiles: the people of the space, drawn, are spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m) — bind it once where a list needs it, and look one person up by DID with find(profileStore.profiles, { did })',
-      spaceDefaultTemplateId: "string — the current space's default template ID (empty string when no space is active)",
-      spaceDefaultThemeId:
-        "string — the current space's default theme ID (empty string when no space is active). The counterpart to spaceDefaultTemplateId; compare against it to mark which theme a space is currently on",
-      currentSpace:
-        "Space | null — the current space model (all Space fields: uuid, url, name, description, access, discovery, avatar, coverImage, defaultTemplateId, defaultThemeId, location, taskWorkflowRule, autoInterpret, plus id/author/createdAt). taskWorkflowRule is '' | 'next' | 'next-and-back': how a task may move between the space's states — anywhere, on to the next only, or on and back one; anything but '' runs the states as a workflow, so say so beside a picker of states. autoInterpret says whether a NEW collection here starts out interpreted (a conversation keeps its own answer, autoInterpretFor). The records the space names as its landmarks (its canvas, its board) are SpaceLandmark records { name, node }: bind $queries { spaceLandmarks: { entity: 'SpaceLandmark' } } and read find(local.spaceLandmarks, { name: 'board' }).node, gating a 'no board yet' on local.spaceLandmarksLoaded",
       foreignSpacePrefill:
         '{ name, description, avatar } | null — detected from a foreign app\'s own model (e.g. Flux\'s Community) for prefilling the "Initialize as WE space" gate; null once the dataset is a WE space or no recognized foreign model is found',
       enabledModules:
@@ -1502,8 +1602,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ label, value, icon, description, servers }[] — how a shared space can sync, for a we-select, default first; value is what createSpace takes. Labelled by how it syncs ("Peer-to-peer", "Server") rather than by the backend’s own name for it, and `description` is one sentence on what choosing it means — bind a we-form-field’s description to the selected entry’s. `servers` is, for a server option, a second we-select’s { label, value }[]: the servers it can sync through, default first and named by host, then "Custom…" (value \'custom\') for typing an http(s) address in; empty for a peer-to-peer option. Only options this deployment can fill in are listed. Empty until the backend answers, and on a backend with no choice to offer',
       defaultSharing:
         'string — the option publishing uses when none is chosen: the backend’s default, empty until it answers. Show it as the picker’s value while nothing is chosen — { $: "local.sharing ? local.sharing : spaceStore.defaultSharing" } — and pass the bare choice to createSpace, rather than copying it into local state, which freezes whatever it was at that moment',
-      canAdministerCurrentSpace:
-        'boolean — whether this agent may change what every member of the space on screen sees. The readable form of canAdministerSpace, which an expression cannot call. Gate an admin-only control on this rather than on `x.author == me.did`, which asks who made the row and not who runs the space',
       requiredModules:
         'string[] — module ids the template on screen mounts components from, derived by walking the schema rather than read from meta.components (which no template fills in). What makes uninstalling a capability module refusable',
       missingModules:
@@ -1525,7 +1623,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       setAutoInterpret:
         '(enabled: boolean, spaceUuid?): sets whether a NEW collection in a space starts out interpreted as it grows. A default: conversations already under way keep their own answer. Omit spaceUuid for the space on screen',
       setThreadMode:
-        "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceStore.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
+        "(mode: 'fractal' | 'flat', spaceUuid?): sets how deep conversations go here — whether a reply may itself be replied to. A decision about what may be ADDED, never about what is stored: replies are a tree either way, so switching to flat leaves existing threads drawn as they are and switching back restores the button that grows them. Read it back as spaceSettings.currentSpace.threadMode; anything but 'flat' means fractal, so a space that predates the setting reads as fractal. Omit spaceUuid for the space on screen",
       autoInterpretFor:
         "(collectionId): whether ONE COLLECTION — a call, a channel, the space collection (spaceStore.root) — is interpreted as it grows: its own answer, copied from the space's default when it was made. A function rather than a value because the answer is per collection, like canAdministerSpace. False until the collection has been read",
       setAutoInterpretFor:
@@ -1534,8 +1632,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(collectionId): whether this agent may change what one collection interprets — anyone for a call or channel, only an administrator for the space collection. Gate the switch on it rather than letting the store refuse the press',
       setSpaceModuleSetting:
         "(group: string, key: string, value?, spaceUuid?): sets one of a capability's settings for everyone in a space — `group` is the module id and `key` the setting's key, both off the row. **Omit `value` to clear it**, which returns the level to having no opinion: a stored value that happens to equal the default goes on overruling everything less specific while its control reads as untouched. Omit spaceUuid for the space on screen",
-      setMyModuleSetting:
-        '(group: string, key: string, value?, spaceUuid?): the same, for this agent in one space. Private — written to the root dataset, never to the space. Omitting `value` clears it',
       setAgentModuleSetting:
         '(group: string, key: string, value?): the same, for this agent in every space. Private, and global, so there is no space to name. Omitting `value` clears it',
       setInterpretationTarget:
@@ -1544,8 +1640,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(viewId: string, enabled: boolean, spaceUuid?): adds or removes a section from a space. The community’s decision — every member sees it. Omit spaceUuid for the space on screen',
       reorderViews:
         "(viewIds: string[], spaceUuid?): sets the whole section order at once — what a drag-reorder writes. Pair with we-sortable's onReorder",
-      setViewVisible:
-        '(viewId: string, visible: boolean, spaceUuid?): shows or hides a section for this agent in one space, without changing what the community has. Private. Positively phrased so a switch can pass `event.detail` bare',
       removeSpaceFromGlobal:
         "(spaceUuid: string): withdraws a space's listing from the global discovery space, leaving the space itself alone. Only its author may; removeSpace does this for you",
       createSpace:
@@ -1571,8 +1665,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(fromColumnId: string, toColumnId: string, cardId: string, orderedIds?: string[], columnOrder?: string[]): moves a card between columns \u2014 and writes its state when the column it joins names one, which is what makes \u201cdone is done\u201d true on every board. A lane writes no state. One transaction, so no reader sees the card in two columns, and drawn in its new column before it lands. Pass orderedIds \u2014 we-sortable\u2019s `arg.detail.ids`, the target column\u2019s whole new order \u2014 to seat the card where it was dropped; without it the card appends. An empty fromColumnId means the card came from nowhere on this board \u2014 Unplaced, or a picker. columnOrder is the target column\u2019s whole order (arrangedBoard\u2019s contents[col].order), for a drop into a column showing only part of itself. A store action rather than ops.core.moveCard because where the space\u2019s states ask for agreement the drop asks instead of writing, and a staged suggestion for the card\u2019s state is settled first',
       addTaskToColumn:
         '(columnId: string, title: string, anchorId?: string): makes a task straight into a column, parented to the board\u2019s anchor when there is one so every other scoped surface finds it. A bound column also gives it that column\u2019s state',
-      prepareSpaceImage:
-        '(field: "avatar" | "coverImage", image: File): makes a picture the person chose into what the space record stores for that field, sized for it, and answers with it. Stores nothing: write it with ops.core.setSpaceImage in onSuccess, reading { $: "result" } — spaceImageChange(field) from @we/template-kit is the whole handler for an EditableImage',
       setSignalTypeRetired:
         '(signalTypeId: string, retired: boolean): withdraws a signal type from use, or brings it back. Never deletes the signals given with it — a signal names its type by record id while templates resolve it by slug, so DELETING a type strands every reaction ever given, and re-creating one with the same slug gets the old id back but not its mode or range, so the old reactions are read by a type that may not mean what they were given as. Retiring is the reversible version: the type stops being offered, existing counts keep working, and un-retiring brings everything back. Filter the offered list with OFFERED_SIGNAL_TYPES from @we/template-kit; leave find()-by-slug unfiltered so history still resolves',
       createTaskState:
@@ -1619,10 +1711,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ id, author, createdAt }[] — nodes in this space that name you, newest first. The read side of `WeNode.mentions`, which the composer writes from the @mentions in a post',
       uploadFile:
         '(file: File, name?: string): stores a file and returns the URL to reference it by, or null. Images are compressed on the way through. For a template doing its own media UI — without it, only the block composer could accept an upload',
-      navigateToSpace:
-        '(spaceId: string, view?: string): navigates to a space — accepts a dataset id or a shared id (sharedUrl without its scheme prefix); pre-loads space templates before switching so the template and data arrive together',
-      openRecordRef:
-        "(ref: string): goes to whatever a record reference names — the space, and the record's own page within it. Takes the whole `we:…` reference rather than its parts, so nothing outside the host restates where a record's page lives. A reference naming only a dataset opens the space; a relative one (`we:./…`) resolves against the space on screen; a person has no page, so nothing happens",
       updateSpaceMeta:
         '(updates: { name?, description?, discovery?, location? }, spaceUuid?): updates the space everyone sees. Omit spaceUuid to target the space on screen; pass one to configure a space from the spaces list without navigating to it',
       copyShareLink:
@@ -1637,8 +1725,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "(callId: string): writes everything interpretation did with the call to a Markdown file and downloads it — the settings it ran under, the transcript once, every member's passes with their prompts and responses verbatim, the records written as they are stored now, and the suggestions still awaiting a decision. For handing to a person or a model investigating the interpretation. Read-only and client-side, like exportCallTranscript",
       setModuleInstalled:
         '(moduleId: string, installed: boolean): turns a module on or off for this agent in every space. Personal — writes AgentSettings.installedModules in the root dataset, so no other member sees it',
-      setModuleVisible:
-        '(moduleId: string, visible: boolean, spaceUuid?): shows or hides a module for this agent in one space, without changing what the community runs. Private: written to the root dataset, never to the space. Phrased positively so a switch can pass `event.detail` bare \u2014 wrapping it in another token would evaluate at render time and send a constant',
       setModuleEnabled:
         '(moduleId: string, enabled: boolean, spaceUuid?): turns a feature module on or off for a space; writes the resolved list, so the first toggle also pins whatever was on by fallback. Omit spaceUuid for the space on screen',
       launchModule:
@@ -1711,9 +1797,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       rekeyConnection:
         "(id: string): rewrites a Relationship's dedup key (`connection`) from its label and both ends' titles, which is how an interpretation pass reads the structure people drew. updateRecordField does it already; call this after saving a Relationship's label through record.update",
       setSpaceTypePresentation:
-        "(spaceId: string, nodeType: string, presentation: { display?: { title?, summary?, media?, fields? }, controls?: Record<field, control>, authoring?: string[] } | null): how every record of one type is laid out in this space, over the model's own — which field titles, summarises and pictures its cards and which it lists, the control a field uses, the fields its form asks for. Only what it sets is overridden, slot by slot; null puts the type back to the model's. Read back through recordStore.displays, which every card and form draws from. Keeps the type's colour in the space's key. Takes spaceStore.currentSpace.id",
+        "(spaceId: string, nodeType: string, presentation: { display?: { title?, summary?, media?, fields? }, controls?: Record<field, control>, authoring?: string[] } | null): how every record of one type is laid out in this space, over the model's own — which field titles, summarises and pictures its cards and which it lists, the control a field uses, the fields its form asks for. Only what it sets is overridden, slot by slot; null puts the type back to the model's. Read back through recordStore.displays, which every card and form draws from. Keeps the type's colour in the space's key. Takes spaceSettings.currentSpace.id",
       setSpaceTypeColor:
-        "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceStore.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceStore.currentSpace.id }. An empty colour clears it",
+        "(spaceId: string, nodeType: string, color): sets the colour every card of one type is drawn in across the whole space — the community's key, which a canvas falls back to where it has no colour of its own for that type. Pass spaceSettings.currentSpace.id. Read the result back with a TypeStyle query scoped { anchor: 'Space', via: 'typeStyles', anchorId: spaceSettings.currentSpace.id }. An empty colour clears it",
       createOnCanvas:
         '(canvas: string, x?: number, y?: number): opens the create form and places whatever it makes onto that canvas, at the point given. Pair with the graph’s onCanvasDoubleClick',
       createCardOnCanvas:
@@ -1953,8 +2039,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
-      panelInstances:
-        '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:
         "Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame",
       dockPlacement:
@@ -1979,12 +2063,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       panelsHidden:
         'boolean — somebody has put every panel away at once, from the rail or with Cmd/Ctrl+\\. The panels are also away while a shell overlay (settings, profile, about) is open, which is not this and does not set it. Either way they are hidden, never unmounted, and the content gets the room they took',
       hasPanels: 'boolean — some panel is open on screen to put away. What the hide-all toggle is gated on',
-      collapsedLanes:
-        'string[] — the home lanes the reader has folded away on the interface on screen, by name. Read it to draw a collapse button in the right state: { $: "\'tree\' in shellStore.collapsedLanes" }',
       customisingLayout:
         "boolean — every section's grip is showing, so the reader can see what can be moved. Off, a grip shows only on hover or focus",
-      layoutDirty:
-        'boolean — the interface on screen has been rearranged: one of its panels moved, resized or closed. What a whole-arrangement "reset layout" control is gated on, and not the same question as any layoutPinned entry — a closed panel has no placement, and a panel declared for another route is not among the docks at all. False for an interface declaring no panels',
     },
     actions: {
       beginDockResize:
@@ -2057,22 +2137,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(): opens or closes the settings panel for the space on screen. What a gear in chrome should call \u2014 a control that is always present toggles, so a second press puts back what the first press changed',
       resetDockToLayout:
         '(panelId: string): puts a panel back where meta.panels asked for it, forgetting where it was dragged. Forgets rather than rewrites, so the panel keeps following the layout afterwards \u2014 including when the template changes it. Pair with layoutPinned',
-      closeTemplatePanel:
-        "(panelId: string): dismisses a panel the interface declared in meta.panels, by that panel's id. What its titlebar's close button calls",
-      openTemplatePanel:
-        '(panelId: string): puts a closed one back. The only way back to a panel that has been closed — it has no titlebar left to ask from — so a template offering a close should offer this too',
-      openPanel:
-        '(panelId: string, inputs?: object, options?: { key?, title? }): opens a panel the interface supplies in meta.panels (one with a `node`) once more, with these inputs — an inspector per record, a view per call. Its node reads them as panel.inputs, and which instance it is as panel.id. It opens where the declared panel would, as a tab beside it where the declaration names an `order`. The same inputs open the same instance, brought to the front, so opening the record already open makes no second; `key` names the instance outright where the inputs should not decide, `title` is what its tab says. Kept per agent and per template across reloads',
-      closePanel:
-        '(instanceId: string): closes an instance openPanel opened — what its close button calls. Where it was dragged is forgotten with it',
-      toggleLane:
-        "(lane: string): folds a home lane (a `$panels` outlet) away, or brings it back — what a sidebar's collapse button calls. Its sections stay mounted and hidden, so a feed keeps its place. Kept per agent and per template, and undone by resetTemplateLayout",
-      setLaneCollapsed:
-        '(lane: string, collapsed: boolean): folds a lane away or brings it back, as said rather than flipped',
       toggleCustomiseLayout:
         "(): shows every section's grip at once, or goes back to showing a grip only where the pointer or the keyboard is — the way to see what on a page can be moved",
-      resetTemplateLayout:
-        '(): puts every panel of the interface on screen back the way meta.panels declared them, and reopens the ones that were closed. The whole-arrangement counterpart of resetDockToLayout, and the only way back for a closed panel, which has no titlebar to reset itself from. Scoped to the template rather than the route, so a declaration that varies by route is reset once. Pair with layoutDirty',
       saveLayout:
         '(name: string): saves the arrangement on screen under a name — its panels’ placements, which tab of each seat is showing, and which panels are closed. Scoped to the template, as placements are. Replaces a layout of that name',
       applyLayout:
@@ -2081,7 +2147,6 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       openSpaceSettings:
         '(tab?: string, focus?: string): opens that panel, on a tab and about a record when given them, without closing it again. For a control that sits on the very fields it leads to (the About view\u2019s pencil), where a toggle would break the promise to show them',
       closeSpaceSettings: '(): closes the space-settings panel',
-      scrollToId: '(id: string): smooth-scrolls the element with that DOM id into view',
     },
   },
   appStore: {
@@ -2098,24 +2163,12 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   },
   presenceStore: {
     state: {
-      peers:
-        'PresentAgent[] — every peer known in the current space, offline included, each joined to its cached profile (did, name, avatar, tone, focus, activities, availability). Sorted by liveness',
-      online: 'PresentAgent[] — peers in the current space who are not offline — the "who is here" list',
-      onlineHere: "PresentAgent[] — peers at this agent's exact route path, for a per-page presence strip",
       calls: 'Map<callId, PresentAgent[]> — the calls running in this space right now and who is in each',
-      available:
-        'boolean — a presence transport exists. False in a personal space, where there is nobody to be present to; gate presence UI on it rather than rendering an empty roster',
       focusDepth:
         "FocusDepth — how much of this agent's location peers are shown: the space only, the section, or the exact path",
     },
     actions: {
       setFocusDepth: '(depth: FocusDepth): sets how much of your location peers see',
-      setAvailability:
-        "(availability: 'available' | 'busy' | 'away' | 'invisible'): sets the status published with your presence. 'invisible' stops publishing entirely rather than asking peers not to look",
-      setActivity:
-        '(activity: Activity): adds or replaces a published activity — a call, an edit, a work claim — keyed by its type and id',
-      clearActivity:
-        '(type: string, id?: string): withdraws a published activity; omit id to withdraw every one of that type',
     },
   },
   record: {
@@ -2250,22 +2303,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
     },
   },
   clockStore: {
-    state: {
-      clocks:
-        "Record<name, { at, atIso, atLabel, ticks, from, fromIso, to, toIso, progress, playing, speed, loop, canPlay }> — the app's clocks by name. A clock is the moment something shows and the playback that moves it: a globe given `clock: \"events\"` follows the clock of that name, and every control reading or driving \"events\" moves it too. `at` is milliseconds since 1970, or null until somebody plays or seeks, which shows everything; `from`/`to` are the range, which the globe works out from its layers' data; `atIso` is ready for a we-timestamp, and `atLabel` is the moment already written as precisely as the range calls for (with the time across a day, the month alone across decades); `ticks` are marks along the range, { at, fraction, label }, on round moments at the scale it calls for — hours, days, months or years — to place at `fraction` of a scrubber's width; `progress` is 0–1 through the range, for a we-slider (max 1, step 0.001). Published about five times a second while playing. A name nothing has used yet reads as undefined, so guard a control on it: { $: 'clockStore.clocks.events.canPlay' }",
-    },
-    actions: {
-      play: '(name: string): plays from the start, or from where it was paused; does nothing with no range to cross',
-      pause: '(name: string): stops where it is',
-      toggle: '(name: string): plays or pauses — what one button calls',
-      seek: '(name: string, at: number | string | null): shows that moment, in milliseconds or an ISO date; null shows everything again',
-      seekProgress:
-        "(name: string, fraction: number): shows the moment that far through the range, 0 to 1 — what a we-slider's onChange passes as event.detail",
-      setSpeed: '(name: string, speed: number): plays faster or slower — 2 is twice as fast. Default 1',
-      setLoop: '(name: string, loop: boolean): starts again at the end rather than stopping',
-      configure:
-        '(name: string, settings: { from?, to?, speed?, duration?, rate?, loop? }): several at once. `duration` is how long the whole range takes to play at speed 1 — seconds or a span ("45s", "2m"), default 30s; `rate` instead runs at a fixed pace (1 is real time, for a countdown); from/to fix the range rather than taking it from the data',
-    },
+    state: {},
+    actions: {},
   },
   bundleStore: {
     state: {
@@ -2335,8 +2374,11 @@ export function actionsNeedingArgs(store: string): string[] {
     .map(([action]) => action);
 }
 
-/** Generate the stores text fragment from structured data */
-export function generateStoresText(entries: StoreEntry[]): string {
+/**
+ * Generate the stores text fragment from structured data. A member with no description renders as
+ * `unknown` and is added to `undescribed`, which the generator fails the build on.
+ */
+export function generateStoresText(entries: StoreEntry[], undescribed: string[] = []): string {
   const lines: string[] = [
     '## Stores',
     '',
@@ -2356,23 +2398,31 @@ export function generateStoresText(entries: StoreEntry[]): string {
       documentation is a smaller problem than absent documentation that reads as absent capability.
     */
     const desc = descriptions[entry.name] ?? { state: {}, actions: {} };
+    const profile = PROFILE_NAMESPACES.get(entry.name);
+    // A store every member of which belongs to a profile has nothing left a template names under it.
+    if (!profile && !Object.keys(entry.state).length && !entry.actions.length) continue;
 
-    const storeName = entry.name.charAt(0).toUpperCase() + entry.name.slice(1).replace(/Store$/, 'Store');
     lines.push('');
-    lines.push(`${storeName}:`);
+    lines.push(
+      profile
+        ? `${entry.name} (the ${profile.id} profile, ${profile.version}):`
+        : NEUTRAL_NAMESPACES.has(entry.name)
+          ? `${entry.name} (every host):`
+          : `${entry.name} (WE-host-only):`,
+    );
 
     lines.push('- State:');
-    for (const key of profileFirst(entry.name, Object.keys(entry.state))) {
+    for (const key of Object.keys(entry.state)) {
       const typeDesc = desc.state[key];
-      if (typeDesc === undefined) undescribedMembers.push(`${entry.name}.${key}`);
-      lines.push(`  - ${memberMark(entry.name, key)}${key}: ${typeDesc ?? 'unknown'}${hostOnlyNote(entry.name, key)}`);
+      if (typeDesc === undefined) undescribed.push(`${entry.name}.${key}`);
+      lines.push(`  - ${key}: ${typeDesc ?? 'unknown'}${hostOnlyNote(entry.name, key)}`);
     }
 
     lines.push('- Actions:');
-    for (const key of profileFirst(entry.name, entry.actions)) {
+    for (const key of entry.actions) {
       const sig = desc.actions[key];
-      if (sig === undefined) undescribedMembers.push(`${entry.name}.${key}()`);
-      lines.push(`  - ${memberMark(entry.name, key)}${key}${sig ?? '(): unknown'}${hostOnlyNote(entry.name, key)}`);
+      if (sig === undefined) undescribed.push(`${entry.name}.${key}()`);
+      lines.push(`  - ${key}${sig ?? '(): unknown'}${hostOnlyNote(entry.name, key)}`);
     }
   }
 
@@ -2383,29 +2433,19 @@ export function generateStoresText(entries: StoreEntry[]): string {
   The capability profiles, said before any store so a model reaches for them first.
 
   The intro is the part of this section every lookup carries, whichever stores it asks for, so it
-  holds the profiles whole: a model choosing between two members of different stores has to see both
-  profiles to know which one travels. A member's own entry repeats its profile as a mark.
+  holds the profiles whole: a model choosing between two members has to see every namespace to know
+  which one travels. Each namespace's own entry, listed first below, describes its members.
 */
 function profilesIntro(): string[] {
   return [
     '',
-    `Capability profiles. A member listed with ${CAPABILITY_PROFILES.map((profile) => `[${profile.id}]`).join(', ')} belongs to that profile: host state and actions every host providing the profile offers under the same name. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A member with no mark works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it.`,
+    `Capability profiles come first. A profile's members are written under its namespace — ${CAPABILITY_PROFILES.map((profile) => profile.namespace).join(', ')} — and every host providing the profile offers them under the same name: { "$": "navigation.params.id" }, { "$invoke": "viewState.openPanel", "args": [...] }. Reach for these, records ($query, record.*) and declared operations (ops.*) first. A name under a store (spaceStore.policy) works only in WE: it is WE-host-only, the validator reports it, and where it has a neutral equivalent its entry names it. A profile member is never reachable under the store that holds it in WE; the validator names the namespace to write instead.`,
     ...CAPABILITY_PROFILES.map(
-      (profile) => `- ${profile.id} ${profile.version}: ${profile.members.map((member) => member.path).join(', ')}`,
+      (profile) =>
+        `- ${profile.namespace} (${profile.id} ${profile.version}): ${profile.members.map((member) => member.path.slice(profile.namespace.length + 1)).join(', ')}`,
     ),
   ];
 }
-
-/** Profile members first, in the store's own order, then the rest in theirs. */
-function profileFirst(store: string, keys: string[]): string[] {
-  const inProfile = (key: string) => PROFILE_MEMBERS.has(`${store}.${key}`);
-  return [...keys.filter(inProfile), ...keys.filter((key) => !inProfile(key))];
-}
-
-const memberMark = (store: string, key: string): string => {
-  const held = PROFILE_MEMBERS.get(`${store}.${key}`);
-  return held ? `[${held.profile.id}] ` : '';
-};
 
 const hostOnlyNote = (store: string, key: string): string => {
   const instead = HOST_ONLY_EQUIVALENTS[`${store}.${key}`];
@@ -2413,29 +2453,8 @@ const hostOnlyNote = (store: string, key: string): string => {
 };
 
 /**
- * Members that rendered as `unknown` — reachable from a schema, and with nothing saying what they do.
- *
- * ## Why this is a build failure rather than a note
- *
- * The architecture plan's rule is that an undescribed member fails the build, and the generator's
- * own count was the wrong measure of one: it counted members missing from `storeEntries`, which is
- * a merge input, while what an author actually reads is this — the description table, whose misses
- * render as the literal word `unknown` in the reference an LLM is handed.
- *
- * The consequence of it being a count is on the record. Three `ShapeStore` members regressed to
- * `unknown` after the PR that reported "zero unknown remain"; the count went up by three and nobody
- * looked.
- *
- * Wiring never reaches here — `mergeStoreEntries` drops it against `templateSurface.ts` first — so
- * everything on this list is vocabulary a template can name.
- *
- * Populated by {@link generateStoresText}, which the module runs once below. Reading it before that
- * would give an empty array, which is why it is not a function.
- */
-export const undescribedMembers: string[] = [];
-
-/**
- * The prose block for the reference, built from whatever entries it is given.
+ * The prose block for the reference, built from the hand-authored entries — stores as they are
+ * declared, before the profile members move to their namespaces.
  *
  * Kept as a default export for consumers that only want the hand-authored view; `generate.ts` calls
  * `generateStoresText` again over the *merged* entries instead, so the documented list and the list

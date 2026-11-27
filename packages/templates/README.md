@@ -17,7 +17,7 @@ built from.
 **Shell or view?** A shell owns a space's chrome, arrangement and route table;
 a view renders one section inside one. `meta.role` says which, and absent means
 shell. A shell marks where its sections go with `{ path: '$views' }` rather than
-hardcoding them, and reads `spaceStore.viewNav` rather than writing a nav strip
+hardcoding them, and reads `navigation.viewNav` rather than writing a nav strip
 from a literal array — those two lists have drifted before.
 
 Both, plus fragments, are contribution surfaces:

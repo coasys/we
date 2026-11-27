@@ -40,7 +40,7 @@ export const SAFETY_CASES: RenderCase[] = [
       type: 'Column',
       children: [
         text({ $: "routeStore.page ?? 'absent'" }),
-        text({ $: "spaceStore.memberDids ?? 'absent'" }),
+        text({ $: "identity.memberDids ?? 'absent'" }),
         text({ $: "spaceStore.noSuchMember ?? 'absent'" }),
       ],
     },
@@ -55,13 +55,13 @@ export const SAFETY_CASES: RenderCase[] = [
     {
       type: 'Column',
       children: [
-        button('go', { $invoke: 'routeStore.navigate', args: ['~/'] }),
+        button('go', { $invoke: 'navigation.navigate', args: ['~/'] }),
         button('make', { $invoke: 'record.create', args: ['Post', { title: 'x' }] }),
       ],
     },
     {
       grants: ['content'],
-      actions: { 'routeStore.navigate': { returns: null }, 'record.create': { returns: 'id' } },
+      actions: { 'navigation.navigate': { returns: null }, 'record.create': { returns: 'id' } },
       steps: [
         { op: 'click', target: 'go' },
         { op: 'click', target: 'make' },
@@ -82,7 +82,7 @@ export const SAFETY_CASES: RenderCase[] = [
       $localState: { said: { type: 'string', initial: 'nothing yet' } },
       children: [
         button('go', {
-          $invoke: 'routeStore.navigate',
+          $invoke: 'navigation.navigate',
           args: ['~/'],
           onSuccess: [{ $setLocal: 'said', value: { $: "result ?? 'no result'" } }],
         }),
@@ -91,7 +91,7 @@ export const SAFETY_CASES: RenderCase[] = [
     },
     {
       grants: ['content'],
-      actions: { 'routeStore.navigate': { returns: 'moved' } },
+      actions: { 'navigation.navigate': { returns: 'moved' } },
       steps: [{ op: 'click', target: 'go' }],
     },
   ),
@@ -108,7 +108,7 @@ export const SAFETY_CASES: RenderCase[] = [
           props: {
             'data-case': 'img',
             onLoad: [
-              { $invoke: 'routeStore.navigate', args: ['~/loaded'] },
+              { $invoke: 'navigation.navigate', args: ['~/loaded'] },
               { $invoke: 'record.create', args: ['Post', { title: 'on load' }] },
             ],
           },
@@ -117,7 +117,7 @@ export const SAFETY_CASES: RenderCase[] = [
     },
     {
       grants: ['content', 'navigation'],
-      actions: { 'routeStore.navigate': { returns: null }, 'record.create': { returns: 'id' } },
+      actions: { 'navigation.navigate': { returns: null }, 'record.create': { returns: 'id' } },
       steps: [{ op: 'emit', target: 'img', event: 'load' }],
     },
   ),

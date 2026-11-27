@@ -125,7 +125,7 @@ countries are shaded green to red; a rule can raise them too.
 {
   "factory": "areasLayer",
   "options": {
-    "data": { "$": "spaceStore.memberDids.map(d, find(profileStore.profiles, { did: d })).filter(m, m && m.location)" },
+    "data": { "$": "identity.memberDids.map(d, find(identity.profiles, { did: d })).filter(m, m && m.location)" },
     "area": "countries",
     "key": "location.countryCode",
     "style": [
@@ -208,15 +208,15 @@ have given it a range to play through.
     {
       "type": "$if",
       "props": {
-        "condition": { "$": "clockStore.clocks.events.canPlay" },
+        "condition": { "$": "viewState.clocks.events.canPlay" },
         "then": {
           "type": "Row",
           "props": { "gap": "300", "ay": "center" },
           "children": [
             {
               "type": "we-button",
-              "props": { "onClick": { "$invoke": "clockStore.toggle", "args": ["events"] } },
-              "children": [{ "$": "clockStore.clocks.events.playing ? 'Pause' : 'Play'" }]
+              "props": { "onClick": { "$invoke": "viewState.toggle", "args": ["events"] } },
+              "children": [{ "$": "viewState.clocks.events.playing ? 'Pause' : 'Play'" }]
             },
             {
               "type": "we-slider",
@@ -224,13 +224,13 @@ have given it a range to play through.
                 "flex": "1",
                 "max": 1,
                 "step": 0.001,
-                "value": { "$": "clockStore.clocks.events.progress" },
-                "onInput": { "$invoke": "clockStore.seekProgress", "args": ["events", { "$": "event.detail" }] }
+                "value": { "$": "viewState.clocks.events.progress" },
+                "onInput": { "$invoke": "viewState.seekProgress", "args": ["events", { "$": "event.detail" }] }
               }
             },
             {
               "type": "we-timestamp",
-              "props": { "value": { "$": "clockStore.clocks.events.atIso" }, "dateStyle": "medium" }
+              "props": { "value": { "$": "viewState.clocks.events.atIso" }, "dateStyle": "medium" }
             }
           ]
         }

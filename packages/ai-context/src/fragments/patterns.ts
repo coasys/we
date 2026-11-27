@@ -470,7 +470,7 @@ unresolved id does not widen it to every image in the space:
     {
       "type": "AvatarStack",
       "props": {
-        "avatars": { "$": "spaceStore.memberDids.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })" },
+        "avatars": { "$": "identity.memberDids.map(d, { image: find(identity.profiles, { did: d }).avatar, hash: d })" },
         "max": 5, "size": "sm", "ring": "0 0 0 2px var(--we-ring-color)"
       }
     },
@@ -478,8 +478,8 @@ unresolved id does not widen it to every image in the space:
       "type": "Row",
       "props": { "gap": "100", "ay": "center" },
       "children": [
-        { "type": "we-number", "props": { "value": { "$": "count(spaceStore.memberDids)" }, "shorten": true } },
-        { "type": "we-text", "children": [{ "$": "plural(count(spaceStore.memberDids), 'Member', 'Members')" }] }
+        { "type": "we-number", "props": { "value": { "$": "count(identity.memberDids)" }, "shorten": true } },
+        { "type": "we-text", "children": [{ "$": "plural(count(identity.memberDids), 'Member', 'Members')" }] }
       ]
     }
   ]
@@ -490,7 +490,7 @@ unresolved id does not widen it to every image in the space:
 comprehension — the variable is the DID itself:
 
 \`\`\`json
-"avatars": { "$": "spaceStore.memberDids.map(did, { image: find(profileStore.profiles, { did: did }).avatar, hash: did })" }
+"avatars": { "$": "identity.memberDids.map(did, { image: find(identity.profiles, { did: did }).avatar, hash: did })" }
 \`\`\`
 
 \`minHeight\` on the row is worth keeping: \`AvatarStack\` has no height with no avatars, and people
