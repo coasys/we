@@ -50,7 +50,7 @@ The suite writes two files in `FEED_SCALE_ARTIFACTS`:
 
 - `metrics.json` holds the metrics alone, as `{"metrics": [...]}`. This is the input of ad4m's
   `scripts/perf/record`. When `PERF_RESULTS_DIR` is set, the suite also writes the same file there
-  as `feed-scale.json`. Each record has the metric name, `value`, `unit`, `better`, and `params`
+  as `feed-scale.json`. The writer is `writeMetrics` in `@we/e2e`. Each record has the metric name, `value`, `unit`, `better`, and `params`
   `{"messages": N}`. The metrics that add up over the loads (the three failure counts and
   `executor.cpu_seconds.ui_phase`) have `{"messages": N, "loads": L}`, so runs of a different
   number of loads are not compared.

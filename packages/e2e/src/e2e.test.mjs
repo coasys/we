@@ -15,6 +15,7 @@ import { artifactsDir, capturing, captureFailure, slug } from './artifacts.mjs';
 import { chromePath } from './env.mjs';
 import { DATA_PREFIX, registerLlm, registerTranscriber } from './executor.mjs';
 import { fakeAiAdmin } from './fake-ai.mjs';
+import { max, median, round, writeMetrics } from './metrics.mjs';
 import { until, within } from './waits.mjs';
 
 describe('until', () => {
@@ -228,5 +229,40 @@ describe('serveDist', () => {
 
   it('says how to build when there is nothing to serve', async () => {
     await assert.rejects(serveDist(mkdtempSync(join(tmpdir(), 'we-e2e-test-'))), /pnpm build:web/);
+  });
+});
+
+describe('metrics', () => {
+  it('takes a median, a max and a rounding', () => {
+    assert.equal(median([]), null);
+    assert.equal(median([5, 1, 3]), 3);
+    assert.equal(median([4, 1, 3, 2]), 2.5);
+    assert.equal(max([1, 9, 3]), 9);
+    assert.equal(max([]), null);
+    assert.equal(round(1.26), 1.3);
+    assert.equal(round(null), null);
+  });
+
+  it('writes metrics.json with the doc beside the metrics, and the metrics alone to PERF_RESULTS_DIR', () => {
+    const dir = join(mkdtempSync(join(tmpdir(), 'we-e2e-test-')), 'artifacts');
+    const perf = join(mkdtempSync(join(tmpdir(), 'we-e2e-test-')), 'perf');
+    const metrics = [{ metric: 'a.b_ms', value: 12, unit: 'ms', better: 'lower', params: { tier: 'stub' } }];
+    const written = writeMetrics({
+      dir,
+      job: 'job-x',
+      metrics,
+      doc: { job: 'job-x', detail: { n: 1 } },
+      env: { PERF_RESULTS_DIR: perf },
+    });
+    assert.deepEqual(written, [join(dir, 'metrics.json'), join(perf, 'job-x.json')]);
+    assert.deepEqual(JSON.parse(readFileSync(written[0], 'utf8')), { job: 'job-x', detail: { n: 1 }, metrics });
+    assert.deepEqual(JSON.parse(readFileSync(written[1], 'utf8')), { metrics });
+  });
+
+  it('writes only its own file when PERF_RESULTS_DIR is not set, and only the metrics with no doc', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'we-e2e-test-'));
+    const written = writeMetrics({ dir, job: 'job-x', metrics: [], env: {} });
+    assert.deepEqual(written, [join(dir, 'metrics.json')]);
+    assert.deepEqual(JSON.parse(readFileSync(written[0], 'utf8')), { metrics: [] });
   });
 });

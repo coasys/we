@@ -9,9 +9,20 @@ import assert from 'node:assert/strict';
 import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../steps/space.mjs';
-import { leaveCall, startCall, stopTranscribing, typeIntoCall, unmute, untilHeard, watchCall } from './call.mjs';
-import { SLOW, STUB, until, vertical, world } from './context.mjs';
+import {
+  leaveCall,
+  startCall,
+  stopTranscribing,
+  timeInterpretation,
+  typeIntoCall,
+  unmute,
+  untilHeard,
+  watchCall,
+  watchSaid,
+} from './call.mjs';
+import { SLOW, STUB, timings, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
+import { endWatches, markClick, ms, readMark } from './probe.mjs';
 import { HEARD, LINES } from './stub-llm.mjs';
 import {
   acceptInInspector,
@@ -54,18 +65,29 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
 
   v.step('what is said lands in the transcript', async () => {
     const lines = Object.values(LINES);
-    if (STUB) {
-      await watchCall(alice, perspective, callId);
-      await typeIntoCall(alice, perspective, callId, lines);
-    }
+    // The timings of what is said and what is found of it (README, "Timings"): the page marks when
+    // each shows, and the steps below read the marks. The watches last until the interpretation step
+    // ends them.
+    await timings.attempt('transcript and interpretation', () =>
+      watchSaid(alice.page, STUB ? { lines } : { heard: HEARD }),
+    );
+    if (STUB) await watchCall(alice, perspective, callId);
+    // Open on the call before a line is written: the line's time is then its write to the screen.
     await treeRow(alice.page, 'Call Live').click();
     if (STUB) {
+      const wrote = await typeIntoCall(alice, perspective, callId, lines);
       for (const line of lines) await alice.page.getByText(line).first().waitFor({ timeout: SLOW });
+      await timings.attempt('transcript.line_ms', async () => {
+        for (const [i, started] of wrote.entries()) {
+          timings.add('transcript.line_ms', ms(started, await readMark(alice.page, `line.${i}`)));
+        }
+      });
       return;
     }
     // The stored lines hold a word of each recorded line — words the space's name and the page's
     // controls do not, so only the transcript can pass this. The speech model's spelling, not the script's.
     // The microphone is off until this press, so the recording has not started yet.
+    await timings.attempt('transcript.line_ms', () => markClick(alice.page, 'unmute', 'Unmute'));
     await unmute(alice.page);
     const said = await untilHeard(perspective, callId, HEARD, SLOW);
     // The fake microphone plays its recording in a loop; every line is in, so it stops here, and
@@ -75,13 +97,31 @@ vertical('V2 call: transcript, interpretation, accept, leave', (v) => {
     const line = said.find((t) => HEARD.some((word) => t.toLowerCase().includes(word)));
     assert.ok(line, `a stored line holds one of ${HEARD.join(', ')} (${JSON.stringify(said)})`);
     await alice.page.getByText(line.trim()).first().waitFor({ timeout: SLOW });
+    // Pressing Unmute starts the recording: the first line shows once it has been spoken and written.
+    await timings.attempt('transcript.line_ms', async () => {
+      const first = await until(() => readMark(alice.page, 'said.first'), Boolean, {
+        timeout: 15_000,
+        what: 'a heard word',
+      });
+      timings.add('transcript.line_ms', ms(await readMark(alice.page, 'unmute'), first));
+    });
   });
 
   v.step("interpretation makes records of the package's classes, linked to the call", async () => {
-    await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null);
-    if (STUB) {
-      const asked = (await world()).stub.passes().flatMap((p) => p.input.classes.map((c) => c.name));
-      for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `interpretation asked for ${cls.name}`);
+    try {
+      await untilInterpreted(perspective, callId, found, STUB ? expectedRecords() : null);
+      if (STUB) {
+        const asked = (await world()).stub.passes().flatMap((p) => p.input.classes.map((c) => c.name));
+        for (const cls of DNA.classes) assert.ok(asked.includes(cls.name), `interpretation asked for ${cls.name}`);
+      }
+      // Every suggestion the scripted pass made is in; the real tier's model may still be writing more.
+      await timings.attempt('interpretation', async () => {
+        const stored = STUB ? (await alice.ports.interpretation.proposals(perspective)).length : 0;
+        await timeInterpretation(alice.page, stored);
+      });
+    } finally {
+      // The step's watches end with it, pass or fail.
+      await endWatches(alice.page);
     }
     const all = [...found.values()].flat();
     // The executor writes the records; the client that registered the watch links them to the call

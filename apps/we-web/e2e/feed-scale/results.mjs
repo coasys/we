@@ -8,21 +8,15 @@
  * with this one.
  */
 
+import { max, median, round } from '@we/e2e/metrics';
+
 export const JOB = 'feed-scale';
+
+export { max, median };
 
 /** The classes the page's `perspective.modelQuery` calls name, as it sends them (by IRI). */
 export const MESSAGE_CLASS = 'we://TextBlock';
 export const SPACE_CLASS = 'we://Space';
-
-/** The middle value; the mean of the two middle ones for an even count. `null` for none. */
-export function median(values) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
-export const max = (values) => (values.length ? Math.max(...values) : null);
 
 /**
  * Why the executor's idle CPU after the loads must not be read, or `null` when it may: like the read
@@ -41,8 +35,6 @@ export function idleAfterLoadsSkipped(run, unanswered) {
   }
   return null;
 }
-
-const round = (n, places = 1) => (n === null ? null : Math.round(n * 10 ** places) / 10 ** places);
 
 /**
  * The metrics of a run, from what it measured. Anything not measured (a run that stopped early) is
