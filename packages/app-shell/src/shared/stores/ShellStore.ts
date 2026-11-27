@@ -19,12 +19,10 @@ import type { DestructiveFacts } from '../destructiveWording';
 import type {
   ContentInset,
   CoveringEdgeLane,
-  DockGeometry,
   EdgeLane,
   EdgeLaneBoxes,
   FloatPlacement,
   LaneSection,
-  Rect,
   ResizeSide,
   SnapPoint,
 } from '../dockGeometry';
@@ -38,6 +36,7 @@ import { SHELL_DOCK_STORE_ID } from '../registries/shellDocks';
 import { createShellArrangement } from './shell/arrangement';
 import { createShellDockDrag } from './shell/dockDrag';
 import { createShellDocks } from './shell/docks';
+import type { DockStyle, DropSlotStyle } from './shell/dockStyle';
 import { createShellPrompts } from './shell/prompts';
 import { createShellTemplatePanels } from './shell/templatePanels';
 import { createShellViews } from './shell/views';
@@ -240,7 +239,7 @@ export interface ShellStore {
    * geometric props to a path into this object, so a panel changing edge or size rewrites props on
    * a container that stays mounted rather than rebuilding it.
    */
-  dockGeometry: Accessor<Record<string, DockGeometry>>;
+  dockGeometry: Accessor<Record<string, DockStyle>>;
   /** What the content viewport gives up to docked panels, in pixels per edge. */
   contentInset: Accessor<ContentInset>;
   /**
@@ -390,30 +389,7 @@ export interface ShellStore {
    * edge has two axes: `band` offers a new lane at that distance inboard, `lane` offers a seat beside
    * the panels in the lane it names. Empty unless a panel is being dragged.
    */
-  insertSlots: Accessor<
-    {
-      index: number;
-      /** The edge — or, for a `home` slot, the name of the home lane. Empty for a stack slot, which is on neither. */
-      edge: string;
-      /**
-       * `tab` is the seat itself: land here to stack behind whatever is showing in it; `home` is a
-       * `$panels` outlet.
-       *
-       * A `tab` slot with no `edge` is a **floating** panel offered as somewhere to stack — two
-       * panels in open space are in no lane, so that drop is named by position among the floats
-       * rather than by a place on an edge.
-       */
-      mode: 'band' | 'lane' | 'tab' | 'home';
-      /** Which lane a `lane` or `tab` slot is in — its position inward from the edge, or the floating one. */
-      lane: number | 'float' | '';
-      key: string;
-      top: string;
-      left: string;
-      width: string;
-      height: string;
-      hit: Rect;
-    }[]
-  >;
+  insertSlots: Accessor<DropSlotStyle[]>;
   /** The slot a drop would take right now, as its `key` — compare, do not parse. Null for none. */
   activeInsert: Accessor<string | null>;
   /**

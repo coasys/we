@@ -14,6 +14,10 @@
  * viewport each function is given (`Viewport.frame`), so an answer depends on its arguments alone and
  * a vector names its frame among them.
  *
+ * The answers are geometry: lengths in pixels as numbers, and which panel paints over which as a
+ * rank (0 at the back). How a renderer draws them is its own — the shell formats them as CSS for its
+ * frames (`stores/shell/dockStyle.ts`).
+ *
  * What is not here is what a host reads from its own screen: which panels are registered and what
  * each asks for, how recently each was touched, where a lane's section or a template's outlet is
  * drawn. The shell store reads those and hands them in.

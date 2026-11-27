@@ -178,8 +178,10 @@ is what its full-bleed sheets always were.
 
 Which tab shows, and which floating panel paints over which, are the same question: **the most
 recently touched.** Every panel carries a monotonic `activatedAt` (beside the placements, not in
-them, so a click pins nothing); `layerOrder` sorts it into a step on the `sticky` band, and a seat
-shows its most recently touched member. A pointer landing on a frame, a drag, a resize and
+them, so a click pins nothing); `layerOrder` sorts it into a rank, which the shell store draws as a
+step on the `sticky` band, and a seat shows its most recently touched member. The kernel answers in
+geometry throughout — pixels as numbers, paint order as a rank — and the shell store formats them as
+CSS for the frames the templates draw (`stores/shell/dockStyle.ts`). A pointer landing on a frame, a drag, a resize and
 maximising all touch. Chrome stays above every step — `chromeLayering.test.ts` pins the headroom.
 
 ### Floors, and folding
